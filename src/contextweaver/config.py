@@ -107,7 +107,9 @@ class ContextPolicy:
     """
 
     allowed_kinds_per_phase: dict[Phase, list[ItemKind]] = field(
-        default_factory=lambda: dict(_DEFAULT_ALLOWED_KINDS)
+        default_factory=lambda: {
+            phase: list(kinds) for phase, kinds in _DEFAULT_ALLOWED_KINDS.items()
+        }
     )
     max_items_per_kind: dict[ItemKind, int] = field(
         default_factory=lambda: {k: 50 for k in ItemKind}
