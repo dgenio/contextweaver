@@ -135,6 +135,12 @@ class ContextManager:
     ) -> ContextPack:
         """Synchronous wrapper around :meth:`build`.
 
+        This method must be called from a synchronous context (i.e. when no
+        asyncio event loop is already running).  It cannot be used inside
+        ``async def`` functions, Jupyter notebooks, or other environments
+        where an event loop is already active.  In those cases, ``await``
+        :meth:`build` directly instead.
+
         Args:
             phase: Active execution phase.
             query: User query string.
@@ -145,8 +151,11 @@ class ContextManager:
 
         Returns:
             A :class:`~contextweaver.types.ContextPack`.
+
+        Raises:
+            RuntimeError: If called from within a running event loop.
         """
-        return asyncio.get_event_loop().run_until_complete(
+        return asyncio.run(
             self.build(
                 phase=phase,
                 query=query,
