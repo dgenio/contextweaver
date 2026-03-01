@@ -8,6 +8,7 @@ filtering to produce an initial candidate list.
 from __future__ import annotations
 
 from contextweaver.config import ContextPolicy
+from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import ContextItem, Phase
 
@@ -66,7 +67,7 @@ def resolve_dependency_closure(
                 present_ids.add(parent_id)
                 closures += 1
                 parent_id = parent.parent_id
-            except Exception:
+            except ItemNotFoundError:
                 break
 
     # Preserve log order by re-sorting via original indices
