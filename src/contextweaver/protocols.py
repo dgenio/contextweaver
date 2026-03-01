@@ -111,6 +111,32 @@ class CharDivFourEstimator:
         return len(text) // 4
 
 
+# Optional tiktoken-based estimator (requires ``pip install tiktoken``).
+try:
+    import tiktoken as _tiktoken  # type: ignore[import-not-found]
+
+    class TiktokenEstimator:
+        """Token estimator backed by the ``tiktoken`` library.
+
+        Falls back to ``cl100k_base`` encoding by default.
+
+        Args:
+            model: The tiktoken model/encoding name.
+        """
+
+        def __init__(self, model: str = "cl100k_base") -> None:
+            self._enc = _tiktoken.get_encoding(model)
+
+        def estimate(self, text: str) -> int:
+            """Return the exact token count according to tiktoken."""
+            return len(self._enc.encode(text))
+
+except ModuleNotFoundError:  # pragma: no cover
+    pass
+
+# FUTURE: LLM-based token estimator for custom/fine-tuned models.
+
+
 # ---------------------------------------------------------------------------
 # EventHook
 # ---------------------------------------------------------------------------

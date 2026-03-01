@@ -227,19 +227,22 @@ class TfIdfScorer:
         self._documents: list[list[str]] = []
         self._idf: dict[str, float] = {}
 
-    def fit(self, documents: list[str]) -> None:
+    def fit(self, documents: list[str]) -> TfIdfScorer:
         """Index *documents* and pre-compute IDF weights.
 
         Args:
             documents: A list of raw text strings to index.  The order
                 determines ``doc_index`` values used in :meth:`score`.
+
+        Returns:
+            ``self`` for method chaining.
         """
         tokenized = [sorted(tokenize(doc)) for doc in documents]
         self._documents = tokenized
         n = len(documents)
         if n == 0:
             self._idf = {}
-            return
+            return self
         df: Counter[str] = Counter()
         for tokens in tokenized:
             for tok in set(tokens):
@@ -247,6 +250,7 @@ class TfIdfScorer:
         self._idf = {
             term: math.log((1 + n) / (1 + freq)) + 1.0 for term, freq in sorted(df.items())
         }
+        return self
 
     def score(self, query: str, doc_index: int) -> float:
         """Compute the TF-IDF score of *query* against a single document.

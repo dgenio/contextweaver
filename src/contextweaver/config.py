@@ -28,6 +28,25 @@ class ScoringConfig:
     kind_priority_weight: float = 0.35
     token_cost_penalty: float = 0.1
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "recency_weight": self.recency_weight,
+            "tag_match_weight": self.tag_match_weight,
+            "kind_priority_weight": self.kind_priority_weight,
+            "token_cost_penalty": self.token_cost_penalty,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScoringConfig:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(
+            recency_weight=float(data.get("recency_weight", 0.3)),
+            tag_match_weight=float(data.get("tag_match_weight", 0.25)),
+            kind_priority_weight=float(data.get("kind_priority_weight", 0.35)),
+            token_cost_penalty=float(data.get("token_cost_penalty", 0.1)),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Budget
@@ -56,6 +75,25 @@ class ContextBudget:
             The maximum number of tokens allowed in the compiled context.
         """
         return int(getattr(self, phase.value))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "route": self.route,
+            "call": self.call,
+            "interpret": self.interpret,
+            "answer": self.answer,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ContextBudget:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(
+            route=int(data.get("route", 2000)),
+            call=int(data.get("call", 3000)),
+            interpret=int(data.get("interpret", 4000)),
+            answer=int(data.get("answer", 6000)),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -118,3 +156,47 @@ class ContextPolicy:
     sensitivity_floor: Sensitivity = Sensitivity.confidential
     redaction_hooks: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        akpp = self.allowed_kinds_per_phase
+        return {
+            "allowed_kinds_per_phase": {
+                phase.value: [k.value for k in kinds]
+                for phase, kinds in sorted(
+                    akpp.items(), key=lambda p: p[0].value
+                )
+            },
+            "max_items_per_kind": {
+                k.value: v
+                for k, v in sorted(
+                    self.max_items_per_kind.items(),
+                    key=lambda p: p[0].value,
+                )
+            },
+            "ttl_behavior": self.ttl_behavior,
+            "sensitivity_floor": self.sensitivity_floor.value,
+            "redaction_hooks": list(self.redaction_hooks),
+            "extra": dict(self.extra),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ContextPolicy:
+        """Deserialise from a JSON-compatible dict."""
+        raw_allowed = data.get("allowed_kinds_per_phase", {})
+        allowed: dict[Phase, list[ItemKind]] = {
+            Phase(p): [ItemKind(k) for k in kinds]
+            for p, kinds in raw_allowed.items()
+        }
+        raw_max = data.get("max_items_per_kind", {})
+        max_items: dict[ItemKind, int] = {
+            ItemKind(k): int(v) for k, v in raw_max.items()
+        }
+        return cls(
+            allowed_kinds_per_phase=allowed if allowed else _DEFAULT_ALLOWED_KINDS.copy(),
+            max_items_per_kind=max_items if max_items else {k: 50 for k in ItemKind},
+            ttl_behavior=str(data.get("ttl_behavior", "drop")),
+            sensitivity_floor=Sensitivity(data.get("sensitivity_floor", "confidential")),
+            redaction_hooks=list(data.get("redaction_hooks", [])),
+            extra=dict(data.get("extra", {})),
+        )
