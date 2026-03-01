@@ -41,6 +41,9 @@ class Router:
             docs = [f"{item.name} {item.description} {' '.join(item.tags)}" for item in items]
             self._scorer.fit(docs)
             self._item_ids = [item.id for item in items]
+            self._item_id_to_idx: dict[str, int] = {
+                item_id: i for i, item_id in enumerate(self._item_ids)
+            }
             self._indexed = True
 
     def _score_node(self, query: str, node_id: str) -> float:
@@ -61,8 +64,8 @@ class Router:
             return jaccard(q_tokens, n_tokens)
 
         # Use TF-IDF scoring for catalog items
-        if node_id in self._item_ids:
-            idx = self._item_ids.index(node_id)
+        idx = self._item_id_to_idx.get(node_id)
+        if idx is not None:
             return self._scorer.score(query, idx)
 
         # Fallback to Jaccard if item is somehow not in the index
