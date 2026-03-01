@@ -18,17 +18,19 @@ Quick start::
     print(budget.for_phase(Phase.answer))  # 6000
 """
 
-from contextweaver import config, exceptions, protocols, types
+from contextweaver import config, envelope, exceptions, protocols, types
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
-from contextweaver.types import (
-    ArtifactRef,
+from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
-    ContextItem,
     ContextPack,
+    ResultEnvelope,
+)
+from contextweaver.types import (
+    ArtifactRef,
+    ContextItem,
     ItemKind,
     Phase,
-    ResultEnvelope,
     SelectableItem,
     Sensitivity,
     ToolCard,
@@ -39,6 +41,7 @@ __version__ = "0.1.0"
 __all__ = [
     # sub-modules
     "config",
+    "envelope",
     "exceptions",
     "protocols",
     "types",

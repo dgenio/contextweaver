@@ -7,8 +7,9 @@ configured token budget for the current phase.
 from __future__ import annotations
 
 from contextweaver.config import ContextBudget, ContextPolicy
+from contextweaver.envelope import BuildStats
 from contextweaver.protocols import TokenEstimator
-from contextweaver.types import BuildStats, ContextItem, Phase
+from contextweaver.types import ContextItem, Phase
 
 
 def select_and_pack(

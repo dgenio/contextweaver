@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from contextweaver.types import ResultEnvelope, SelectableItem
+from contextweaver.envelope import ResultEnvelope
+from contextweaver.types import SelectableItem
 
 
 def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:

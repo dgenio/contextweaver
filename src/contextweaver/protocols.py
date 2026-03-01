@@ -9,7 +9,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from contextweaver.types import ContextItem, ContextPack, SelectableItem
+    from contextweaver.envelope import ContextPack
+    from contextweaver.types import ContextItem, SelectableItem
 
 
 # ---------------------------------------------------------------------------

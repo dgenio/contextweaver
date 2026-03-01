@@ -8,9 +8,10 @@ usage.
 
 from __future__ import annotations
 
+from contextweaver.envelope import ChoiceCard
 from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
-from contextweaver.types import ChoiceCard, SelectableItem
+from contextweaver.types import SelectableItem
 
 
 def item_to_card(item: SelectableItem) -> ChoiceCard:

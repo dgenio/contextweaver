@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from contextweaver.types import ResultEnvelope, SelectableItem
+from contextweaver.envelope import ResultEnvelope
+from contextweaver.types import SelectableItem
 
 
 def a2a_agent_to_selectable(agent_card: dict[str, Any]) -> SelectableItem:

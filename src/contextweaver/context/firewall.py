@@ -8,10 +8,11 @@ containing a human-readable summary, extracted facts, and an
 
 from __future__ import annotations
 
+from contextweaver.envelope import ResultEnvelope
 from contextweaver.protocols import EventHook, NoOpHook
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.summarize.extract import extract_facts
-from contextweaver.types import ContextItem, ItemKind, ResultEnvelope
+from contextweaver.types import ContextItem, ItemKind
 
 
 def _default_summary(raw: str, max_chars: int = 500) -> str:

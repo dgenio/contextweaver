@@ -23,10 +23,11 @@ from contextweaver.context.firewall import apply_firewall_to_batch
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
+from contextweaver.envelope import ContextPack
 from contextweaver.protocols import CharDivFourEstimator, EventHook, NoOpHook, TokenEstimator
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.event_log import InMemoryEventLog
-from contextweaver.types import ContextPack, Phase
+from contextweaver.types import Phase
 
 
 class ContextManager:
