@@ -8,6 +8,7 @@ usage.
 
 from __future__ import annotations
 
+from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.types import ChoiceCard, SelectableItem
 
@@ -63,7 +64,7 @@ def cards_for_route(route: list[str], catalog: Catalog) -> list[ChoiceCard]:
         try:
             item = catalog.get(node_id)
             cards.append(item_to_card(item))
-        except Exception:
+        except ItemNotFoundError:
             continue
     return cards
 
