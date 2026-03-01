@@ -44,7 +44,12 @@ class Router:
             self._indexed = True
 
     def _score_node(self, query: str, node_id: str) -> float:
-        """Score a single graph node against *query*."""
+        """Score a single graph node against *query*.
+
+        Catalog items are scored using TF-IDF against the pre-built index.
+        Namespace / category nodes (not in the catalog) fall back to Jaccard
+        token overlap on the node ID.
+        """
         self._ensure_index()
         # Try catalog lookup first
         try:
@@ -55,6 +60,12 @@ class Router:
             n_tokens = tokenize(node_id.replace(":", " ").replace("_", " "))
             return jaccard(q_tokens, n_tokens)
 
+        # Use TF-IDF scoring for catalog items
+        if node_id in self._item_ids:
+            idx = self._item_ids.index(node_id)
+            return self._scorer.score(query, idx)
+
+        # Fallback to Jaccard if item is somehow not in the index
         doc_text = f"{item.name} {item.description} {' '.join(item.tags)}"
         q_tokens = tokenize(query)
         d_tokens = tokenize(doc_text)
