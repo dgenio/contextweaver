@@ -112,7 +112,7 @@ def extract_facts(text: str, metadata: dict[str, Any]) -> list[str]:
     return facts
 
 
-_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}")
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _URL_RE = re.compile(r"https?://[^\s<>\"']+")
 _NUMBER_RE = re.compile(r"\b\d[\d,.]*\b")
 
