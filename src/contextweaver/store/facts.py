@@ -106,6 +106,32 @@ class InMemoryFactStore:
             raise ItemNotFoundError(f"Fact not found: {fact_id!r}")
         del self._facts[fact_id]
 
+    def list_keys(self, prefix: str = "") -> list[str]:
+        """Return distinct keys, optionally filtered by *prefix*.
+
+        Args:
+            prefix: Only include keys starting with this string.
+                An empty prefix returns all keys.
+
+        Returns:
+            A sorted list of unique key strings.
+        """
+        keys: set[str] = set()
+        for fact in self._facts.values():
+            if fact.key.startswith(prefix):
+                keys.add(fact.key)
+        return sorted(keys)
+
+    def get_all(self) -> list[Fact]:
+        """Return all facts sorted by ``fact_id``.
+
+        Alias for :meth:`all`.
+
+        Returns:
+            A list of all stored :class:`Fact` objects.
+        """
+        return self.all()
+
     def all(self) -> list[Fact]:
         """Return all facts sorted by ``fact_id``.
 

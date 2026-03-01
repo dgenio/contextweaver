@@ -85,6 +85,71 @@ class InMemoryEventLog:
         """
         return self._items[-n:] if n > 0 else []
 
+    def query(
+        self,
+        kinds: list[ItemKind] | None = None,
+        since: int = 0,
+        limit: int = 0,
+    ) -> list[ContextItem]:
+        """Return items matching optional filters.
+
+        Args:
+            kinds: If given, restrict to these item kinds.
+            since: Zero-based index; only return items appended at or after
+                this position in the log.
+            limit: Maximum number of items to return (0 = unlimited).
+
+        Returns:
+            A list of matching items in insertion order.
+        """
+        kind_set = set(kinds) if kinds else None
+        result: list[ContextItem] = []
+        for idx, item in enumerate(self._items):
+            if idx < since:
+                continue
+            if kind_set and item.kind not in kind_set:
+                continue
+            result.append(item)
+            if limit and len(result) >= limit:
+                break
+        return result
+
+    def children(self, parent_id: str) -> list[ContextItem]:
+        """Return all items whose ``parent_id`` equals *parent_id*.
+
+        Args:
+            parent_id: The parent item identifier.
+
+        Returns:
+            Child items in insertion order.
+        """
+        return [
+            item for item in self._items if item.parent_id == parent_id
+        ]
+
+    def parent(self, item_id: str) -> ContextItem | None:
+        """Return the parent of the item with *item_id*, if any.
+
+        Args:
+            item_id: The child item identifier.
+
+        Returns:
+            The parent :class:`~contextweaver.types.ContextItem`, or ``None``
+            if the item has no parent or does not exist.
+        """
+        if item_id not in self._index:
+            return None
+        item = self._items[self._index[item_id]]
+        if item.parent_id is None:
+            return None
+        if item.parent_id not in self._index:
+            return None
+        return self._items[self._index[item.parent_id]]
+
+    def count(self) -> int:
+        """Return the total number of items in the log."""
+        return len(self._items)
+
     def __len__(self) -> int:
         return len(self._items)
 

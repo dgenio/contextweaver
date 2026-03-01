@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
+from contextweaver.exceptions import ItemNotFoundError
 
 
 @dataclass
@@ -102,6 +103,53 @@ class InMemoryEpisodicStore:
             scores = [jaccard(q_tokens, tokenize(ep.summary)) for ep in self._episodes]
         ranked = sorted(range(len(self._episodes)), key=lambda i: scores[i], reverse=True)
         return [self._episodes[i] for i in ranked[:top_k]]
+
+    def latest(self, n: int = 3) -> list[tuple[str, str, dict[str, Any]]]:
+        """Return the *n* most recently added episodes.
+
+        Args:
+            n: Number of episodes to return (default 3).
+
+        Returns:
+            A list of ``(episode_id, summary, metadata)`` tuples, most
+            recent first.
+        """
+        recent = self._episodes[-n:] if n > 0 else []
+        return [
+            (ep.episode_id, ep.summary, dict(ep.metadata))
+            for ep in reversed(recent)
+        ]
+
+    def list_episodes(self, limit: int = 0) -> list[Episode]:
+        """Return episodes in insertion order, with optional limit.
+
+        Args:
+            limit: Maximum number of episodes to return (0 = unlimited).
+
+        Returns:
+            A list of episodes in insertion order.
+        """
+        if limit > 0:
+            return list(self._episodes[:limit])
+        return list(self._episodes)
+
+    def delete(self, episode_id: str) -> None:
+        """Remove the episode identified by *episode_id*.
+
+        Args:
+            episode_id: The unique identifier to delete.
+
+        Raises:
+            ItemNotFoundError: If *episode_id* does not exist.
+        """
+        for i, ep in enumerate(self._episodes):
+            if ep.episode_id == episode_id:
+                del self._episodes[i]
+                self._dirty = True
+                return
+        raise ItemNotFoundError(
+            f"Episode not found: {episode_id!r}"
+        )
 
     def all(self) -> list[Episode]:
         """Return all episodes in insertion order."""

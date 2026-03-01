@@ -6,6 +6,7 @@ receives only :class:`~contextweaver.types.ArtifactRef` handles and summaries.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from contextweaver.exceptions import ArtifactNotFoundError
@@ -96,6 +97,85 @@ class InMemoryArtifactStore:
             raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
         del self._data[handle]
         del self._meta[handle]
+
+    def exists(self, handle: str) -> bool:
+        """Return ``True`` if *handle* is in the store.
+
+        Args:
+            handle: The artifact handle to check.
+        """
+        return handle in self._data
+
+    def metadata(self, handle: str) -> dict[str, Any]:
+        """Return metadata for *handle* as a plain dict.
+
+        Args:
+            handle: The artifact handle.
+
+        Returns:
+            A dict with ``handle``, ``media_type``, ``size_bytes``, and
+            ``label`` keys.
+
+        Raises:
+            ArtifactNotFoundError: If *handle* is not in the store.
+        """
+        return self.ref(handle).to_dict()
+
+    def drilldown(
+        self, handle: str, selector: dict[str, Any]
+    ) -> str:
+        """Extract a subset of the artifact's content.
+
+        Supported selector types:
+
+        - ``{"type": "lines", "start": 0, "end": 10}``
+        - ``{"type": "json_keys", "keys": [...]}``
+        - ``{"type": "rows", "start": 0, "end": 5}``
+        - ``{"type": "head", "chars": 500}``
+
+        Args:
+            handle: The artifact handle.
+            selector: A dict describing the drilldown operation.
+
+        Returns:
+            The extracted text fragment.
+
+        Raises:
+            ArtifactNotFoundError: If *handle* is not in the store.
+        """
+        # FUTURE: FileArtifactStore, vector retrieval, merge compression.
+        raw = self.get(handle)
+        text = raw.decode("utf-8", errors="replace")
+        sel_type = selector.get("type", "head")
+
+        if sel_type == "lines":
+            lines = text.splitlines()
+            start = int(selector.get("start", 0))
+            end = int(selector.get("end", len(lines)))
+            return "\n".join(lines[start:end])
+
+        if sel_type == "json_keys":
+            keys = selector.get("keys", [])
+            try:
+                obj = json.loads(text)
+            except (json.JSONDecodeError, ValueError):
+                return text[:500]
+            if isinstance(obj, dict):
+                return json.dumps(
+                    {k: obj[k] for k in keys if k in obj},
+                    sort_keys=True,
+                )
+            return text[:500]
+
+        if sel_type == "rows":
+            lines = text.splitlines()
+            start = int(selector.get("start", 0))
+            end = int(selector.get("end", len(lines)))
+            return "\n".join(lines[start:end])
+
+        # "head" or unknown — default to head chars
+        chars = int(selector.get("chars", 500))
+        return text[:chars]
 
     def list_refs(self) -> list[ArtifactRef]:
         """Return all stored :class:`~contextweaver.types.ArtifactRef` objects, sorted by handle.
