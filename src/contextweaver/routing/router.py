@@ -7,7 +7,7 @@ to find the top-k paths that best satisfy a user query.
 from __future__ import annotations
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
-from contextweaver.exceptions import RouteError
+from contextweaver.exceptions import ItemNotFoundError, RouteError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.graph import ChoiceGraph
 
@@ -54,7 +54,7 @@ class Router:
         # Try catalog lookup first
         try:
             item = self._catalog.get(node_id)
-        except Exception:
+        except ItemNotFoundError:
             # Namespace / category nodes — fall back to token overlap
             q_tokens = tokenize(query)
             n_tokens = tokenize(node_id.replace(":", " ").replace("_", " "))
