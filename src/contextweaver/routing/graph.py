@@ -12,6 +12,8 @@ from typing import Any
 
 from contextweaver.exceptions import GraphBuildError
 
+# FUTURE: DAG mode with conditional edges and weighted constraints.
+
 
 class ChoiceGraph:
     """Bounded DAG of selectable-item IDs.

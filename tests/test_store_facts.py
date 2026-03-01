@@ -64,3 +64,41 @@ def test_roundtrip() -> None:
     store.put(Fact("f1", "name", "Alice"))
     restored = InMemoryFactStore.from_dict(store.to_dict())
     assert restored.get("f1").value == "Alice"
+
+
+def test_list_keys_all() -> None:
+    store = InMemoryFactStore()
+    store.put(Fact("f1", "color", "blue"))
+    store.put(Fact("f2", "size", "large"))
+    store.put(Fact("f3", "color", "red"))
+    keys = store.list_keys()
+    assert keys == ["color", "size"]
+
+
+def test_list_keys_with_prefix() -> None:
+    store = InMemoryFactStore()
+    store.put(Fact("f1", "user_name", "Alice"))
+    store.put(Fact("f2", "user_age", "30"))
+    store.put(Fact("f3", "system_version", "1.0"))
+    keys = store.list_keys("user_")
+    assert keys == ["user_age", "user_name"]
+
+
+def test_list_keys_empty() -> None:
+    store = InMemoryFactStore()
+    assert store.list_keys() == []
+
+
+def test_fact_roundtrip() -> None:
+    f = Fact(
+        fact_id="f1",
+        key="color",
+        value="blue",
+        tags=["visual"],
+        metadata={"src": "user"},
+    )
+    d = f.to_dict()
+    restored = Fact.from_dict(d)
+    assert restored.fact_id == "f1"
+    assert restored.tags == ["visual"]
+    assert restored.metadata["src"] == "user"

@@ -71,3 +71,100 @@ def test_roundtrip() -> None:
     restored = InMemoryEventLog.from_dict(log.to_dict())
     assert len(restored) == 1
     assert restored.get("i1").text == "hello"
+
+
+def test_query_no_filters() -> None:
+    log = InMemoryEventLog()
+    for i in range(5):
+        log.append(_make_item(f"i{i}"))
+    assert len(log.query()) == 5
+
+
+def test_query_with_kinds() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("u1", ItemKind.user_turn))
+    log.append(_make_item("t1", ItemKind.tool_call))
+    log.append(_make_item("u2", ItemKind.user_turn))
+    results = log.query(kinds=[ItemKind.user_turn])
+    assert len(results) == 2
+
+
+def test_query_with_since() -> None:
+    log = InMemoryEventLog()
+    for i in range(5):
+        log.append(_make_item(f"i{i}"))
+    results = log.query(since=3)
+    assert len(results) == 2
+    assert results[0].id == "i3"
+
+
+def test_query_with_limit() -> None:
+    log = InMemoryEventLog()
+    for i in range(5):
+        log.append(_make_item(f"i{i}"))
+    results = log.query(limit=2)
+    assert len(results) == 2
+
+
+def test_query_combined_filters() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("u1", ItemKind.user_turn))
+    log.append(_make_item("t1", ItemKind.tool_call))
+    log.append(_make_item("u2", ItemKind.user_turn))
+    log.append(_make_item("t2", ItemKind.tool_call))
+    log.append(_make_item("u3", ItemKind.user_turn))
+    results = log.query(kinds=[ItemKind.user_turn], since=2, limit=1)
+    assert len(results) == 1
+    assert results[0].id == "u2"
+
+
+def test_children() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("parent1"))
+    log.append(ContextItem(id="child1", kind=ItemKind.tool_result, text="r1", parent_id="parent1"))
+    log.append(ContextItem(id="child2", kind=ItemKind.tool_result, text="r2", parent_id="parent1"))
+    log.append(_make_item("other"))
+    children = log.children("parent1")
+    assert len(children) == 2
+    assert {c.id for c in children} == {"child1", "child2"}
+
+
+def test_children_empty() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("i1"))
+    assert log.children("i1") == []
+
+
+def test_parent_found() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("p1"))
+    log.append(ContextItem(id="c1", kind=ItemKind.tool_result, text="r", parent_id="p1"))
+    parent = log.parent("c1")
+    assert parent is not None
+    assert parent.id == "p1"
+
+
+def test_parent_none() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("i1"))
+    assert log.parent("i1") is None
+
+
+def test_parent_missing_parent_id() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="c1", kind=ItemKind.tool_result, text="r", parent_id="missing"))
+    assert log.parent("c1") is None
+
+
+def test_parent_not_found_raises() -> None:
+    log = InMemoryEventLog()
+    with pytest.raises(ItemNotFoundError):
+        log.parent("missing")
+
+
+def test_count() -> None:
+    log = InMemoryEventLog()
+    assert log.count() == 0
+    log.append(_make_item("i1"))
+    log.append(_make_item("i2"))
+    assert log.count() == 2

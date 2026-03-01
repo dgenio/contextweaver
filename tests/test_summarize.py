@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from contextweaver.summarize.rules import RuleEngine, SummarizationRule
+import json
+
+from contextweaver.summarize.rules import RuleBasedSummarizer, RuleEngine, SummarizationRule
 
 
 def test_rule_matches_media_type() -> None:
@@ -42,3 +44,68 @@ def test_engine_add_rule() -> None:
     engine = RuleEngine()
     engine.add_rule(SummarizationRule(media_type_prefix="image/", summarizer_name="img"))
     assert engine.resolve("image/png", {}) == "img"
+
+
+# ---------------------------------------------------------------------------
+# RuleBasedSummarizer
+# ---------------------------------------------------------------------------
+
+
+def test_summarizer_empty_text() -> None:
+    s = RuleBasedSummarizer()
+    assert s.summarize("", {}) == "(empty)"
+    assert s.summarize("   ", {}) == "(empty)"
+
+
+def test_summarizer_short_text() -> None:
+    s = RuleBasedSummarizer()
+    result = s.summarize("short text", {})
+    assert result == "short text"
+
+
+def test_summarizer_json_object() -> None:
+    s = RuleBasedSummarizer()
+    obj = {"name": "Alice", "age": 30, "active": True}
+    raw = json.dumps(obj)
+    result = s.summarize(raw, {})
+    assert "JSON object" in result
+    assert "3 key(s)" in result
+    assert "name" in result
+
+
+def test_summarizer_json_array() -> None:
+    s = RuleBasedSummarizer()
+    arr = [{"id": 1, "value": "x"}, {"id": 2, "value": "y"}]
+    raw = json.dumps(arr)
+    result = s.summarize(raw, {})
+    assert "JSON array" in result
+    assert "2 item(s)" in result
+
+
+def test_summarizer_key_lines() -> None:
+    s = RuleBasedSummarizer()
+    text = "line 1\nstatus: error detected\nline 3\ntotal: 42\nmore text"
+    result = s.summarize(text, {})
+    assert "error" in result.lower() or "total" in result.lower()
+
+
+def test_summarizer_head_tail_truncation() -> None:
+    s = RuleBasedSummarizer(max_chars=60)
+    text = "a" * 200
+    result = s.summarize(text, {})
+    assert len(result) <= 60
+    assert "[...truncated...]" in result
+
+
+def test_summarizer_max_chars_respected() -> None:
+    s = RuleBasedSummarizer(max_chars=100)
+    obj = {f"key_{i}": f"value_{i}" for i in range(50)}
+    raw = json.dumps(obj)
+    result = s.summarize(raw, {})
+    assert len(result) <= 100
+
+
+def test_summarizer_all_rules() -> None:
+    engine = RuleEngine()
+    rules = engine.all_rules()
+    assert isinstance(rules, list)

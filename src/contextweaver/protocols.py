@@ -46,6 +46,31 @@ class EventLog(Protocol):
         """Return all items whose ``kind`` is in *kinds*."""
         ...
 
+    def tail(self, n: int) -> list[ContextItem]:
+        """Return the last *n* items."""
+        ...
+
+    def children(self, parent_id: str) -> list[ContextItem]:
+        """Return all items whose ``parent_id`` equals *parent_id*."""
+        ...
+
+    def parent(self, item_id: str) -> ContextItem | None:
+        """Return the parent of *item_id*, or ``None``."""
+        ...
+
+    def query(
+        self,
+        kinds: list[ItemKind] | None = None,
+        since: int | None = None,
+        limit: int | None = None,
+    ) -> list[ContextItem]:
+        """Flexible query over the event log."""
+        ...
+
+    def count(self) -> int:
+        """Return the number of items in the log."""
+        ...
+
     def __len__(self) -> int: ...
 
 
@@ -88,6 +113,27 @@ class ArtifactStore(Protocol):
         """Return all stored :class:`~contextweaver.types.ArtifactRef` objects."""
         ...
 
+    def delete(self, handle: str) -> None:
+        """Remove the artifact identified by *handle*."""
+        ...
+
+    def exists(self, handle: str) -> bool:
+        """Return ``True`` if *handle* is in the store."""
+        ...
+
+    def metadata(self, handle: str) -> ArtifactRef:
+        """Return the :class:`~contextweaver.types.ArtifactRef` for *handle*."""
+        ...
+
+    def drilldown(self, handle: str, selector: dict[str, Any]) -> str:
+        """Return a subset of the artifact's content according to *selector*."""
+        ...
+
+
+# FUTURE: EpisodicStore and FactStore protocols — the concrete InMemory*
+# classes currently define latest/delete/list_keys without protocol
+# declarations.  Add formal protocols once the API surface stabilises.
+
 
 # ---------------------------------------------------------------------------
 # TokenEstimator
@@ -109,6 +155,46 @@ class CharDivFourEstimator:
     def estimate(self, text: str) -> int:
         """Return ``len(text) // 4`` as a rough token estimate."""
         return len(text) // 4
+
+
+try:
+    import tiktoken as _tiktoken
+
+    class TiktokenEstimator:
+        """Token estimator backed by OpenAI's ``tiktoken`` library.
+
+        Falls back to :class:`CharDivFourEstimator` if ``tiktoken`` is not
+        installed.  *model* may be a model name (e.g. ``"gpt-4"``) or a raw
+        encoding name (e.g. ``"cl100k_base"``).  Model names are resolved via
+        ``tiktoken.encoding_for_model``; if that fails the value is treated as
+        an encoding name.
+        """
+
+        def __init__(self, model: str = "cl100k_base") -> None:
+            try:
+                self._enc = _tiktoken.encoding_for_model(model)
+            except KeyError:
+                self._enc = _tiktoken.get_encoding(model)
+
+        def estimate(self, text: str) -> int:
+            """Return the exact token count using tiktoken."""
+            return len(self._enc.encode(text))
+
+except ImportError:  # pragma: no cover
+
+    class TiktokenEstimator:  # type: ignore[no-redef]
+        """Stub when ``tiktoken`` is not installed — delegates to :class:`CharDivFourEstimator`.
+
+        *model* is accepted for API compatibility but ignored.
+        """
+
+        def __init__(self, model: str = "cl100k_base") -> None:
+            _ = model
+            self._fallback = CharDivFourEstimator()
+
+        def estimate(self, text: str) -> int:
+            """Return ``len(text) // 4`` (tiktoken not available)."""
+            return self._fallback.estimate(text)
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +251,9 @@ class NoOpHook:
 # ---------------------------------------------------------------------------
 
 
+# FUTURE: LLM-backed summarizer/extractor for higher-quality summarization.
+
+
 @runtime_checkable
 class Summarizer(Protocol):
     """Convert a raw tool output string into a human/LLM-readable summary."""
@@ -200,6 +289,9 @@ class RedactionHook(Protocol):
 # ---------------------------------------------------------------------------
 # Labeler
 # ---------------------------------------------------------------------------
+
+
+# FUTURE: LLM-backed labeler that calls an LLM for category assignment.
 
 
 @runtime_checkable
