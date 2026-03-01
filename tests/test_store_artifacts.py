@@ -62,3 +62,85 @@ def test_to_dict() -> None:
     store.put("h1", b"data")
     d = store.to_dict()
     assert len(d["refs"]) == 1
+
+
+def test_exists_true() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"data")
+    assert store.exists("h1") is True
+
+
+def test_exists_false() -> None:
+    store = InMemoryArtifactStore()
+    assert store.exists("missing") is False
+
+
+def test_metadata_alias() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"data", media_type="text/plain", label="lbl")
+    m = store.metadata("h1")
+    assert m.handle == "h1"
+    assert m.media_type == "text/plain"
+    assert m.label == "lbl"
+
+
+def test_metadata_missing_raises() -> None:
+    store = InMemoryArtifactStore()
+    with pytest.raises(ArtifactNotFoundError):
+        store.metadata("missing")
+
+
+def test_drilldown_head() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"hello world from drilldown")
+    result = store.drilldown("h1", {"type": "head", "chars": 5})
+    assert result == "hello"
+
+
+def test_drilldown_lines() -> None:
+    store = InMemoryArtifactStore()
+    content = "line0\nline1\nline2\nline3\nline4"
+    store.put("h1", content.encode())
+    result = store.drilldown("h1", {"type": "lines", "start": 1, "end": 3})
+    assert result == "line1\nline2"
+
+
+def test_drilldown_json_keys() -> None:
+    store = InMemoryArtifactStore()
+    import json
+
+    data = json.dumps({"name": "Alice", "age": 30, "role": "admin"})
+    store.put("h1", data.encode())
+    result = store.drilldown("h1", {"type": "json_keys", "keys": ["name", "role"]})
+    parsed = json.loads(result)
+    assert parsed["name"] == "Alice"
+    assert parsed["role"] == "admin"
+    assert "age" not in parsed
+
+
+def test_drilldown_json_keys_invalid_json() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"not json")
+    result = store.drilldown("h1", {"type": "json_keys", "keys": ["a"]})
+    assert result == ""
+
+
+def test_drilldown_rows() -> None:
+    store = InMemoryArtifactStore()
+    content = "header\nrow1\nrow2\nrow3"
+    store.put("h1", content.encode())
+    result = store.drilldown("h1", {"type": "rows", "start": 0, "end": 2})
+    assert result == "header\nrow1"
+
+
+def test_drilldown_unknown_type_raises() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"data")
+    with pytest.raises(ValueError, match="Unknown drilldown"):
+        store.drilldown("h1", {"type": "unknown"})
+
+
+def test_drilldown_missing_raises() -> None:
+    store = InMemoryArtifactStore()
+    with pytest.raises(ArtifactNotFoundError):
+        store.drilldown("missing", {"type": "head"})

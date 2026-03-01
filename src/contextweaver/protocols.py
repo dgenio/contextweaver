@@ -111,6 +111,37 @@ class CharDivFourEstimator:
         return len(text) // 4
 
 
+try:
+    import tiktoken as _tiktoken
+
+    class TiktokenEstimator:
+        """Token estimator backed by OpenAI's ``tiktoken`` library.
+
+        Falls back to :class:`CharDivFourEstimator` if ``tiktoken`` is not
+        installed.  Pass *model* to select the encoding (default ``cl100k_base``).
+        """
+
+        def __init__(self, model: str = "cl100k_base") -> None:
+            self._enc = _tiktoken.get_encoding(model)
+
+        def estimate(self, text: str) -> int:
+            """Return the exact token count using tiktoken."""
+            return len(self._enc.encode(text))
+
+except ImportError:  # pragma: no cover
+
+    class TiktokenEstimator:  # type: ignore[no-redef]
+        """Stub when ``tiktoken`` is not installed — delegates to :class:`CharDivFourEstimator`."""
+
+        def __init__(self, model: str = "cl100k_base") -> None:
+            _ = model
+            self._fallback = CharDivFourEstimator()
+
+        def estimate(self, text: str) -> int:
+            """Return ``len(text) // 4`` (tiktoken not available)."""
+            return self._fallback.estimate(text)
+
+
 # ---------------------------------------------------------------------------
 # EventHook
 # ---------------------------------------------------------------------------
@@ -165,6 +196,9 @@ class NoOpHook:
 # ---------------------------------------------------------------------------
 
 
+# FUTURE: LLM-backed summarizer/extractor for higher-quality summarization.
+
+
 @runtime_checkable
 class Summarizer(Protocol):
     """Convert a raw tool output string into a human/LLM-readable summary."""
@@ -200,6 +234,9 @@ class RedactionHook(Protocol):
 # ---------------------------------------------------------------------------
 # Labeler
 # ---------------------------------------------------------------------------
+
+
+# FUTURE: LLM-backed labeler that calls an LLM for category assignment.
 
 
 @runtime_checkable

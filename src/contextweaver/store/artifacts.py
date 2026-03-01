@@ -6,10 +6,13 @@ receives only :class:`~contextweaver.types.ArtifactRef` handles and summaries.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from contextweaver.exceptions import ArtifactNotFoundError
 from contextweaver.types import ArtifactRef
+
+# FUTURE: FileArtifactStore backed by local filesystem for persistent storage.
 
 
 class InMemoryArtifactStore:
@@ -104,6 +107,81 @@ class InMemoryArtifactStore:
             A list of :class:`~contextweaver.types.ArtifactRef` sorted by *handle*.
         """
         return [self._meta[k] for k in sorted(self._meta)]
+
+    def exists(self, handle: str) -> bool:
+        """Return ``True`` if *handle* is in the store.
+
+        Args:
+            handle: The artifact handle to check.
+        """
+        return handle in self._data
+
+    def metadata(self, handle: str) -> ArtifactRef:
+        """Return the :class:`~contextweaver.types.ArtifactRef` metadata for *handle*.
+
+        This is an alias for :meth:`ref` provided for API symmetry.
+
+        Args:
+            handle: The artifact handle.
+
+        Raises:
+            ArtifactNotFoundError: If *handle* is not in the store.
+        """
+        return self.ref(handle)
+
+    def drilldown(self, handle: str, selector: dict[str, Any]) -> str:
+        """Return a subset of the artifact's content according to *selector*.
+
+        Supported selector types:
+
+        - ``{"type": "head", "chars": N}`` — first *N* characters.
+        - ``{"type": "lines", "start": S, "end": E}`` — lines *S* through *E* (exclusive).
+        - ``{"type": "json_keys", "keys": [...]}`` — values for given top-level JSON keys.
+        - ``{"type": "rows", "start": S, "end": E}`` — rows *S* through *E* of a CSV/TSV-like text.
+
+        Args:
+            handle: The artifact handle.
+            selector: A dict describing how to slice the content.
+
+        Returns:
+            A string representation of the selected portion.
+
+        Raises:
+            ArtifactNotFoundError: If *handle* is not in the store.
+            ValueError: If the selector type is unknown.
+        """
+        raw = self.get(handle).decode("utf-8", errors="replace")
+        sel_type = selector.get("type", "")
+
+        if sel_type == "head":
+            chars = selector.get("chars", 500)
+            return raw[:chars]
+
+        if sel_type == "lines":
+            lines = raw.splitlines()
+            start = selector.get("start", 0)
+            end = selector.get("end", len(lines))
+            return "\n".join(lines[start:end])
+
+        if sel_type == "json_keys":
+            keys: list[str] = selector.get("keys", [])
+            try:
+                obj = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                return ""
+            if isinstance(obj, dict):
+                return json.dumps(
+                    {k: obj[k] for k in keys if k in obj}, indent=2, sort_keys=True
+                )
+            return ""
+
+        if sel_type == "rows":
+            lines = raw.splitlines()
+            start = selector.get("start", 0)
+            end = selector.get("end", len(lines))
+            return "\n".join(lines[start:end])
+
+        raise ValueError(f"Unknown drilldown selector type: {sel_type!r}")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the store's metadata index to a JSON-compatible dict."""

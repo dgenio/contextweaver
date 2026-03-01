@@ -9,6 +9,8 @@ from __future__ import annotations
 from contextweaver._utils import jaccard, tokenize
 from contextweaver.types import ContextItem
 
+# FUTURE: merge compression to combine near-duplicate items instead of dropping.
+
 
 def deduplicate_candidates(
     scored: list[tuple[float, ContextItem]],

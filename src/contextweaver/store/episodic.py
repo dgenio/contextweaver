@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
+from contextweaver.exceptions import ItemNotFoundError
+
+# FUTURE: vector retrieval backend for high-dimensional similarity search.
 
 
 @dataclass
@@ -106,6 +109,34 @@ class InMemoryEpisodicStore:
     def all(self) -> list[Episode]:
         """Return all episodes in insertion order."""
         return list(self._episodes)
+
+    def latest(self, n: int = 3) -> list[tuple[str, str, dict[str, Any]]]:
+        """Return the *n* most recently added episodes.
+
+        Args:
+            n: Number of most-recent episodes to return.
+
+        Returns:
+            A list of ``(episode_id, summary, metadata)`` tuples, most-recent first.
+        """
+        recent = self._episodes[-n:] if n > 0 else []
+        return [(ep.episode_id, ep.summary, dict(ep.metadata)) for ep in reversed(recent)]
+
+    def delete(self, episode_id: str) -> None:
+        """Remove the episode with *episode_id*.
+
+        Args:
+            episode_id: The unique identifier of the episode to remove.
+
+        Raises:
+            ItemNotFoundError: If no episode with *episode_id* exists.
+        """
+        for i, ep in enumerate(self._episodes):
+            if ep.episode_id == episode_id:
+                self._episodes.pop(i)
+                self._dirty = True
+                return
+        raise ItemNotFoundError(f"Episode not found: {episode_id!r}")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""

@@ -4,6 +4,8 @@ All public-facing errors inherit from :class:`ContextWeaverError` so callers
 can catch the whole family with a single ``except`` clause when desired.
 """
 
+from __future__ import annotations
+
 
 class ContextWeaverError(Exception):
     """Base class for all contextweaver errors."""

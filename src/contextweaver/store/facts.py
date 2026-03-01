@@ -93,6 +93,18 @@ class InMemoryFactStore:
             key=lambda f: f.fact_id,
         )
 
+    def list_keys(self, prefix: str = "") -> list[str]:
+        """Return all distinct fact keys, optionally filtered by *prefix*.
+
+        Args:
+            prefix: If non-empty, only return keys starting with this string.
+
+        Returns:
+            A sorted list of unique key strings.
+        """
+        keys = {f.key for f in self._facts.values() if f.key.startswith(prefix)}
+        return sorted(keys)
+
     def delete(self, fact_id: str) -> None:
         """Remove the fact identified by *fact_id*.
 
