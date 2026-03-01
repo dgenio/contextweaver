@@ -170,9 +170,7 @@ class InMemoryArtifactStore:
             except (json.JSONDecodeError, ValueError):
                 return ""
             if isinstance(obj, dict):
-                return json.dumps(
-                    {k: obj[k] for k in keys if k in obj}, indent=2, sort_keys=True
-                )
+                return json.dumps({k: obj[k] for k in keys if k in obj}, indent=2, sort_keys=True)
             return ""
 
         if sel_type == "rows":

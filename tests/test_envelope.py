@@ -123,10 +123,7 @@ def test_context_pack_roundtrip() -> None:
 
 
 def test_context_pack_multiple_envelopes() -> None:
-    envs = [
-        ResultEnvelope(status="ok", summary=f"result {i}")
-        for i in range(3)
-    ]
+    envs = [ResultEnvelope(status="ok", summary=f"result {i}") for i in range(3)]
     pack = ContextPack(prompt="multi", envelopes=envs)
     d = pack.to_dict()
     restored = ContextPack.from_dict(d)

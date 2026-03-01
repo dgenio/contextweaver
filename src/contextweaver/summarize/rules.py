@@ -132,7 +132,7 @@ class RuleBasedSummarizer:
         if text.startswith(("{", "[")):
             result = self._summarize_json(text)
             if result is not None:
-                return result[:self._max_chars]
+                return result[: self._max_chars]
 
         # Key-line extraction for structured tool output.
         key_lines = self._extract_key_lines(text)
