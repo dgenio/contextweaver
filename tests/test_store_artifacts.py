@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from contextweaver.exceptions import ArtifactNotFoundError
@@ -107,8 +109,6 @@ def test_drilldown_lines() -> None:
 
 def test_drilldown_json_keys() -> None:
     store = InMemoryArtifactStore()
-    import json
-
     data = json.dumps({"name": "Alice", "age": 30, "role": "admin"})
     store.put("h1", data.encode())
     result = store.drilldown("h1", {"type": "json_keys", "keys": ["name", "role"]})
