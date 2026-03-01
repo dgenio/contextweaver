@@ -52,7 +52,7 @@ def score_item(
     query_tokens = tokenize(query)
     text_sim = jaccard(item_tokens, query_tokens)
 
-    item_tag_set = set(item.tags) if hasattr(item, "tags") else set()
+    item_tag_set: set[str] = set(item.metadata.get("tags", []))
     query_tag_set = set(query_tags)
     tag_sim = jaccard(item_tag_set, query_tag_set) if query_tag_set else text_sim
 
