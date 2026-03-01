@@ -1,66 +1,74 @@
-"""Tests for contextweaver.store.facts."""
+"""Tests for contextweaver.store.facts -- async put/get/get_all/list_keys/delete."""
 
 from __future__ import annotations
 
 import pytest
 
-from contextweaver.exceptions import ItemNotFoundError
-from contextweaver.store.facts import Fact, InMemoryFactStore
+from contextweaver.store.facts import InMemoryFactStore
 
 
-def test_put_and_get() -> None:
-    store = InMemoryFactStore()
-    fact = Fact(fact_id="f1", key="user_id", value="42")
-    store.put(fact)
-    assert store.get("f1").value == "42"
+class TestInMemoryFactStore:
+    """Tests for InMemoryFactStore async methods."""
 
+    async def test_put_and_get(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("user_name", "Alice")
+        result = await fact_store.get("user_name")
+        assert result is not None
+        assert result[0] == "Alice"
+        assert result[1] == {}
 
-def test_get_missing_raises() -> None:
-    store = InMemoryFactStore()
-    with pytest.raises(ItemNotFoundError):
-        store.get("missing")
+    async def test_put_with_metadata(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("user_name", "Alice", metadata={"source": "login"})
+        result = await fact_store.get("user_name")
+        assert result is not None
+        assert result[1]["source"] == "login"
 
+    async def test_get_missing_returns_none(self, fact_store: InMemoryFactStore) -> None:
+        result = await fact_store.get("missing")
+        assert result is None
 
-def test_put_overwrites() -> None:
-    store = InMemoryFactStore()
-    store.put(Fact("f1", "k", "v1"))
-    store.put(Fact("f1", "k", "v2"))
-    assert store.get("f1").value == "v2"
+    async def test_put_overwrites(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("key", "value1")
+        await fact_store.put("key", "value2")
+        result = await fact_store.get("key")
+        assert result is not None
+        assert result[0] == "value2"
 
+    async def test_list_keys(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("b_key", "val")
+        await fact_store.put("a_key", "val")
+        await fact_store.put("c_key", "val")
+        keys = await fact_store.list_keys()
+        assert keys == ["a_key", "b_key", "c_key"]
 
-def test_get_by_key() -> None:
-    store = InMemoryFactStore()
-    store.put(Fact("f1", "color", "blue"))
-    store.put(Fact("f2", "color", "red"))
-    store.put(Fact("f3", "size", "large"))
-    results = store.get_by_key("color")
-    assert {f.fact_id for f in results} == {"f1", "f2"}
+    async def test_list_keys_with_prefix(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("user_name", "Alice")
+        await fact_store.put("user_age", "30")
+        await fact_store.put("account_id", "123")
+        keys = await fact_store.list_keys(prefix="user_")
+        assert keys == ["user_age", "user_name"]
 
+    async def test_get_all(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("k1", "v1")
+        await fact_store.put("k2", "v2")
+        all_facts = await fact_store.get_all()
+        assert all_facts == {"k1": "v1", "k2": "v2"}
 
-def test_delete() -> None:
-    store = InMemoryFactStore()
-    store.put(Fact("f1", "k", "v"))
-    store.delete("f1")
-    with pytest.raises(ItemNotFoundError):
-        store.get("f1")
+    async def test_delete(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("key", "value")
+        await fact_store.delete("key")
+        result = await fact_store.get("key")
+        assert result is None
 
+    async def test_delete_missing_raises(self, fact_store: InMemoryFactStore) -> None:
+        with pytest.raises(KeyError):
+            await fact_store.delete("missing")
 
-def test_delete_missing_raises() -> None:
-    store = InMemoryFactStore()
-    with pytest.raises(ItemNotFoundError):
-        store.delete("missing")
-
-
-def test_all_sorted() -> None:
-    store = InMemoryFactStore()
-    store.put(Fact("z1", "k", "v"))
-    store.put(Fact("a1", "k", "v"))
-    ids = [f.fact_id for f in store.all()]
-    assert ids == ["a1", "z1"]
-
-
-def test_roundtrip() -> None:
-    store = InMemoryFactStore()
-    store.put(Fact("f1", "name", "Alice"))
-    restored = InMemoryFactStore.from_dict(store.to_dict())
-    assert restored.get("f1").value == "Alice"
+    async def test_roundtrip(self, fact_store: InMemoryFactStore) -> None:
+        await fact_store.put("name", "Alice", metadata={"source": "test"})
+        data = fact_store.to_dict()
+        restored = InMemoryFactStore.from_dict(data)
+        result = await restored.get("name")
+        assert result is not None
+        assert result[0] == "Alice"
+        assert result[1]["source"] == "test"

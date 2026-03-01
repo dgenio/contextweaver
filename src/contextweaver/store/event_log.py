@@ -1,89 +1,99 @@
 """In-memory event log for contextweaver.
 
-The event log is the ordered sequence of :class:`~contextweaver.types.ContextItem`
-objects that makes up a conversation / agent session.  The Context Engine reads
-from this store when generating context candidates.
+The event log is the ordered sequence of ContextItem objects that makes up
+a conversation / agent session.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.types import ContextItem, ItemKind
 
 
-class InMemoryEventLog:
-    """Append-only, in-memory event log.
+@runtime_checkable
+class EventLog(Protocol):
+    """Append-only log of all ingested ContextItems."""
 
-    Items are stored in insertion order.  All look-ups are O(n) — for
-    production use, replace with an indexed persistent store.
-    """
+    async def append(self, item: ContextItem) -> None: ...
+    async def query(
+        self,
+        kinds: list[ItemKind] | None = None,
+        since: float | None = None,
+        limit: int | None = None,
+    ) -> list[ContextItem]: ...
+    async def get(self, item_id: str) -> ContextItem: ...
+    async def children(self, parent_id: str) -> list[ContextItem]: ...
+    async def parent(self, item_id: str) -> ContextItem | None: ...
+    async def count(self) -> int: ...
+
+
+class InMemoryEventLog:
+    """Default EventLog implementation. Stores items in a list."""
 
     def __init__(self) -> None:
         self._items: list[ContextItem] = []
         self._index: dict[str, int] = {}
 
-    def append(self, item: ContextItem) -> None:
-        """Append *item* to the log.
-
-        Args:
-            item: The :class:`~contextweaver.types.ContextItem` to append.
-
-        Raises:
-            ValueError: If an item with the same ``id`` already exists.
-        """
+    async def append(self, item: ContextItem) -> None:
+        """Append *item* to the log. Raises ValueError on duplicate id."""
         if item.id in self._index:
             raise ValueError(f"Duplicate item id: {item.id!r}")
         self._index[item.id] = len(self._items)
         self._items.append(item)
 
-    def get(self, item_id: str) -> ContextItem:
-        """Return the item with *item_id*.
+    async def query(
+        self,
+        kinds: list[ItemKind] | None = None,
+        since: float | None = None,
+        limit: int | None = None,
+    ) -> list[ContextItem]:
+        """Return items matching the filters."""
+        result = list(self._items)
+        if kinds is not None:
+            kind_set = set(kinds)
+            result = [i for i in result if i.kind in kind_set]
+        if since is not None:
+            result = [i for i in result if i.metadata.get("timestamp", 0.0) >= since]
+        if limit is not None:
+            result = result[:limit]
+        return result
 
-        Args:
-            item_id: The unique identifier of the item.
-
-        Returns:
-            The matching :class:`~contextweaver.types.ContextItem`.
-
-        Raises:
-            ItemNotFoundError: If no item with *item_id* exists.
-        """
+    async def get(self, item_id: str) -> ContextItem:
+        """Return the item with *item_id*. Raises ItemNotFoundError."""
         if item_id not in self._index:
             raise ItemNotFoundError(f"Item not found: {item_id!r}")
         return self._items[self._index[item_id]]
 
-    def all(self) -> list[ContextItem]:
-        """Return all items in insertion order.
+    async def children(self, parent_id: str) -> list[ContextItem]:
+        """Return all items whose parent_id matches."""
+        return [i for i in self._items if i.parent_id == parent_id]
 
-        Returns:
-            A shallow copy of the internal item list.
-        """
+    async def parent(self, item_id: str) -> ContextItem | None:
+        """Return the parent of *item_id*, or None."""
+        if item_id not in self._index:
+            raise ItemNotFoundError(f"Item not found: {item_id!r}")
+        item = self._items[self._index[item_id]]
+        if item.parent_id is None:
+            return None
+        if item.parent_id not in self._index:
+            return None
+        return self._items[self._index[item.parent_id]]
+
+    async def count(self) -> int:
+        """Return number of items."""
+        return len(self._items)
+
+    def all_sync(self) -> list[ContextItem]:
+        """Synchronous access to all items (for pipeline stages)."""
         return list(self._items)
 
-    def filter_by_kind(self, *kinds: ItemKind) -> list[ContextItem]:
-        """Return all items whose ``kind`` is in *kinds*.
-
-        Args:
-            *kinds: One or more :class:`~contextweaver.types.ItemKind` values to include.
-
-        Returns:
-            A list of matching items in insertion order.
-        """
-        kind_set = set(kinds)
-        return [item for item in self._items if item.kind in kind_set]
-
-    def tail(self, n: int) -> list[ContextItem]:
-        """Return the last *n* items.
-
-        Args:
-            n: Number of most-recent items to return.
-
-        Returns:
-            A list of up to *n* items, most-recent last.
-        """
-        return self._items[-n:] if n > 0 else []
+    def get_sync(self, item_id: str) -> ContextItem:
+        """Synchronous get."""
+        if item_id not in self._index:
+            raise ItemNotFoundError(f"Item not found: {item_id!r}")
+        return self._items[self._index[item_id]]
 
     def __len__(self) -> int:
         return len(self._items)
@@ -94,8 +104,10 @@ class InMemoryEventLog:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> InMemoryEventLog:
-        """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`."""
+        """Deserialise from a dict. Uses sync internals for bootstrapping."""
         log = cls()
         for raw in data.get("items", []):
-            log.append(ContextItem.from_dict(raw))
+            item = ContextItem.from_dict(raw)
+            log._index[item.id] = len(log._items)
+            log._items.append(item)
         return log

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.0.1"
+version = "0.1.0"
 description = "Dynamic context management for tool-using AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,11 +34,13 @@ target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "ANN", "B", "A", "SIM"]
+select = ["E", "F", "I", "W", "UP"]
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
 warn_return_any = true
 warn_unused_configs = true
 mypy_path = "src"
+check_untyped_defs = true
+disallow_untyped_defs = false

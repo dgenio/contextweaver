@@ -1,87 +1,100 @@
 """Rule-based summarisation for contextweaver.
 
-Provides a simple rule engine that maps media-type patterns and metadata tags
-to summarisation strategies.  Concrete summariser implementations go in
-separate modules; this module defines the rule table and dispatch logic.
+Default Summarizer implementation: head + tail + truncation for plain text,
+top-level keys + structure overview for JSON, priority lines for key data.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+import re
 from typing import Any
 
+_KEY_LINE_RE = re.compile(
+    r"\b(error|success|failed|total|count|status|result|warning)\b", re.IGNORECASE
+)
 
-@dataclass
-class SummarizationRule:
-    """A single rule mapping a condition to a summariser name.
 
-    Attributes:
-        media_type_prefix: Match if the artifact's media_type starts with this
-            string.  Empty string matches everything.
-        required_tags: All listed tags must be present in the metadata's
-            ``tags`` list for the rule to fire.
-        summarizer_name: Logical name of the summariser to use when this rule
-            fires.  Resolved at runtime by the summarisation dispatcher.
-        priority: Higher priority rules are evaluated first.
+class RuleBasedSummarizer:
+    """Default Summarizer.
+
+    - Plain text: head + tail + "[...truncated...]"
+    - JSON: top-level keys + structure overview
+    - Key lines: prioritise lines with numbers, dates, status keywords
     """
 
-    media_type_prefix: str = ""
-    required_tags: list[str] = field(default_factory=list)
-    summarizer_name: str = "default"
-    priority: int = 0
+    def __init__(self, max_chars: int = 300) -> None:
+        self._max_chars = max_chars
 
-    def matches(self, media_type: str, metadata: dict[str, Any]) -> bool:
-        """Return ``True`` if this rule fires for the given artifact context.
+    def summarize(self, text: str, max_chars: int | None = None) -> str:
+        """Return a summary of *text*."""
+        limit = max_chars if max_chars is not None else self._max_chars
 
-        Args:
-            media_type: The MIME type of the artifact.
-            metadata: Arbitrary metadata dict associated with the artifact.
+        # Try JSON first
+        stripped = text.strip()
+        if stripped.startswith(("{", "[")):
+            try:
+                data = json.loads(stripped)
+                return self._summarize_json(data, limit)
+            except (json.JSONDecodeError, TypeError):
+                pass
 
-        Returns:
-            ``True`` when all conditions are satisfied.
-        """
-        if self.media_type_prefix and not media_type.startswith(self.media_type_prefix):
-            return False
-        tags: list[str] = metadata.get("tags", [])
-        return all(t in tags for t in self.required_tags)
+        return self._summarize_text(text, limit)
 
+    def _summarize_json(self, data: Any, limit: int) -> str:
+        if isinstance(data, dict):
+            keys = list(data.keys())
+            key_str = ", ".join(keys[:10])
+            if len(keys) > 10:
+                key_str += f", ... ({len(keys)} total)"
+            result = f"JSON object with keys: [{key_str}]"
+            # Add array lengths for array values
+            arrays = {k: len(v) for k, v in data.items() if isinstance(v, list)}
+            if arrays:
+                arr_parts = [f"{k}({n} items)" for k, n in list(arrays.items())[:5]]
+                result += f" | arrays: {', '.join(arr_parts)}"
+            return result[:limit]
+        if isinstance(data, list):
+            n = len(data)
+            if n == 0:
+                return "Empty JSON array"
+            sample = json.dumps(data[0], default=str)
+            if len(sample) > 100:
+                sample = sample[:100] + "..."
+            return f"JSON array with {n} items. First: {sample}"[:limit]
+        return str(data)[:limit]
 
-class RuleEngine:
-    """Dispatch summarisation by evaluating a ranked list of :class:`SummarizationRule` objects.
+    def _summarize_text(self, text: str, limit: int) -> str:
+        lines = text.splitlines()
+        if not lines:
+            return ""
 
-    Rules are sorted by descending priority; the first match wins.
-    """
+        # Collect key lines
+        [line for line in lines if _KEY_LINE_RE.search(line)]
 
-    def __init__(self, rules: list[SummarizationRule] | None = None) -> None:
-        self._rules: list[SummarizationRule] = sorted(
-            rules or [], key=lambda r: r.priority, reverse=True
-        )
+        if len(text) <= limit:
+            return text
 
-    def add_rule(self, rule: SummarizationRule) -> None:
-        """Append *rule* and re-sort the rule list.
+        # Head + tail approach
+        head_budget = limit * 2 // 3
+        tail_budget = limit - head_budget - 20  # room for truncation marker
 
-        Args:
-            rule: The rule to add.
-        """
-        self._rules.append(rule)
-        self._rules.sort(key=lambda r: r.priority, reverse=True)
+        head_text = ""
+        for line in lines:
+            if len(head_text) + len(line) + 1 > head_budget:
+                break
+            head_text += line + "\n"
 
-    def resolve(self, media_type: str, metadata: dict[str, Any]) -> str:
-        """Return the summariser name for the first matching rule.
+        tail_text = ""
+        for line in reversed(lines):
+            if len(tail_text) + len(line) + 1 > max(tail_budget, 0):
+                break
+            tail_text = line + "\n" + tail_text
 
-        Args:
-            media_type: MIME type of the artifact.
-            metadata: Metadata dict.
+        result = head_text.rstrip()
+        if tail_text.strip() and tail_text.strip() != head_text.strip():
+            result += "\n[...truncated...]\n" + tail_text.rstrip()
+        else:
+            result += "\n[...truncated...]"
 
-        Returns:
-            The ``summarizer_name`` of the first matching rule, or ``"default"``
-            if no rule matches.
-        """
-        for rule in self._rules:
-            if rule.matches(media_type, metadata):
-                return rule.summarizer_name
-        return "default"
-
-    def all_rules(self) -> list[SummarizationRule]:
-        """Return a copy of the rule list in priority order."""
-        return list(self._rules)
+        return result[:limit]

@@ -1,72 +1,124 @@
-"""Tests for contextweaver.routing.catalog."""
+"""Tests for contextweaver.routing.catalog -- load_catalog_json, load_catalog_dicts, generate_sample_catalog, CatalogError."""
 
 from __future__ import annotations
 
+import json
+import tempfile
+
 import pytest
 
-from contextweaver.exceptions import CatalogError, ItemNotFoundError
-from contextweaver.routing.catalog import Catalog
+from contextweaver.exceptions import CatalogError
+from contextweaver.routing.catalog import (
+    generate_sample_catalog,
+    load_catalog_dicts,
+    load_catalog_json,
+)
 from contextweaver.types import SelectableItem
 
 
-def _item(iid: str, tags: list[str] | None = None, namespace: str = "") -> SelectableItem:
-    return SelectableItem(
-        id=iid,
-        kind="tool",
-        name=iid,
-        description=f"desc {iid}",
-        tags=tags or [],
-        namespace=namespace,
-    )
+class TestLoadCatalogDicts:
+    """Tests for load_catalog_dicts."""
+
+    def test_valid_dicts(self) -> None:
+        dicts = [
+            {"id": "t1", "kind": "tool", "name": "t1", "description": "desc1"},
+            {"id": "t2", "kind": "tool", "name": "t2", "description": "desc2"},
+        ]
+        items = load_catalog_dicts(dicts)
+        assert len(items) == 2
+        assert all(isinstance(i, SelectableItem) for i in items)
+
+    def test_missing_required_field_raises(self) -> None:
+        dicts = [{"id": "t1", "kind": "tool", "name": "t1"}]  # missing description
+        with pytest.raises(CatalogError, match="missing required field"):
+            load_catalog_dicts(dicts)
+
+    def test_duplicate_id_raises(self) -> None:
+        dicts = [
+            {"id": "t1", "kind": "tool", "name": "t1", "description": "desc1"},
+            {"id": "t1", "kind": "tool", "name": "t1", "description": "desc2"},
+        ]
+        with pytest.raises(CatalogError, match="Duplicate"):
+            load_catalog_dicts(dicts)
+
+    def test_empty_list(self) -> None:
+        items = load_catalog_dicts([])
+        assert items == []
+
+    def test_preserves_optional_fields(self) -> None:
+        dicts = [
+            {
+                "id": "t1",
+                "kind": "tool",
+                "name": "t1",
+                "description": "desc",
+                "tags": ["a", "b"],
+                "namespace": "ns",
+            },
+        ]
+        items = load_catalog_dicts(dicts)
+        assert items[0].tags == ["a", "b"]
+        assert items[0].namespace == "ns"
 
 
-def test_register_and_get() -> None:
-    catalog = Catalog()
-    catalog.register(_item("t1"))
-    assert catalog.get("t1").id == "t1"
+class TestLoadCatalogJson:
+    """Tests for load_catalog_json."""
+
+    def test_valid_json_file(self) -> None:
+        dicts = [
+            {"id": "t1", "kind": "tool", "name": "t1", "description": "desc"},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(dicts, f)
+            f.flush()
+            items = load_catalog_json(f.name)
+        assert len(items) == 1
+
+    def test_invalid_json_raises(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("not json")
+            f.flush()
+            with pytest.raises(CatalogError, match="Failed to load"):
+                load_catalog_json(f.name)
+
+    def test_non_list_json_raises(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({"key": "value"}, f)
+            f.flush()
+            with pytest.raises(CatalogError, match="must be a list"):
+                load_catalog_json(f.name)
+
+    def test_missing_file_raises(self) -> None:
+        with pytest.raises(CatalogError, match="Failed to load"):
+            load_catalog_json("/tmp/nonexistent_catalog_file_xyz.json")
 
 
-def test_duplicate_raises() -> None:
-    catalog = Catalog()
-    catalog.register(_item("t1"))
-    with pytest.raises(CatalogError):
-        catalog.register(_item("t1"))
+class TestGenerateSampleCatalog:
+    """Tests for generate_sample_catalog."""
 
+    def test_deterministic(self) -> None:
+        c1 = generate_sample_catalog(n=40, seed=42)
+        c2 = generate_sample_catalog(n=40, seed=42)
+        assert c1 == c2
 
-def test_get_missing_raises() -> None:
-    catalog = Catalog()
-    with pytest.raises(ItemNotFoundError):
-        catalog.get("missing")
+    def test_different_seeds(self) -> None:
+        c1 = generate_sample_catalog(n=40, seed=42)
+        c2 = generate_sample_catalog(n=40, seed=99)
+        assert c1 != c2
 
+    def test_correct_count(self) -> None:
+        catalog = generate_sample_catalog(n=30, seed=1)
+        assert len(catalog) == 30
 
-def test_all_sorted() -> None:
-    catalog = Catalog()
-    catalog.register(_item("z1"))
-    catalog.register(_item("a1"))
-    ids = [i.id for i in catalog.all()]
-    assert ids == ["a1", "z1"]
+    def test_items_are_valid_dicts(self) -> None:
+        catalog = generate_sample_catalog(n=10, seed=42)
+        for item in catalog:
+            assert "id" in item
+            assert "kind" in item
+            assert "name" in item
+            assert "description" in item
 
-
-def test_filter_by_namespace() -> None:
-    catalog = Catalog()
-    catalog.register(_item("t1", namespace="ns1"))
-    catalog.register(_item("t2", namespace="ns2"))
-    catalog.register(_item("t3", namespace="ns1"))
-    results = catalog.filter_by_namespace("ns1")
-    assert {r.id for r in results} == {"t1", "t3"}
-
-
-def test_filter_by_tags() -> None:
-    catalog = Catalog()
-    catalog.register(_item("t1", tags=["data", "search"]))
-    catalog.register(_item("t2", tags=["data"]))
-    catalog.register(_item("t3", tags=["compute"]))
-    results = catalog.filter_by_tags("data", "search")
-    assert [r.id for r in results] == ["t1"]
-
-
-def test_roundtrip() -> None:
-    catalog = Catalog()
-    catalog.register(_item("t1", tags=["a"]))
-    restored = Catalog.from_dict(catalog.to_dict())
-    assert restored.get("t1").tags == ["a"]
+    def test_multiple_namespaces(self) -> None:
+        catalog = generate_sample_catalog(n=80, seed=42)
+        namespaces = {item["namespace"] for item in catalog}
+        assert len(namespaces) >= 5

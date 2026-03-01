@@ -1,51 +1,35 @@
-"""Candidate deduplication for the contextweaver Context Engine.
+"""Candidate deduplication for the contextweaver Context Engine (Stage 3).
 
-Removes near-duplicate items from the candidate list before the selection
-pass.  Uses Jaccard similarity on tokenised text to identify duplicates.
+Removes duplicate items by content hash.
 """
 
 from __future__ import annotations
 
-from contextweaver._utils import jaccard, tokenize
+import hashlib
+
 from contextweaver.types import ContextItem
 
 
 def deduplicate_candidates(
-    scored: list[tuple[float, ContextItem]],
-    similarity_threshold: float = 0.85,
-) -> tuple[list[tuple[float, ContextItem]], int]:
-    """Remove near-duplicate items from a scored candidate list.
+    scored: list[tuple[ContextItem, float]],
+) -> tuple[list[tuple[ContextItem, float]], int]:
+    """Remove duplicate items by content hash (hash of item.text).
 
-    When two items have a Jaccard similarity ≥ *similarity_threshold* on
-    their tokenised text, the one with the lower score (or later ``id`` if
-    tied) is dropped.
+    If two items have identical text, keep the higher-scored one.
+    Returns (deduplicated list, count of items removed).
 
-    Args:
-        scored: A list of ``(score, item)`` tuples in *descending* score order
-            (as returned by :func:`~contextweaver.context.scoring.score_candidates`).
-        similarity_threshold: Jaccard similarity above which two items are
-            considered duplicates.  Default: 0.85.
-
-    Returns:
-        A 2-tuple ``(deduplicated, removed_count)`` where *deduplicated* is
-        the filtered list in the same order and *removed_count* is how many
-        items were dropped.
+    # FUTURE: merge compression -- merge adjacent same-kind items sharing parent_id.
     """
-    kept: list[tuple[float, ContextItem]] = []
-    kept_tokens: list[set[str]] = []
+    seen_hashes: dict[str, int] = {}
+    kept: list[tuple[ContextItem, float]] = []
     removed = 0
 
-    for score, item in scored:
-        tokens = tokenize(item.text)
-        duplicate = False
-        for existing_tokens in kept_tokens:
-            if jaccard(tokens, existing_tokens) >= similarity_threshold:
-                duplicate = True
-                break
-        if not duplicate:
-            kept.append((score, item))
-            kept_tokens.append(tokens)
-        else:
+    for item, score in scored:
+        text_hash = hashlib.md5(item.text.encode("utf-8")).hexdigest()
+        if text_hash in seen_hashes:
             removed += 1
+        else:
+            seen_hashes[text_hash] = len(kept)
+            kept.append((item, score))
 
     return kept, removed

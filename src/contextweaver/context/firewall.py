@@ -1,121 +1,109 @@
 """Context firewall for contextweaver.
 
-The firewall intercepts raw tool outputs before they reach the LLM context.
-It replaces the raw text with a :class:`~contextweaver.types.ResultEnvelope`
-containing a human-readable summary, extracted facts, and an
-:class:`~contextweaver.types.ArtifactRef` to the out-of-band artifact store.
+Core firewall logic extracted for testability.
 """
 
 from __future__ import annotations
 
-from typing import Literal
-
-from contextweaver.envelope import ResultEnvelope
-from contextweaver.protocols import ArtifactStore, EventHook, NoOpHook
-from contextweaver.summarize.extract import extract_facts
-from contextweaver.types import ContextItem, ItemKind
+from contextweaver.protocols import Extractor, Summarizer, TokenEstimator
+from contextweaver.store.artifacts import InMemoryArtifactStore
+from contextweaver.types import ArtifactRef, ContextItem, ItemKind, ResultEnvelope, ViewSpec
 
 
-def _default_summary(raw: str, max_chars: int = 500) -> str:
-    """Return a truncated first-paragraph summary of *raw*."""
-    first_para = raw.split("\n\n")[0].strip()
-    if len(first_para) > max_chars:
-        return first_para[:max_chars] + "…"
-    return first_para
+async def apply_firewall(
+    raw_output: str | bytes,
+    tool_call_id: str,
+    tool_name: str,
+    media_type: str,
+    artifact_store: InMemoryArtifactStore,
+    summarizer: Summarizer,
+    extractor: Extractor,
+    token_estimator: TokenEstimator,
+    firewall_threshold: int,
+) -> tuple[ContextItem, ResultEnvelope]:
+    """Core firewall logic.
 
-
-def apply_firewall(
-    item: ContextItem,
-    artifact_store: ArtifactStore,
-    hook: EventHook | None = None,
-) -> tuple[ContextItem, ResultEnvelope | None]:
-    """Intercept a ``tool_result`` item and store its content out-of-band.
-
-    For non-``tool_result`` items the function is a no-op and returns the
-    original item unchanged.
-
-    Args:
-        item: The candidate item to inspect.
-        artifact_store: Where to store the raw content.
-        hook: Optional lifecycle hook to notify on firewall trigger.
-
-    Returns:
-        A 2-tuple ``(processed_item, envelope_or_none)``.  When the firewall
-        fires, *processed_item* has its ``text`` replaced with the summary and
-        ``artifact_ref`` populated; *envelope_or_none* is a
-        :class:`~contextweaver.types.ResultEnvelope`.  When no interception
-        occurs, the original *item* is returned with ``None`` as the second
-        element.
+    If len(raw_output) > firewall_threshold:
+      1. Store raw in artifact_store -> handle
+      2. Summarize via summarizer -> summary text
+      3. Extract structured info via extractor -> facts dict
+      4. Create ContextItem with text=summary, artifact_ref=handle
+      5. Create ResultEnvelope
+    If small:
+      - ContextItem.text = raw_output
+      - Still extract structured info -> ResultEnvelope.facts
     """
-    _hook = hook or NoOpHook()
-
-    if item.kind != ItemKind.tool_result:
-        return item, None
-
-    raw_bytes = item.text.encode("utf-8")
-    handle = f"artifact:{item.id}"
-    ref = artifact_store.put(
-        handle=handle,
-        content=raw_bytes,
-        media_type="text/plain",
-        label=f"raw tool result for {item.id}",
+    text = (
+        raw_output if isinstance(raw_output, str) else raw_output.decode("utf-8", errors="replace")
     )
+    size = len(text)
 
-    status: Literal["ok", "partial", "error"] = "ok"
-    try:
-        summary = _default_summary(item.text)
-    except Exception:  # noqa: BLE001
-        summary = "(summary unavailable)"
-        status = "error"
+    if size > firewall_threshold:
+        handle = f"art_{tool_call_id}"
+        await artifact_store.put(
+            handle,
+            raw_output,
+            metadata={
+                "tool_name": tool_name,
+                "media_type": media_type,
+                "original_size": size,
+            },
+        )
 
-    try:
-        facts = extract_facts(item.text, item.metadata)
-    except Exception:  # noqa: BLE001
-        facts = []
-        status = "error" if status == "error" else "partial"
+        summary = summarizer.summarize(text)
+        facts = extractor.extract(text, media_type)
 
-    envelope = ResultEnvelope(
-        status=status,
-        summary=summary,
-        facts=facts,
-        artifacts=[ref],
-        provenance={"source_item_id": item.id},
-    )
+        item = ContextItem(
+            id=f"tr_{tool_call_id}",
+            kind=ItemKind.TOOL_RESULT,
+            text=summary,
+            token_estimate=token_estimator.estimate(summary),
+            metadata={"tool_name": tool_name, "media_type": media_type, "original_size": size},
+            parent_id=tool_call_id,
+            artifact_ref=handle,
+        )
 
-    processed = ContextItem(
-        id=item.id,
-        kind=item.kind,
-        text=summary,
-        token_estimate=len(summary) // 4,
-        metadata=dict(item.metadata),
-        parent_id=item.parent_id,
-        artifact_ref=ref,
-    )
+        artifact_ref = ArtifactRef(
+            handle=handle,
+            media_type=media_type,
+            size_bytes=size,
+            label=f"Raw output from {tool_name}",
+        )
 
-    _hook.on_firewall_triggered(item, "tool_result intercepted")
-    return processed, envelope
+        views = [
+            ViewSpec(
+                view_id=f"head_{handle}",
+                label="First 500 chars",
+                selector={"type": "head", "chars": 500},
+                artifact_ref=handle,
+            ),
+        ]
 
+        envelope = ResultEnvelope(
+            status="ok",
+            summary=summary,
+            facts=facts,
+            artifacts=[artifact_ref],
+            views=views,
+            provenance={"tool_name": tool_name, "tool_call_id": tool_call_id},
+        )
+    else:
+        facts = extractor.extract(text, media_type)
 
-def apply_firewall_to_batch(
-    items: list[ContextItem],
-    artifact_store: ArtifactStore,
-    hook: EventHook | None = None,
-) -> tuple[list[ContextItem], list[ResultEnvelope]]:
-    """Apply the firewall to a list of items.
+        item = ContextItem(
+            id=f"tr_{tool_call_id}",
+            kind=ItemKind.TOOL_RESULT,
+            text=text,
+            token_estimate=token_estimator.estimate(text),
+            metadata={"tool_name": tool_name, "media_type": media_type},
+            parent_id=tool_call_id,
+        )
 
-    Args:
-        items: Candidate items (may contain a mix of kinds).
-        artifact_store: Where to store raw tool outputs.
-        hook: Optional lifecycle hook.
+        envelope = ResultEnvelope(
+            status="ok",
+            summary=text,
+            facts=facts,
+            provenance={"tool_name": tool_name, "tool_call_id": tool_call_id},
+        )
 
-    Returns:
-        A 2-tuple of ``(processed_items, envelopes)``.
-    """
-    processed = []
-    envelopes = []
-    for item in items:
-        p, env = apply_firewall(item, artifact_store, hook)
-        processed.append(p)
-        if env is not None:
-            envelopes.append(env)
-    return processed, envelopes
+    return item, envelope

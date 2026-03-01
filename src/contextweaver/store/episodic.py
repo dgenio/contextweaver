@@ -1,120 +1,88 @@
 """In-memory episodic memory store for contextweaver.
 
-The episodic store holds compressed summaries of past agent episodes
-(conversations / task runs).  Items can be retrieved by recency or by
-similarity to a query for injection into future contexts.
+Rolling summaries of conversation segments or task episodes.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
-
-from contextweaver._utils import TfIdfScorer, jaccard, tokenize
+from typing import Any, Protocol, runtime_checkable
 
 
-@dataclass
-class Episode:
-    """A single episodic memory entry."""
+@runtime_checkable
+class EpisodicStore(Protocol):
+    """Rolling summaries of conversation segments or task episodes."""
 
-    episode_id: str
-    summary: str
-    tags: list[str] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    async def put(
+        self, episode_id: str, summary: str, metadata: dict[str, Any] | None = None
+    ) -> None: ...
+
+    async def get(self, episode_id: str) -> tuple[str, dict[str, Any]]: ...
+    async def list_episodes(self, limit: int | None = None) -> list[str]: ...
+    async def latest(self, n: int = 3) -> list[tuple[str, str, dict[str, Any]]]: ...
+    async def delete(self, episode_id: str) -> None: ...
+
+
+class InMemoryEpisodicStore:
+    """Default in-memory EpisodicStore. Ordered by insertion time."""
+
+    def __init__(self) -> None:
+        self._episodes: dict[str, tuple[str, dict[str, Any]]] = {}
+        self._order: list[str] = []
+
+    async def put(
+        self, episode_id: str, summary: str, metadata: dict[str, Any] | None = None
+    ) -> None:
+        """Store or update a rolling episodic summary."""
+        if episode_id not in self._episodes:
+            self._order.append(episode_id)
+        self._episodes[episode_id] = (summary, metadata or {})
+
+    async def get(self, episode_id: str) -> tuple[str, dict[str, Any]]:
+        """Return (summary, metadata) for *episode_id*."""
+        if episode_id not in self._episodes:
+            raise KeyError(f"Episode not found: {episode_id!r}")
+        summary, meta = self._episodes[episode_id]
+        return summary, dict(meta)
+
+    async def list_episodes(self, limit: int | None = None) -> list[str]:
+        """Return episode IDs in insertion order."""
+        if limit is not None:
+            return list(self._order[:limit])
+        return list(self._order)
+
+    async def latest(self, n: int = 3) -> list[tuple[str, str, dict[str, Any]]]:
+        """Return n most recent (episode_id, summary, metadata)."""
+        result: list[tuple[str, str, dict[str, Any]]] = []
+        for eid in reversed(self._order):
+            if len(result) >= n:
+                break
+            summary, meta = self._episodes[eid]
+            result.append((eid, summary, dict(meta)))
+        return result
+
+    async def delete(self, episode_id: str) -> None:
+        """Remove an episode."""
+        if episode_id not in self._episodes:
+            raise KeyError(f"Episode not found: {episode_id!r}")
+        del self._episodes[episode_id]
+        self._order.remove(episode_id)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
         return {
-            "episode_id": self.episode_id,
-            "summary": self.summary,
-            "tags": list(self.tags),
-            "metadata": dict(self.metadata),
+            "episodes": [
+                {"episode_id": eid, "summary": s, "metadata": dict(m)}
+                for eid in self._order
+                for s, m in [self._episodes[eid]]
+            ]
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Episode:
-        """Deserialise from a JSON-compatible dict."""
-        return cls(
-            episode_id=data["episode_id"],
-            summary=data["summary"],
-            tags=list(data.get("tags", [])),
-            metadata=dict(data.get("metadata", {})),
-        )
-
-
-class InMemoryEpisodicStore:
-    """In-memory episodic store with similarity-based retrieval.
-
-    Episodes are stored in insertion order.  Similarity search uses
-    :class:`~contextweaver._utils.TfIdfScorer` backed by :func:`~contextweaver._utils.jaccard`
-    as a fallback for very small corpora.
-    """
-
-    def __init__(self) -> None:
-        self._episodes: list[Episode] = []
-        self._scorer: TfIdfScorer = TfIdfScorer()
-        self._dirty: bool = False
-
-    def add(self, episode: Episode) -> None:
-        """Append *episode* to the store.
-
-        Args:
-            episode: The episode to store.
-        """
-        self._episodes.append(episode)
-        self._dirty = True
-
-    def get(self, episode_id: str) -> Episode | None:
-        """Return the episode with *episode_id*, or ``None`` if not found.
-
-        Args:
-            episode_id: The unique identifier to look up.
-        """
-        for ep in self._episodes:
-            if ep.episode_id == episode_id:
-                return ep
-        return None
-
-    def _ensure_index(self) -> None:
-        if self._dirty:
-            self._scorer.fit([ep.summary for ep in self._episodes])
-            self._dirty = False
-
-    def search(self, query: str, top_k: int = 5) -> list[Episode]:
-        """Return the *top_k* most relevant episodes for *query*.
-
-        Uses TF-IDF scoring; falls back to Jaccard when the corpus is empty.
-
-        Args:
-            query: Raw query string.
-            top_k: Maximum number of results to return.
-
-        Returns:
-            A list of up to *top_k* episodes, most relevant first.
-        """
-        if not self._episodes:
-            return []
-        self._ensure_index()
-        scores = self._scorer.score_all(query)
-        # Jaccard fallback when all TF-IDF scores are 0
-        if all(s == 0.0 for s in scores):
-            q_tokens = tokenize(query)
-            scores = [jaccard(q_tokens, tokenize(ep.summary)) for ep in self._episodes]
-        ranked = sorted(range(len(self._episodes)), key=lambda i: scores[i], reverse=True)
-        return [self._episodes[i] for i in ranked[:top_k]]
-
-    def all(self) -> list[Episode]:
-        """Return all episodes in insertion order."""
-        return list(self._episodes)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialise to a JSON-compatible dict."""
-        return {"episodes": [ep.to_dict() for ep in self._episodes]}
-
-    @classmethod
     def from_dict(cls, data: dict[str, Any]) -> InMemoryEpisodicStore:
-        """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`."""
+        """Deserialise from dict. Uses sync internals for bootstrapping."""
         store = cls()
         for raw in data.get("episodes", []):
-            store.add(Episode.from_dict(raw))
+            eid = raw["episode_id"]
+            store._order.append(eid)
+            store._episodes[eid] = (raw["summary"], dict(raw.get("metadata", {})))
         return store

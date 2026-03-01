@@ -1,84 +1,71 @@
-"""Budget-aware selection for the contextweaver Context Engine.
+"""Budget-aware selection for the contextweaver Context Engine (Stage 4).
 
-Selects items from the scored, deduplicated candidate list up to the
-configured token budget for the current phase.
+Greedy budget packing with dependency closure.
 """
 
 from __future__ import annotations
 
-from contextweaver.config import ContextBudget, ContextPolicy
-from contextweaver.envelope import BuildStats
-from contextweaver.protocols import TokenEstimator
-from contextweaver.types import ContextItem, Phase
+from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.store.event_log import InMemoryEventLog
+from contextweaver.types import ContextItem
 
 
 def select_and_pack(
-    scored: list[tuple[float, ContextItem]],
-    phase: Phase,
-    budget: ContextBudget,
-    policy: ContextPolicy,
-    estimator: TokenEstimator,
-) -> tuple[list[ContextItem], BuildStats]:
-    """Select items up to the phase budget, enforcing per-kind limits.
+    scored: list[tuple[ContextItem, float]],
+    budget_tokens: int,
+    event_log: InMemoryEventLog,
+) -> tuple[list[ContextItem], list[tuple[str, str]], int]:
+    """Greedy budget packing with dependency closure.
 
-    Iterates through *scored* in descending order and greedily includes items
-    until the token budget is exhausted or all candidates are considered.
-
-    Args:
-        scored: ``(score, item)`` tuples in descending score order.
-        phase: The active execution phase.
-        budget: The token budget configuration.
-        policy: The context policy (used for per-kind limits).
-        estimator: Token estimator for items whose ``token_estimate`` is zero.
-
-    Returns:
-        A 2-tuple ``(selected_items, stats)``.
+    Returns: (included_items, excluded_with_reasons, dependency_closure_count)
+    Reasons: "budget", "dependency_closure_budget", "lower_score"
     """
-    token_limit = budget.for_phase(phase)
-    max_per_kind = policy.max_items_per_kind
-
-    selected: list[ContextItem] = []
+    included: list[ContextItem] = []
+    included_ids: set[str] = set()
+    excluded: list[tuple[str, str]] = []
     tokens_used = 0
-    kind_counts: dict[str, int] = {}
-    dropped_reasons: dict[str, int] = {}
+    closures = 0
 
-    for _, item in scored:
-        kind_key = item.kind.value
-
-        # Per-kind limit
-        kind_limit = max_per_kind.get(item.kind, 50)
-        if kind_counts.get(kind_key, 0) >= kind_limit:
-            dropped_reasons["kind_limit"] = dropped_reasons.get("kind_limit", 0) + 1
+    for item, score in scored:
+        if item.id in included_ids:
             continue
 
-        # Token estimate
-        token_count = item.token_estimate or estimator.estimate(item.text)
+        tokens_needed = item.token_estimate
 
-        # Budget check
-        if tokens_used + token_count > token_limit:
-            dropped_reasons["budget"] = dropped_reasons.get("budget", 0) + 1
+        # Dependency closure: if TOOL_RESULT with parent_id
+        parent_item: ContextItem | None = None
+        parent_tokens = 0
+        if item.kind.value == "tool_result" and item.parent_id:
+            if item.parent_id not in included_ids:
+                try:
+                    parent_item = event_log.get_sync(item.parent_id)
+                    parent_tokens = parent_item.token_estimate
+                except ItemNotFoundError:
+                    parent_item = None
+
+        total_needed = tokens_needed + parent_tokens
+
+        if tokens_used + total_needed > budget_tokens:
+            if parent_item:
+                excluded.append((item.id, "dependency_closure_budget"))
+            else:
+                excluded.append((item.id, "budget"))
             continue
 
-        selected.append(item)
-        tokens_used += token_count
-        kind_counts[kind_key] = kind_counts.get(kind_key, 0) + 1
+        # Include parent first if needed
+        if parent_item and parent_item.id not in included_ids:
+            included.append(parent_item)
+            included_ids.add(parent_item.id)
+            tokens_used += parent_tokens
+            closures += 1
 
-    # Build stats
-    tokens_per_section: dict[str, int] = {}
-    for item in selected:
-        k = item.kind.value
-        t = item.token_estimate or estimator.estimate(item.text)
-        tokens_per_section[k] = tokens_per_section.get(k, 0) + t
+        included.append(item)
+        included_ids.add(item.id)
+        tokens_used += tokens_needed
 
-    total_candidates = len(scored)
-    included = len(selected)
-    dropped = total_candidates - included
+    # Mark remaining scored items as lower_score
+    for item, _ in scored:
+        if item.id not in included_ids and not any(eid == item.id for eid, _ in excluded):
+            excluded.append((item.id, "lower_score"))
 
-    stats = BuildStats(
-        tokens_per_section=tokens_per_section,
-        total_candidates=total_candidates,
-        included_count=included,
-        dropped_count=dropped,
-        dropped_reasons=dropped_reasons,
-    )
-    return selected, stats
+    return included, excluded, closures

@@ -1,82 +1,134 @@
-"""Tests for contextweaver.context.firewall."""
+"""Tests for contextweaver.context.firewall -- large/small outputs, structured extraction, apply_firewall."""
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
-from contextweaver.context.firewall import apply_firewall, apply_firewall_to_batch
+from contextweaver.context.firewall import apply_firewall
+from contextweaver.protocols import CharDivFourEstimator
 from contextweaver.store.artifacts import InMemoryArtifactStore
-from contextweaver.types import ContextItem, ItemKind
+from contextweaver.summarize.extract import StructuredExtractor
+from contextweaver.summarize.rules import RuleBasedSummarizer
+from contextweaver.types import ItemKind
 
 
-def test_non_tool_result_passthrough() -> None:
-    item = ContextItem(id="u1", kind=ItemKind.user_turn, text="hello")
-    store = InMemoryArtifactStore()
-    processed, env = apply_firewall(item, store)
-    assert processed is item
-    assert env is None
-    assert len(store.list_refs()) == 0
+class TestApplyFirewall:
+    """Tests for the apply_firewall async function."""
 
+    async def test_small_output_passthrough(self) -> None:
+        store = InMemoryArtifactStore()
+        item, envelope = await apply_firewall(
+            raw_output="status: ok\nresult: 42 rows",
+            tool_call_id="tc1",
+            tool_name="db_query",
+            media_type="text/plain",
+            artifact_store=store,
+            summarizer=RuleBasedSummarizer(),
+            extractor=StructuredExtractor(),
+            token_estimator=CharDivFourEstimator(),
+            firewall_threshold=2000,
+        )
+        assert item.kind == ItemKind.TOOL_RESULT
+        assert "42 rows" in item.text
+        assert item.artifact_ref is None
+        assert len(store.list_refs()) == 0
+        assert envelope.status == "ok"
 
-def test_tool_result_intercepted() -> None:
-    item = ContextItem(
-        id="r1", kind=ItemKind.tool_result, text="status: ok\nresult: 42 rows\n- row1\n- row2"
-    )
-    store = InMemoryArtifactStore()
-    processed, env = apply_firewall(item, store)
-    assert env is not None
-    assert env.status == "ok"
-    # Raw content stored in artifact store
-    assert store.get(f"artifact:{item.id}") is not None
-    # Processed item has shorter text (summary)
-    assert len(processed.text) <= len(item.text)
-    assert processed.artifact_ref is not None
+    async def test_large_output_intercepted(self) -> None:
+        store = InMemoryArtifactStore()
+        large_text = "data line\n" * 500
+        item, envelope = await apply_firewall(
+            raw_output=large_text,
+            tool_call_id="tc2",
+            tool_name="big_query",
+            media_type="text/plain",
+            artifact_store=store,
+            summarizer=RuleBasedSummarizer(),
+            extractor=StructuredExtractor(),
+            token_estimator=CharDivFourEstimator(),
+            firewall_threshold=2000,
+        )
+        assert item.artifact_ref is not None
+        assert len(item.text) < len(large_text)
+        assert len(store.list_refs()) == 1
+        assert envelope.status == "ok"
+        assert len(envelope.artifacts) == 1
+        assert envelope.artifacts[0].handle == item.artifact_ref
 
+    async def test_large_output_stores_metadata(self) -> None:
+        store = InMemoryArtifactStore()
+        item, envelope = await apply_firewall(
+            raw_output="Y" * 3000,
+            tool_call_id="tc3",
+            tool_name="meta_tool",
+            media_type="application/json",
+            artifact_store=store,
+            summarizer=RuleBasedSummarizer(),
+            extractor=StructuredExtractor(),
+            token_estimator=CharDivFourEstimator(),
+            firewall_threshold=2000,
+        )
+        meta = await store.metadata(item.artifact_ref)
+        assert meta["tool_name"] == "meta_tool"
+        assert meta["media_type"] == "application/json"
 
-def test_firewall_extracts_facts() -> None:
-    item = ContextItem(
-        id="r2", kind=ItemKind.tool_result, text="status: ok\ncount: 5\n1. first\n2. second"
-    )
-    store = InMemoryArtifactStore()
-    _, env = apply_firewall(item, store)
-    assert env is not None
-    assert len(env.facts) >= 1
+    async def test_structured_extraction_facts(self) -> None:
+        store = InMemoryArtifactStore()
+        item, envelope = await apply_firewall(
+            raw_output='{"name": "Alice", "count": 42}',
+            tool_call_id="tc4",
+            tool_name="json_tool",
+            media_type="application/json",
+            artifact_store=store,
+            summarizer=RuleBasedSummarizer(),
+            extractor=StructuredExtractor(),
+            token_estimator=CharDivFourEstimator(),
+            firewall_threshold=2000,
+        )
+        assert envelope.facts["type"] == "json_object"
+        assert "name" in envelope.facts.get("keys", [])
 
+    async def test_firewall_parent_id_set(self) -> None:
+        store = InMemoryArtifactStore()
+        item, _ = await apply_firewall(
+            raw_output="some output",
+            tool_call_id="tc_parent",
+            tool_name="tool",
+            media_type="text/plain",
+            artifact_store=store,
+            summarizer=RuleBasedSummarizer(),
+            extractor=StructuredExtractor(),
+            token_estimator=CharDivFourEstimator(),
+            firewall_threshold=2000,
+        )
+        assert item.parent_id == "tc_parent"
 
-def test_apply_firewall_to_batch() -> None:
-    items = [
-        ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"),
-        ContextItem(id="r1", kind=ItemKind.tool_result, text="raw output here"),
-        ContextItem(id="a1", kind=ItemKind.agent_msg, text="agent response"),
-    ]
-    store = InMemoryArtifactStore()
-    processed, envelopes = apply_firewall_to_batch(items, store)
-    assert len(processed) == 3
-    assert len(envelopes) == 1
-    assert envelopes[0].provenance["source_item_id"] == "r1"
+    async def test_bytes_input(self) -> None:
+        store = InMemoryArtifactStore()
+        item, envelope = await apply_firewall(
+            raw_output=b"binary content here",
+            tool_call_id="tc5",
+            tool_name="binary_tool",
+            media_type="application/octet-stream",
+            artifact_store=store,
+            summarizer=RuleBasedSummarizer(),
+            extractor=StructuredExtractor(),
+            token_estimator=CharDivFourEstimator(),
+            firewall_threshold=2000,
+        )
+        assert item.text == "binary content here"
+        assert envelope.status == "ok"
 
-
-def test_firewall_error_status_when_summary_fails() -> None:
-    item = ContextItem(id="r3", kind=ItemKind.tool_result, text="some output")
-    store = InMemoryArtifactStore()
-    with patch(
-        "contextweaver.context.firewall._default_summary",
-        side_effect=ValueError("boom"),
-    ):
-        _, env = apply_firewall(item, store)
-    assert env is not None
-    assert env.status == "error"
-    assert env.summary == "(summary unavailable)"
-
-
-def test_firewall_partial_status_when_extraction_fails() -> None:
-    item = ContextItem(id="r4", kind=ItemKind.tool_result, text="some output")
-    store = InMemoryArtifactStore()
-    with patch(
-        "contextweaver.context.firewall.extract_facts",
-        side_effect=ValueError("boom"),
-    ):
-        _, env = apply_firewall(item, store)
-    assert env is not None
-    assert env.status == "partial"
-    assert env.facts == []
+    async def test_views_created_for_large_output(self) -> None:
+        store = InMemoryArtifactStore()
+        item, envelope = await apply_firewall(
+            raw_output="Z" * 5000,
+            tool_call_id="tc6",
+            tool_name="views_tool",
+            media_type="text/plain",
+            artifact_store=store,
+            summarizer=RuleBasedSummarizer(),
+            extractor=StructuredExtractor(),
+            token_estimator=CharDivFourEstimator(),
+            firewall_threshold=2000,
+        )
+        assert len(envelope.views) >= 1
+        assert envelope.views[0].artifact_ref == item.artifact_ref

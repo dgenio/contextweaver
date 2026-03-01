@@ -1,179 +1,202 @@
-"""Choice graph (routing DAG) for the contextweaver Routing Engine.
+"""Choice graph for the contextweaver Routing Engine.
 
-The :class:`ChoiceGraph` is a directed acyclic graph where nodes are
-:class:`~contextweaver.types.SelectableItem` IDs and edges encode feasibility
-relationships (e.g. "B can only be called after A").  The router performs
-beam search over this graph.
+ChoiceNode + ChoiceGraph: a tree structure where each node has bounded
+children (either other nodes or leaf items).
 """
 
 from __future__ import annotations
 
-from typing import Any
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Literal
 
 from contextweaver.exceptions import GraphBuildError
+from contextweaver.types import SelectableItem
 
 
-class ChoiceGraph:
-    """Bounded DAG of selectable-item IDs.
+@dataclass
+class ChoiceNode:
+    """A node in the choice graph."""
 
-    Nodes are string IDs.  Directed edges go from *prerequisite* to
-    *dependent* (``A → B`` means "A must come before B").
-
-    The graph is validated on mutation: cycles are detected eagerly and raise
-    :class:`~contextweaver.exceptions.GraphBuildError`.
-    """
-
-    def __init__(self) -> None:
-        self._nodes: set[str] = set()
-        self._edges: dict[str, set[str]] = {}  # source → {targets}
-
-    # ------------------------------------------------------------------
-    # Mutation
-    # ------------------------------------------------------------------
-
-    def add_node(self, node_id: str) -> None:
-        """Register a node without any edges.
-
-        Args:
-            node_id: The item ID to add.
-        """
-        self._nodes.add(node_id)
-        if node_id not in self._edges:
-            self._edges[node_id] = set()
-
-    def add_edge(self, src: str, dst: str) -> None:
-        """Add a directed edge *src* → *dst* and validate acyclicity.
-
-        Both *src* and *dst* are automatically added as nodes if not present.
-        Cycle detection is incremental: after adding the edge, only the
-        reachability from *dst* back to *src* is checked (rather than a
-        full-graph DFS), so each call is O(reachable-from-dst) instead of
-        O(V + E).
-
-        Args:
-            src: Source node ID (prerequisite).
-            dst: Destination node ID (dependent).
-
-        Raises:
-            GraphBuildError: If adding this edge would create a cycle.
-        """
-        self.add_node(src)
-        self.add_node(dst)
-        self._edges[src].add(dst)
-        if self._creates_cycle(src, dst):
-            self._edges[src].discard(dst)
-            raise GraphBuildError(f"Adding edge {src!r} → {dst!r} would create a cycle.")
-
-    # ------------------------------------------------------------------
-    # Queries
-    # ------------------------------------------------------------------
-
-    def nodes(self) -> list[str]:
-        """Return all node IDs in sorted order."""
-        return sorted(self._nodes)
-
-    def successors(self, node_id: str) -> list[str]:
-        """Return the direct successors of *node_id* in sorted order.
-
-        Args:
-            node_id: The source node.
-
-        Returns:
-            A sorted list of destination node IDs.
-        """
-        return sorted(self._edges.get(node_id, set()))
-
-    def predecessors(self, node_id: str) -> list[str]:
-        """Return the direct predecessors of *node_id* in sorted order.
-
-        Args:
-            node_id: The destination node.
-
-        Returns:
-            A sorted list of source node IDs.
-        """
-        return sorted(src for src, dsts in self._edges.items() if node_id in dsts)
-
-    def roots(self) -> list[str]:
-        """Return nodes with no incoming edges (sorted)."""
-        all_dsts: set[str] = {dst for dsts in self._edges.values() for dst in dsts}
-        return sorted(n for n in self._nodes if n not in all_dsts)
-
-    def topological_order(self) -> list[str]:
-        """Return a valid topological ordering of all nodes.
-
-        Returns:
-            A list of node IDs in topological order (sources before dependents).
-
-        Raises:
-            GraphBuildError: If the graph contains a cycle (should not happen
-                if edges were added via :meth:`add_edge`).
-        """
-        in_degree: dict[str, int] = {n: 0 for n in self._nodes}
-        for dsts in self._edges.values():
-            for dst in dsts:
-                in_degree[dst] += 1
-        queue = sorted(n for n, d in in_degree.items() if d == 0)
-        order: list[str] = []
-        while queue:
-            node = queue.pop(0)
-            order.append(node)
-            for dst in sorted(self._edges.get(node, set())):
-                in_degree[dst] -= 1
-                if in_degree[dst] == 0:
-                    queue.append(dst)
-                    queue.sort()
-        if len(order) != len(self._nodes):
-            raise GraphBuildError("Cycle detected during topological sort.")
-        return order
-
-    # ------------------------------------------------------------------
-    # Cycle detection
-    # ------------------------------------------------------------------
-
-    def _creates_cycle(self, src: str, dst: str) -> bool:
-        """Return True if *dst* can reach *src* (i.e. the new edge closes a cycle).
-
-        Only traverses the subgraph reachable from *dst*, which is cheaper
-        than a full-graph DFS when the graph is large and sparsely connected.
-        """
-        # Self-loop is the trivial case.
-        if src == dst:
-            return True
-        visited: set[str] = set()
-        stack = [dst]
-        while stack:
-            node = stack.pop()
-            if node == src:
-                return True
-            if node in visited:
-                continue
-            visited.add(node)
-            stack.extend(self._edges.get(node, set()))
-        return False
-
-    # ------------------------------------------------------------------
-    # Serialisation
-    # ------------------------------------------------------------------
+    node_id: str
+    label: str
+    routing_hint: str
+    children: list[str] = field(default_factory=list)
+    child_types: dict[str, Literal["node", "item"]] = field(default_factory=dict)
+    stats: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
         return {
-            "nodes": sorted(self._nodes),
-            "edges": {src: sorted(dsts) for src, dsts in sorted(self._edges.items())},
+            "node_id": self.node_id,
+            "label": self.label,
+            "routing_hint": self.routing_hint,
+            "children": list(self.children),
+            "child_types": dict(self.child_types),
+            "stats": dict(self.stats),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ChoiceNode:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(
+            node_id=data["node_id"],
+            label=data["label"],
+            routing_hint=data["routing_hint"],
+            children=list(data.get("children", [])),
+            child_types=dict(data.get("child_types", {})),
+            stats=dict(data.get("stats", {})),
+        )
+
+
+@dataclass
+class ChoiceGraph:
+    """Bounded tree of choice nodes and selectable items."""
+
+    root_id: str = "root"
+    nodes: dict[str, ChoiceNode] = field(default_factory=dict)
+    items: dict[str, SelectableItem] = field(default_factory=dict)
+    max_children: int = 20
+    build_meta: dict[str, Any] = field(default_factory=dict)
+
+    def save(self, path: str | Path) -> None:
+        """Deterministic JSON: sorted keys, consistent formatting."""
+        data = self.to_dict()
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+
+    @classmethod
+    def load(cls, path: str | Path) -> ChoiceGraph:
+        """Validates structural integrity on load."""
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise GraphBuildError(f"Failed to load graph: {exc}") from exc
+        return cls.from_dict(data)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "root_id": self.root_id,
+            "nodes": {k: v.to_dict() for k, v in sorted(self.nodes.items())},
+            "items": {k: v.to_dict() for k, v in sorted(self.items.items())},
+            "max_children": self.max_children,
+            "build_meta": dict(self.build_meta),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChoiceGraph:
-        """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`.
+        """Deserialise and validate."""
+        root_id = data["root_id"]
+        nodes = {k: ChoiceNode.from_dict(v) for k, v in data.get("nodes", {}).items()}
+        items_raw = data.get("items", {})
+        items = {k: SelectableItem.from_dict(v) for k, v in items_raw.items()}
+        max_children = data.get("max_children", 20)
+        build_meta = dict(data.get("build_meta", {}))
 
-        Raises:
-            GraphBuildError: If the serialised data contains a cycle.
-        """
-        graph = cls()
-        for node in data.get("nodes", []):
-            graph.add_node(node)
-        for src, dsts in data.get("edges", {}).items():
-            for dst in dsts:
-                graph.add_edge(src, dst)
+        graph = cls(
+            root_id=root_id,
+            nodes=nodes,
+            items=items,
+            max_children=max_children,
+            build_meta=build_meta,
+        )
+        graph._validate()
         return graph
+
+    def _validate(self) -> None:
+        """Validate structural integrity."""
+        if self.root_id not in self.nodes:
+            raise GraphBuildError(f"root_id {self.root_id!r} not found in nodes")
+
+        # Check all child refs resolve
+        for nid, node in self.nodes.items():
+            for child_id in node.children:
+                ct = node.child_types.get(child_id, "item")
+                if ct == "node" and child_id not in self.nodes:
+                    raise GraphBuildError(
+                        f"Node {nid!r} references missing child node {child_id!r}"
+                    )
+                if ct == "item" and child_id not in self.items:
+                    raise GraphBuildError(
+                        f"Node {nid!r} references missing child item {child_id!r}"
+                    )
+
+        # Check no cycles via DFS from root
+        visited: set[str] = set()
+        path: set[str] = set()
+
+        def dfs(node_id: str) -> None:
+            if node_id in path:
+                raise GraphBuildError(f"Cycle detected involving {node_id!r}")
+            if node_id in visited:
+                return
+            path.add(node_id)
+            visited.add(node_id)
+            if node_id in self.nodes:
+                for child_id in self.nodes[node_id].children:
+                    ct = self.nodes[node_id].child_types.get(child_id, "item")
+                    if ct == "node":
+                        dfs(child_id)
+            path.discard(node_id)
+
+        dfs(self.root_id)
+
+    def graph_stats(self) -> dict[str, Any]:
+        """Return graph statistics."""
+        total_items = len(self.items)
+        total_nodes = len(self.nodes)
+
+        if total_nodes == 0:
+            return {
+                "total_items": 0,
+                "total_nodes": 0,
+                "max_depth": 0,
+                "avg_branching_factor": 0.0,
+                "max_branching_factor": 0,
+                "leaf_node_count": 0,
+                "item_kinds": {},
+                "namespaces": [],
+            }
+
+        # Compute depth and branching
+        def depth_of(nid: str, d: int = 0) -> int:
+            if nid not in self.nodes:
+                return d
+            node = self.nodes[nid]
+            child_nodes = [c for c in node.children if node.child_types.get(c) == "node"]
+            if not child_nodes:
+                return d
+            return max(depth_of(c, d + 1) for c in child_nodes)
+
+        max_depth = depth_of(self.root_id)
+
+        branching = [len(n.children) for n in self.nodes.values()]
+        avg_branching = sum(branching) / len(branching) if branching else 0.0
+        max_branching = max(branching) if branching else 0
+
+        leaf_nodes = sum(
+            1
+            for n in self.nodes.values()
+            if all(n.child_types.get(c) == "item" for c in n.children) and n.children
+        )
+
+        item_kinds: dict[str, int] = {}
+        namespaces: set[str] = set()
+        for item in self.items.values():
+            item_kinds[item.kind] = item_kinds.get(item.kind, 0) + 1
+            if item.namespace:
+                namespaces.add(item.namespace)
+
+        return {
+            "total_items": total_items,
+            "total_nodes": total_nodes,
+            "max_depth": max_depth,
+            "avg_branching_factor": round(avg_branching, 2),
+            "max_branching_factor": max_branching,
+            "leaf_node_count": leaf_nodes,
+            "item_kinds": item_kinds,
+            "namespaces": sorted(namespaces),
+        }

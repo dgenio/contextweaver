@@ -1,75 +1,60 @@
-"""Automatic labeler for :class:`~contextweaver.types.SelectableItem` objects.
+"""Automatic labeler for groups of SelectableItems.
 
-The labeler assigns a category label and a confidence string to each item
-based on its name, description, and tags.  Used by the tree builder to
-cluster items into namespaces / capability groups.
+The labeler assigns a category label and routing hint to a group of items
+based on frequent tokens and namespace prevalence.
 """
 
 from __future__ import annotations
 
+from collections import Counter
+
 from contextweaver._utils import tokenize
 from contextweaver.types import SelectableItem
 
-# ---------------------------------------------------------------------------
-# Built-in category vocabulary
-# ---------------------------------------------------------------------------
-
-_CATEGORY_KEYWORDS: dict[str, list[str]] = {
-    "data": ["read", "write", "fetch", "query", "database", "file", "storage", "data"],
-    "compute": ["calculate", "compute", "math", "transform", "process", "run", "execute"],
-    "communication": ["send", "notify", "email", "message", "post", "webhook", "slack"],
-    "search": ["search", "find", "lookup", "retrieve", "index", "browse"],
-    "auth": ["auth", "login", "token", "permission", "credential", "oauth", "key"],
-    "monitoring": ["monitor", "alert", "metric", "log", "trace", "health", "status"],
-    "ml": ["model", "predict", "infer", "embed", "classify", "train", "llm", "ai"],
-    "agent": ["agent", "plan", "delegate", "skill", "orchestrate", "route"],
-}
-
 
 class KeywordLabeler:
-    """Assign a category to a :class:`~contextweaver.types.SelectableItem` using keyword matching.
+    """Default Labeler. Top-K frequent tokens (stopword-filtered).
 
-    Category is determined by which vocabulary set has the highest overlap with
-    the item's combined token set (name + description + tags).  Returns
-    ``"general"`` when no category matches with non-zero overlap.
-
-    Confidence is expressed as a human-readable string:
-    ``"high"`` (overlap ≥ 0.5), ``"medium"`` (≥ 0.2), ``"low"`` (> 0),
-    ``"none"`` (no match).
+    Prepends dominant namespace if >threshold of items share it.
+    routing_hint = "Tools related to {label}".
     """
 
-    def label(self, item: SelectableItem) -> tuple[str, str]:
-        """Return ``(category, confidence)`` for *item*.
+    def __init__(self, top_k: int = 3, namespace_threshold: float = 0.6) -> None:
+        self._top_k = top_k
+        self._ns_threshold = namespace_threshold
 
-        Args:
-            item: The item to label.
+    def label(self, items: list[SelectableItem]) -> tuple[str, str]:
+        """Return (label, routing_hint) for a group of items."""
+        if not items:
+            return ("empty", "No tools available")
 
-        Returns:
-            A 2-tuple ``(category_str, confidence_str)``.
-        """
-        combined = f"{item.name} {item.description} {' '.join(item.tags)}"
-        tokens = tokenize(combined)
-        if not tokens:
-            return ("general", "none")
+        # Check namespace dominance
+        ns_counts: Counter[str] = Counter()
+        for item in items:
+            if item.namespace:
+                ns_counts[item.namespace] += 1
+        dominant_ns = ""
+        if ns_counts:
+            top_ns, top_count = ns_counts.most_common(1)[0]
+            if top_count / len(items) >= self._ns_threshold:
+                dominant_ns = top_ns
 
-        best_cat = "general"
-        best_score = 0.0
+        # Collect all tokens from names + descriptions + tags
+        all_tokens: Counter[str] = Counter()
+        for item in items:
+            text = f"{item.name} {item.description} {' '.join(item.tags)}"
+            for token in tokenize(text):
+                all_tokens[token] += 1
 
-        for category, keywords in sorted(_CATEGORY_KEYWORDS.items()):
-            overlap = len(tokens & set(keywords))
-            score = overlap / len(tokens)
-            if score > best_score:
-                best_score = score
-                best_cat = category
+        # Get top-k tokens
+        top_tokens = [t for t, _ in all_tokens.most_common(self._top_k)]
 
-        if best_score >= 0.5:
-            confidence = "high"
-        elif best_score >= 0.2:
-            confidence = "medium"
-        elif best_score > 0.0:
-            confidence = "low"
+        if dominant_ns:
+            label = f"{dominant_ns}: {', '.join(top_tokens)}" if top_tokens else dominant_ns
+        elif top_tokens:
+            label = ", ".join(top_tokens)
         else:
-            confidence = "none"
-            best_cat = "general"
+            label = "miscellaneous"
 
-        return (best_cat, confidence)
+        hint = f"Tools related to {label}"
+        return (label, hint)

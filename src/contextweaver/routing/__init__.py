@@ -1,22 +1,27 @@
-"""Routing sub-package for contextweaver.
+"""Routing sub-package for contextweaver."""
 
-Exports the catalog, graph, labeler, tree builder, router, and card renderer.
-"""
-
-from contextweaver.routing.cards import cards_for_route, format_card_for_prompt, render_cards
-from contextweaver.routing.catalog import Catalog
-from contextweaver.routing.graph import ChoiceGraph
+from contextweaver.routing.cards import ChoiceCard, make_choice_cards, render_cards_text
+from contextweaver.routing.catalog import (
+    generate_sample_catalog,
+    load_catalog_dicts,
+    load_catalog_json,
+)
+from contextweaver.routing.graph import ChoiceGraph, ChoiceNode
 from contextweaver.routing.labeler import KeywordLabeler
-from contextweaver.routing.router import Router
+from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tree import TreeBuilder
 
 __all__ = [
-    "Catalog",
+    "ChoiceCard",
     "ChoiceGraph",
+    "ChoiceNode",
     "KeywordLabeler",
+    "RouteResult",
     "Router",
     "TreeBuilder",
-    "cards_for_route",
-    "format_card_for_prompt",
-    "render_cards",
+    "generate_sample_catalog",
+    "load_catalog_dicts",
+    "load_catalog_json",
+    "make_choice_cards",
+    "render_cards_text",
 ]

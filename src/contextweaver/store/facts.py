@@ -1,127 +1,71 @@
 """In-memory fact store for contextweaver.
 
-The fact store holds short, structured memory facts (key/value assertions)
-that can be injected into the context as ``memory_fact`` items.
+Durable semantic facts. Key-value, last-write-wins.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
-
-from contextweaver.exceptions import ItemNotFoundError
+from typing import Any, Protocol, runtime_checkable
 
 
-@dataclass
-class Fact:
-    """A single memory fact."""
+@runtime_checkable
+class FactStore(Protocol):
+    """Durable semantic facts. Key-value, last-write-wins."""
 
-    fact_id: str
-    key: str
-    value: str
-    tags: list[str] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    async def put(self, key: str, value: str, metadata: dict[str, Any] | None = None) -> None: ...
+
+    async def get(self, key: str) -> tuple[str, dict[str, Any]] | None: ...
+    async def list_keys(self, prefix: str | None = None) -> list[str]: ...
+    async def get_all(self) -> dict[str, str]: ...
+    async def delete(self, key: str) -> None: ...
+
+
+class InMemoryFactStore:
+    """Default in-memory FactStore. Dict-backed."""
+
+    def __init__(self) -> None:
+        self._facts: dict[str, tuple[str, dict[str, Any]]] = {}
+
+    async def put(self, key: str, value: str, metadata: dict[str, Any] | None = None) -> None:
+        """Insert or replace a fact."""
+        self._facts[key] = (value, metadata or {})
+
+    async def get(self, key: str) -> tuple[str, dict[str, Any]] | None:
+        """Return (value, metadata) or None."""
+        if key not in self._facts:
+            return None
+        value, meta = self._facts[key]
+        return value, dict(meta)
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        """Return all keys, optionally filtered by prefix."""
+        keys = sorted(self._facts.keys())
+        if prefix is not None:
+            keys = [k for k in keys if k.startswith(prefix)]
+        return keys
+
+    async def get_all(self) -> dict[str, str]:
+        """Return all facts as {key: value}."""
+        return {k: v for k, (v, _) in sorted(self._facts.items())}
+
+    async def delete(self, key: str) -> None:
+        """Remove a fact."""
+        if key not in self._facts:
+            raise KeyError(f"Fact not found: {key!r}")
+        del self._facts[key]
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
         return {
-            "fact_id": self.fact_id,
-            "key": self.key,
-            "value": self.value,
-            "tags": list(self.tags),
-            "metadata": dict(self.metadata),
+            "facts": {
+                k: {"value": v, "metadata": dict(m)} for k, (v, m) in sorted(self._facts.items())
+            }
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Fact:
-        """Deserialise from a JSON-compatible dict."""
-        return cls(
-            fact_id=data["fact_id"],
-            key=data["key"],
-            value=data["value"],
-            tags=list(data.get("tags", [])),
-            metadata=dict(data.get("metadata", {})),
-        )
-
-
-class InMemoryFactStore:
-    """Simple in-memory key/value fact store.
-
-    Facts are uniquely identified by ``fact_id``.  Duplicate *keys* are
-    allowed — callers can model key history by appending multiple facts with
-    the same ``key``.
-    """
-
-    def __init__(self) -> None:
-        self._facts: dict[str, Fact] = {}
-
-    def put(self, fact: Fact) -> None:
-        """Insert or replace the fact identified by ``fact.fact_id``.
-
-        Args:
-            fact: The :class:`Fact` to store.
-        """
-        self._facts[fact.fact_id] = fact
-
-    def get(self, fact_id: str) -> Fact:
-        """Return the fact with *fact_id*.
-
-        Args:
-            fact_id: The unique identifier of the fact.
-
-        Returns:
-            The matching :class:`Fact`.
-
-        Raises:
-            ItemNotFoundError: If no fact with *fact_id* exists.
-        """
-        if fact_id not in self._facts:
-            raise ItemNotFoundError(f"Fact not found: {fact_id!r}")
-        return self._facts[fact_id]
-
-    def get_by_key(self, key: str) -> list[Fact]:
-        """Return all facts whose ``key`` matches *key*.
-
-        Args:
-            key: The key string to filter on.
-
-        Returns:
-            A list of matching facts, sorted by ``fact_id`` for determinism.
-        """
-        return sorted(
-            (f for f in self._facts.values() if f.key == key),
-            key=lambda f: f.fact_id,
-        )
-
-    def delete(self, fact_id: str) -> None:
-        """Remove the fact identified by *fact_id*.
-
-        Args:
-            fact_id: The unique identifier of the fact to delete.
-
-        Raises:
-            ItemNotFoundError: If no fact with *fact_id* exists.
-        """
-        if fact_id not in self._facts:
-            raise ItemNotFoundError(f"Fact not found: {fact_id!r}")
-        del self._facts[fact_id]
-
-    def all(self) -> list[Fact]:
-        """Return all facts sorted by ``fact_id``.
-
-        Returns:
-            A list of all stored :class:`Fact` objects.
-        """
-        return [self._facts[k] for k in sorted(self._facts)]
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialise to a JSON-compatible dict."""
-        return {"facts": [f.to_dict() for f in self.all()]}
-
-    @classmethod
     def from_dict(cls, data: dict[str, Any]) -> InMemoryFactStore:
-        """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`."""
+        """Deserialise from dict."""
         store = cls()
-        for raw in data.get("facts", []):
-            store.put(Fact.from_dict(raw))
+        for key, entry in data.get("facts", {}).items():
+            store._facts[key] = (entry["value"], dict(entry.get("metadata", {})))
         return store

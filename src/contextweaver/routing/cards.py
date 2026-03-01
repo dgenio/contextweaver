@@ -1,92 +1,128 @@
 """Choice-card renderer for the contextweaver Routing Engine.
 
-Converts :class:`~contextweaver.types.SelectableItem` objects into compact
-:class:`~contextweaver.types.ChoiceCard` instances suitable for inclusion in
-LLM prompts.  Full arg schemas are intentionally omitted to minimise token
-usage.
+Compact, LLM-friendly. Never includes full schemas.
 """
 
 from __future__ import annotations
 
-from contextweaver.envelope import ChoiceCard
-from contextweaver.exceptions import ItemNotFoundError
-from contextweaver.routing.catalog import Catalog
+from dataclasses import dataclass, field
+from typing import Any
+
 from contextweaver.types import SelectableItem
 
 
-def item_to_card(item: SelectableItem) -> ChoiceCard:
-    """Convert a SelectableItem to a ChoiceCard.
+@dataclass
+class ChoiceCard:
+    """Compact, LLM-friendly representation of a SelectableItem.
 
-    The full ``args_schema`` is intentionally omitted to keep prompts compact.
-
-    Args:
-        item: The source item.
-
-    Returns:
-        A ChoiceCard with ``args_schema`` omitted.
+    Never includes full schemas. Deterministic serialization.
     """
-    return ChoiceCard(
-        id=item.id,
-        name=item.name,
-        description=item.description,
-        tags=list(item.tags),
-        cost_hint=item.cost_hint,
-        side_effects=item.side_effects,
-    )
+
+    id: str
+    kind: str
+    name: str
+    description: str
+    tags: list[str] = field(default_factory=list)
+    namespace: str = ""
+    has_schema: bool = False
+    score: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        d: dict[str, Any] = {
+            "id": self.id,
+            "kind": self.kind,
+            "name": self.name,
+            "description": self.description,
+            "tags": list(self.tags),
+            "namespace": self.namespace,
+            "has_schema": self.has_schema,
+        }
+        if self.score is not None:
+            d["score"] = self.score
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ChoiceCard:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(
+            id=data["id"],
+            kind=data.get("kind", "tool"),
+            name=data["name"],
+            description=data["description"],
+            tags=list(data.get("tags", [])),
+            namespace=data.get("namespace", ""),
+            has_schema=bool(data.get("has_schema", False)),
+            score=data.get("score"),
+        )
 
 
-def render_cards(items: list[SelectableItem]) -> list[ChoiceCard]:
-    """Render a list of items as choice cards.
+def make_choice_cards(
+    items: list[SelectableItem],
+    *,
+    max_choices: int = 20,
+    max_desc_chars: int = 240,
+    max_total_chars: int | None = None,
+    scores: dict[str, float] | None = None,
+) -> list[ChoiceCard]:
+    """Convert items to ChoiceCards with enforced limits.
 
-    Args:
-        items: The items to render.
-
-    Returns:
-        A list of :class:`~contextweaver.types.ChoiceCard` in the same order.
-    """
-    return [item_to_card(item) for item in items]
-
-
-def cards_for_route(route: list[str], catalog: Catalog) -> list[ChoiceCard]:
-    """Return choice cards for items that appear in *route* and exist in *catalog*.
-
-    Nodes that are not catalog items (e.g. namespace / category nodes) are
-    silently skipped.
-
-    Args:
-        route: A list of node IDs from the router.
-        catalog: The catalog to look up items in.
-
-    Returns:
-        A list of :class:`~contextweaver.types.ChoiceCard` for each matching item.
+    Enforces: len <= max_choices, desc <= max_desc_chars (truncated with "..."),
+    total chars <= max_total_chars (drops lowest-scored), no schemas.
     """
     cards = []
-    for node_id in route:
-        try:
-            item = catalog.get(node_id)
-            cards.append(item_to_card(item))
-        except ItemNotFoundError:
-            continue
+    for item in items[:max_choices]:
+        desc = item.description
+        if len(desc) > max_desc_chars:
+            desc = desc[: max_desc_chars - 3] + "..."
+        card = ChoiceCard(
+            id=item.id,
+            kind=item.kind,
+            name=item.name,
+            description=desc,
+            tags=list(item.tags),
+            namespace=item.namespace,
+            has_schema=item.args_schema is not None,
+            score=scores.get(item.id) if scores else None,
+        )
+        cards.append(card)
+
+    # Enforce total chars limit
+    if max_total_chars is not None:
+        total = sum(len(render_card_line(c, i, len(cards))) for i, c in enumerate(cards))
+        while total > max_total_chars and len(cards) > 1:
+            # Drop lowest-scored card
+            if any(c.score is not None for c in cards):
+                min_card = min(
+                    cards,
+                    key=lambda c: (c.score if c.score is not None else float("inf"), c.id),
+                )
+                cards.remove(min_card)
+            else:
+                cards.pop()
+            total = sum(len(render_card_line(c, i, len(cards))) for i, c in enumerate(cards))
+
     return cards
 
 
-def format_card_for_prompt(card: ChoiceCard) -> str:
-    """Format a single :class:`~contextweaver.types.ChoiceCard` as a human-readable prompt snippet.
-
-    Args:
-        card: The card to format.
-
-    Returns:
-        A compact multi-line string suitable for embedding in an LLM prompt.
-    """
-    lines = [
-        f"[{card.id}] {card.name}",
-        f"  {card.description}",
-    ]
+def render_card_line(card: ChoiceCard, index: int, total: int) -> str:
+    """Render a single card as a one-line string."""
+    parts = [f"[{index + 1}/{total}]"]
+    parts.append(f"{card.name} ({card.kind})")
+    parts.append(f"— {card.description}")
     if card.tags:
-        lines.append(f"  tags: {', '.join(sorted(card.tags))}")
-    if card.side_effects:
-        lines.append("  ⚠ has side effects")
-    if card.cost_hint:
-        lines.append(f"  cost: {card.cost_hint:.2f}")
+        parts.append(f"[{', '.join(card.tags)}]")
+    if card.score is not None:
+        parts.append(f"score={card.score:.2f}")
+    return " ".join(parts)
+
+
+def render_cards_text(cards: list[ChoiceCard]) -> str:
+    """One line per card, numbered.
+
+    [1/5] billing.invoices.search (tool) — Search invoices [billing, search] score=0.82
+    """
+    lines = []
+    for i, card in enumerate(cards):
+        lines.append(render_card_line(card, i, len(cards)))
     return "\n".join(lines)

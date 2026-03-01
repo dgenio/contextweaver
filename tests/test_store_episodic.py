@@ -1,51 +1,77 @@
-"""Tests for contextweaver.store.episodic."""
+"""Tests for contextweaver.store.episodic -- async put/get/latest/list/delete."""
 
 from __future__ import annotations
 
-from contextweaver.store.episodic import Episode, InMemoryEpisodicStore
+import pytest
+
+from contextweaver.store.episodic import InMemoryEpisodicStore
 
 
-def test_add_and_get() -> None:
-    store = InMemoryEpisodicStore()
-    ep = Episode(episode_id="e1", summary="Search the database for user records")
-    store.add(ep)
-    result = store.get("e1")
-    assert result is not None
-    assert result.summary == ep.summary
+class TestInMemoryEpisodicStore:
+    """Tests for InMemoryEpisodicStore async methods."""
 
+    async def test_put_and_get(self, episodic_store: InMemoryEpisodicStore) -> None:
+        await episodic_store.put("ep1", "User searched for invoices")
+        summary, meta = await episodic_store.get("ep1")
+        assert summary == "User searched for invoices"
+        assert meta == {}
 
-def test_get_missing_returns_none() -> None:
-    store = InMemoryEpisodicStore()
-    assert store.get("missing") is None
+    async def test_put_with_metadata(self, episodic_store: InMemoryEpisodicStore) -> None:
+        await episodic_store.put("ep1", "summary", metadata={"score": 0.9})
+        _, meta = await episodic_store.get("ep1")
+        assert meta["score"] == 0.9
 
+    async def test_get_missing_raises(self, episodic_store: InMemoryEpisodicStore) -> None:
+        with pytest.raises(KeyError):
+            await episodic_store.get("missing")
 
-def test_search_returns_relevant() -> None:
-    store = InMemoryEpisodicStore()
-    store.add(Episode("e1", "search database records quickly"))
-    store.add(Episode("e2", "send notification email"))
-    store.add(Episode("e3", "compute statistics from database"))
-    results = store.search("database search", top_k=2)
-    ids = [r.episode_id for r in results]
-    assert "e1" in ids
+    async def test_list_episodes(self, episodic_store: InMemoryEpisodicStore) -> None:
+        await episodic_store.put("ep1", "first")
+        await episodic_store.put("ep2", "second")
+        await episodic_store.put("ep3", "third")
+        ids = await episodic_store.list_episodes()
+        assert ids == ["ep1", "ep2", "ep3"]
 
+    async def test_list_episodes_with_limit(self, episodic_store: InMemoryEpisodicStore) -> None:
+        for i in range(5):
+            await episodic_store.put(f"ep{i}", f"summary {i}")
+        ids = await episodic_store.list_episodes(limit=2)
+        assert len(ids) == 2
 
-def test_search_empty_store() -> None:
-    store = InMemoryEpisodicStore()
-    assert store.search("anything") == []
+    async def test_latest(self, episodic_store: InMemoryEpisodicStore) -> None:
+        await episodic_store.put("ep1", "first")
+        await episodic_store.put("ep2", "second")
+        await episodic_store.put("ep3", "third")
+        latest = await episodic_store.latest(n=2)
+        assert len(latest) == 2
+        # Most recent first
+        assert latest[0][0] == "ep3"
+        assert latest[1][0] == "ep2"
 
+    async def test_delete(self, episodic_store: InMemoryEpisodicStore) -> None:
+        await episodic_store.put("ep1", "to delete")
+        await episodic_store.delete("ep1")
+        with pytest.raises(KeyError):
+            await episodic_store.get("ep1")
 
-def test_all() -> None:
-    store = InMemoryEpisodicStore()
-    store.add(Episode("e1", "first"))
-    store.add(Episode("e2", "second"))
-    all_eps = store.all()
-    assert len(all_eps) == 2
+    async def test_delete_missing_raises(self, episodic_store: InMemoryEpisodicStore) -> None:
+        with pytest.raises(KeyError):
+            await episodic_store.delete("missing")
 
+    async def test_put_update_preserves_order(self, episodic_store: InMemoryEpisodicStore) -> None:
+        await episodic_store.put("ep1", "original")
+        await episodic_store.put("ep2", "second")
+        await episodic_store.put("ep1", "updated")
+        ids = await episodic_store.list_episodes()
+        # ep1 should stay in its original position
+        assert ids == ["ep1", "ep2"]
+        summary, _ = await episodic_store.get("ep1")
+        assert summary == "updated"
 
-def test_roundtrip() -> None:
-    store = InMemoryEpisodicStore()
-    store.add(Episode("e1", "summary one", tags=["a"]))
-    restored = InMemoryEpisodicStore.from_dict(store.to_dict())
-    ep = restored.get("e1")
-    assert ep is not None
-    assert ep.tags == ["a"]
+    async def test_roundtrip(self, episodic_store: InMemoryEpisodicStore) -> None:
+        await episodic_store.put("ep1", "summary one", metadata={"tag": "a"})
+        data = episodic_store.to_dict()
+        restored = InMemoryEpisodicStore.from_dict(data)
+        summary, meta = await restored.get("ep1")
+        assert summary == "summary one"
+        assert meta["tag"] == "a"

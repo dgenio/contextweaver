@@ -1,0 +1,783 @@
+[
+  {
+    "id": "admin.audit.export",
+    "kind": "tool",
+    "name": "admin.audit.export",
+    "description": "Export audit log as CSV",
+    "tags": [
+      "read",
+      "admin",
+      "audit",
+      "export"
+    ],
+    "namespace": "admin",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "low",
+    "metadata": {
+      "generated": true,
+      "index": 16
+    }
+  },
+  {
+    "id": "admin.audit.log",
+    "kind": "skill",
+    "name": "admin.audit.log",
+    "description": "Query the audit log",
+    "tags": [
+      "read",
+      "admin",
+      "audit"
+    ],
+    "namespace": "admin",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "low",
+    "metadata": {
+      "generated": true,
+      "index": 28
+    }
+  },
+  {
+    "id": "admin.roles.assign",
+    "kind": "tool",
+    "name": "admin.roles.assign",
+    "description": "Assign a role to a user",
+    "tags": [
+      "update",
+      "admin",
+      "roles"
+    ],
+    "namespace": "admin",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "low",
+    "metadata": {
+      "generated": true,
+      "index": 9
+    }
+  },
+  {
+    "id": "admin.roles.list",
+    "kind": "agent",
+    "name": "admin.roles.list",
+    "description": "List available roles",
+    "tags": [
+      "list",
+      "admin",
+      "roles"
+    ],
+    "namespace": "admin",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 18
+    }
+  },
+  {
+    "id": "admin.users.create",
+    "kind": "agent",
+    "name": "admin.users.create",
+    "description": "Create a new user account",
+    "tags": [
+      "create",
+      "admin",
+      "users"
+    ],
+    "namespace": "admin",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 24
+    }
+  },
+  {
+    "id": "admin.users.disable",
+    "kind": "tool",
+    "name": "admin.users.disable",
+    "description": "Disable a user account",
+    "tags": [
+      "update",
+      "admin",
+      "users"
+    ],
+    "namespace": "admin",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 29
+    }
+  },
+  {
+    "id": "admin.users.list",
+    "kind": "tool",
+    "name": "admin.users.list",
+    "description": "List all users in the organization",
+    "tags": [
+      "list",
+      "admin",
+      "users"
+    ],
+    "namespace": "admin",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 12
+    }
+  },
+  {
+    "id": "billing.invoices.create",
+    "kind": "tool",
+    "name": "billing.invoices.create",
+    "description": "Create a new invoice for a customer",
+    "tags": [
+      "create",
+      "billing"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 39
+    }
+  },
+  {
+    "id": "billing.invoices.get",
+    "kind": "agent",
+    "name": "billing.invoices.get",
+    "description": "Get invoice details by ID",
+    "tags": [
+      "read",
+      "billing"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 31
+    }
+  },
+  {
+    "id": "billing.invoices.search",
+    "kind": "agent",
+    "name": "billing.invoices.search",
+    "description": "Search invoices by date range or status",
+    "tags": [
+      "search",
+      "billing"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 30
+    }
+  },
+  {
+    "id": "billing.payments.list",
+    "kind": "skill",
+    "name": "billing.payments.list",
+    "description": "List recent payments",
+    "tags": [
+      "list",
+      "billing",
+      "payment"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 33
+    }
+  },
+  {
+    "id": "billing.payments.process",
+    "kind": "internal",
+    "name": "billing.payments.process",
+    "description": "Process a payment against an invoice",
+    "tags": [
+      "payment",
+      "billing"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 1
+    }
+  },
+  {
+    "id": "billing.payments.refund",
+    "kind": "tool",
+    "name": "billing.payments.refund",
+    "description": "Refund a processed payment",
+    "tags": [
+      "payment",
+      "billing",
+      "refund"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "low",
+    "metadata": {
+      "generated": true,
+      "index": 8
+    }
+  },
+  {
+    "id": "billing.reports.aging",
+    "kind": "tool",
+    "name": "billing.reports.aging",
+    "description": "Generate accounts receivable aging report",
+    "tags": [
+      "report",
+      "billing"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 40
+    }
+  },
+  {
+    "id": "billing.reports.forecast",
+    "kind": "tool",
+    "name": "billing.reports.forecast",
+    "description": "Forecast future revenue",
+    "tags": [
+      "report",
+      "billing",
+      "forecast"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "low",
+    "metadata": {
+      "generated": true,
+      "index": 35
+    }
+  },
+  {
+    "id": "billing.reports.revenue",
+    "kind": "tool",
+    "name": "billing.reports.revenue",
+    "description": "Generate revenue report for a period",
+    "tags": [
+      "report",
+      "billing"
+    ],
+    "namespace": "billing",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 34
+    }
+  },
+  {
+    "id": "comms.email.draft",
+    "kind": "tool",
+    "name": "comms.email.draft",
+    "description": "Create an email draft",
+    "tags": [
+      "create",
+      "comms",
+      "email"
+    ],
+    "namespace": "comms",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 4
+    }
+  },
+  {
+    "id": "comms.email.send",
+    "kind": "tool",
+    "name": "comms.email.send",
+    "description": "Send an email message",
+    "tags": [
+      "send",
+      "comms",
+      "email"
+    ],
+    "namespace": "comms",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 17
+    }
+  },
+  {
+    "id": "comms.notifications.schedule",
+    "kind": "tool",
+    "name": "comms.notifications.schedule",
+    "description": "Schedule a notification",
+    "tags": [
+      "create",
+      "comms",
+      "notifications"
+    ],
+    "namespace": "comms",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 27
+    }
+  },
+  {
+    "id": "comms.notifications.send",
+    "kind": "tool",
+    "name": "comms.notifications.send",
+    "description": "Send a push notification",
+    "tags": [
+      "send",
+      "comms",
+      "notifications"
+    ],
+    "namespace": "comms",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 41
+    }
+  },
+  {
+    "id": "comms.slack.post",
+    "kind": "tool",
+    "name": "comms.slack.post",
+    "description": "Post a message to a Slack channel",
+    "tags": [
+      "send",
+      "comms",
+      "slack"
+    ],
+    "namespace": "comms",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 23
+    }
+  },
+  {
+    "id": "comms.slack.thread",
+    "kind": "tool",
+    "name": "comms.slack.thread",
+    "description": "Reply to a Slack thread",
+    "tags": [
+      "send",
+      "comms",
+      "slack"
+    ],
+    "namespace": "comms",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 6
+    }
+  },
+  {
+    "id": "crm.activities.log",
+    "kind": "tool",
+    "name": "crm.activities.log",
+    "description": "Log a customer activity",
+    "tags": [
+      "create",
+      "crm",
+      "activity"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 37
+    }
+  },
+  {
+    "id": "crm.activities.recent",
+    "kind": "tool",
+    "name": "crm.activities.recent",
+    "description": "Get recent activities for a contact",
+    "tags": [
+      "read",
+      "crm",
+      "activity"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 26
+    }
+  },
+  {
+    "id": "crm.contacts.create",
+    "kind": "tool",
+    "name": "crm.contacts.create",
+    "description": "Create a new contact record",
+    "tags": [
+      "create",
+      "crm"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 2
+    }
+  },
+  {
+    "id": "crm.contacts.find",
+    "kind": "tool",
+    "name": "crm.contacts.find",
+    "description": "Find contacts by name or email",
+    "tags": [
+      "search",
+      "crm"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 0
+    }
+  },
+  {
+    "id": "crm.contacts.update",
+    "kind": "tool",
+    "name": "crm.contacts.update",
+    "description": "Update contact information",
+    "tags": [
+      "update",
+      "crm"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 11
+    }
+  },
+  {
+    "id": "crm.deals.close",
+    "kind": "tool",
+    "name": "crm.deals.close",
+    "description": "Close a deal as won or lost",
+    "tags": [
+      "update",
+      "crm",
+      "deals"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 36
+    }
+  },
+  {
+    "id": "crm.deals.create",
+    "kind": "tool",
+    "name": "crm.deals.create",
+    "description": "Create a new deal",
+    "tags": [
+      "create",
+      "crm",
+      "deals"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 19
+    }
+  },
+  {
+    "id": "crm.deals.list",
+    "kind": "tool",
+    "name": "crm.deals.list",
+    "description": "List active deals in pipeline",
+    "tags": [
+      "list",
+      "crm",
+      "deals"
+    ],
+    "namespace": "crm",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 14
+    }
+  },
+  {
+    "id": "docs.pages.create",
+    "kind": "tool",
+    "name": "docs.pages.create",
+    "description": "Create a new documentation page",
+    "tags": [
+      "create",
+      "docs"
+    ],
+    "namespace": "docs",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 20
+    }
+  },
+  {
+    "id": "docs.pages.get",
+    "kind": "tool",
+    "name": "docs.pages.get",
+    "description": "Retrieve a page by ID",
+    "tags": [
+      "read",
+      "docs"
+    ],
+    "namespace": "docs",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 7
+    }
+  },
+  {
+    "id": "docs.pages.list",
+    "kind": "tool",
+    "name": "docs.pages.list",
+    "description": "List pages in a space",
+    "tags": [
+      "list",
+      "docs"
+    ],
+    "namespace": "docs",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 3
+    }
+  },
+  {
+    "id": "docs.pages.update",
+    "kind": "internal",
+    "name": "docs.pages.update",
+    "description": "Update an existing page",
+    "tags": [
+      "update",
+      "docs"
+    ],
+    "namespace": "docs",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 15
+    }
+  },
+  {
+    "id": "docs.templates.apply",
+    "kind": "skill",
+    "name": "docs.templates.apply",
+    "description": "Apply a template to create a page",
+    "tags": [
+      "create",
+      "docs",
+      "templates"
+    ],
+    "namespace": "docs",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 22
+    }
+  },
+  {
+    "id": "docs.templates.list",
+    "kind": "agent",
+    "name": "docs.templates.list",
+    "description": "List available page templates",
+    "tags": [
+      "list",
+      "docs",
+      "templates"
+    ],
+    "namespace": "docs",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 32
+    }
+  },
+  {
+    "id": "search.documents.index",
+    "kind": "tool",
+    "name": "search.documents.index",
+    "description": "Index a new document for search",
+    "tags": [
+      "create",
+      "documents"
+    ],
+    "namespace": "search",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 5
+    }
+  },
+  {
+    "id": "search.documents.search",
+    "kind": "tool",
+    "name": "search.documents.search",
+    "description": "Full-text search across documents",
+    "tags": [
+      "search",
+      "documents"
+    ],
+    "namespace": "search",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 38
+    }
+  },
+  {
+    "id": "search.internal.search",
+    "kind": "tool",
+    "name": "search.internal.search",
+    "description": "Search internal knowledge base",
+    "tags": [
+      "search",
+      "internal"
+    ],
+    "namespace": "search",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "high",
+    "metadata": {
+      "generated": true,
+      "index": 13
+    }
+  },
+  {
+    "id": "search.internal.suggest",
+    "kind": "tool",
+    "name": "search.internal.suggest",
+    "description": "Suggest related documents",
+    "tags": [
+      "search",
+      "internal",
+      "suggest"
+    ],
+    "namespace": "search",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "free",
+    "metadata": {
+      "generated": true,
+      "index": 10
+    }
+  },
+  {
+    "id": "search.web.scrape",
+    "kind": "tool",
+    "name": "search.web.scrape",
+    "description": "Extract content from a web page",
+    "tags": [
+      "read",
+      "web"
+    ],
+    "namespace": "search",
+    "args_schema": null,
+    "side_effects": true,
+    "cost_hint": "medium",
+    "metadata": {
+      "generated": true,
+      "index": 21
+    }
+  },
+  {
+    "id": "search.web.search",
+    "kind": "skill",
+    "name": "search.web.search",
+    "description": "Search the web for information",
+    "tags": [
+      "search",
+      "web"
+    ],
+    "namespace": "search",
+    "args_schema": null,
+    "side_effects": false,
+    "cost_hint": "low",
+    "metadata": {
+      "generated": true,
+      "index": 25
+    }
+  }
+]

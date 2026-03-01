@@ -1,56 +1,79 @@
-"""Tests for contextweaver.summarize.extract."""
+"""Tests for contextweaver.summarize.extract -- StructuredExtractor with JSON/table/text."""
 
 from __future__ import annotations
 
-from contextweaver.summarize.extract import (
-    extract_bullet_list,
-    extract_facts,
-    extract_key_value_pairs,
-    extract_numbered_list,
-)
+import json
+
+from contextweaver.summarize.extract import StructuredExtractor
 
 
-def test_extract_key_value_pairs_colon() -> None:
-    text = "status: ok\ncount: 42"
-    kv = extract_key_value_pairs(text)
-    assert kv["status"] == "ok"
-    assert kv["count"] == "42"
+class TestStructuredExtractor:
+    """Tests for the StructuredExtractor class."""
 
+    def test_extract_json_object(self) -> None:
+        extractor = StructuredExtractor()
+        data = json.dumps({"name": "Alice", "age": 30, "items": [1, 2, 3]})
+        result = extractor.extract(data)
+        assert result["type"] == "json_object"
+        assert "name" in result["keys"]
+        assert result["key_count"] == 3
 
-def test_extract_key_value_pairs_equals() -> None:
-    text = "name = Alice\nage = 30"
-    kv = extract_key_value_pairs(text)
-    assert kv["name"] == "Alice"
+    def test_extract_json_object_with_arrays(self) -> None:
+        extractor = StructuredExtractor()
+        data = json.dumps({"users": [1, 2, 3], "orders": [4, 5]})
+        result = extractor.extract(data)
+        assert result["type"] == "json_object"
+        assert "array_fields" in result
+        assert result["array_fields"]["users"]["length"] == 3
 
+    def test_extract_json_array_table(self) -> None:
+        extractor = StructuredExtractor()
+        data = json.dumps(
+            [
+                {"id": 1, "name": "Alice"},
+                {"id": 2, "name": "Bob"},
+                {"id": 3, "name": "Charlie"},
+            ]
+        )
+        result = extractor.extract(data)
+        assert result["type"] == "table"
+        assert result["row_count"] == 3
+        assert "columns" in result
+        assert "head" in result
+        assert len(result["head"]) == 3
 
-def test_extract_numbered_list() -> None:
-    text = "1. first item\n2. second item\n3. third item"
-    items = extract_numbered_list(text)
-    assert items == ["first item", "second item", "third item"]
+    def test_extract_json_array_simple(self) -> None:
+        extractor = StructuredExtractor()
+        data = json.dumps([1, 2, 3, 4, 5])
+        result = extractor.extract(data)
+        assert result["type"] == "table"
+        assert result["row_count"] == 5
 
+    def test_extract_plain_text(self) -> None:
+        extractor = StructuredExtractor()
+        text = "SUMMARY:\nThis is a report.\nTotal count: 42\nContact: user@example.com"
+        result = extractor.extract(text)
+        assert result["type"] == "text"
+        assert result["line_count"] == 4
 
-def test_extract_bullet_list_dash() -> None:
-    text = "- alpha\n- beta\n- gamma"
-    items = extract_bullet_list(text)
-    assert items == ["alpha", "beta", "gamma"]
+    def test_extract_text_with_headings(self) -> None:
+        extractor = StructuredExtractor()
+        text = "# Title\nSome content\n## Section:\nMore content"
+        result = extractor.extract(text)
+        assert result["type"] == "text"
+        assert "headings" in result
+        assert any("#" in h for h in result["headings"])
 
+    def test_extract_text_with_entities(self) -> None:
+        extractor = StructuredExtractor()
+        text = "Contact alice@example.com or visit https://example.com for $1,234.56"
+        result = extractor.extract(text)
+        assert "entities" in result
+        assert "emails" in result["entities"]
+        assert "urls" in result["entities"]
+        assert "numbers" in result["entities"]
 
-def test_extract_bullet_list_star() -> None:
-    text = "* one\n* two"
-    items = extract_bullet_list(text)
-    assert items == ["one", "two"]
-
-
-def test_extract_facts_combined() -> None:
-    text = "status: ok\n1. first\n- bullet"
-    facts = extract_facts(text, {})
-    assert any("status" in f for f in facts)
-    assert "first" in facts
-    assert "bullet" in facts
-
-
-def test_extract_facts_deduplication() -> None:
-    text = "status: ok\nstatus: ok"
-    facts = extract_facts(text, {})
-    count = sum(1 for f in facts if f == "status: ok")
-    assert count == 1
+    def test_extract_with_media_type(self) -> None:
+        extractor = StructuredExtractor()
+        result = extractor.extract("plain text", media_type="text/plain")
+        assert result["type"] == "text"

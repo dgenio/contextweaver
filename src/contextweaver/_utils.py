@@ -162,20 +162,7 @@ _SPLIT_RE = re.compile(r"\W+")
 
 
 def tokenize(text: str) -> set[str]:
-    """Normalise *text* and return a set of meaningful tokens.
-
-    Steps:
-    1. Lower-case the input.
-    2. Split on one or more non-word characters.
-    3. Discard tokens shorter than 2 characters.
-    4. Remove :data:`STOPWORDS`.
-
-    Args:
-        text: Raw input string.
-
-    Returns:
-        A ``set[str]`` of normalised, stop-word-filtered tokens.
-    """
+    """Split on ``\\W+``, lowercase, filter len >= 2, remove stopwords, deduplicate."""
     tokens = _SPLIT_RE.split(text.lower())
     return {t for t in tokens if len(t) >= 2 and t not in STOPWORDS}
 
@@ -186,17 +173,7 @@ def tokenize(text: str) -> set[str]:
 
 
 def jaccard(a: set[str], b: set[str]) -> float:
-    """Compute the Jaccard similarity coefficient between two token sets.
-
-    Returns ``0.0`` when both sets are empty to avoid division by zero.
-
-    Args:
-        a: First token set.
-        b: Second token set.
-
-    Returns:
-        A float in ``[0.0, 1.0]``.
-    """
+    """Jaccard similarity: |a ∩ b| / |a ∪ b|. Returns 0.0 if union is empty."""
     if not a and not b:
         return 0.0
     union = a | b
@@ -211,35 +188,21 @@ def jaccard(a: set[str], b: set[str]) -> float:
 
 
 class TfIdfScorer:
-    """Lightweight, deterministic TF-IDF scorer over a fixed document corpus.
+    """Pure-Python TF-IDF scorer. No external deps. Deterministic."""
 
-    Usage::
-
-        scorer = TfIdfScorer()
-        scorer.fit(["search databases quickly", "fast database access", ...])
-        scores = scorer.score_all("fast search")  # list[float]
-
-    The implementation is pure Python with no runtime dependencies.
-    Determinism is guaranteed: identical inputs always produce identical scores.
-    """
-
-    def __init__(self) -> None:
+    def __init__(self, stopwords: frozenset[str] | None = None) -> None:
+        self._stopwords = stopwords if stopwords is not None else STOPWORDS
         self._documents: list[list[str]] = []
         self._idf: dict[str, float] = {}
 
-    def fit(self, documents: list[str]) -> None:
-        """Index *documents* and pre-compute IDF weights.
-
-        Args:
-            documents: A list of raw text strings to index.  The order
-                determines ``doc_index`` values used in :meth:`score`.
-        """
+    def fit(self, documents: list[str]) -> TfIdfScorer:
+        """Fit on a corpus. Returns self for chaining."""
         tokenized = [sorted(tokenize(doc)) for doc in documents]
         self._documents = tokenized
         n = len(documents)
         if n == 0:
             self._idf = {}
-            return
+            return self
         df: Counter[str] = Counter()
         for tokens in tokenized:
             for tok in set(tokens):
@@ -247,20 +210,10 @@ class TfIdfScorer:
         self._idf = {
             term: math.log((1 + n) / (1 + freq)) + 1.0 for term, freq in sorted(df.items())
         }
+        return self
 
     def score(self, query: str, doc_index: int) -> float:
-        """Compute the TF-IDF score of *query* against a single document.
-
-        Args:
-            query: Raw query string.
-            doc_index: Zero-based index into the corpus passed to :meth:`fit`.
-
-        Returns:
-            A non-negative float; higher means more relevant.
-
-        Raises:
-            IndexError: If *doc_index* is out of range.
-        """
+        """Compute the TF-IDF score of *query* against a single document."""
         if doc_index < 0 or doc_index >= len(self._documents):
             raise IndexError(f"doc_index {doc_index} out of range ({len(self._documents)} docs)")
         q_tokens = tokenize(query)
@@ -275,13 +228,8 @@ class TfIdfScorer:
             result += (tf[term] / total) * idf
         return result
 
-    def score_all(self, query: str) -> list[float]:
-        """Score *query* against every document in the corpus.
-
-        Args:
-            query: Raw query string.
-
-        Returns:
-            A ``list[float]`` of scores, one per document, in corpus order.
-        """
-        return [self.score(query, i) for i in range(len(self._documents))]
+    def score_all(self, query: str) -> list[tuple[int, float]]:
+        """Returns (doc_index, score) sorted by score desc."""
+        pairs = [(i, self.score(query, i)) for i in range(len(self._documents))]
+        pairs.sort(key=lambda x: (-x[1], x[0]))
+        return pairs

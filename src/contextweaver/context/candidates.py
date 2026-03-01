@@ -1,76 +1,69 @@
-"""Candidate generation for the contextweaver Context Engine.
+"""Candidate generation for the contextweaver Context Engine (Stage 1).
 
-The :func:`generate_candidates` function is the first step of the context
-pipeline.  It reads all items from the event log and applies basic phase
-filtering to produce an initial candidate list.
+Filters raw event log items into phase-eligible candidates.
 """
 
 from __future__ import annotations
 
+import time
+
 from contextweaver.config import ContextPolicy
-from contextweaver.exceptions import ItemNotFoundError
-from contextweaver.protocols import EventLog
-from contextweaver.types import ContextItem, Phase
+from contextweaver.types import ContextItem, Phase, Sensitivity
 
 
 def generate_candidates(
-    event_log: EventLog,
+    event_log_items: list[ContextItem],
     phase: Phase,
     policy: ContextPolicy,
 ) -> list[ContextItem]:
-    """Return a filtered list of candidate items for context compilation.
+    """Filter raw event log items into phase-eligible candidates.
 
-    Only items whose ``kind`` is permitted by *policy* for the current *phase*
-    are returned.
-
-    Args:
-        event_log: The event log to read from.
-        phase: The active execution phase.
-        policy: The context policy governing which item kinds are allowed.
-
-    Returns:
-        A list of :class:`~contextweaver.types.ContextItem` in log order.
+    Filters: allowed kinds for phase, sensitivity floor, TTL expiry.
+    Applies redaction hooks: hook.redact(item) -> None means drop.
+    Returns filtered list (order preserved).
     """
     allowed = set(policy.allowed_kinds_per_phase.get(phase, []))
-    return [item for item in event_log.all() if item.kind in allowed]
+    now = time.time()
+    result: list[ContextItem] = []
 
+    for item in event_log_items:
+        # Kind filter
+        if item.kind not in allowed:
+            continue
 
-def resolve_dependency_closure(
-    items: list[ContextItem],
-    event_log: EventLog,
-) -> tuple[list[ContextItem], int]:
-    """Expand *items* by pulling in parent items referenced via ``parent_id``.
+        # Sensitivity filter
+        sensitivity_str = item.metadata.get("sensitivity", "public")
+        try:
+            item_sensitivity = Sensitivity(sensitivity_str)
+        except ValueError:
+            item_sensitivity = Sensitivity.PUBLIC
 
-    Walks the parent chain for each item and adds any missing ancestors that
-    are not already in the candidate list.
+        sensitivity_order = [
+            Sensitivity.PUBLIC,
+            Sensitivity.INTERNAL,
+            Sensitivity.CONFIDENTIAL,
+            Sensitivity.RESTRICTED,
+        ]
+        floor_idx = sensitivity_order.index(policy.sensitivity_floor)
+        item_idx = sensitivity_order.index(item_sensitivity)
+        if item_idx > floor_idx:
+            continue
 
-    Args:
-        items: Initial candidate list.
-        event_log: Source event log for ancestor look-up.
+        # TTL check
+        ttl = item.metadata.get("ttl_seconds")
+        if ttl is not None and policy.ttl_behavior == "hard_drop":
+            ts = item.metadata.get("timestamp", 0.0)
+            if ts + ttl < now:
+                continue
 
-    Returns:
-        A 2-tuple of ``(expanded_items, closures_added)``.  *closures_added*
-        counts how many new items were inserted.
-    """
-    present_ids = {item.id for item in items}
-    extra: list[ContextItem] = []
-    closures = 0
-
-    for item in list(items):
-        parent_id = item.parent_id
-        while parent_id is not None:
-            if parent_id in present_ids:
+        # Redaction hooks
+        current: ContextItem | None = item
+        for hook in policy.redaction_hooks:
+            if current is None:
                 break
-            try:
-                parent = event_log.get(parent_id)
-                extra.append(parent)
-                present_ids.add(parent_id)
-                closures += 1
-                parent_id = parent.parent_id
-            except ItemNotFoundError:
-                break
+            current = hook.redact(current)
 
-    # Preserve log order by re-sorting via original indices
-    all_ids = {item.id: item for item in items + extra}
-    ordered = [item for item in event_log.all() if item.id in all_ids]
-    return ordered, closures
+        if current is not None:
+            result.append(current)
+
+    return result

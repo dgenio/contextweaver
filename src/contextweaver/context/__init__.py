@@ -1,28 +1,21 @@
-"""Context sub-package for contextweaver.
+"""Context sub-package for contextweaver."""
 
-Exports the Context Engine components: candidate generation, scoring,
-deduplication, selection, firewall, prompt rendering, and the high-level
-:class:`~contextweaver.context.manager.ContextManager`.
-"""
-
-from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
+from contextweaver.context.candidates import generate_candidates
 from contextweaver.context.dedup import deduplicate_candidates
-from contextweaver.context.firewall import apply_firewall, apply_firewall_to_batch
-from contextweaver.context.manager import ContextManager
-from contextweaver.context.prompt import render_context, render_item
-from contextweaver.context.scoring import score_candidates, score_item
+from contextweaver.context.firewall import apply_firewall
+from contextweaver.context.manager import ContextManager, ContextPack
+from contextweaver.context.prompt import PromptBuilder, render_context
+from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 
 __all__ = [
     "ContextManager",
+    "ContextPack",
+    "PromptBuilder",
     "apply_firewall",
-    "apply_firewall_to_batch",
     "deduplicate_candidates",
     "generate_candidates",
     "render_context",
-    "render_item",
-    "resolve_dependency_closure",
     "score_candidates",
-    "score_item",
     "select_and_pack",
 ]

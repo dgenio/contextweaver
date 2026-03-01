@@ -1,37 +1,35 @@
-"""Custom exceptions for contextweaver.
+"""Exception hierarchy for contextweaver."""
 
-All public-facing errors inherit from :class:`ContextWeaverError` so callers
-can catch the whole family with a single ``except`` clause when desired.
-"""
+from __future__ import annotations
 
 
 class ContextWeaverError(Exception):
-    """Base class for all contextweaver errors."""
+    """Base exception for all contextweaver errors."""
 
 
 class BudgetExceededError(ContextWeaverError):
-    """Raised when a context build would exceed the configured token budget."""
+    """Context build cannot fit within the token budget."""
 
 
 class ArtifactNotFoundError(ContextWeaverError):
-    """Raised when a requested artifact handle cannot be found in the store."""
+    """Artifact handle not found in store."""
 
 
 class PolicyViolationError(ContextWeaverError):
-    """Raised when an item violates the active :class:`~contextweaver.config.ContextPolicy`."""
+    """Context operation violates the active policy."""
 
 
 class ItemNotFoundError(ContextWeaverError):
-    """Raised when a requested item (tool, agent, skill) is not found in the catalog."""
+    """ContextItem ID not found in event log."""
 
 
 class GraphBuildError(ContextWeaverError):
-    """Raised when the routing DAG cannot be constructed (e.g. cycle detected)."""
+    """Graph construction or validation failed."""
 
 
 class RouteError(ContextWeaverError):
-    """Raised when the router cannot produce a valid route through the choice graph."""
+    """Routing failed (empty graph, invalid state)."""
 
 
 class CatalogError(ContextWeaverError):
-    """Raised for invalid catalog operations (duplicate IDs, schema violations, etc.)."""
+    """Catalog loading or validation failed."""
