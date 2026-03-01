@@ -123,9 +123,7 @@ class ContextPack:
             prompt=data["prompt"],
             stats=BuildStats.from_dict(data.get("stats", {})),
             phase=Phase(data.get("phase", Phase.answer.value)),
-            envelopes=[
-                ResultEnvelope.from_dict(e) for e in data.get("envelopes", [])
-            ],
+            envelopes=[ResultEnvelope.from_dict(e) for e in data.get("envelopes", [])],
         )
 
 

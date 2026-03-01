@@ -8,6 +8,8 @@ containing a human-readable summary, extracted facts, and an
 
 from __future__ import annotations
 
+from typing import Literal
+
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.protocols import ArtifactStore, EventHook, NoOpHook
 from contextweaver.summarize.extract import extract_facts
@@ -59,10 +61,21 @@ def apply_firewall(
         label=f"raw tool result for {item.id}",
     )
 
-    summary = _default_summary(item.text)
-    facts = extract_facts(item.text, item.metadata)
+    status: Literal["ok", "partial", "error"] = "ok"
+    try:
+        summary = _default_summary(item.text)
+    except Exception:  # noqa: BLE001
+        summary = "(summary unavailable)"
+        status = "error"
+
+    try:
+        facts = extract_facts(item.text, item.metadata)
+    except Exception:  # noqa: BLE001
+        facts = []
+        status = "error" if status == "error" else "partial"
+
     envelope = ResultEnvelope(
-        status="ok",
+        status=status,
         summary=summary,
         facts=facts,
         artifacts=[ref],

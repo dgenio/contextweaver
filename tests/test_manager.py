@@ -73,3 +73,12 @@ async def test_build_populates_envelopes_for_tool_results() -> None:
     env = pack.envelopes[0]
     assert env.status == "ok"
     assert env.provenance["source_item_id"] == "tr1"
+
+
+@pytest.mark.asyncio
+async def test_build_sync_inside_running_loop() -> None:
+    """build_sync() should work even when an event loop is already running."""
+    log = _make_log("works inside async context")
+    mgr = ContextManager(event_log=log)
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert isinstance(pack, ContextPack)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from contextweaver.context.firewall import apply_firewall, apply_firewall_to_batch
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.types import ContextItem, ItemKind
@@ -52,3 +54,29 @@ def test_apply_firewall_to_batch() -> None:
     assert len(processed) == 3
     assert len(envelopes) == 1
     assert envelopes[0].provenance["source_item_id"] == "r1"
+
+
+def test_firewall_error_status_when_summary_fails() -> None:
+    item = ContextItem(id="r3", kind=ItemKind.tool_result, text="some output")
+    store = InMemoryArtifactStore()
+    with patch(
+        "contextweaver.context.firewall._default_summary",
+        side_effect=ValueError("boom"),
+    ):
+        _, env = apply_firewall(item, store)
+    assert env is not None
+    assert env.status == "error"
+    assert env.summary == "(summary unavailable)"
+
+
+def test_firewall_partial_status_when_extraction_fails() -> None:
+    item = ContextItem(id="r4", kind=ItemKind.tool_result, text="some output")
+    store = InMemoryArtifactStore()
+    with patch(
+        "contextweaver.context.firewall.extract_facts",
+        side_effect=ValueError("boom"),
+    ):
+        _, env = apply_firewall(item, store)
+    assert env is not None
+    assert env.status == "partial"
+    assert env.facts == []

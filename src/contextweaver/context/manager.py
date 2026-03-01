@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
@@ -80,7 +79,7 @@ class ContextManager:
         """The underlying artifact store."""
         return self._artifact_store
 
-    async def build(
+    def _build(
         self,
         phase: Phase = Phase.answer,
         query: str = "",
@@ -89,7 +88,11 @@ class ContextManager:
         footer: str = "",
         extra: dict[str, Any] | None = None,
     ) -> ContextPack:
-        """Asynchronously compile a :class:`~contextweaver.types.ContextPack`.
+        """Run the full context compilation pipeline (synchronous core).
+
+        All seven pipeline steps are pure computation, so no ``await`` is
+        needed.  Both :meth:`build` (async) and :meth:`build_sync` delegate
+        here.
 
         Args:
             phase: Active execution phase.
@@ -100,7 +103,7 @@ class ContextManager:
             extra: Reserved for future pipeline extensions.
 
         Returns:
-            A :class:`~contextweaver.types.ContextPack` ready for the LLM.
+            A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
         """
         _ = extra  # reserved
         _tags = query_tags or []
@@ -136,6 +139,41 @@ class ContextManager:
         self._hook.on_context_built(pack)
         return pack
 
+    async def build(
+        self,
+        phase: Phase = Phase.answer,
+        query: str = "",
+        query_tags: list[str] | None = None,
+        header: str = "",
+        footer: str = "",
+        extra: dict[str, Any] | None = None,
+    ) -> ContextPack:
+        """Asynchronously compile a :class:`~contextweaver.envelope.ContextPack`.
+
+        The current pipeline is fully synchronous; this ``async`` wrapper
+        exists so that callers can ``await`` it today and benefit from true
+        async I/O if the pipeline gains ``await``-able steps in the future.
+
+        Args:
+            phase: Active execution phase.
+            query: User query string used for relevance scoring.
+            query_tags: Optional tag list to boost tag-matched items.
+            header: Optional prompt header text.
+            footer: Optional prompt footer text.
+            extra: Reserved for future pipeline extensions.
+
+        Returns:
+            A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
+        """
+        return self._build(
+            phase=phase,
+            query=query,
+            query_tags=query_tags,
+            header=header,
+            footer=footer,
+            extra=extra,
+        )
+
     def build_sync(
         self,
         phase: Phase = Phase.answer,
@@ -145,13 +183,12 @@ class ContextManager:
         footer: str = "",
         extra: dict[str, Any] | None = None,
     ) -> ContextPack:
-        """Synchronous wrapper around :meth:`build`.
+        """Synchronous entry point for :meth:`_build`.
 
-        This method must be called from a synchronous context (i.e. when no
-        asyncio event loop is already running).  It cannot be used inside
-        ``async def`` functions, Jupyter notebooks, or other environments
-        where an event loop is already active.  In those cases, ``await``
-        :meth:`build` directly instead.
+        Unlike the previous implementation, this no longer calls
+        ``asyncio.run()``, so it works inside Jupyter notebooks, FastAPI
+        handlers, and any other environment where an event loop is already
+        running.
 
         Args:
             phase: Active execution phase.
@@ -162,18 +199,13 @@ class ContextManager:
             extra: Reserved for future use.
 
         Returns:
-            A :class:`~contextweaver.types.ContextPack`.
-
-        Raises:
-            RuntimeError: If called from within a running event loop.
+            A :class:`~contextweaver.envelope.ContextPack`.
         """
-        return asyncio.run(
-            self.build(
-                phase=phase,
-                query=query,
-                query_tags=query_tags,
-                header=header,
-                footer=footer,
-                extra=extra,
-            )
+        return self._build(
+            phase=phase,
+            query=query,
+            query_tags=query_tags,
+            header=header,
+            footer=footer,
+            extra=extra,
         )

@@ -45,6 +45,10 @@ class ChoiceGraph:
         """Add a directed edge *src* → *dst* and validate acyclicity.
 
         Both *src* and *dst* are automatically added as nodes if not present.
+        Cycle detection is incremental: after adding the edge, only the
+        reachability from *dst* back to *src* is checked (rather than a
+        full-graph DFS), so each call is O(reachable-from-dst) instead of
+        O(V + E).
 
         Args:
             src: Source node ID (prerequisite).
@@ -56,7 +60,7 @@ class ChoiceGraph:
         self.add_node(src)
         self.add_node(dst)
         self._edges[src].add(dst)
-        if self._has_cycle():
+        if self._creates_cycle(src, dst):
             self._edges[src].discard(dst)
             raise GraphBuildError(f"Adding edge {src!r} → {dst!r} would create a cycle.")
 
@@ -127,23 +131,26 @@ class ChoiceGraph:
     # Cycle detection
     # ------------------------------------------------------------------
 
-    def _has_cycle(self) -> bool:
+    def _creates_cycle(self, src: str, dst: str) -> bool:
+        """Return True if *dst* can reach *src* (i.e. the new edge closes a cycle).
+
+        Only traverses the subgraph reachable from *dst*, which is cheaper
+        than a full-graph DFS when the graph is large and sparsely connected.
+        """
+        # Self-loop is the trivial case.
+        if src == dst:
+            return True
         visited: set[str] = set()
-        stack: set[str] = set()
-
-        def dfs(n: str) -> bool:
-            visited.add(n)
-            stack.add(n)
-            for dst in self._edges.get(n, set()):
-                if dst not in visited:
-                    if dfs(dst):
-                        return True
-                elif dst in stack:
-                    return True
-            stack.discard(n)
-            return False
-
-        return any(node not in visited and dfs(node) for node in self._nodes)
+        stack = [dst]
+        while stack:
+            node = stack.pop()
+            if node == src:
+                return True
+            if node in visited:
+                continue
+            visited.add(node)
+            stack.extend(self._edges.get(node, set()))
+        return False
 
     # ------------------------------------------------------------------
     # Serialisation
