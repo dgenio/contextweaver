@@ -9,8 +9,7 @@ containing a human-readable summary, extracted facts, and an
 from __future__ import annotations
 
 from contextweaver.envelope import ResultEnvelope
-from contextweaver.protocols import EventHook, NoOpHook
-from contextweaver.store.artifacts import InMemoryArtifactStore
+from contextweaver.protocols import ArtifactStore, EventHook, NoOpHook
 from contextweaver.summarize.extract import extract_facts
 from contextweaver.types import ContextItem, ItemKind
 
@@ -25,7 +24,7 @@ def _default_summary(raw: str, max_chars: int = 500) -> str:
 
 def apply_firewall(
     item: ContextItem,
-    artifact_store: InMemoryArtifactStore,
+    artifact_store: ArtifactStore,
     hook: EventHook | None = None,
 ) -> tuple[ContextItem, ResultEnvelope | None]:
     """Intercept a ``tool_result`` item and store its content out-of-band.
@@ -86,7 +85,7 @@ def apply_firewall(
 
 def apply_firewall_to_batch(
     items: list[ContextItem],
-    artifact_store: InMemoryArtifactStore,
+    artifact_store: ArtifactStore,
     hook: EventHook | None = None,
 ) -> tuple[list[ContextItem], list[ResultEnvelope]]:
     """Apply the firewall to a list of items.

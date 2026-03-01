@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from contextweaver.config import ContextPolicy
 from contextweaver.exceptions import ItemNotFoundError
-from contextweaver.store.event_log import InMemoryEventLog
+from contextweaver.protocols import EventLog
 from contextweaver.types import ContextItem, Phase
 
 
 def generate_candidates(
-    event_log: InMemoryEventLog,
+    event_log: EventLog,
     phase: Phase,
     policy: ContextPolicy,
 ) -> list[ContextItem]:
@@ -37,7 +37,7 @@ def generate_candidates(
 
 def resolve_dependency_closure(
     items: list[ContextItem],
-    event_log: InMemoryEventLog,
+    event_log: EventLog,
 ) -> tuple[list[ContextItem], int]:
     """Expand *items* by pulling in parent items referenced via ``parent_id``.
 

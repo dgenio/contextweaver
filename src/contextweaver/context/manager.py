@@ -24,7 +24,14 @@ from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 from contextweaver.envelope import ContextPack
-from contextweaver.protocols import CharDivFourEstimator, EventHook, NoOpHook, TokenEstimator
+from contextweaver.protocols import (
+    ArtifactStore,
+    CharDivFourEstimator,
+    EventHook,
+    EventLog,
+    NoOpHook,
+    TokenEstimator,
+)
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import Phase
@@ -34,8 +41,10 @@ class ContextManager:
     """Orchestrates the full context compilation pipeline.
 
     Args:
-        event_log: The event log to compile context from.
-        artifact_store: Where raw tool outputs are stored out-of-band.
+        event_log: The event log to compile context from
+            (any :class:`~contextweaver.protocols.EventLog`).
+        artifact_store: Where raw tool outputs are stored out-of-band
+            (any :class:`~contextweaver.protocols.ArtifactStore`).
         budget: Per-phase token budget configuration.
         policy: Context policy (allowed kinds, per-kind limits, etc.).
         scoring_config: Weights for the relevance scorer.
@@ -45,16 +54,16 @@ class ContextManager:
 
     def __init__(
         self,
-        event_log: InMemoryEventLog | None = None,
-        artifact_store: InMemoryArtifactStore | None = None,
+        event_log: EventLog | None = None,
+        artifact_store: ArtifactStore | None = None,
         budget: ContextBudget | None = None,
         policy: ContextPolicy | None = None,
         scoring_config: ScoringConfig | None = None,
         estimator: TokenEstimator | None = None,
         hook: EventHook | None = None,
     ) -> None:
-        self._event_log = event_log or InMemoryEventLog()
-        self._artifact_store = artifact_store or InMemoryArtifactStore()
+        self._event_log: EventLog = event_log or InMemoryEventLog()
+        self._artifact_store: ArtifactStore = artifact_store or InMemoryArtifactStore()
         self._budget = budget or ContextBudget()
         self._policy = policy or ContextPolicy()
         self._scoring = scoring_config or ScoringConfig()
@@ -62,12 +71,12 @@ class ContextManager:
         self._hook: EventHook = hook or NoOpHook()
 
     @property
-    def event_log(self) -> InMemoryEventLog:
+    def event_log(self) -> EventLog:
         """The underlying event log."""
         return self._event_log
 
     @property
-    def artifact_store(self) -> InMemoryArtifactStore:
+    def artifact_store(self) -> ArtifactStore:
         """The underlying artifact store."""
         return self._artifact_store
 

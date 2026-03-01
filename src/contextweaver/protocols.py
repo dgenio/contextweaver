@@ -10,7 +10,83 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ContextPack
-    from contextweaver.types import ContextItem, SelectableItem
+    from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
+
+
+# ---------------------------------------------------------------------------
+# EventLog
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class EventLog(Protocol):
+    """Read/write interface to the ordered event log.
+
+    The event log is the ordered sequence of :class:`~contextweaver.types.ContextItem`
+    objects that makes up a conversation / agent session.
+    """
+
+    def append(self, item: ContextItem) -> None:
+        """Append *item* to the log."""
+        ...
+
+    def get(self, item_id: str) -> ContextItem:
+        """Return the item with *item_id*.
+
+        Raises:
+            ItemNotFoundError: If no item with *item_id* exists.
+        """
+        ...
+
+    def all(self) -> list[ContextItem]:
+        """Return all items in insertion order."""
+        ...
+
+    def filter_by_kind(self, *kinds: ItemKind) -> list[ContextItem]:
+        """Return all items whose ``kind`` is in *kinds*."""
+        ...
+
+    def __len__(self) -> int: ...
+
+
+# ---------------------------------------------------------------------------
+# ArtifactStore
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class ArtifactStore(Protocol):
+    """Read/write interface to the out-of-band artifact store.
+
+    Raw tool outputs are stored here; the LLM context pipeline receives only
+    :class:`~contextweaver.types.ArtifactRef` handles and summaries.
+    """
+
+    def put(
+        self,
+        handle: str,
+        content: bytes,
+        media_type: str = "application/octet-stream",
+        label: str = "",
+    ) -> ArtifactRef:
+        """Store *content* and return an :class:`~contextweaver.types.ArtifactRef`."""
+        ...
+
+    def get(self, handle: str) -> bytes:
+        """Retrieve the raw bytes for *handle*.
+
+        Raises:
+            ArtifactNotFoundError: If *handle* is not in the store.
+        """
+        ...
+
+    def ref(self, handle: str) -> ArtifactRef:
+        """Return the :class:`~contextweaver.types.ArtifactRef` metadata for *handle*."""
+        ...
+
+    def list_refs(self) -> list[ArtifactRef]:
+        """Return all stored :class:`~contextweaver.types.ArtifactRef` objects."""
+        ...
 
 
 # ---------------------------------------------------------------------------
