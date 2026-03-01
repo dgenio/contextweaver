@@ -103,7 +103,9 @@ class ContextManager:
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
 
         # 3. Firewall
-        candidates, _ = apply_firewall_to_batch(candidates, self._artifact_store, self._hook)
+        candidates, envelopes = apply_firewall_to_batch(
+            candidates, self._artifact_store, self._hook
+        )
 
         # 4. Score
         scored = score_candidates(candidates, query, _tags, self._scoring)
@@ -121,7 +123,7 @@ class ContextManager:
         # 7. Render
         prompt = render_context(selected, header=header, footer=footer)
 
-        pack = ContextPack(prompt=prompt, stats=stats, phase=phase)
+        pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
         self._hook.on_context_built(pack)
         return pack
 

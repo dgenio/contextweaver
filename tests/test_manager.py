@@ -54,3 +54,22 @@ def test_build_sync() -> None:
     mgr = ContextManager(event_log=log)
     pack = mgr.build_sync(phase=Phase.answer)
     assert isinstance(pack, ContextPack)
+
+
+@pytest.mark.asyncio
+async def test_build_populates_envelopes_for_tool_results() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="run query"))
+    log.append(
+        ContextItem(
+            id="tr1",
+            kind=ItemKind.tool_result,
+            text="raw output: rows=[1,2,3]",
+        )
+    )
+    mgr = ContextManager(event_log=log)
+    pack = await mgr.build(phase=Phase.answer, query="query")
+    assert len(pack.envelopes) == 1
+    env = pack.envelopes[0]
+    assert env.status == "ok"
+    assert env.provenance["source_item_id"] == "tr1"

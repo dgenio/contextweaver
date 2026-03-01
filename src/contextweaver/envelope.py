@@ -95,11 +95,17 @@ class BuildStats:
 
 @dataclass
 class ContextPack:
-    """The final output of the Context Engine: a rendered prompt with diagnostics."""
+    """The final output of the Context Engine: a rendered prompt with diagnostics.
+
+    *envelopes* carries the :class:`ResultEnvelope` objects produced by the
+    context firewall so that callers can access extracted facts, summaries,
+    and artifact provenance without re-processing tool results.
+    """
 
     prompt: str
     stats: BuildStats = field(default_factory=BuildStats)
     phase: Phase = Phase.answer
+    envelopes: list[ResultEnvelope] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -107,6 +113,7 @@ class ContextPack:
             "prompt": self.prompt,
             "stats": self.stats.to_dict(),
             "phase": self.phase.value,
+            "envelopes": [e.to_dict() for e in self.envelopes],
         }
 
     @classmethod
@@ -116,6 +123,9 @@ class ContextPack:
             prompt=data["prompt"],
             stats=BuildStats.from_dict(data.get("stats", {})),
             phase=Phase(data.get("phase", Phase.answer.value)),
+            envelopes=[
+                ResultEnvelope.from_dict(e) for e in data.get("envelopes", [])
+            ],
         )
 
 

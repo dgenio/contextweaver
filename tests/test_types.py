@@ -108,6 +108,16 @@ def test_context_pack_roundtrip() -> None:
     restored = ContextPack.from_dict(pack.to_dict())
     assert restored.phase == Phase.route
     assert restored.prompt == "hello"
+    assert restored.envelopes == []
+
+
+def test_context_pack_with_envelopes_roundtrip() -> None:
+    env = ResultEnvelope(status="ok", summary="done", facts=["x=1"])
+    pack = ContextPack(prompt="hi", envelopes=[env])
+    restored = ContextPack.from_dict(pack.to_dict())
+    assert len(restored.envelopes) == 1
+    assert restored.envelopes[0].summary == "done"
+    assert restored.envelopes[0].facts == ["x=1"]
 
 
 def test_choice_card_roundtrip() -> None:
