@@ -46,6 +46,31 @@ class EventLog(Protocol):
         """Return all items whose ``kind`` is in *kinds*."""
         ...
 
+    def tail(self, n: int) -> list[ContextItem]:
+        """Return the last *n* items."""
+        ...
+
+    def children(self, parent_id: str) -> list[ContextItem]:
+        """Return all items whose ``parent_id`` equals *parent_id*."""
+        ...
+
+    def parent(self, item_id: str) -> ContextItem | None:
+        """Return the parent of *item_id*, or ``None``."""
+        ...
+
+    def query(
+        self,
+        kinds: list[ItemKind] | None = None,
+        since: int | None = None,
+        limit: int | None = None,
+    ) -> list[ContextItem]:
+        """Flexible query over the event log."""
+        ...
+
+    def count(self) -> int:
+        """Return the number of items in the log."""
+        ...
+
     def __len__(self) -> int: ...
 
 
@@ -87,6 +112,27 @@ class ArtifactStore(Protocol):
     def list_refs(self) -> list[ArtifactRef]:
         """Return all stored :class:`~contextweaver.types.ArtifactRef` objects."""
         ...
+
+    def delete(self, handle: str) -> None:
+        """Remove the artifact identified by *handle*."""
+        ...
+
+    def exists(self, handle: str) -> bool:
+        """Return ``True`` if *handle* is in the store."""
+        ...
+
+    def metadata(self, handle: str) -> ArtifactRef:
+        """Return the :class:`~contextweaver.types.ArtifactRef` for *handle*."""
+        ...
+
+    def drilldown(self, handle: str, selector: dict[str, Any]) -> str:
+        """Return a subset of the artifact's content according to *selector*."""
+        ...
+
+
+# FUTURE: EpisodicStore and FactStore protocols — the concrete InMemory*
+# classes currently define latest/delete/list_keys without protocol
+# declarations.  Add formal protocols once the API surface stabilises.
 
 
 # ---------------------------------------------------------------------------
