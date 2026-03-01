@@ -1,8 +1,9 @@
-"""Tests for contextweaver.context.prompt."""
+"""Tests for contextweaver.context.prompt -- render_context per phase, PromptBuilder."""
 
 from __future__ import annotations
 
 from contextweaver.context.prompt import PromptBuilder, render_context
+from contextweaver.routing.cards import ChoiceCard
 from contextweaver.types import ContextItem, ItemKind, Phase
 
 # ---------------------------------------------------------------------------
@@ -126,15 +127,19 @@ def test_prompt_builder_sync_route_phase() -> None:
     assert "selecting tools" in result.lower() or "Select one or more tools" in result
 
 
-def test_prompt_builder_sync_empty_goal() -> None:
+def test_prompt_builder_sync_with_choice_cards() -> None:
     builder = PromptBuilder()
 
     class FakePack:
-        rendered_text = ""
+        rendered_text = "context"
         artifacts_available: list[str] = []
 
-    result = builder.build_prompt_sync("", Phase.ANSWER, FakePack())
-    assert "## Goal" not in result
+    cards = [
+        ChoiceCard(id="t1", kind="tool", name="search", description="Search tool"),
+    ]
+    result = builder.build_prompt_sync("Find tools", Phase.ROUTE, FakePack(), cards)
+    assert "Available Tools" in result
+    assert "search" in result
 
 
 def test_prompt_builder_sync_with_artifacts() -> None:
@@ -148,3 +153,15 @@ def test_prompt_builder_sync_with_artifacts() -> None:
     assert "Artifacts Available" in result
     assert "art1" in result
     assert "art2" in result
+
+
+async def test_prompt_builder_async() -> None:
+    builder = PromptBuilder()
+
+    class FakePack:
+        rendered_text = "context"
+        artifacts_available: list[str] = []
+
+    result = await builder.build_prompt("goal", Phase.ANSWER, FakePack())
+    assert isinstance(result, str)
+    assert "goal" in result
