@@ -19,7 +19,7 @@ Quick start::
 """
 
 from contextweaver import config, envelope, exceptions, protocols, types
-from contextweaver._utils import TfIdfScorer, jaccard, tokenize
+from contextweaver._utils import TfIdfScorer, jaccard
 from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
@@ -48,7 +48,6 @@ __all__ = [
     # utilities
     "TfIdfScorer",
     "jaccard",
-    "tokenize",
     # types
     "ArtifactRef",
     "BuildStats",
