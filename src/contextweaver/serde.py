@@ -76,7 +76,7 @@ def nest_to_dict(obj: object) -> object:
         return obj.to_dict()  # pyright: ignore[reportAttributeAccessIssue]
     if isinstance(obj, Enum):
         return obj.value
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         return [nest_to_dict(item) for item in obj]
     if isinstance(obj, dict):
         return {k: nest_to_dict(v) for k, v in sorted(obj.items())}
