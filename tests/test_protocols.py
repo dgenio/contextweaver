@@ -61,6 +61,15 @@ def test_tiktoken_estimator_custom_model() -> None:
     assert isinstance(result, int)
 
 
+def test_tiktoken_estimator_accepts_model_name() -> None:
+    """model param should accept a model name like 'gpt-4', not just encoding names."""
+    # Whether tiktoken is installed or not, this must not raise.
+    est = TiktokenEstimator(model="gpt-4")
+    result = est.estimate("hello")
+    assert isinstance(result, int)
+    assert result > 0
+
+
 # ---------------------------------------------------------------------------
 # NoOpHook
 # ---------------------------------------------------------------------------

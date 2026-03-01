@@ -118,11 +118,17 @@ try:
         """Token estimator backed by OpenAI's ``tiktoken`` library.
 
         Falls back to :class:`CharDivFourEstimator` if ``tiktoken`` is not
-        installed.  Pass *model* to select the encoding (default ``cl100k_base``).
+        installed.  *model* may be a model name (e.g. ``"gpt-4"``) or a raw
+        encoding name (e.g. ``"cl100k_base"``).  Model names are resolved via
+        ``tiktoken.encoding_for_model``; if that fails the value is treated as
+        an encoding name.
         """
 
         def __init__(self, model: str = "cl100k_base") -> None:
-            self._enc = _tiktoken.get_encoding(model)
+            try:
+                self._enc = _tiktoken.encoding_for_model(model)
+            except KeyError:
+                self._enc = _tiktoken.get_encoding(model)
 
         def estimate(self, text: str) -> int:
             """Return the exact token count using tiktoken."""
@@ -131,7 +137,10 @@ try:
 except ImportError:  # pragma: no cover
 
     class TiktokenEstimator:  # type: ignore[no-redef]
-        """Stub when ``tiktoken`` is not installed — delegates to :class:`CharDivFourEstimator`."""
+        """Stub when ``tiktoken`` is not installed — delegates to :class:`CharDivFourEstimator`.
+
+        *model* is accepted for API compatibility but ignored.
+        """
 
         def __init__(self, model: str = "cl100k_base") -> None:
             _ = model
