@@ -62,3 +62,73 @@ def test_to_dict() -> None:
     store.put("h1", b"data")
     d = store.to_dict()
     assert len(d["refs"]) == 1
+
+
+# -- new methods: exists, metadata, drilldown --------------------------------
+
+
+def test_exists_true() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"data")
+    assert store.exists("h1") is True
+
+
+def test_exists_false() -> None:
+    store = InMemoryArtifactStore()
+    assert store.exists("missing") is False
+
+
+def test_metadata() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"hello", media_type="text/plain", label="test")
+    meta = store.metadata("h1")
+    assert meta["handle"] == "h1"
+    assert meta["media_type"] == "text/plain"
+    assert meta["size_bytes"] == 5
+    assert meta["label"] == "test"
+
+
+def test_metadata_missing_raises() -> None:
+    store = InMemoryArtifactStore()
+    with pytest.raises(ArtifactNotFoundError):
+        store.metadata("missing")
+
+
+def test_drilldown_lines() -> None:
+    store = InMemoryArtifactStore()
+    text = "line0\nline1\nline2\nline3\nline4"
+    store.put("h1", text.encode())
+    result = store.drilldown("h1", {"type": "lines", "start": 1, "end": 3})
+    assert result == "line1\nline2"
+
+
+def test_drilldown_head() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"abcdefghij" * 100)
+    result = store.drilldown("h1", {"type": "head", "chars": 10})
+    assert result == "abcdefghij"
+
+
+def test_drilldown_json_keys() -> None:
+    import json
+
+    store = InMemoryArtifactStore()
+    obj = {"name": "Alice", "age": 30, "city": "NYC"}
+    store.put("h1", json.dumps(obj).encode())
+    result = store.drilldown("h1", {"type": "json_keys", "keys": ["name", "age"]})
+    parsed = json.loads(result)
+    assert parsed == {"age": 30, "name": "Alice"}
+
+
+def test_drilldown_rows() -> None:
+    store = InMemoryArtifactStore()
+    text = "header\nrow1\nrow2\nrow3\nrow4"
+    store.put("h1", text.encode())
+    result = store.drilldown("h1", {"type": "rows", "start": 0, "end": 2})
+    assert result == "header\nrow1"
+
+
+def test_drilldown_missing_raises() -> None:
+    store = InMemoryArtifactStore()
+    with pytest.raises(ArtifactNotFoundError):
+        store.drilldown("missing", {"type": "head", "chars": 10})

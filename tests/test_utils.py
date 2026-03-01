@@ -83,3 +83,14 @@ def test_tfidf_deterministic() -> None:
     s2 = TfIdfScorer()
     s2.fit(docs)
     assert s1.score_all("alpha delta") == s2.score_all("alpha delta")
+
+
+def test_tfidf_fit_returns_self() -> None:
+    scorer = TfIdfScorer()
+    result = scorer.fit(["hello world"])
+    assert result is scorer
+
+
+def test_tfidf_fit_chaining() -> None:
+    scores = TfIdfScorer().fit(["hello world", "foo bar"]).score_all("hello")
+    assert len(scores) == 2

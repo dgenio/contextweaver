@@ -64,3 +64,39 @@ def test_roundtrip() -> None:
     store.put(Fact("f1", "name", "Alice"))
     restored = InMemoryFactStore.from_dict(store.to_dict())
     assert restored.get("f1").value == "Alice"
+
+
+# -- new methods: list_keys, get_all ----------------------------------------
+
+
+def test_list_keys() -> None:
+    store = InMemoryFactStore()
+    store.put(Fact("f1", "color", "blue"))
+    store.put(Fact("f2", "color", "red"))
+    store.put(Fact("f3", "size", "large"))
+    keys = store.list_keys()
+    assert keys == ["color", "size"]
+
+
+def test_list_keys_with_prefix() -> None:
+    store = InMemoryFactStore()
+    store.put(Fact("f1", "user.name", "Alice"))
+    store.put(Fact("f2", "user.age", "30"))
+    store.put(Fact("f3", "org.name", "Acme"))
+    keys = store.list_keys(prefix="user.")
+    assert keys == ["user.age", "user.name"]
+
+
+def test_list_keys_empty_prefix() -> None:
+    store = InMemoryFactStore()
+    store.put(Fact("f1", "a", "1"))
+    store.put(Fact("f2", "b", "2"))
+    assert store.list_keys("") == ["a", "b"]
+
+
+def test_get_all() -> None:
+    store = InMemoryFactStore()
+    store.put(Fact("z1", "k", "v"))
+    store.put(Fact("a1", "k", "v"))
+    all_facts = store.get_all()
+    assert [f.fact_id for f in all_facts] == ["a1", "z1"]

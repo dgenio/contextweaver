@@ -71,3 +71,82 @@ def test_roundtrip() -> None:
     restored = InMemoryEventLog.from_dict(log.to_dict())
     assert len(restored) == 1
     assert restored.get("i1").text == "hello"
+
+
+# -- new methods: query, children, parent, count ----------------------------
+
+
+def test_query_no_filters() -> None:
+    log = InMemoryEventLog()
+    for i in range(5):
+        log.append(_make_item(f"i{i}"))
+    assert len(log.query()) == 5
+
+
+def test_query_with_kinds() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("u1", ItemKind.user_turn))
+    log.append(_make_item("t1", ItemKind.tool_call))
+    log.append(_make_item("u2", ItemKind.user_turn))
+    results = log.query(kinds=[ItemKind.user_turn])
+    assert [r.id for r in results] == ["u1", "u2"]
+
+
+def test_query_with_since() -> None:
+    log = InMemoryEventLog()
+    for i in range(5):
+        log.append(_make_item(f"i{i}"))
+    results = log.query(since=3)
+    assert [r.id for r in results] == ["i3", "i4"]
+
+
+def test_query_with_limit() -> None:
+    log = InMemoryEventLog()
+    for i in range(10):
+        log.append(_make_item(f"i{i}"))
+    results = log.query(limit=3)
+    assert len(results) == 3
+
+
+def test_children() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("p1"))
+    child = ContextItem(id="c1", kind=ItemKind.tool_result, text="r", parent_id="p1")
+    log.append(child)
+    children = log.children("p1")
+    assert len(children) == 1
+    assert children[0].id == "c1"
+
+
+def test_children_empty() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("p1"))
+    assert log.children("p1") == []
+
+
+def test_parent() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("p1"))
+    child = ContextItem(id="c1", kind=ItemKind.tool_result, text="r", parent_id="p1")
+    log.append(child)
+    parent = log.parent("c1")
+    assert parent is not None
+    assert parent.id == "p1"
+
+
+def test_parent_none_when_no_parent() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("i1"))
+    assert log.parent("i1") is None
+
+
+def test_parent_none_when_missing() -> None:
+    log = InMemoryEventLog()
+    assert log.parent("missing") is None
+
+
+def test_count() -> None:
+    log = InMemoryEventLog()
+    assert log.count() == 0
+    log.append(_make_item("i1"))
+    assert log.count() == 1
