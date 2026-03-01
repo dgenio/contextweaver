@@ -133,7 +133,7 @@ class InMemoryEventLog:
         Returns:
             A list of matching items in insertion order.
         """
-        items: list[ContextItem] = self._items
+        items: list[ContextItem] = list(self._items)
         if since is not None:
             items = items[since:]
         if kinds is not None:
