@@ -18,7 +18,6 @@ from contextweaver.protocols import (
 )
 from contextweaver.types import ContextItem, ItemKind
 
-
 # ---------------------------------------------------------------------------
 # CharDivFourEstimator
 # ---------------------------------------------------------------------------

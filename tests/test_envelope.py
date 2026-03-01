@@ -10,7 +10,6 @@ from contextweaver.envelope import (
 )
 from contextweaver.types import ArtifactRef, Phase, ViewSpec
 
-
 # ---------------------------------------------------------------------------
 # ResultEnvelope
 # ---------------------------------------------------------------------------
