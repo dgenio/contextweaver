@@ -176,6 +176,8 @@ class InMemoryArtifactStore:
             return ""
 
         if sel_type == "rows":
+            # FUTURE: CSV/TSV-aware parsing — detect delimiter, preserve header,
+            # and support column filtering.  Currently identical to "lines".
             lines = raw.splitlines()
             start = selector.get("start", 0)
             end = selector.get("end", len(lines))
