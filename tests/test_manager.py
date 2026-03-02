@@ -251,6 +251,54 @@ def test_build_with_budget_override() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Header/footer budget accounting
+# ---------------------------------------------------------------------------
+
+
+def test_header_footer_tokens_recorded_in_stats() -> None:
+    """BuildStats.header_footer_tokens reflects injected facts/episodes cost."""
+    mgr = ContextManager()
+    mgr.add_fact("lang", "Python")
+    mgr.add_episode("ep1", "Searched billing data")
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert pack.stats.header_footer_tokens > 0
+    assert "[FACTS]" in pack.prompt
+    assert "[EPISODIC MEMORY]" in pack.prompt
+
+
+def test_header_footer_tokens_zero_without_injection() -> None:
+    """Without facts or episodes, header_footer_tokens is 0."""
+    log = _make_log("hello world")
+    mgr = ContextManager(event_log=log)
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert pack.stats.header_footer_tokens == 0
+
+
+def test_facts_budget_subtracted_from_selection() -> None:
+    """Injected facts reduce the budget available for context items."""
+    # Tight budget: 100 tokens total. With facts injected, fewer items fit.
+    mgr_no_facts = ContextManager()
+    mgr_no_facts.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="a " * 50))
+    mgr_no_facts.ingest(ContextItem(id="u2", kind=ItemKind.user_turn, text="b " * 50))
+    pack_no = mgr_no_facts.build_sync(phase=Phase.answer, budget_tokens=100)
+
+    mgr_with_facts = ContextManager()
+    for i in range(10):
+        mgr_with_facts.add_fact(f"k{i}", f"value-{i}")
+    mgr_with_facts.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="a " * 50))
+    mgr_with_facts.ingest(ContextItem(id="u2", kind=ItemKind.user_turn, text="b " * 50))
+    pack_with = mgr_with_facts.build_sync(phase=Phase.answer, budget_tokens=100)
+
+    # With facts consuming part of the budget, fewer items should be included
+    # OR the total context-item tokens should be lower.
+    assert pack_with.stats.header_footer_tokens > 0
+    items_tokens_no = sum(pack_no.stats.tokens_per_section.values())
+    items_tokens_with = sum(pack_with.stats.tokens_per_section.values())
+    assert items_tokens_with <= items_tokens_no
+
+
+# ---------------------------------------------------------------------------
 # Per-phase build
 # ---------------------------------------------------------------------------
 

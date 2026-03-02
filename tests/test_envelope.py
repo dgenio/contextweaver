@@ -68,6 +68,7 @@ def test_build_stats_defaults() -> None:
     assert bs.dropped_reasons == {}
     assert bs.dedup_removed == 0
     assert bs.dependency_closures == 0
+    assert bs.header_footer_tokens == 0
 
 
 def test_build_stats_roundtrip() -> None:
@@ -79,6 +80,7 @@ def test_build_stats_roundtrip() -> None:
         dropped_reasons={"budget": 15, "policy": 5},
         dedup_removed=3,
         dependency_closures=2,
+        header_footer_tokens=42,
     )
     d = bs.to_dict()
     restored = BuildStats.from_dict(d)
@@ -89,6 +91,7 @@ def test_build_stats_roundtrip() -> None:
     assert restored.dropped_reasons == {"budget": 15, "policy": 5}
     assert restored.dedup_removed == 3
     assert restored.dependency_closures == 2
+    assert restored.header_footer_tokens == 42
 
 
 def test_build_stats_from_empty_dict() -> None:

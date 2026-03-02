@@ -316,14 +316,8 @@ class ContextManager:
         # 5. Dedup
         scored, dedup_removed = deduplicate_candidates(scored)
 
-        # 6. Select
-        selected, stats = select_and_pack(
-            scored, phase, effective_budget, self._policy, self._estimator
-        )
-        stats.dedup_removed = dedup_removed
-        stats.dependency_closures = closures
-
-        # Inject episodic summaries and facts into header
+        # Pre-build episodic + fact injection text so we can estimate its
+        # token cost and subtract it from the budget *before* selection.
         extra_sections: list[str] = []
 
         # Episodic summaries (latest 3)
@@ -346,7 +340,6 @@ class ContextManager:
                         fact_lines.append(f"- ... ({remaining} more facts omitted)")
                     break
                 line = f"- {fact.key}: {fact.value}"
-                # Stop if adding this line would exceed our character budget.
                 if total_chars + len(line) > _MAX_FACT_CHARS:
                     fact_lines.append("- ... (facts truncated to fit header budget)")
                     break
@@ -354,11 +347,44 @@ class ContextManager:
                 total_chars += len(line)
             extra_sections.append("\n".join(fact_lines))
 
-        # Build full header
+        # Build full header with injected sections
         full_header = header
         if extra_sections:
             prefix = "\n\n".join(extra_sections)
             full_header = f"{prefix}\n\n{header}" if header else prefix
+
+        # Estimate token cost of header/footer so we can reserve budget.
+        hf_tokens = 0
+        if full_header:
+            hf_tokens += self._estimator.estimate(full_header)
+        if footer:
+            hf_tokens += self._estimator.estimate(footer)
+
+        # Subtract header/footer overhead from the effective budget so that
+        # select_and_pack only fills the remaining space.
+        if hf_tokens > 0:
+            adjusted = ContextBudget(
+                route=max(effective_budget.route - hf_tokens, 0)
+                if phase == Phase.route
+                else effective_budget.route,
+                call=max(effective_budget.call - hf_tokens, 0)
+                if phase == Phase.call
+                else effective_budget.call,
+                interpret=max(effective_budget.interpret - hf_tokens, 0)
+                if phase == Phase.interpret
+                else effective_budget.interpret,
+                answer=max(effective_budget.answer - hf_tokens, 0)
+                if phase == Phase.answer
+                else effective_budget.answer,
+            )
+        else:
+            adjusted = effective_budget
+
+        # 6. Select (budget already accounts for header/footer overhead)
+        selected, stats = select_and_pack(scored, phase, adjusted, self._policy, self._estimator)
+        stats.dedup_removed = dedup_removed
+        stats.dependency_closures = closures
+        stats.header_footer_tokens = hf_tokens
 
         # 7. Render
         prompt = render_context(selected, header=full_header, footer=footer)

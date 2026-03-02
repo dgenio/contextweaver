@@ -66,6 +66,7 @@ class BuildStats:
     dropped_reasons: dict[str, int] = field(default_factory=dict)
     dedup_removed: int = 0
     dependency_closures: int = 0
+    header_footer_tokens: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -77,6 +78,7 @@ class BuildStats:
             "dropped_reasons": dict(self.dropped_reasons),
             "dedup_removed": self.dedup_removed,
             "dependency_closures": self.dependency_closures,
+            "header_footer_tokens": self.header_footer_tokens,
         }
 
     @classmethod
@@ -90,6 +92,7 @@ class BuildStats:
             dropped_reasons=dict(data.get("dropped_reasons", {})),
             dedup_removed=int(data.get("dedup_removed", 0)),
             dependency_closures=int(data.get("dependency_closures", 0)),
+            header_footer_tokens=int(data.get("header_footer_tokens", 0)),
         )
 
 
