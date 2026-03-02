@@ -121,7 +121,10 @@ class Catalog:
 
         Returns:
             A :class:`~contextweaver.envelope.HydrationResult` containing the
-            full item and its schema details.
+            full item and its schema details.  The returned ``args_schema``,
+            ``examples``, and ``constraints`` are **shallow copies** — nested
+            values are shared with the catalog item.  Callers should treat
+            them as read-only; use :func:`copy.deepcopy` if mutation is needed.
 
         Raises:
             ItemNotFoundError: If *tool_id* is not registered.
