@@ -276,11 +276,13 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     for item in items:
         kind_counts[item.kind.value] = kind_counts.get(item.kind.value, 0) + 1
         if item.kind == ItemKind.tool_result and len(item.text) > 2000:
-            mgr.ingest_tool_result(
+            _, envelope = mgr.ingest_tool_result(
                 tool_call_id=item.parent_id or item.id,
                 raw_output=item.text,
                 tool_name=str(item.metadata.get("tool_name", "")),
             )
+            for i, fact in enumerate(envelope.facts):
+                mgr.add_fact(f"{item.id}:fact:{i}", fact)
             firewall_count += 1
         else:
             mgr.ingest(item)
