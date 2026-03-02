@@ -10,6 +10,7 @@ and child *items* (leaf-level catalog entries) via :attr:`ChoiceNode.child_types
 
 from __future__ import annotations
 
+import heapq
 from collections import deque
 from typing import Any
 
@@ -171,17 +172,17 @@ class ChoiceGraph:
             for dst in dsts:
                 if dst in in_degree:
                     in_degree[dst] += 1
-        queue = sorted(n for n, d in in_degree.items() if d == 0)
+        heap = sorted(n for n, d in in_degree.items() if d == 0)
+        heapq.heapify(heap)
         order: list[str] = []
-        while queue:
-            node = queue.pop(0)
+        while heap:
+            node = heapq.heappop(heap)
             order.append(node)
             for dst in sorted(self._edges.get(node, set())):
                 if dst in in_degree:
                     in_degree[dst] -= 1
                     if in_degree[dst] == 0:
-                        queue.append(dst)
-                        queue.sort()
+                        heapq.heappush(heap, dst)
         if len(order) != len(self._nodes):
             raise GraphBuildError("Cycle detected during topological sort.")
         return order
@@ -199,7 +200,7 @@ class ChoiceGraph:
         Returns:
             A dict with keys: ``total_items``, ``total_nodes``, ``max_depth``,
             ``avg_branching_factor``, ``max_branching_factor``,
-            ``leaf_node_count``, ``item_kinds``, ``namespaces``.
+            ``leaf_node_count``, ``namespaces``.
         """
         # Exclude item IDs from node counts so total_nodes reflects
         # navigation nodes only (items are counted in total_items).
@@ -248,7 +249,6 @@ class ChoiceGraph:
             "avg_branching_factor": round(avg_bf, 2),
             "max_branching_factor": max_bf,
             "leaf_node_count": leaf_count,
-            "item_kinds": [],
             "namespaces": sorted(namespaces),
         }
 
