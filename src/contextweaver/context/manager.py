@@ -586,7 +586,10 @@ class ContextManager:
 
         hydration = catalog.hydrate(tool_id)
         header = build_schema_header(
-            hydration, schema=schema, examples=examples, constraints=constraints,
+            hydration,
+            schema=schema,
+            examples=examples,
+            constraints=constraints,
         )
 
         return self._build(
