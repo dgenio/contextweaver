@@ -17,6 +17,7 @@ example:
 	python examples/tool_wrapping.py
 	python examples/routing_demo.py
 	python examples/before_after.py
+	python examples/hydrate_call_demo.py
 	python examples/mcp_adapter_demo.py
 	python examples/a2a_adapter_demo.py
 

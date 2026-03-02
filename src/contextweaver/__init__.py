@@ -28,6 +28,7 @@ from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
     ContextPack,
+    HydrationResult,
     ResultEnvelope,
 )
 from contextweaver.exceptions import (
@@ -97,6 +98,7 @@ __all__ = [
     "ChoiceCard",
     "ContextItem",
     "ContextPack",
+    "HydrationResult",
     "ItemKind",
     "Phase",
     "ResultEnvelope",

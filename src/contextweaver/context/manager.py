@@ -44,6 +44,7 @@ _MAX_FACT_CHARS: int = 2000
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
+    from contextweaver.routing.catalog import Catalog
     from contextweaver.routing.router import Router, RouteResult
 
 
@@ -541,3 +542,107 @@ class ContextManager:
     ) -> tuple[ContextPack, list[ChoiceCard], RouteResult]:
         """Synchronous alias for :meth:`build_route_prompt`."""
         return self.build_route_prompt(goal, query, router, budget_tokens)
+
+    # ------------------------------------------------------------------
+    # Call-phase prompt (schema injection)
+    # ------------------------------------------------------------------
+
+    def _build_call_prompt(
+        self,
+        tool_id: str,
+        query: str,
+        catalog: Catalog,
+        schema: dict[str, Any] | None = None,
+        examples: list[str] | None = None,
+        constraints: dict[str, Any] | None = None,
+        budget_tokens: int | None = None,
+    ) -> ContextPack:
+        """Build a ``Phase.call`` prompt with the tool's full schema injected.
+
+        Hydrates the selected tool from *catalog*, delegates header assembly
+        to :func:`~contextweaver.context.call_prompt.build_schema_header`,
+        then runs the standard context pipeline with the call-phase budget.
+
+        Args:
+            tool_id: ID of the tool selected during routing.
+            query: User query string for relevance scoring.
+            catalog: The :class:`Catalog` containing *tool_id*.
+            schema: Override schema dict (replaces hydrated ``args_schema``
+                in the prompt; hydration still occurs for item metadata).
+            examples: Override example strings (replaces hydrated examples
+                in the prompt; hydration still occurs for item metadata).
+            constraints: Override constraints dict (replaces hydrated
+                ``constraints`` in the prompt; hydration still occurs for
+                item metadata).
+            budget_tokens: Override the default ``Phase.call`` budget.
+
+        Returns:
+            A :class:`~contextweaver.envelope.ContextPack` for ``Phase.call``.
+
+        Raises:
+            ItemNotFoundError: If *tool_id* is not in *catalog*.
+        """
+        from contextweaver.context.call_prompt import build_schema_header
+
+        hydration = catalog.hydrate(tool_id)
+        header = build_schema_header(
+            hydration,
+            schema=schema,
+            examples=examples,
+            constraints=constraints,
+        )
+
+        return self._build(
+            phase=Phase.call,
+            query=query,
+            header=header,
+            budget_tokens=budget_tokens,
+        )
+
+    async def build_call_prompt(
+        self,
+        tool_id: str,
+        query: str,
+        catalog: Catalog,
+        schema: dict[str, Any] | None = None,
+        examples: list[str] | None = None,
+        constraints: dict[str, Any] | None = None,
+        budget_tokens: int | None = None,
+    ) -> ContextPack:
+        """Async wrapper for :meth:`_build_call_prompt`.
+
+        See :meth:`_build_call_prompt` for parameter documentation.
+        """
+        return self._build_call_prompt(
+            tool_id=tool_id,
+            query=query,
+            catalog=catalog,
+            schema=schema,
+            examples=examples,
+            constraints=constraints,
+            budget_tokens=budget_tokens,
+        )
+
+    def build_call_prompt_sync(
+        self,
+        tool_id: str,
+        query: str,
+        catalog: Catalog,
+        schema: dict[str, Any] | None = None,
+        examples: list[str] | None = None,
+        constraints: dict[str, Any] | None = None,
+        budget_tokens: int | None = None,
+    ) -> ContextPack:
+        """Synchronous alias for :meth:`_build_call_prompt`.
+
+        See :meth:`_build_call_prompt` for parameter documentation.
+        """
+        return self._build_call_prompt(
+            tool_id=tool_id,
+            query=query,
+            catalog=catalog,
+            schema=schema,
+            examples=examples,
+            constraints=constraints,
+            budget_tokens=budget_tokens,
+        )

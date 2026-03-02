@@ -2,7 +2,7 @@
 
 Contains the "output" dataclasses produced by the Context Engine and the
 Routing Engine: :class:`ResultEnvelope`, :class:`BuildStats`,
-:class:`ContextPack`, and :class:`ChoiceCard`.
+:class:`ContextPack`, :class:`ChoiceCard`, and :class:`HydrationResult`.
 
 Every dataclass implements :meth:`to_dict` / :meth:`from_dict` for easy
 serialisation to JSON-compatible dicts.
@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from contextweaver.types import ArtifactRef, Phase, ViewSpec
+from contextweaver.types import ArtifactRef, Phase, SelectableItem, ViewSpec
 
 
 @dataclass
@@ -181,4 +181,37 @@ class ChoiceCard:
             score=data.get("score"),
             cost_hint=float(data.get("cost_hint", 0.0)),
             side_effects=bool(data.get("side_effects", False)),
+        )
+
+
+@dataclass
+class HydrationResult:
+    """Full schema and metadata for a tool selected after routing.
+
+    Returned by :meth:`~contextweaver.routing.catalog.Catalog.hydrate` to
+    provide all information needed to build a ``Phase.call`` prompt.
+    """
+
+    item: SelectableItem
+    args_schema: dict[str, Any]
+    examples: list[str]
+    constraints: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "item": self.item.to_dict(),
+            "args_schema": dict(self.args_schema),
+            "examples": list(self.examples),
+            "constraints": dict(self.constraints),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HydrationResult:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(
+            item=SelectableItem.from_dict(data["item"]),
+            args_schema=dict(data.get("args_schema", {})),
+            examples=list(data.get("examples", [])),
+            constraints=dict(data.get("constraints", {})),
         )

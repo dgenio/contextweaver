@@ -17,6 +17,7 @@ import random
 from pathlib import Path
 from typing import Any
 
+from contextweaver.envelope import HydrationResult
 from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.types import SelectableItem
 
@@ -108,6 +109,33 @@ class Catalog:
         for raw in data.get("items", []):
             catalog.register(SelectableItem.from_dict(raw))
         return catalog
+
+    def hydrate(self, tool_id: str) -> HydrationResult:
+        """Return the full schema, constraints, examples, and cost hints for a tool.
+
+        Intended to be called after routing to assemble a ``Phase.call`` prompt
+        with the selected tool's complete argument schema.
+
+        Args:
+            tool_id: Unique identifier of the tool to hydrate.
+
+        Returns:
+            A :class:`~contextweaver.envelope.HydrationResult` containing the
+            full item and its schema details.  The returned ``args_schema``,
+            ``examples``, and ``constraints`` are **shallow copies** — nested
+            values are shared with the catalog item.  Callers should treat
+            them as read-only; use :func:`copy.deepcopy` if mutation is needed.
+
+        Raises:
+            ItemNotFoundError: If *tool_id* is not registered.
+        """
+        item = self.get(tool_id)
+        return HydrationResult(
+            item=item,
+            args_schema=dict(item.args_schema),
+            examples=list(item.examples),
+            constraints=dict(item.constraints),
+        )
 
 
 # ---------------------------------------------------------------------------

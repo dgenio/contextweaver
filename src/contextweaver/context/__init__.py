@@ -7,6 +7,7 @@ deduplication, selection, firewall, prompt rendering, and the high-level
 
 from __future__ import annotations
 
+from contextweaver.context.call_prompt import build_schema_header
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
 from contextweaver.context.firewall import apply_firewall, apply_firewall_to_batch
@@ -19,6 +20,7 @@ __all__ = [
     "ContextManager",
     "apply_firewall",
     "apply_firewall_to_batch",
+    "build_schema_header",
     "deduplicate_candidates",
     "generate_candidates",
     "render_context",

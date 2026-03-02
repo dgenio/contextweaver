@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from contextweaver.context.manager import ContextManager
+from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.store import StoreBundle
@@ -413,3 +415,141 @@ def test_build_route_prompt_sync_alias() -> None:
     assert pack.phase == Phase.route
     assert len(cards) > 0
     assert len(result.candidate_ids) > 0
+
+
+# ---------------------------------------------------------------------------
+# build_call_prompt
+# ---------------------------------------------------------------------------
+
+
+def _make_catalog() -> Catalog:
+    """Build a small catalog with schema data for call-prompt tests."""
+    catalog = Catalog()
+    catalog.register(
+        SelectableItem(
+            id="db_read",
+            kind="tool",
+            name="read_db",
+            description="Read from database",
+            tags=["data"],
+            args_schema={
+                "query": {"type": "string", "description": "SQL query"},
+                "limit": {"type": "integer", "default": 100},
+            },
+            examples=["read_db(query='SELECT * FROM users', limit=10)"],
+            constraints={"max_rows": 1000},
+            cost_hint=0.1,
+        )
+    )
+    catalog.register(
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="Send email notification",
+            tags=["comm"],
+            side_effects=True,
+        )
+    )
+    return catalog
+
+
+def test_build_call_prompt_injects_schema() -> None:
+    """build_call_prompt_sync injects the tool schema into the prompt header."""
+    catalog = _make_catalog()
+    mgr = ContextManager()
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="read user data"))
+
+    pack = mgr.build_call_prompt_sync(
+        tool_id="db_read",
+        query="read user data",
+        catalog=catalog,
+    )
+    assert isinstance(pack, ContextPack)
+    assert pack.phase == Phase.call
+    assert "[TOOL SCHEMA]" in pack.prompt
+    assert "read_db" in pack.prompt
+    assert "SQL query" in pack.prompt
+    assert "max_rows" in pack.prompt
+    assert "read_db(query='SELECT * FROM users'" in pack.prompt
+
+
+def test_build_call_prompt_missing_tool_raises() -> None:
+    """build_call_prompt raises ItemNotFoundError for unknown tool IDs."""
+    catalog = _make_catalog()
+    mgr = ContextManager()
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+
+    with pytest.raises(ItemNotFoundError):
+        mgr.build_call_prompt_sync(
+            tool_id="nonexistent",
+            query="hello",
+            catalog=catalog,
+        )
+
+
+def test_build_call_prompt_schema_override() -> None:
+    """build_call_prompt accepts a schema override."""
+    catalog = _make_catalog()
+    mgr = ContextManager()
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="send email"))
+
+    custom_schema = {"to": {"type": "string"}, "body": {"type": "string"}}
+    pack = mgr.build_call_prompt_sync(
+        tool_id="send_email",
+        query="send email",
+        catalog=catalog,
+        schema=custom_schema,
+    )
+    assert '"to"' in pack.prompt
+    assert '"body"' in pack.prompt
+
+
+def test_build_call_prompt_budget_enforcement() -> None:
+    """Schema token cost is subtracted from the call-phase budget."""
+    catalog = _make_catalog()
+    mgr = ContextManager()
+    # Add multiple items so budget pressure is visible
+    for i in range(20):
+        mgr.ingest(ContextItem(id=f"u{i}", kind=ItemKind.user_turn, text=f"item {i} " * 20))
+
+    pack = mgr.build_call_prompt_sync(
+        tool_id="db_read",
+        query="read data",
+        catalog=catalog,
+        budget_tokens=200,
+    )
+    assert pack.phase == Phase.call
+    # Schema header should consume part of the budget
+    assert pack.stats.header_footer_tokens > 0
+
+
+def test_build_call_prompt_side_effects_flag() -> None:
+    """Tools with side_effects=True include a side-effects notice."""
+    catalog = _make_catalog()
+    mgr = ContextManager()
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="send email"))
+
+    pack = mgr.build_call_prompt_sync(
+        tool_id="send_email",
+        query="send email",
+        catalog=catalog,
+    )
+    assert "Side effects: yes" in pack.prompt
+
+
+@pytest.mark.asyncio
+async def test_build_call_prompt_async() -> None:
+    """Async build_call_prompt wrapper works."""
+    catalog = _make_catalog()
+    mgr = ContextManager()
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="read data"))
+
+    pack = await mgr.build_call_prompt(
+        tool_id="db_read",
+        query="read data",
+        catalog=catalog,
+    )
+    assert isinstance(pack, ContextPack)
+    assert pack.phase == Phase.call
+    assert "[TOOL SCHEMA]" in pack.prompt
