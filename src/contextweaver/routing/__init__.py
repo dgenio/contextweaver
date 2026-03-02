@@ -3,6 +3,8 @@
 Exports the catalog, graph, labeler, tree builder, router, and card renderer.
 """
 
+from __future__ import annotations
+
 from contextweaver.routing.cards import (
     cards_for_route,
     format_card_for_prompt,
