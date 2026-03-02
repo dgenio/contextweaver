@@ -187,6 +187,7 @@ def _cmd_route(args: argparse.Namespace) -> int:
     catalog_path: str = args.catalog
     query: str = args.query
     top_k: int = args.top_k
+    beam_width: int = args.beam_width
 
     graph = load_graph(graph_path)
     all_items = load_catalog_json(catalog_path)
@@ -195,7 +196,7 @@ def _cmd_route(args: argparse.Namespace) -> int:
     graph_item_ids = set(graph.items())
     items_list = [it for it in all_items if it.id in graph_item_ids]
 
-    router = Router(graph, items=items_list, beam_width=3, top_k=top_k)
+    router = Router(graph, items=items_list, beam_width=beam_width, top_k=top_k)
     result = router.route(query)
 
     print(f"Query: {query!r}")
@@ -418,6 +419,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_route.add_argument("--catalog", required=True, help="Path to the catalog JSON file.")
     p_route.add_argument("--query", required=True, help="The user query to route.")
     p_route.add_argument("--top-k", type=int, default=10, help="Max results (default: 10).")
+    p_route.add_argument("--beam-width", type=int, default=3, help="Beam width (default: 3).")
 
     # print-tree
     p_tree = sub.add_parser("print-tree", help="Pretty-print the routing tree.")
