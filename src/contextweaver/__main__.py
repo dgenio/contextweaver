@@ -420,9 +420,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Phase (default: answer).",
     )
     p_replay.add_argument("--budget", type=int, default=4000, help="Token budget (default: 4000).")
-    p_replay.add_argument(
-        "--preview", action="store_true", default=True, help="Show first 500 chars (default)."
-    )
     p_replay.add_argument("--full", action="store_true", default=False, help="Show full prompt.")
 
     return parser
