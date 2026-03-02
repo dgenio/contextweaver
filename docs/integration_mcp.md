@@ -32,7 +32,7 @@ item = mcp_tool_to_selectable(mcp_tool)
 # item.name  == "search_database"
 ```
 
-### `mcp_result_to_envelope(result_dict)`
+### `mcp_result_to_envelope(result_dict, tool_name)`
 
 Converts an MCP tool result dict into a `ResultEnvelope`:
 
@@ -44,9 +44,9 @@ mcp_result = {
     "isError": False
 }
 
-envelope = mcp_result_to_envelope(mcp_result)
+envelope = mcp_result_to_envelope(mcp_result, "search_database")
 # envelope.summary contains the text content
-# envelope.status  == "success"
+# envelope.status  == "ok"
 ```
 
 ### `load_mcp_session_jsonl(path)`
