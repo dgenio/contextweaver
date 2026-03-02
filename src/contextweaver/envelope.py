@@ -211,7 +211,7 @@ class HydrationResult:
         """Deserialise from a JSON-compatible dict."""
         return cls(
             item=SelectableItem.from_dict(data["item"]),
-            args_schema=dict(data["args_schema"]),
-            examples=list(data["examples"]),
-            constraints=dict(data["constraints"]),
+            args_schema=dict(data.get("args_schema", {})),
+            examples=list(data.get("examples", [])),
+            constraints=dict(data.get("constraints", {})),
         )
