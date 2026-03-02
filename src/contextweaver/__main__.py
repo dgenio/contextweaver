@@ -65,6 +65,7 @@ def _load_jsonl(path: str) -> list[ContextItem]:
                     if k not in {"id", "type", "text", "content", "parent_id", "token_estimate"}
                 },
                 parent_id=obj.get("parent_id"),
+                token_estimate=int(obj.get("token_estimate", 0)),
             )
         )
     return items
