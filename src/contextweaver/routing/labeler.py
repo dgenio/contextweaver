@@ -128,10 +128,7 @@ class KeywordLabeler:
 
         # Top-K frequent tokens (sorted by freq desc, then alphabetical)
         top_tokens = [
-            tok
-            for tok, _ in sorted(
-                freq.items(), key=lambda x: (-x[1], x[0])
-            )[: self._top_k]
+            tok for tok, _ in sorted(freq.items(), key=lambda x: (-x[1], x[0]))[: self._top_k]
         ]
         label = " ".join(top_tokens) if top_tokens else "general"
 

@@ -116,9 +116,7 @@ class ChoiceGraph:
         self._edges[src].add(dst)
         if self._creates_cycle(src, dst):
             self._edges[src].discard(dst)
-            raise GraphBuildError(
-                f"Adding edge {src!r} -> {dst!r} would create a cycle."
-            )
+            raise GraphBuildError(f"Adding edge {src!r} -> {dst!r} would create a cycle.")
         # Update parent's children list
         node = self._nodes[src]
         if dst not in node.children:
@@ -280,15 +278,9 @@ class ChoiceGraph:
         """Serialise to a JSON-compatible dict."""
         return {
             "root_id": self._root_id,
-            "nodes": {
-                nid: node.to_dict()
-                for nid, node in sorted(self._nodes.items())
-            },
+            "nodes": {nid: node.to_dict() for nid, node in sorted(self._nodes.items())},
             "items": sorted(self._items),
-            "edges": {
-                src: sorted(dsts)
-                for src, dsts in sorted(self._edges.items())
-            },
+            "edges": {src: sorted(dsts) for src, dsts in sorted(self._edges.items())},
             "max_children": self._max_children,
             "build_meta": dict(self._build_meta),
         }
@@ -325,9 +317,7 @@ class ChoiceGraph:
                 graph._edges.setdefault(src, set()).add(dst)
                 if graph._creates_cycle(src, dst):
                     graph._edges[src].discard(dst)
-                    raise GraphBuildError(
-                        f"Cycle detected loading edge {src!r} -> {dst!r}."
-                    )
+                    raise GraphBuildError(f"Cycle detected loading edge {src!r} -> {dst!r}.")
 
         # Rebuild children / child_types from _edges so they are
         # always consistent, regardless of what the serialised node
@@ -341,9 +331,7 @@ class ChoiceGraph:
             node = graph._nodes[src]
             for dst in sorted(dsts):
                 node.children.append(dst)
-                node.child_types[dst] = (
-                    "item" if dst in graph._items else "node"
-                )
+                node.child_types[dst] = "item" if dst in graph._items else "node"
 
         return graph
 
@@ -361,18 +349,14 @@ class ChoiceGraph:
         """
         # 1. Root must exist
         if self._root_id not in self._nodes:
-            raise GraphBuildError(
-                f"Root node {self._root_id!r} not found in graph."
-            )
+            raise GraphBuildError(f"Root node {self._root_id!r} not found in graph.")
 
         # 2. All child refs must resolve
         all_known = set(self._nodes) | self._items
         for src, dsts in self._edges.items():
             for dst in dsts:
                 if dst not in all_known:
-                    raise GraphBuildError(
-                        f"Child ref {dst!r} from {src!r} not found in graph."
-                    )
+                    raise GraphBuildError(f"Child ref {dst!r} from {src!r} not found in graph.")
 
         # 3. No cycles
         self.topological_order()
@@ -390,6 +374,4 @@ class ChoiceGraph:
                     stack.append(child)
         unreachable = self._items - reachable
         if unreachable:
-            raise GraphBuildError(
-                f"Items not reachable from root: {sorted(unreachable)}"
-            )
+            raise GraphBuildError(f"Items not reachable from root: {sorted(unreachable)}")

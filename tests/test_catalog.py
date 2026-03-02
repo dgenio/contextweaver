@@ -96,9 +96,7 @@ def test_load_catalog_json() -> None:
         {"id": "t1", "kind": "tool", "name": "t1", "description": "desc"},
         {"id": "t2", "kind": "tool", "name": "t2", "description": "desc"},
     ]
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(data, f)
         path = f.name
     try:
@@ -115,9 +113,7 @@ def test_load_catalog_json_missing_file() -> None:
 
 
 def test_load_catalog_json_invalid_json() -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         f.write("{not valid json")
         path = f.name
     try:
@@ -128,9 +124,7 @@ def test_load_catalog_json_invalid_json() -> None:
 
 
 def test_load_catalog_json_not_array() -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump({"items": []}, f)
         path = f.name
     try:

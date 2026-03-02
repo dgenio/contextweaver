@@ -51,13 +51,9 @@ class TreeBuilder:
         target_group_size: int | None = None,
     ) -> None:
         if max_children < 1:
-            raise GraphBuildError(
-                f"max_children must be >= 1, got {max_children!r}"
-            )
+            raise GraphBuildError(f"max_children must be >= 1, got {max_children!r}")
         if target_group_size is not None and target_group_size < 1:
-            raise GraphBuildError(
-                f"target_group_size must be >= 1, got {target_group_size!r}"
-            )
+            raise GraphBuildError(f"target_group_size must be >= 1, got {target_group_size!r}")
         self._max_children = max_children
         self._labeler = labeler or KeywordLabeler()
         self._target_group_size = target_group_size or max_children
@@ -188,7 +184,7 @@ class TreeBuilder:
         sub_groups: dict[str, list[SelectableItem]] = defaultdict(list)
         for item in sorted(items, key=lambda it: it.id):
             ns = item.namespace
-            rest = ns[len(prefix):].lstrip(".")
+            rest = ns[len(prefix) :].lstrip(".")
             segment = rest.split(".")[0] if rest else "_leaf"
             sub_groups[f"{prefix}.{segment}"].append(item)
 
@@ -223,10 +219,7 @@ class TreeBuilder:
             for i in range(len(sorted_items)):
                 if i in seeds:
                     continue
-                min_dist = min(
-                    1.0 - jaccard(token_sets[i], token_sets[s])
-                    for s in seeds
-                )
+                min_dist = min(1.0 - jaccard(token_sets[i], token_sets[s]) for s in seeds)
                 if min_dist > best_min_dist:
                     best_min_dist = min_dist
                     best_idx = i
@@ -314,9 +307,7 @@ class TreeBuilder:
         return dict(entries)
 
     @staticmethod
-    def _chunk_list(
-        items: list[SelectableItem], chunk_size: int
-    ) -> list[list[SelectableItem]]:
+    def _chunk_list(items: list[SelectableItem], chunk_size: int) -> list[list[SelectableItem]]:
         """Split *items* into chunks of at most *chunk_size*."""
         k = max(1, math.ceil(len(items) / chunk_size))
         # Distribute as evenly as possible

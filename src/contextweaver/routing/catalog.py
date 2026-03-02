@@ -167,15 +167,11 @@ def load_catalog_dicts(data: list[dict[str, Any]]) -> list[SelectableItem]:
             raise CatalogError(f"Item at index {i} is not a dict.")
         missing = required - set(raw)
         if missing:
-            raise CatalogError(
-                f"Item at index {i} missing required fields: {sorted(missing)}"
-            )
+            raise CatalogError(f"Item at index {i} missing required fields: {sorted(missing)}")
         try:
             items.append(SelectableItem.from_dict(raw))
         except (KeyError, TypeError, ValueError) as exc:
-            raise CatalogError(
-                f"Item at index {i} has invalid data: {exc}"
-            ) from exc
+            raise CatalogError(f"Item at index {i} has invalid data: {exc}") from exc
     return items
 
 
@@ -294,9 +290,7 @@ _SAMPLE_FAMILIES: dict[str, list[tuple[str, str, list[str]]]] = {
 }
 
 
-def generate_sample_catalog(
-    n: int = 80, seed: int = 42
-) -> list[dict[str, Any]]:
+def generate_sample_catalog(n: int = 80, seed: int = 42) -> list[dict[str, Any]]:
     """Generate a deterministic sample catalog of *n* items.
 
     Items are drawn from 8 namespace families (billing, crm, search, docs,

@@ -250,9 +250,7 @@ def test_save_and_load() -> None:
     g.add_edge("root", "tool-a")
     g.root_id = "root"
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         path = f.name
     try:
         save_graph(g, path)
@@ -269,9 +267,7 @@ def test_load_bad_file_raises() -> None:
 
 
 def test_load_invalid_json_raises() -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         f.write("{bad json")
         path = f.name
     try:
@@ -292,9 +288,7 @@ def test_validate_bad_root_raises() -> None:
     g.root_id = "missing_root"
     d = g.to_dict()
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(d, f)
         path = f.name
     try:
@@ -313,9 +307,7 @@ def test_validate_unreachable_item_raises() -> None:
     g.root_id = "root"
     d = g.to_dict()
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(d, f)
         path = f.name
     try:
@@ -352,9 +344,7 @@ def test_validate_bad_child_ref_raises() -> None:
         "max_children": 20,
         "build_meta": {},
     }
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(d_cycle, f)
         path = f.name
     try:

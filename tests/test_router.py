@@ -96,8 +96,12 @@ def test_determinism() -> None:
 
 def test_determinism_large() -> None:
     items = [
-        _item(f"ns{j}.tool{i}", name=f"tool_{i}_{j}", namespace=f"ns{j}",
-               description=f"Tool {i} in namespace {j}")
+        _item(
+            f"ns{j}.tool{i}",
+            name=f"tool_{i}_{j}",
+            namespace=f"ns{j}",
+            description=f"Tool {i} in namespace {j}",
+        )
         for j in range(5)
         for i in range(10)
     ]
@@ -113,10 +117,7 @@ def test_determinism_large() -> None:
 
 
 def test_top_k_limits_results() -> None:
-    items = [
-        _item(f"t{i}", description=f"Database tool {i}", tags=["data"])
-        for i in range(30)
-    ]
+    items = [_item(f"t{i}", description=f"Database tool {i}", tags=["data"]) for i in range(30)]
     router = _setup_router(items=items, top_k=5)
     result = router.route("database tool")
     assert len(result.candidate_ids) <= 5
@@ -197,12 +198,27 @@ def test_debug_trace_empty_when_not_requested() -> None:
 def test_backtrack_expands_unexplored() -> None:
     """With a narrow beam, backtracking should still find relevant items."""
     items = [
-        _item("billing.inv1", name="invoice_create", description="Create invoice",
-              namespace="billing", tags=["billing"]),
-        _item("billing.inv2", name="invoice_search", description="Search invoices",
-              namespace="billing", tags=["billing", "search"]),
-        _item("crm.contact1", name="contact_find", description="Find contacts",
-              namespace="crm", tags=["crm"]),
+        _item(
+            "billing.inv1",
+            name="invoice_create",
+            description="Create invoice",
+            namespace="billing",
+            tags=["billing"],
+        ),
+        _item(
+            "billing.inv2",
+            name="invoice_search",
+            description="Search invoices",
+            namespace="billing",
+            tags=["billing", "search"],
+        ),
+        _item(
+            "crm.contact1",
+            name="contact_find",
+            description="Find contacts",
+            namespace="crm",
+            tags=["crm"],
+        ),
     ]
     router = _setup_router(items=items, beam_width=1)
     result = router.route("invoice billing")
@@ -213,9 +229,13 @@ def test_backtrack_expands_unexplored() -> None:
 def test_backtrack_fills_up_to_top_k() -> None:
     """Backtracking should return close to top_k on a well-populated catalog."""
     items = [
-        _item(f"ns{j}.tool{i}", name=f"tool_{i}_{j}", namespace=f"ns{j}",
-              description=f"Tool {i} in namespace {j}",
-              tags=[f"ns{j}", "tool"])
+        _item(
+            f"ns{j}.tool{i}",
+            name=f"tool_{i}_{j}",
+            namespace=f"ns{j}",
+            description=f"Tool {i} in namespace {j}",
+            tags=[f"ns{j}", "tool"],
+        )
         for j in range(5)
         for i in range(10)
     ]

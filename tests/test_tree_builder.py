@@ -78,9 +78,7 @@ def test_all_items_reachable() -> None:
 
 
 def test_determinism() -> None:
-    items = [
-        _item(f"billing.inv.{i}", namespace="billing") for i in range(30)
-    ]
+    items = [_item(f"billing.inv.{i}", namespace="billing") for i in range(30)]
     g1 = TreeBuilder(max_children=10).build(items)
     g2 = TreeBuilder(max_children=10).build(items)
     assert g1.to_dict() == g2.to_dict()
@@ -104,18 +102,12 @@ def test_max_children_guarantee_small() -> None:
     graph = TreeBuilder(max_children=max_c).build(items)
     for nid in graph.nodes():
         children = graph.successors(nid)
-        assert len(children) <= max_c, (
-            f"Node {nid!r} has {len(children)} children (limit {max_c})"
-        )
+        assert len(children) <= max_c, f"Node {nid!r} has {len(children)} children (limit {max_c})"
 
 
 def test_max_children_guarantee_large() -> None:
     max_c = 10
-    items = [
-        _item(f"ns{j}.tool{i}", namespace=f"ns{j}")
-        for j in range(8)
-        for i in range(15)
-    ]
+    items = [_item(f"ns{j}.tool{i}", namespace=f"ns{j}") for j in range(8) for i in range(15)]
     graph = TreeBuilder(max_children=max_c).build(items)
     for nid in graph.nodes():
         assert len(graph.successors(nid)) <= max_c
@@ -141,9 +133,7 @@ def test_namespace_grouping_two_namespaces() -> None:
 def test_namespace_grouping_many_items() -> None:
     max_c = 5
     items = [
-        _item(f"billing.sub{i}.tool{j}", namespace="billing")
-        for i in range(3)
-        for j in range(10)
+        _item(f"billing.sub{i}.tool{j}", namespace="billing") for i in range(3) for j in range(10)
     ]
     graph = TreeBuilder(max_children=max_c).build(items)
     for nid in graph.nodes():

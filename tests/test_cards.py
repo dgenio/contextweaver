@@ -193,10 +193,7 @@ def test_render_cards_text_no_score() -> None:
 
 
 def test_render_cards_text_numbering() -> None:
-    cards = [
-        ChoiceCard(id=f"t{i}", name=f"t{i}", description="d", kind="tool")
-        for i in range(3)
-    ]
+    cards = [ChoiceCard(id=f"t{i}", name=f"t{i}", description="d", kind="tool") for i in range(3)]
     text = render_cards_text(cards)
     assert "[1/3]" in text
     assert "[2/3]" in text

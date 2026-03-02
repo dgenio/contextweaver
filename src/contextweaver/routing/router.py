@@ -79,9 +79,7 @@ class Router:
         confidence_gap: float = 0.15,
     ) -> None:
         if not 0.0 <= confidence_gap <= 1.0:
-            raise ValueError(
-                f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}"
-            )
+            raise ValueError(f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}")
         self._graph = graph
         self._beam_width = beam_width
         self._max_depth = max_depth
@@ -126,9 +124,7 @@ class Router:
                 doc_ids.append(node_id)
 
         self._scorer.fit(docs)
-        self._doc_id_to_idx: dict[str, int] = {
-            did: i for i, did in enumerate(doc_ids)
-        }
+        self._doc_id_to_idx: dict[str, int] = {did: i for i, did in enumerate(doc_ids)}
         self._indexed = True
 
     def _score_node(self, query: str, node_id: str) -> float:
@@ -175,8 +171,7 @@ class Router:
         """
         if not self._items:
             raise RouteError(
-                "No items registered. Pass items to Router() or call"
-                " set_items() before routing."
+                "No items registered. Pass items to Router() or call set_items() before routing."
             )
         root = self._graph.root_id
         if root not in self._graph.nodes():
@@ -218,20 +213,18 @@ class Router:
                 scored.sort(key=lambda x: (-x[0], x[1]))
 
                 if debug:
-                    step_trace["expansions"].append({
-                        "node": node_id,
-                        "scored_children": [
-                            {"id": cid, "score": round(cs, 4)}
-                            for cs, cid in scored
-                        ],
-                    })
+                    step_trace["expansions"].append(
+                        {
+                            "node": node_id,
+                            "scored_children": [
+                                {"id": cid, "score": round(cs, 4)} for cs, cid in scored
+                            ],
+                        }
+                    )
 
                 # Determine beam width for this expansion
                 keep = self._beam_width
-                if (
-                    len(scored) >= 2
-                    and scored[0][0] - scored[1][0] < self._confidence_gap
-                ):
+                if len(scored) >= 2 and scored[0][0] - scored[1][0] < self._confidence_gap:
                     keep = self._beam_width + 1
 
                 # Keep top-k, stash rest for backtracking
@@ -249,7 +242,7 @@ class Router:
 
             # Sort next beam deterministically: score desc, node ID alpha
             next_beam.sort(key=lambda x: (-x[0], x[1][-1]))
-            beam = next_beam[:self._beam_width]
+            beam = next_beam[: self._beam_width]
 
             if debug:
                 trace.append(step_trace)
@@ -270,8 +263,16 @@ class Router:
             if u_node in self._items:
                 collected[u_node] = (u_score, u_path[1:])
             else:
-                # Expand this node's subtree
-                sub_items = self._expand_subtree(query, u_node, u_score, u_path)
+                # Expand this node's subtree, respecting remaining depth
+                current_depth = len(u_path) - 1  # exclude root prefix
+                remaining = max(0, self._max_depth - current_depth)
+                sub_items = self._expand_subtree(
+                    query,
+                    u_node,
+                    u_score,
+                    u_path,
+                    max_depth=remaining,
+                )
                 for sid, (ss, sp) in sub_items.items():
                     if sid not in collected:
                         collected[sid] = (ss, sp)
@@ -281,13 +282,11 @@ class Router:
             collected.items(),
             key=lambda x: (-x[1][0], x[0]),
         )
-        ranked = ranked[:self._top_k]
+        ranked = ranked[: self._top_k]
 
         result = RouteResult(
             candidate_items=[
-                self._items[item_id]
-                for item_id, _ in ranked
-                if item_id in self._items
+                self._items[item_id] for item_id, _ in ranked if item_id in self._items
             ],
             candidate_ids=[item_id for item_id, _ in ranked],
             paths=[path for _, (_, path) in ranked],
@@ -304,16 +303,27 @@ class Router:
         node_id: str,
         base_score: float,
         base_path: list[str],
+        *,
+        max_depth: int | None = None,
     ) -> dict[str, tuple[float, list[str]]]:
-        """Expand all children of *node_id* recursively, collecting items."""
+        """Expand children of *node_id* recursively, collecting items.
+
+        Args:
+            query: The user query string.
+            node_id: The node to expand.
+            base_score: Accumulated score so far.
+            base_path: Path from root to *node_id*.
+            max_depth: Maximum additional levels to traverse.  ``None``
+                means use ``self._max_depth``.
+        """
+        depth_limit = max_depth if max_depth is not None else self._max_depth
         result: dict[str, tuple[float, list[str]]] = {}
-        stack: list[tuple[float, str, list[str]]] = [
-            (base_score, node_id, base_path)
-        ]
+        # Stack entries: (score, node_id, path, depth)
+        stack: list[tuple[float, str, list[str], int]] = [(base_score, node_id, base_path, 0)]
         while stack:
-            score, nid, path = stack.pop()
+            score, nid, path, depth = stack.pop()
             children = self._graph.successors(nid)
-            if not children:
+            if not children or depth >= depth_limit:
                 if nid in self._items:
                     result[nid] = (score, path[1:])
                 continue
@@ -323,5 +333,5 @@ class Router:
                 if child in self._items:
                     result[child] = (score + s, new_path[1:])
                 else:
-                    stack.append((score + s, child, new_path))
+                    stack.append((score + s, child, new_path, depth + 1))
         return result
