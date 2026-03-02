@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -215,6 +216,24 @@ def test_roundtrip_deterministic_keys() -> None:
     # Keys in nodes and edges dicts should be sorted
     assert list(d["nodes"].keys()) == sorted(d["nodes"].keys())
     assert list(d["edges"].keys()) == sorted(d["edges"].keys())
+
+
+def test_from_dict_cycle_discards_edge() -> None:
+    """from_dict must remove the cycle-causing edge before raising."""
+    data: dict[str, Any] = {
+        "root_id": "root",
+        "nodes": {
+            "root": {"node_id": "root", "label": "root"},
+            "a": {"node_id": "a", "label": "a"},
+        },
+        "items": [],
+        "edges": {
+            "root": ["a"],
+            "a": ["root"],  # creates a cycle
+        },
+    }
+    with pytest.raises(GraphBuildError, match="Cycle detected"):
+        ChoiceGraph.from_dict(data)
 
 
 # ------------------------------------------------------------------

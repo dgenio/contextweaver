@@ -380,6 +380,7 @@ class ChoiceGraph:
                     graph.add_node(dst)
                 graph._edges.setdefault(src, set()).add(dst)
                 if graph._creates_cycle(src, dst):
+                    graph._edges[src].discard(dst)
                     raise GraphBuildError(
                         f"Cycle detected loading edge {src!r} -> {dst!r}."
                     )
