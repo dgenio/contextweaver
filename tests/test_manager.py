@@ -5,9 +5,11 @@ from __future__ import annotations
 import pytest
 
 from contextweaver.context.manager import ContextManager
+from contextweaver.routing.router import Router
+from contextweaver.routing.tree import TreeBuilder
 from contextweaver.store import StoreBundle
 from contextweaver.store.event_log import InMemoryEventLog
-from contextweaver.types import ContextItem, ContextPack, ItemKind, Phase
+from contextweaver.types import ContextItem, ContextPack, ItemKind, Phase, SelectableItem
 
 
 def _make_log(*texts: str) -> InMemoryEventLog:
@@ -279,3 +281,87 @@ async def test_build_interpret_phase() -> None:
     mgr = ContextManager(event_log=log)
     pack = await mgr.build(phase=Phase.interpret, query="interpret result")
     assert pack.phase == Phase.interpret
+
+
+# ---------------------------------------------------------------------------
+# build_route_prompt
+# ---------------------------------------------------------------------------
+
+
+def _make_selectable_items() -> list[SelectableItem]:
+    """Build a small catalog for route-prompt tests."""
+    return [
+        SelectableItem(
+            id="db_read",
+            kind="tool",
+            name="read_db",
+            description="Read from database",
+            tags=["data"],
+        ),
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="Send email notification",
+            tags=["comm"],
+        ),
+        SelectableItem(
+            id="search_docs",
+            kind="tool",
+            name="search_docs",
+            description="Search documentation pages",
+            tags=["search"],
+        ),
+    ]
+
+
+def test_build_route_prompt_returns_tuple() -> None:
+    """build_route_prompt returns (ContextPack, cards, RouteResult)."""
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    router = Router(graph, items=items, beam_width=2, top_k=5)
+
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="read database"))
+    mgr = ContextManager(event_log=log)
+
+    pack, cards, route_result = mgr.build_route_prompt(
+        goal="Find data tools",
+        query="read database",
+        router=router,
+    )
+
+    # ContextPack for route phase
+    assert isinstance(pack, ContextPack)
+    assert pack.phase == Phase.route
+
+    # Cards list corresponds to route candidates
+    assert isinstance(cards, list)
+    assert len(cards) == len(route_result.candidate_ids)
+
+    # RouteResult has matching lengths
+    assert len(route_result.scores) == len(route_result.candidate_ids)
+
+    # Prompt includes GOAL header and AVAILABLE TOOLS footer
+    assert "[GOAL]" in pack.prompt
+    assert "Find data tools" in pack.prompt
+    assert "[AVAILABLE TOOLS]" in pack.prompt
+
+
+def test_build_route_prompt_sync_alias() -> None:
+    """build_route_prompt_sync is a working alias."""
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    router = Router(graph, items=items)
+
+    mgr = ContextManager()
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="search docs"))
+
+    pack, cards, result = mgr.build_route_prompt_sync(
+        goal="Search goal",
+        query="search docs",
+        router=router,
+    )
+    assert pack.phase == Phase.route
+    assert len(cards) > 0
+    assert len(result.candidate_ids) > 0
