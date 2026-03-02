@@ -409,6 +409,21 @@ class ContextManager:
         The current pipeline is fully synchronous; this ``async`` wrapper
         exists so callers can ``await`` it today and benefit from true
         async I/O if the pipeline gains ``await``-able steps in the future.
+
+        See :meth:`_build` for full parameter documentation.
+
+        Args:
+            phase: Active execution phase.
+            query: User query string used for relevance scoring.
+            query_tags: Optional tag list to boost tag-matched items.
+            header: Optional prompt header text.
+            footer: Optional prompt footer text.
+            budget_tokens: Override the default phase budget.
+            hints: Additional hint tags for scoring.
+            extra: Reserved for future pipeline extensions.
+
+        Returns:
+            A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
         """
         return self._build(
             phase=phase,
@@ -436,6 +451,21 @@ class ContextManager:
 
         Works inside Jupyter notebooks, FastAPI handlers, and any other
         environment where an event loop is already running.
+
+        See :meth:`_build` for full parameter documentation.
+
+        Args:
+            phase: Active execution phase.
+            query: User query string used for relevance scoring.
+            query_tags: Optional tag list to boost tag-matched items.
+            header: Optional prompt header text.
+            footer: Optional prompt footer text.
+            budget_tokens: Override the default phase budget.
+            hints: Additional hint tags for scoring.
+            extra: Reserved for future pipeline extensions.
+
+        Returns:
+            A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
         """
         return self._build(
             phase=phase,
