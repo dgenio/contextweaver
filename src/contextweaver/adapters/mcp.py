@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.exceptions import CatalogError
@@ -143,7 +143,6 @@ def mcp_result_to_envelope(
             )
 
     summary = "\n".join(text_parts) if text_parts else "(no content)"
-    from typing import Literal
 
     status: Literal["ok", "partial", "error"] = "error" if is_error else "ok"
 

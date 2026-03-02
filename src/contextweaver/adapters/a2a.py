@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.exceptions import CatalogError
@@ -116,8 +116,6 @@ def a2a_result_to_envelope(
     status_msg = status_obj.get("message", "")
 
     # Map A2A states to envelope statuses
-    from typing import Literal
-
     env_status: Literal["ok", "partial", "error"]
     if state in ("completed",):
         env_status = "ok"
