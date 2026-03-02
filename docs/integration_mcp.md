@@ -27,7 +27,7 @@ mcp_tool = {
 }
 
 item = mcp_tool_to_selectable(mcp_tool)
-# item.id    == "search_database"
+# item.id    == "mcp:search_database"
 # item.kind  == "tool"
 # item.name  == "search_database"
 ```

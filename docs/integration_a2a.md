@@ -25,7 +25,7 @@ agent_card = {
 }
 
 item = a2a_agent_to_selectable(agent_card)
-# item.id    == "DataAgent"
+# item.id    == "a2a:DataAgent"
 # item.kind  == "agent"
 # item.name  == "DataAgent"
 # item.tags  includes skill names
