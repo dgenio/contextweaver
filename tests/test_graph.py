@@ -10,7 +10,9 @@ from typing import Any
 import pytest
 
 from contextweaver.exceptions import GraphBuildError
-from contextweaver.routing.graph import ChoiceGraph, ChoiceNode
+from contextweaver.routing.graph import ChoiceGraph
+from contextweaver.routing.graph_io import load_graph, save_graph
+from contextweaver.routing.graph_node import ChoiceNode
 
 # ------------------------------------------------------------------
 # ChoiceNode
@@ -253,8 +255,8 @@ def test_save_and_load() -> None:
     ) as f:
         path = f.name
     try:
-        g.save(path)
-        loaded = ChoiceGraph.load(path)
+        save_graph(g, path)
+        loaded = load_graph(path)
         assert "tool-a" in loaded.items()
         assert loaded.root_id == "root"
     finally:
@@ -263,7 +265,7 @@ def test_save_and_load() -> None:
 
 def test_load_bad_file_raises() -> None:
     with pytest.raises(GraphBuildError, match="Cannot read"):
-        ChoiceGraph.load("/nonexistent/graph.json")
+        load_graph("/nonexistent/graph.json")
 
 
 def test_load_invalid_json_raises() -> None:
@@ -274,7 +276,7 @@ def test_load_invalid_json_raises() -> None:
         path = f.name
     try:
         with pytest.raises(GraphBuildError, match="Invalid JSON"):
-            ChoiceGraph.load(path)
+            load_graph(path)
     finally:
         Path(path).unlink()
 
@@ -297,7 +299,7 @@ def test_validate_bad_root_raises() -> None:
         path = f.name
     try:
         with pytest.raises(GraphBuildError, match="Root node"):
-            ChoiceGraph.load(path)
+            load_graph(path)
     finally:
         Path(path).unlink()
 
@@ -318,7 +320,7 @@ def test_validate_unreachable_item_raises() -> None:
         path = f.name
     try:
         with pytest.raises(GraphBuildError, match="not reachable"):
-            ChoiceGraph.load(path)
+            load_graph(path)
     finally:
         Path(path).unlink()
 
@@ -357,7 +359,7 @@ def test_validate_bad_child_ref_raises() -> None:
         path = f.name
     try:
         with pytest.raises(GraphBuildError):
-            ChoiceGraph.load(path)
+            load_graph(path)
     finally:
         Path(path).unlink()
 

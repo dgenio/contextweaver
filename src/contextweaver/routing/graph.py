@@ -1,76 +1,20 @@
 """Choice graph (routing DAG) for the contextweaver Routing Engine.
 
 The :class:`ChoiceGraph` is a bounded DAG where each node is a
-:class:`ChoiceNode` (either a navigation node or a leaf item).  The router
-performs beam search over this graph.
+:class:`~contextweaver.routing.graph_node.ChoiceNode` (either a navigation
+node or a leaf item).  The router performs beam search over this graph.
 
 Nodes distinguish between child *nodes* (which can be expanded further)
 and child *items* (leaf-level catalog entries) via :attr:`ChoiceNode.child_types`.
-
-.. todo::
-   This module exceeds the ~300-line target (~490 lines).  Consider
-   extracting ChoiceNode, serialisation/IO, and stats/validation into
-   separate sub-modules in a follow-up refactoring PR.
 """
 
 from __future__ import annotations
 
-import json
 from collections import deque
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from contextweaver.exceptions import GraphBuildError
-
-# ---------------------------------------------------------------------------
-# ChoiceNode
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class ChoiceNode:
-    """A single node in the routing :class:`ChoiceGraph`.
-
-    Attributes:
-        node_id: Unique identifier for this node.
-        label: Short human-readable label shown during routing.
-        routing_hint: A sentence describing what this group of children is about.
-        children: Ordered list of child IDs (both nodes and items).
-        child_types: Mapping of child ID to ``"node"`` or ``"item"``.
-        stats: Arbitrary statistics dict (populated by :meth:`ChoiceGraph.stats`).
-    """
-
-    node_id: str
-    label: str = ""
-    routing_hint: str = ""
-    children: list[str] = field(default_factory=list)
-    child_types: dict[str, str] = field(default_factory=dict)
-    stats: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialise to a JSON-compatible dict."""
-        return {
-            "node_id": self.node_id,
-            "label": self.label,
-            "routing_hint": self.routing_hint,
-            "children": list(self.children),
-            "child_types": dict(self.child_types),
-            "stats": dict(self.stats),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ChoiceNode:
-        """Deserialise from a JSON-compatible dict."""
-        return cls(
-            node_id=data["node_id"],
-            label=data.get("label", ""),
-            routing_hint=data.get("routing_hint", ""),
-            children=list(data.get("children", [])),
-            child_types=dict(data.get("child_types", {})),
-            stats=dict(data.get("stats", {})),
-        )
-
+from contextweaver.routing.graph_node import ChoiceNode
 
 # ---------------------------------------------------------------------------
 # ChoiceGraph
@@ -401,50 +345,6 @@ class ChoiceGraph:
                     "item" if dst in graph._items else "node"
                 )
 
-        return graph
-
-    # ------------------------------------------------------------------
-    # File I/O
-    # ------------------------------------------------------------------
-
-    def save(self, path: str | Path) -> None:
-        """Write the graph to a JSON file with deterministic formatting.
-
-        Args:
-            path: Filesystem path for the output file.
-        """
-        Path(path).write_text(
-            json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-
-    @classmethod
-    def load(cls, path: str | Path) -> ChoiceGraph:
-        """Load a graph from a JSON file and validate it.
-
-        Validates: root_id exists, all child refs resolve, no cycles (DFS),
-        all items reachable from root.
-
-        Args:
-            path: Filesystem path to a JSON file.
-
-        Returns:
-            A validated :class:`ChoiceGraph`.
-
-        Raises:
-            GraphBuildError: If the file is invalid or the graph fails validation.
-        """
-        try:
-            text = Path(path).read_text(encoding="utf-8")
-        except OSError as exc:
-            raise GraphBuildError(f"Cannot read graph file: {exc}") from exc
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise GraphBuildError(f"Invalid JSON in graph file: {exc}") from exc
-
-        graph = cls.from_dict(data)
-        graph._validate()
         return graph
 
     def _validate(self) -> None:
