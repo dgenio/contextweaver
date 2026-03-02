@@ -554,6 +554,7 @@ class ContextManager:
         catalog: Catalog,
         schema: dict[str, Any] | None = None,
         examples: list[str] | None = None,
+        constraints: dict[str, Any] | None = None,
         budget_tokens: int | None = None,
     ) -> ContextPack:
         """Build a ``Phase.call`` prompt with the tool's full schema injected.
@@ -570,6 +571,9 @@ class ContextManager:
                 in the prompt; hydration still occurs for item metadata).
             examples: Override example strings (replaces hydrated examples
                 in the prompt; hydration still occurs for item metadata).
+            constraints: Override constraints dict (replaces hydrated
+                ``constraints`` in the prompt; hydration still occurs for
+                item metadata).
             budget_tokens: Override the default ``Phase.call`` budget.
 
         Returns:
@@ -581,7 +585,9 @@ class ContextManager:
         from contextweaver.context.call_prompt import build_schema_header
 
         hydration = catalog.hydrate(tool_id)
-        header = build_schema_header(hydration, schema=schema, examples=examples)
+        header = build_schema_header(
+            hydration, schema=schema, examples=examples, constraints=constraints,
+        )
 
         return self._build(
             phase=Phase.call,
@@ -597,6 +603,7 @@ class ContextManager:
         catalog: Catalog,
         schema: dict[str, Any] | None = None,
         examples: list[str] | None = None,
+        constraints: dict[str, Any] | None = None,
         budget_tokens: int | None = None,
     ) -> ContextPack:
         """Async wrapper for :meth:`_build_call_prompt`.
@@ -609,6 +616,7 @@ class ContextManager:
             catalog=catalog,
             schema=schema,
             examples=examples,
+            constraints=constraints,
             budget_tokens=budget_tokens,
         )
 
@@ -619,6 +627,7 @@ class ContextManager:
         catalog: Catalog,
         schema: dict[str, Any] | None = None,
         examples: list[str] | None = None,
+        constraints: dict[str, Any] | None = None,
         budget_tokens: int | None = None,
     ) -> ContextPack:
         """Synchronous alias for :meth:`_build_call_prompt`.
@@ -631,5 +640,6 @@ class ContextManager:
             catalog=catalog,
             schema=schema,
             examples=examples,
+            constraints=constraints,
             budget_tokens=budget_tokens,
         )

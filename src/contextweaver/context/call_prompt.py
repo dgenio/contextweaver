@@ -16,6 +16,7 @@ def build_schema_header(
     hydration: HydrationResult,
     schema: dict[str, Any] | None = None,
     examples: list[str] | None = None,
+    constraints: dict[str, Any] | None = None,
 ) -> str:
     """Build a ``[TOOL SCHEMA]`` prompt header from hydration data.
 
@@ -30,12 +31,15 @@ def build_schema_header(
             in the header; does not skip hydration).
         examples: Override example strings (replaces hydrated examples
             in the header; does not skip hydration).
+        constraints: Override constraints dict (replaces hydrated
+            ``constraints`` in the header; does not skip hydration).
 
     Returns:
         A formatted prompt header string starting with ``[TOOL SCHEMA]``.
     """
     effective_schema = schema if schema is not None else hydration.args_schema
     effective_examples = examples if examples is not None else hydration.examples
+    effective_constraints = constraints if constraints is not None else hydration.constraints
 
     sections: list[str] = [
         f"[TOOL SCHEMA]\nTool: {hydration.item.name} ({hydration.item.id})",
@@ -44,8 +48,8 @@ def build_schema_header(
     if effective_schema:
         schema_text = json.dumps(effective_schema, indent=2, sort_keys=True)
         sections.append(f"Schema:\n{schema_text}")
-    if hydration.constraints:
-        constraints_text = json.dumps(hydration.constraints, indent=2, sort_keys=True)
+    if effective_constraints:
+        constraints_text = json.dumps(effective_constraints, indent=2, sort_keys=True)
         sections.append(f"Constraints:\n{constraints_text}")
     if effective_examples:
         ex_lines = "\n".join(f"  - {ex}" for ex in effective_examples)
