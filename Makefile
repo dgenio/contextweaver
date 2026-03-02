@@ -23,4 +23,4 @@ example:
 demo:
 	python -m contextweaver demo
 
-ci: fmt lint type test
+ci: fmt lint type test example demo

@@ -37,3 +37,9 @@ jobs:
 
       - name: Test
         run: pytest -q
+
+      - name: Examples
+        run: make example
+
+      - name: Demo
+        run: make demo
