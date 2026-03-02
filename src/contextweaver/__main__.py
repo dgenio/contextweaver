@@ -238,8 +238,18 @@ def _cmd_print_tree(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_init(args: argparse.Namespace) -> int:  # noqa: ARG001
+def _cmd_init(args: argparse.Namespace) -> int:
     """Scaffold contextweaver config + sample catalog in cwd."""
+    force: bool = args.force
+    config_path = Path("contextweaver.json")
+    catalog_path = Path("sample_catalog.json")
+
+    existing = [p for p in (config_path, catalog_path) if p.exists()]
+    if existing and not force:
+        names = ", ".join(str(p) for p in existing)
+        print(f"Error: {names} already exist. Use --force to overwrite.", file=sys.stderr)
+        return 1
+
     config = {
         "version": "0.1.0",
         "budget": {"route": 2000, "call": 3000, "interpret": 4000, "answer": 6000},
@@ -252,11 +262,9 @@ def _cmd_init(args: argparse.Namespace) -> int:  # noqa: ARG001
         "policy": {"ttl_behavior": "drop", "sensitivity_floor": "confidential"},
         "routing": {"max_children": 20, "beam_width": 2, "top_k": 20, "confidence_gap": 0.15},
     }
-    config_path = Path("contextweaver.json")
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     print(f"Created {config_path}")
 
-    catalog_path = Path("sample_catalog.json")
     raw_items = generate_sample_catalog(n=40, seed=42)
     catalog_path.write_text(json.dumps(raw_items, indent=2) + "\n", encoding="utf-8")
     print(f"Created {catalog_path} ({len(raw_items)} items)")
@@ -414,7 +422,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_tree.add_argument("--depth", type=int, default=3, help="Max depth to display (default: 3).")
 
     # init
-    sub.add_parser("init", help="Scaffold contextweaver config + sample catalog in cwd.")
+    p_init = sub.add_parser("init", help="Scaffold contextweaver config + sample catalog in cwd.")
+    p_init.add_argument("--force", action="store_true", default=False, help="Overwrite existing files.")
 
     # ingest
     p_ingest = sub.add_parser("ingest", help="Ingest a JSONL session file.")
