@@ -51,7 +51,10 @@ def _load_jsonl(path: str) -> list[ContextItem]:
     """Read a JSONL file and convert each line into a ContextItem."""
     items: list[ContextItem] = []
     for lineno, line in enumerate(Path(path).read_text(encoding="utf-8").strip().splitlines(), 1):
-        obj: dict[str, Any] = json.loads(line)
+        try:
+            obj: dict[str, Any] = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path}:{lineno}: invalid JSON — {exc}") from exc
         kind = _KIND_MAP.get(obj.get("type", "user_turn"), ItemKind.user_turn)
         text = obj.get("text") or obj.get("content", "")
         items.append(
