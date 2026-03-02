@@ -252,8 +252,8 @@ def populated_manager() -> ContextManager:
         )
     )
     # Two facts
-    mgr.add_fact("User prefers Celsius for temperature")
-    mgr.add_fact("User is located in London, UK")
+    mgr.add_fact("temp_unit", "Celsius")
+    mgr.add_fact("user_location", "London, UK")
     # One episode
-    mgr.add_episode("Previously asked about weather in Paris — answered 18°C sunny")
+    mgr.add_episode("ep-paris", "Previously asked about weather in Paris — answered 18°C sunny")
     return mgr
