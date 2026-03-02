@@ -246,8 +246,8 @@ class Router:
                     else:
                         unexplored.append((score + s, child, new_path))
 
-            # Sort next beam deterministically
-            next_beam.sort(key=lambda x: (-x[0], x[1]))
+            # Sort next beam deterministically: score desc, node ID alpha
+            next_beam.sort(key=lambda x: (-x[0], x[1][-1]))
             beam = next_beam[:self._beam_width]
 
             if debug:
@@ -261,7 +261,7 @@ class Router:
 
         # Backtrack: if we have fewer candidates than top_k,
         # expand next-best unexplored branches
-        unexplored.sort(key=lambda x: (-x[0], x[2]))
+        unexplored.sort(key=lambda x: (-x[0], x[1]))
         while len(collected) < self._top_k and unexplored:
             u_score, u_node, u_path = unexplored.pop(0)
             if u_node in collected:
