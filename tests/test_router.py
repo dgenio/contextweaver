@@ -208,3 +208,20 @@ def test_backtrack_expands_unexplored() -> None:
     result = router.route("invoice billing")
     # Should find at least one billing item
     assert any("billing" in cid for cid in result.candidate_ids)
+
+
+def test_backtrack_fills_up_to_top_k() -> None:
+    """Backtracking should return close to top_k on a well-populated catalog."""
+    items = [
+        _item(f"ns{j}.tool{i}", name=f"tool_{i}_{j}", namespace=f"ns{j}",
+              description=f"Tool {i} in namespace {j}",
+              tags=[f"ns{j}", "tool"])
+        for j in range(5)
+        for i in range(10)
+    ]
+    top_k = 15
+    router = _setup_router(items=items, beam_width=2, top_k=top_k)
+    result = router.route("tool namespace")
+    # With 50 items and top_k=15, backtracking should fill well past beam_width=2
+    assert len(result.candidate_ids) >= top_k // 2
+    assert len(result.candidate_ids) <= top_k

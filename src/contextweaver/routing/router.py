@@ -259,10 +259,10 @@ class Router:
             if node_id in self._items and node_id not in collected:
                 collected[node_id] = (score, path[1:])
 
-        # Backtrack: if we have fewer candidates than beam_width,
+        # Backtrack: if we have fewer candidates than top_k,
         # expand next-best unexplored branches
         unexplored.sort(key=lambda x: (-x[0], x[2]))
-        while len(collected) < self._beam_width and unexplored:
+        while len(collected) < self._top_k and unexplored:
             u_score, u_node, u_path = unexplored.pop(0)
             if u_node in collected:
                 continue
