@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-03-03
+
+### Added
+- Full CLI implementation: all 7 subcommands (demo, build, route, print-tree, init, ingest, replay) with real handlers
+- MCP adapter: mcp_tool_to_selectable, mcp_result_to_envelope, load_mcp_session_jsonl
+- A2A adapter: a2a_agent_to_selectable, a2a_result_to_envelope, load_a2a_session_jsonl
+- Sample JSONL session files: mcp_session.jsonl, a2a_session.jsonl
+- before_after.py showpiece: side-by-side token comparison WITHOUT vs WITH contextweaver
+- Comprehensive test_cli.py: subprocess tests for all 7 CLI commands
+- Expanded conftest.py: store_bundle, sample_context_items, sample_selectable_items, large_catalog, sample_graph, context_manager, populated_manager fixtures
+- Documentation: architecture.md, concepts.md, integration_mcp.md, integration_a2a.md
+- Full README.md with installation, quick start, routing, CLI, examples, and development sections
+
+### Changed
+- Version bumped to 0.1.0
+- Makefile ci target now includes example and demo
+- Example scripts updated: mcp_adapter_demo.py and a2a_adapter_demo.py now use real adapters
+
 ## [0.0.3] - 2026-03-02
 
 ### Added
