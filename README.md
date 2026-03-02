@@ -30,7 +30,7 @@ pip install contextweaver
 Or install from source:
 
 ```bash
-git clone https://github.com/your-org/contextweaver.git
+git clone https://github.com/dgenio/contextweaver.git
 cd contextweaver
 pip install -e ".[dev]"
 ```
