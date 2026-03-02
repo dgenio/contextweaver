@@ -29,7 +29,7 @@ from contextweaver.routing.catalog import Catalog, generate_sample_catalog, load
 from contextweaver.routing.graph_io import load_graph, save_graph
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
-from contextweaver.types import ContextItem, ItemKind, Phase
+from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem
 
 # ---------------------------------------------------------------------------
 # JSON-L session helpers
@@ -85,8 +85,6 @@ def _cmd_demo(args: argparse.Namespace) -> int:  # noqa: ARG001
     raw_items = generate_sample_catalog(n=40, seed=42)
     catalog = Catalog()
     for raw in raw_items:
-        from contextweaver.types import SelectableItem
-
         catalog.register(SelectableItem.from_dict(raw))
     items = catalog.all()
     ns_count = len({it.namespace for it in items})
@@ -182,25 +180,16 @@ def _cmd_build(args: argparse.Namespace) -> int:
 def _cmd_route(args: argparse.Namespace) -> int:
     """Route a query over a pre-built graph."""
     graph_path: str = args.graph
+    catalog_path: str = args.catalog
     query: str = args.query
     top_k: int = args.top_k
 
     graph = load_graph(graph_path)
+    all_items = load_catalog_json(catalog_path)
 
-    # Recover items from graph item IDs — build minimal SelectableItems
-    item_ids = graph.items()
-    items_list = []
-    for item_id in item_ids:
-        node = graph.get_node(item_id)
-        items_list.append(
-            __import__("contextweaver.types", fromlist=["SelectableItem"]).SelectableItem(
-                id=item_id,
-                kind="tool",
-                name=node.label or item_id.split(".")[-1],
-                description=node.routing_hint or item_id,
-                namespace=item_id.split(".")[0] if "." in item_id else "",
-            )
-        )
+    # Keep only items present in the graph
+    graph_item_ids = set(graph.items())
+    items_list = [it for it in all_items if it.id in graph_item_ids]
 
     router = Router(graph, items=items_list, beam_width=3, top_k=top_k)
     result = router.route(query)
@@ -404,6 +393,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # route
     p_route = sub.add_parser("route", help="Route a query over a pre-built graph.")
     p_route.add_argument("--graph", required=True, help="Path to the graph JSON file.")
+    p_route.add_argument("--catalog", required=True, help="Path to the catalog JSON file.")
     p_route.add_argument("--query", required=True, help="The user query to route.")
     p_route.add_argument("--top-k", type=int, default=10, help="Max results (default: 10).")
 

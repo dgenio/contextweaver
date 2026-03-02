@@ -81,8 +81,8 @@ def test_build_custom_max_children(tmp_path: Path) -> None:
 # ------------------------------------------------------------------
 
 
-def _make_graph(tmp_path: Path) -> Path:
-    """Create a graph JSON file for route/print-tree tests."""
+def _make_graph(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a graph JSON file and catalog JSON file for route/print-tree tests."""
     from contextweaver.routing.catalog import generate_sample_catalog, load_catalog_dicts
     from contextweaver.routing.graph_io import save_graph
     from contextweaver.routing.tree import TreeBuilder
@@ -92,19 +92,27 @@ def _make_graph(tmp_path: Path) -> Path:
     graph = TreeBuilder(max_children=10).build(items)
     graph_path = tmp_path / "graph.json"
     save_graph(graph, str(graph_path))
-    return graph_path
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(dicts), encoding="utf-8")
+    return graph_path, catalog_path
 
 
 def test_route_returns_results(tmp_path: Path) -> None:
-    graph_path = _make_graph(tmp_path)
-    result = _run("route", "--graph", str(graph_path), "--query", "send an email")
+    graph_path, catalog_path = _make_graph(tmp_path)
+    result = _run(
+        "route", "--graph", str(graph_path), "--catalog", str(catalog_path),
+        "--query", "send an email",
+    )
     assert result.returncode == 0
     assert "query" in result.stdout.lower() or "result" in result.stdout.lower()
 
 
 def test_route_top_k(tmp_path: Path) -> None:
-    graph_path = _make_graph(tmp_path)
-    result = _run("route", "--graph", str(graph_path), "--query", "database", "--top-k", "3")
+    graph_path, catalog_path = _make_graph(tmp_path)
+    result = _run(
+        "route", "--graph", str(graph_path), "--catalog", str(catalog_path),
+        "--query", "database", "--top-k", "3",
+    )
     assert result.returncode == 0
 
 
@@ -114,7 +122,7 @@ def test_route_top_k(tmp_path: Path) -> None:
 
 
 def test_print_tree_shows_tree(tmp_path: Path) -> None:
-    graph_path = _make_graph(tmp_path)
+    graph_path, _ = _make_graph(tmp_path)
     result = _run("print-tree", "--graph", str(graph_path))
     assert result.returncode == 0
     assert (
@@ -125,7 +133,7 @@ def test_print_tree_shows_tree(tmp_path: Path) -> None:
 
 
 def test_print_tree_depth_limit(tmp_path: Path) -> None:
-    graph_path = _make_graph(tmp_path)
+    graph_path, _ = _make_graph(tmp_path)
     result = _run("print-tree", "--graph", str(graph_path), "--depth", "1")
     assert result.returncode == 0
 
