@@ -80,7 +80,7 @@ from contextweaver.types import (
     ViewSpec,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.0.4"
 __all__ = [
     # sub-modules
     "config",
