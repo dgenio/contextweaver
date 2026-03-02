@@ -54,10 +54,11 @@ def apply_firewall(
 
     raw_bytes = item.text.encode("utf-8")
     handle = f"artifact:{item.id}"
+    media = str(item.metadata.get("media_type", "text/plain"))
     ref = artifact_store.put(
         handle=handle,
         content=raw_bytes,
-        media_type="text/plain",
+        media_type=media,
         label=f"raw tool result for {item.id}",
     )
 
