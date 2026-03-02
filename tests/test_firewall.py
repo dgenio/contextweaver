@@ -80,3 +80,30 @@ def test_firewall_partial_status_when_extraction_fails() -> None:
     assert env is not None
     assert env.status == "partial"
     assert env.facts == []
+
+
+def test_firewall_propagates_media_type_from_metadata() -> None:
+    item = ContextItem(
+        id="r5",
+        kind=ItemKind.tool_result,
+        text='{"key": "value"}',
+        metadata={"media_type": "application/json"},
+    )
+    store = InMemoryArtifactStore()
+    processed, env = apply_firewall(item, store)
+    assert env is not None
+    assert processed.artifact_ref is not None
+    assert processed.artifact_ref.media_type == "application/json"
+
+
+def test_firewall_defaults_media_type_to_text_plain() -> None:
+    item = ContextItem(
+        id="r6",
+        kind=ItemKind.tool_result,
+        text="plain text output",
+    )
+    store = InMemoryArtifactStore()
+    processed, env = apply_firewall(item, store)
+    assert env is not None
+    assert processed.artifact_ref is not None
+    assert processed.artifact_ref.media_type == "text/plain"

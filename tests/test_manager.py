@@ -5,8 +5,11 @@ from __future__ import annotations
 import pytest
 
 from contextweaver.context.manager import ContextManager
+from contextweaver.routing.router import Router
+from contextweaver.routing.tree import TreeBuilder
+from contextweaver.store import StoreBundle
 from contextweaver.store.event_log import InMemoryEventLog
-from contextweaver.types import ContextItem, ContextPack, ItemKind, Phase
+from contextweaver.types import ContextItem, ContextPack, ItemKind, Phase, SelectableItem
 
 
 def _make_log(*texts: str) -> InMemoryEventLog:
@@ -82,3 +85,331 @@ async def test_build_sync_inside_running_loop() -> None:
     mgr = ContextManager(event_log=log)
     pack = mgr.build_sync(phase=Phase.answer)
     assert isinstance(pack, ContextPack)
+
+
+# ---------------------------------------------------------------------------
+# Ingestion methods
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_appends_to_event_log() -> None:
+    mgr = ContextManager()
+    item = ContextItem(id="u1", kind=ItemKind.user_turn, text="hello")
+    mgr.ingest(item)
+    assert mgr.event_log.count() == 1
+    assert mgr.event_log.get("u1").text == "hello"
+
+
+def test_ingest_sync() -> None:
+    mgr = ContextManager()
+    item = ContextItem(id="u1", kind=ItemKind.user_turn, text="hello")
+    mgr.ingest_sync(item)
+    assert mgr.event_log.count() == 1
+
+
+def test_ingest_tool_result_small() -> None:
+    mgr = ContextManager()
+    item, env = mgr.ingest_tool_result(
+        tool_call_id="tc1",
+        raw_output="status: ok\ncount: 5",
+        tool_name="db_query",
+    )
+    assert item.kind == ItemKind.tool_result
+    assert item.parent_id == "tc1"
+    assert env.status == "ok"
+    assert mgr.event_log.count() == 1
+
+
+def test_ingest_tool_result_large_triggers_firewall() -> None:
+    mgr = ContextManager()
+    large_output = "data: " + "x" * 3000
+    item, env = mgr.ingest_tool_result(
+        tool_call_id="tc2",
+        raw_output=large_output,
+        tool_name="big_tool",
+        firewall_threshold=100,
+    )
+    assert item.artifact_ref is not None
+    assert env.status == "ok"
+    assert len(item.text) < len(large_output)
+    assert mgr.event_log.count() == 1
+
+
+def test_ingest_tool_result_sync() -> None:
+    mgr = ContextManager()
+    item, env = mgr.ingest_tool_result_sync(
+        tool_call_id="tc3",
+        raw_output="result: 42",
+    )
+    assert env.status == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Fact / Episode helpers
+# ---------------------------------------------------------------------------
+
+
+def test_add_fact() -> None:
+    mgr = ContextManager()
+    mgr.add_fact("user_name", "Alice")
+    facts = mgr.fact_store.all()
+    assert len(facts) == 1
+    assert facts[0].key == "user_name"
+    assert facts[0].value == "Alice"
+
+
+def test_add_fact_sync() -> None:
+    mgr = ContextManager()
+    mgr.add_fact_sync("key", "value")
+    assert len(mgr.fact_store.all()) == 1
+
+
+def test_add_episode() -> None:
+    mgr = ContextManager()
+    mgr.add_episode("ep1", "User searched for data")
+    episodes = mgr.episodic_store.all()
+    assert len(episodes) == 1
+    assert episodes[0].episode_id == "ep1"
+
+
+def test_add_episode_sync() -> None:
+    mgr = ContextManager()
+    mgr.add_episode_sync("ep1", "summary")
+    assert len(mgr.episodic_store.all()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Facts + episodic in build output
+# ---------------------------------------------------------------------------
+
+
+def test_build_includes_facts_in_prompt() -> None:
+    mgr = ContextManager()
+    mgr.add_fact("user_lang", "Python")
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert "user_lang" in pack.prompt
+    assert "Python" in pack.prompt
+
+
+def test_build_caps_facts_by_line_count() -> None:
+    """Fact injection is capped at 64 lines; excess produces an omitted notice."""
+    mgr = ContextManager()
+    # Zero-padded keys so lexicographic == numeric order
+    for i in range(80):
+        mgr.add_fact(f"k{i:03d}", f"v{i}")
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert "more facts omitted" in pack.prompt
+    # Key 063 (last within cap) should be present, key 064 should not
+    assert "k063" in pack.prompt
+    assert "- k064:" not in pack.prompt
+
+
+def test_build_caps_facts_by_char_budget() -> None:
+    """Fact injection truncates when total chars exceed 2000."""
+    mgr = ContextManager()
+    # Each fact line is ~210 chars → 10 facts ≈ 2100 chars, exceeds 2000
+    for i in range(15):
+        mgr.add_fact(f"key{i}", "x" * 200)
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert "facts truncated to fit header budget" in pack.prompt
+
+
+def test_build_includes_episodic_in_prompt() -> None:
+    mgr = ContextManager()
+    mgr.add_episode("ep1", "Previously searched for billing data")
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert "billing" in pack.prompt.lower()
+
+
+# ---------------------------------------------------------------------------
+# StoreBundle constructor
+# ---------------------------------------------------------------------------
+
+
+def test_stores_bundle_constructor() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="pre-loaded"))
+    bundle = StoreBundle(event_log=log)
+    mgr = ContextManager(stores=bundle)
+    assert mgr.event_log.count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Budget override
+# ---------------------------------------------------------------------------
+
+
+def test_build_with_budget_override() -> None:
+    log = _make_log("item about database queries")
+    mgr = ContextManager(event_log=log)
+    pack = mgr.build_sync(phase=Phase.answer, budget_tokens=50)
+    assert isinstance(pack, ContextPack)
+
+
+# ---------------------------------------------------------------------------
+# Header/footer budget accounting
+# ---------------------------------------------------------------------------
+
+
+def test_header_footer_tokens_recorded_in_stats() -> None:
+    """BuildStats.header_footer_tokens reflects injected facts/episodes cost."""
+    mgr = ContextManager()
+    mgr.add_fact("lang", "Python")
+    mgr.add_episode("ep1", "Searched billing data")
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert pack.stats.header_footer_tokens > 0
+    assert "[FACTS]" in pack.prompt
+    assert "[EPISODIC MEMORY]" in pack.prompt
+
+
+def test_header_footer_tokens_zero_without_injection() -> None:
+    """Without facts or episodes, header_footer_tokens is 0."""
+    log = _make_log("hello world")
+    mgr = ContextManager(event_log=log)
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert pack.stats.header_footer_tokens == 0
+
+
+def test_facts_budget_subtracted_from_selection() -> None:
+    """Injected facts reduce the budget available for context items."""
+    # Tight budget: 100 tokens total. With facts injected, fewer items fit.
+    mgr_no_facts = ContextManager()
+    mgr_no_facts.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="a " * 50))
+    mgr_no_facts.ingest(ContextItem(id="u2", kind=ItemKind.user_turn, text="b " * 50))
+    pack_no = mgr_no_facts.build_sync(phase=Phase.answer, budget_tokens=100)
+
+    mgr_with_facts = ContextManager()
+    for i in range(10):
+        mgr_with_facts.add_fact(f"k{i}", f"value-{i}")
+    mgr_with_facts.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="a " * 50))
+    mgr_with_facts.ingest(ContextItem(id="u2", kind=ItemKind.user_turn, text="b " * 50))
+    pack_with = mgr_with_facts.build_sync(phase=Phase.answer, budget_tokens=100)
+
+    # With facts consuming part of the budget, fewer items should be included
+    # OR the total context-item tokens should be lower.
+    assert pack_with.stats.header_footer_tokens > 0
+    items_tokens_no = sum(pack_no.stats.tokens_per_section.values())
+    items_tokens_with = sum(pack_with.stats.tokens_per_section.values())
+    assert items_tokens_with <= items_tokens_no
+
+
+# ---------------------------------------------------------------------------
+# Per-phase build
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_route_phase() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="search data"))
+    mgr = ContextManager(event_log=log)
+    pack = await mgr.build(phase=Phase.route, query="search")
+    assert pack.phase == Phase.route
+
+
+@pytest.mark.asyncio
+async def test_build_call_phase() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="search data"))
+    mgr = ContextManager(event_log=log)
+    pack = await mgr.build(phase=Phase.call, query="search")
+    assert pack.phase == Phase.call
+
+
+@pytest.mark.asyncio
+async def test_build_interpret_phase() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="query"))
+    log.append(ContextItem(id="tr1", kind=ItemKind.tool_result, text="result data"))
+    mgr = ContextManager(event_log=log)
+    pack = await mgr.build(phase=Phase.interpret, query="interpret result")
+    assert pack.phase == Phase.interpret
+
+
+# ---------------------------------------------------------------------------
+# build_route_prompt
+# ---------------------------------------------------------------------------
+
+
+def _make_selectable_items() -> list[SelectableItem]:
+    """Build a small catalog for route-prompt tests."""
+    return [
+        SelectableItem(
+            id="db_read",
+            kind="tool",
+            name="read_db",
+            description="Read from database",
+            tags=["data"],
+        ),
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="Send email notification",
+            tags=["comm"],
+        ),
+        SelectableItem(
+            id="search_docs",
+            kind="tool",
+            name="search_docs",
+            description="Search documentation pages",
+            tags=["search"],
+        ),
+    ]
+
+
+def test_build_route_prompt_returns_tuple() -> None:
+    """build_route_prompt returns (ContextPack, cards, RouteResult)."""
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    router = Router(graph, items=items, beam_width=2, top_k=5)
+
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="read database"))
+    mgr = ContextManager(event_log=log)
+
+    pack, cards, route_result = mgr.build_route_prompt(
+        goal="Find data tools",
+        query="read database",
+        router=router,
+    )
+
+    # ContextPack for route phase
+    assert isinstance(pack, ContextPack)
+    assert pack.phase == Phase.route
+
+    # Cards list corresponds to route candidates
+    assert isinstance(cards, list)
+    assert len(cards) == len(route_result.candidate_ids)
+
+    # RouteResult has matching lengths
+    assert len(route_result.scores) == len(route_result.candidate_ids)
+
+    # Prompt includes GOAL header and AVAILABLE TOOLS footer
+    assert "[GOAL]" in pack.prompt
+    assert "Find data tools" in pack.prompt
+    assert "[AVAILABLE TOOLS]" in pack.prompt
+
+
+def test_build_route_prompt_sync_alias() -> None:
+    """build_route_prompt_sync is a working alias."""
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    router = Router(graph, items=items)
+
+    mgr = ContextManager()
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="search docs"))
+
+    pack, cards, result = mgr.build_route_prompt_sync(
+        goal="Search goal",
+        query="search docs",
+        router=router,
+    )
+    assert pack.phase == Phase.route
+    assert len(cards) > 0
+    assert len(result.candidate_ids) > 0

@@ -22,12 +22,53 @@ from __future__ import annotations
 
 from contextweaver import config, envelope, exceptions, protocols, types
 from contextweaver._utils import TfIdfScorer, jaccard
+from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+from contextweaver.context.manager import ContextManager
 from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
     ContextPack,
     ResultEnvelope,
 )
+from contextweaver.exceptions import (
+    ArtifactNotFoundError,
+    BudgetExceededError,
+    CatalogError,
+    ContextWeaverError,
+    GraphBuildError,
+    ItemNotFoundError,
+    PolicyViolationError,
+    RouteError,
+)
+from contextweaver.protocols import (
+    EventHook,
+    Extractor,
+    Labeler,
+    RedactionHook,
+    Summarizer,
+    TokenEstimator,
+)
+from contextweaver.routing.cards import make_choice_cards, render_cards_text
+from contextweaver.routing.catalog import (
+    Catalog,
+    generate_sample_catalog,
+    load_catalog_dicts,
+    load_catalog_json,
+)
+from contextweaver.routing.graph import ChoiceGraph
+from contextweaver.routing.graph_node import ChoiceNode
+from contextweaver.routing.labeler import KeywordLabeler
+from contextweaver.routing.router import Router, RouteResult
+from contextweaver.routing.tree import TreeBuilder
+from contextweaver.store import (
+    InMemoryArtifactStore,
+    InMemoryEpisodicStore,
+    InMemoryEventLog,
+    InMemoryFactStore,
+    StoreBundle,
+)
+from contextweaver.summarize.extract import StructuredExtractor
+from contextweaver.summarize.rules import RuleBasedSummarizer
 from contextweaver.types import (
     ArtifactRef,
     ContextItem,
@@ -39,7 +80,7 @@ from contextweaver.types import (
     ViewSpec,
 )
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 __all__ = [
     # sub-modules
     "config",
@@ -50,7 +91,7 @@ __all__ = [
     # utilities
     "TfIdfScorer",
     "jaccard",
-    # types
+    # types / enums
     "ArtifactRef",
     "BuildStats",
     "ChoiceCard",
@@ -63,4 +104,48 @@ __all__ = [
     "Sensitivity",
     "ToolCard",
     "ViewSpec",
+    # config
+    "ContextBudget",
+    "ContextPolicy",
+    "ScoringConfig",
+    # protocols
+    "EventHook",
+    "Extractor",
+    "Labeler",
+    "RedactionHook",
+    "Summarizer",
+    "TokenEstimator",
+    # exceptions
+    "ArtifactNotFoundError",
+    "BudgetExceededError",
+    "CatalogError",
+    "ContextWeaverError",
+    "GraphBuildError",
+    "ItemNotFoundError",
+    "PolicyViolationError",
+    "RouteError",
+    # stores
+    "InMemoryArtifactStore",
+    "InMemoryEpisodicStore",
+    "InMemoryEventLog",
+    "InMemoryFactStore",
+    "StoreBundle",
+    # context engine
+    "ContextManager",
+    # routing engine
+    "Catalog",
+    "ChoiceGraph",
+    "ChoiceNode",
+    "KeywordLabeler",
+    "RouteResult",
+    "Router",
+    "TreeBuilder",
+    "generate_sample_catalog",
+    "load_catalog_dicts",
+    "load_catalog_json",
+    "make_choice_cards",
+    "render_cards_text",
+    # summarize
+    "RuleBasedSummarizer",
+    "StructuredExtractor",
 ]
