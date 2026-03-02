@@ -553,3 +553,138 @@ async def test_build_call_prompt_async() -> None:
     assert isinstance(pack, ContextPack)
     assert pack.phase == Phase.call
     assert "[TOOL SCHEMA]" in pack.prompt
+
+
+# ---------------------------------------------------------------------------
+# ingest_mcp_result
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_mcp_result_text_only() -> None:
+    """Text-only MCP result: no artifacts stored."""
+    mgr = ContextManager()
+    mcp_result = {
+        "content": [{"type": "text", "text": "status: ok\ncount: 42"}],
+    }
+    item, env = mgr.ingest_mcp_result("call-1", mcp_result, "search_tool")
+    assert item.kind == ItemKind.tool_result
+    assert item.parent_id == "call-1"
+    assert env.status == "ok"
+    assert "42" in env.summary
+    assert mgr.event_log.count() == 1
+    # No binary artifacts → nothing in store
+    assert mgr.artifact_store.list_refs() == []
+
+
+def test_ingest_mcp_result_image() -> None:
+    """Image content is persisted in the artifact store."""
+    import base64
+
+    mgr = ContextManager()
+    png_bytes = b"\x89PNG_test_image_data"
+    b64_data = base64.b64encode(png_bytes).decode()
+    mcp_result = {
+        "content": [
+            {"type": "image", "data": b64_data, "mimeType": "image/png"},
+        ],
+    }
+    item, env = mgr.ingest_mcp_result("call-2", mcp_result, "screenshot")
+    assert len(env.artifacts) == 1
+    assert env.artifacts[0].media_type == "image/png"
+    # Artifact is actually persisted
+    handle = "mcp:screenshot:image:0"
+    assert mgr.artifact_store.exists(handle)
+    assert mgr.artifact_store.get(handle) == png_bytes
+
+
+def test_ingest_mcp_result_resource() -> None:
+    """Resource content is persisted in the artifact store."""
+    mgr = ContextManager()
+    mcp_result = {
+        "content": [
+            {
+                "type": "resource",
+                "resource": {
+                    "uri": "file:///data.csv",
+                    "mimeType": "text/csv",
+                    "text": "a,b\n1,2",
+                },
+            }
+        ],
+    }
+    item, env = mgr.ingest_mcp_result("call-3", mcp_result, "read_file")
+    assert len(env.artifacts) == 1
+    handle = "mcp:read_file:resource:0"
+    assert mgr.artifact_store.exists(handle)
+    assert mgr.artifact_store.get(handle) == b"a,b\n1,2"
+    assert "a,b" in env.summary
+
+
+def test_ingest_mcp_result_error() -> None:
+    """Error MCP results set status='error'."""
+    mgr = ContextManager()
+    mcp_result = {
+        "content": [{"type": "text", "text": "something went wrong"}],
+        "isError": True,
+    }
+    item, env = mgr.ingest_mcp_result("call-4", mcp_result, "fail_tool")
+    assert env.status == "error"
+    assert mgr.event_log.count() == 1
+
+
+def test_ingest_mcp_result_large_output_firewall() -> None:
+    """Large text output triggers the context firewall."""
+    mgr = ContextManager()
+    large_text = "row: " + "x" * 3000
+    mcp_result = {
+        "content": [{"type": "text", "text": large_text}],
+    }
+    item, env = mgr.ingest_mcp_result("call-5", mcp_result, "big_tool", firewall_threshold=100)
+    # Firewall should have truncated/summarized
+    assert len(item.text) < len(large_text)
+    assert item.artifact_ref is not None
+    assert mgr.event_log.count() == 1
+
+
+def test_ingest_mcp_result_sync() -> None:
+    """Sync alias works."""
+    mgr = ContextManager()
+    mcp_result = {
+        "content": [{"type": "text", "text": "result: 42"}],
+    }
+    item, env = mgr.ingest_mcp_result_sync("call-6", mcp_result, "tool")
+    assert env.status == "ok"
+    assert mgr.event_log.count() == 1
+
+
+def test_ingest_mcp_result_mixed_content() -> None:
+    """Mixed content (text + image + resource) persists all artifacts."""
+    import base64
+
+    mgr = ContextManager()
+    img_bytes = b"\x89PNG_mix"
+    mcp_result = {
+        "content": [
+            {"type": "text", "text": "Found 5 results"},
+            {
+                "type": "image",
+                "data": base64.b64encode(img_bytes).decode(),
+                "mimeType": "image/png",
+            },
+            {
+                "type": "resource",
+                "resource": {
+                    "uri": "file:///report.txt",
+                    "mimeType": "text/plain",
+                    "text": "Report content here",
+                },
+            },
+        ],
+    }
+    item, env = mgr.ingest_mcp_result("call-7", mcp_result, "multi_tool")
+    assert len(env.artifacts) == 2
+    assert mgr.artifact_store.exists("mcp:multi_tool:image:1")
+    assert mgr.artifact_store.exists("mcp:multi_tool:resource:2")
+    assert mgr.artifact_store.get("mcp:multi_tool:image:1") == img_bytes
+    assert "Found 5 results" in env.summary
+    assert "Report content" in env.summary

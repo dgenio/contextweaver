@@ -201,6 +201,78 @@ class ContextManager:
             tool_call_id, raw_output, tool_name, media_type, firewall_threshold
         )
 
+    def ingest_mcp_result(
+        self,
+        tool_call_id: str,
+        mcp_result: dict[str, Any],
+        tool_name: str,
+        firewall_threshold: int = 2000,
+    ) -> tuple[ContextItem, ResultEnvelope]:
+        """Ingest an MCP tool result with full artifact persistence.
+
+        This is the recommended happy-path API for MCP integration.  It:
+
+        1. Parses the MCP result via :func:`mcp_result_to_envelope`.
+        2. Stores binary artifacts (images, resources) in the artifact store.
+        3. Applies the context firewall for large text outputs.
+        4. Appends the resulting :class:`ContextItem` to the event log.
+
+        Args:
+            tool_call_id: ID of the originating tool call.
+            mcp_result: Raw MCP tool result dict (with ``content`` list).
+            tool_name: Human-readable tool name.
+            firewall_threshold: Character threshold above which text output
+                is stored out-of-band via the firewall.
+
+        Returns:
+            A ``(ContextItem, ResultEnvelope)`` tuple with all artifacts
+            persisted in the artifact store.
+        """
+        from contextweaver.adapters.mcp import mcp_result_to_envelope
+
+        envelope, binaries = mcp_result_to_envelope(mcp_result, tool_name)
+
+        # Persist binary artifacts (images, resources)
+        for handle, (raw_bytes, media_type, label) in sorted(binaries.items()):
+            self._artifact_store.put(handle, raw_bytes, media_type, label)
+
+        # Build the context item from the envelope summary
+        item = ContextItem(
+            id=f"result:{tool_call_id}",
+            kind=ItemKind.tool_result,
+            text=envelope.summary,
+            token_estimate=self._estimator.estimate(envelope.summary),
+            metadata={"tool_name": tool_name, "protocol": "mcp"},
+            parent_id=tool_call_id,
+        )
+
+        # Apply firewall if text summary is large
+        if len(envelope.summary) > firewall_threshold:
+            processed, fw_envelope = apply_firewall(item, self._artifact_store, self._hook)
+            if fw_envelope is not None:
+                # Merge: keep MCP artifacts, use firewall summary/facts
+                envelope = ResultEnvelope(
+                    status=envelope.status,
+                    summary=fw_envelope.summary,
+                    facts=list(fw_envelope.facts) + list(envelope.facts),
+                    artifacts=list(envelope.artifacts) + list(fw_envelope.artifacts),
+                    provenance=envelope.provenance,
+                )
+            item = processed
+
+        self._event_log.append(item)
+        return item, envelope
+
+    def ingest_mcp_result_sync(
+        self,
+        tool_call_id: str,
+        mcp_result: dict[str, Any],
+        tool_name: str,
+        firewall_threshold: int = 2000,
+    ) -> tuple[ContextItem, ResultEnvelope]:
+        """Synchronous alias for :meth:`ingest_mcp_result`."""
+        return self.ingest_mcp_result(tool_call_id, mcp_result, tool_name, firewall_threshold)
+
     def add_fact(self, key: str, value: str, metadata: dict[str, Any] | None = None) -> None:
         """Store a fact in the fact store.
 

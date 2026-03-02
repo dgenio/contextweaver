@@ -44,9 +44,10 @@ mcp_result = {
     "isError": False
 }
 
-envelope = mcp_result_to_envelope(mcp_result, "search_database")
+envelope, binaries = mcp_result_to_envelope(mcp_result, "search_database")
 # envelope.summary contains the text content
 # envelope.status  == "ok"
+# binaries maps handle → (raw_bytes, media_type, label)
 ```
 
 ### `load_mcp_session_jsonl(path)`
