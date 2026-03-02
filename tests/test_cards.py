@@ -102,6 +102,24 @@ def test_make_choice_cards_max_choices() -> None:
     assert len(cards) <= 10
 
 
+def test_make_choice_cards_preserves_order_no_scores() -> None:
+    """Without scores, original input order is preserved when capping."""
+    # IDs in reverse alphabetical order
+    items = [_item(f"z{i}") for i in range(5)] + [_item(f"a{i}") for i in range(5)]
+    cards = make_choice_cards(items, max_choices=5)
+    # Should keep first 5 (z0..z4), not alphabetically first
+    assert [c.id for c in cards] == [f"z{i}" for i in range(5)]
+
+
+def test_make_choice_cards_max_desc_chars_clamped() -> None:
+    """max_desc_chars < 4 is clamped to 4."""
+    items = [_item("t1", description="Hello world")]
+    cards = make_choice_cards(items, max_desc_chars=1)
+    # Should not crash; description is truncated to 4 chars
+    assert len(cards[0].description) <= 4
+    assert cards[0].description.endswith("...")
+
+
 def test_make_choice_cards_truncates_description() -> None:
     long_desc = "A" * 300
     items = [_item("t1", description=long_desc)]

@@ -187,6 +187,26 @@ def test_roundtrip_with_items() -> None:
     assert restored.build_meta["version"] == "1.0"
 
 
+def test_roundtrip_children_child_types_consistent() -> None:
+    """from_dict rebuilds children/child_types from edges."""
+    g = ChoiceGraph()
+    g.add_item("billing.inv")
+    g.add_node("root")
+    g.add_node("group")
+    g.add_edge("root", "group")
+    g.add_edge("group", "billing.inv")
+    g.root_id = "root"
+
+    restored = ChoiceGraph.from_dict(g.to_dict())
+    root = restored.get_node("root")
+    assert root.children == ["group"]
+    assert root.child_types == {"group": "node"}
+
+    grp = restored.get_node("group")
+    assert grp.children == ["billing.inv"]
+    assert grp.child_types == {"billing.inv": "item"}
+
+
 def test_roundtrip_deterministic_keys() -> None:
     g = ChoiceGraph()
     g.add_edge("root", "z_node")
@@ -341,11 +361,14 @@ def test_stats_basic() -> None:
 
     s = g.stats()
     assert s["total_items"] == 2
-    assert s["total_nodes"] >= 2
+    # total_nodes counts only navigation nodes (root + group1), not items
+    assert s["total_nodes"] == 2
     assert s["max_depth"] >= 1
     assert "avg_branching_factor" in s
     assert "max_branching_factor" in s
-    assert "leaf_node_count" in s
+    # leaf_node_count: nav nodes with zero outgoing edges (group1 has
+    # edges to items, so neither root nor group1 is a leaf here)
+    assert s["leaf_node_count"] == 0
     assert "namespaces" in s
 
 

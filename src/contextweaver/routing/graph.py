@@ -6,6 +6,11 @@ performs beam search over this graph.
 
 Nodes distinguish between child *nodes* (which can be expanded further)
 and child *items* (leaf-level catalog entries) via :attr:`ChoiceNode.child_types`.
+
+.. todo::
+   This module exceeds the ~300-line target (~490 lines).  Consider
+   extracting ChoiceNode, serialisation/IO, and stats/validation into
+   separate sub-modules in a follow-up refactoring PR.
 """
 
 from __future__ import annotations
@@ -150,6 +155,9 @@ class ChoiceGraph:
         """Add a directed edge *src* -> *dst* and validate acyclicity.
 
         Both *src* and *dst* are automatically added as nodes if not present.
+        If *dst* is registered as an item (via :meth:`add_item`), it still
+        receives a :class:`ChoiceNode` representation so that cycle detection
+        and topological ordering work uniformly over the DAG.
 
         Args:
             src: Source node ID (parent).
@@ -241,18 +249,24 @@ class ChoiceGraph:
     def stats(self) -> dict[str, Any]:
         """Compute graph statistics.
 
+        ``total_nodes`` and ``leaf_node_count`` count only *navigation*
+        nodes (i.e. they exclude IDs registered via :meth:`add_item`).
+
         Returns:
             A dict with keys: ``total_items``, ``total_nodes``, ``max_depth``,
             ``avg_branching_factor``, ``max_branching_factor``,
             ``leaf_node_count``, ``item_kinds``, ``namespaces``.
         """
-        total_nodes = len(self._nodes)
+        # Exclude item IDs from node counts so total_nodes reflects
+        # navigation nodes only (items are counted in total_items).
+        nav_nodes = [n for n in self._nodes if n not in self._items]
+        total_nodes = len(nav_nodes)
         total_items = len(self._items)
 
-        # Branching factors
+        # Branching factors (navigation nodes only)
         branching: list[int] = []
         leaf_count = 0
-        for node_id in self._nodes:
+        for node_id in nav_nodes:
             children_count = len(self._edges.get(node_id, set()))
             branching.append(children_count)
             if children_count == 0:
@@ -369,6 +383,22 @@ class ChoiceGraph:
                     raise GraphBuildError(
                         f"Cycle detected loading edge {src!r} -> {dst!r}."
                     )
+
+        # Rebuild children / child_types from _edges so they are
+        # always consistent, regardless of what the serialised node
+        # metadata contained.
+        for node in graph._nodes.values():
+            node.children.clear()
+            node.child_types.clear()
+        for src, dsts in graph._edges.items():
+            if src not in graph._nodes:
+                continue
+            node = graph._nodes[src]
+            for dst in sorted(dsts):
+                node.children.append(dst)
+                node.child_types[dst] = (
+                    "item" if dst in graph._items else "node"
+                )
 
         return graph
 

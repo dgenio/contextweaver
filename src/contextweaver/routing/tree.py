@@ -50,6 +50,14 @@ class TreeBuilder:
         labeler: KeywordLabeler | None = None,
         target_group_size: int | None = None,
     ) -> None:
+        if max_children < 1:
+            raise GraphBuildError(
+                f"max_children must be >= 1, got {max_children!r}"
+            )
+        if target_group_size is not None and target_group_size < 1:
+            raise GraphBuildError(
+                f"target_group_size must be >= 1, got {target_group_size!r}"
+            )
         self._max_children = max_children
         self._labeler = labeler or KeywordLabeler()
         self._target_group_size = target_group_size or max_children

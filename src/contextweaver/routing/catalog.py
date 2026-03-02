@@ -299,8 +299,8 @@ def generate_sample_catalog(
 ) -> list[dict[str, Any]]:
     """Generate a deterministic sample catalog of *n* items.
 
-    Items are drawn from 6 namespace families (billing, crm, search, docs,
-    admin, comms) using a seeded RNG for reproducibility.
+    Items are drawn from 8 namespace families (billing, crm, search, docs,
+    admin, comms, analytics, infra) using a seeded RNG for reproducibility.
 
     Args:
         n: Number of items to generate (capped at available pool size).

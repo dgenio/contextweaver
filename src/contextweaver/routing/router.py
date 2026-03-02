@@ -54,6 +54,8 @@ class Router:
 
     Args:
         graph: The choice graph to route over.
+        items: Optional list of catalog items to register immediately.
+            Equivalent to calling :meth:`set_items` after construction.
         scorer: Optional pre-fitted :class:`TfIdfScorer`.  If ``None``,
             one is auto-fitted on the graph's item text representations.
         beam_width: Number of beams to keep at each level (default 2).
@@ -69,6 +71,7 @@ class Router:
     def __init__(
         self,
         graph: ChoiceGraph,
+        items: list[SelectableItem] | None = None,
         scorer: TfIdfScorer | None = None,
         beam_width: int = 2,
         max_depth: int = 8,
@@ -87,6 +90,8 @@ class Router:
         self._items: dict[str, SelectableItem] = {}
         self._scorer = scorer
         self._indexed = False
+        if items is not None:
+            self.set_items(items)
 
     def set_items(self, items: list[SelectableItem]) -> None:
         """Register the catalog items for TF-IDF indexing and result lookup.
@@ -164,8 +169,14 @@ class Router:
             A :class:`RouteResult` with ranked items.
 
         Raises:
-            RouteError: If the graph is empty or invalid.
+            RouteError: If the graph is empty or invalid, or if no items
+                have been registered via *items* or :meth:`set_items`.
         """
+        if not self._items:
+            raise RouteError(
+                "No items registered. Pass items to Router() or call"
+                " set_items() before routing."
+            )
         root = self._graph.root_id
         if root not in self._graph.nodes():
             raise RouteError(f"Root node {root!r} not in graph.")
@@ -173,7 +184,7 @@ class Router:
         self._ensure_index()
         trace: list[dict[str, Any]] = []
 
-        # Beam entry: (score, path, item_ids_collected)
+        # Beam entry: (score, path)
         beam: list[tuple[float, list[str]]] = [(0.0, [root])]
         collected: dict[str, tuple[float, list[str]]] = {}
         # Track unexplored branches for backtracking

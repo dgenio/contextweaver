@@ -46,14 +46,13 @@ def _setup_router(
 ) -> Router:
     items = items or _build_catalog_items()
     graph = TreeBuilder(max_children=20).build(items)
-    router = Router(
+    return Router(
         graph,
+        items=items,
         beam_width=beam_width,
         top_k=top_k,
         confidence_gap=confidence_gap,
     )
-    router.set_items(items)
-    return router
 
 
 # ------------------------------------------------------------------
@@ -161,6 +160,14 @@ def test_empty_graph_raises() -> None:
     graph.root_id = "nonexistent"
     router = Router(graph)
     with pytest.raises(RouteError):
+        router.route("anything")
+
+
+def test_no_items_raises() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph)  # no items kwarg, no set_items()
+    with pytest.raises(RouteError, match="No items registered"):
         router.route("anything")
 
 

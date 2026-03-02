@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from contextweaver.routing.cards import cards_for_route, format_card_for_prompt
 from contextweaver.routing.catalog import Catalog
-from contextweaver.routing.router import Router
+from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import SelectableItem
 
@@ -82,8 +82,9 @@ def _build_catalog() -> Catalog:
 
 def main() -> None:
     catalog = _build_catalog()
-    tree = TreeBuilder().build(catalog)
-    router = Router(catalog, beam_width=3)
+    items = catalog.all()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, beam_width=3)
 
     queries = [
         "I need to read some database records",
@@ -94,9 +95,9 @@ def main() -> None:
     for query in queries:
         print(f"\n{'=' * 60}")
         print(f"Query: {query!r}")
-        paths = router.route(query, tree)
-        print(f"Top route: {paths[0]}")
-        cards = cards_for_route(paths[0], catalog)
+        result: RouteResult = router.route(query)
+        print(f"Top candidates: {result.candidate_ids[:3]}")
+        cards = cards_for_route(result.candidate_ids, catalog)
         if cards:
             print("Choice cards:")
             for card in cards:

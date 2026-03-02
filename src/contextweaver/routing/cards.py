@@ -80,16 +80,22 @@ def make_choice_cards(
     If *max_total_chars* is set the lowest-scored cards are dropped until the
     rendered text fits.
 
+    Cards are ordered by score descending.  When scores are equal (or absent),
+    the original input order is preserved as a stable tie-break.
+
     Args:
-        items: Source items (order preserved where possible).
+        items: Source items.
         max_choices: Maximum number of cards to return.
-        max_desc_chars: Maximum description length before truncation.
+        max_desc_chars: Maximum description length before truncation
+            (clamped to a minimum of 4).
         max_total_chars: Optional cap on total rendered text length.
         scores: Optional mapping of item-id → score.
 
     Returns:
         A list of :class:`ChoiceCard` objects.
     """
+    # Need at least 4 chars to produce "X..." (1 visible + "...")
+    max_desc_chars = max(max_desc_chars, 4)
     score_map = scores or {}
 
     cards: list[ChoiceCard] = []
@@ -100,16 +106,19 @@ def make_choice_cards(
             card.description = card.description[: max_desc_chars - 3] + "..."
         cards.append(card)
 
-    # Cap at max_choices — keep highest-scored, tie-break alphabetically by id
+    # Cap at max_choices — keep highest-scored, tie-break by original index
     if len(cards) > max_choices:
-        cards.sort(key=lambda c: (-(c.score or 0.0), c.id))
-        cards = cards[:max_choices]
+        indexed = list(enumerate(cards))
+        indexed.sort(key=lambda t: (-(t[1].score or 0.0), t[0]))
+        cards = [c for _, c in indexed[:max_choices]]
 
     # Honour max_total_chars by dropping lowest-scored tail
     if max_total_chars is not None:
-        cards.sort(key=lambda c: (-(c.score or 0.0), c.id))
-        while cards and len(render_cards_text(cards)) > max_total_chars:
-            cards.pop()
+        indexed = list(enumerate(cards))
+        indexed.sort(key=lambda t: (-(t[1].score or 0.0), t[0]))
+        while indexed and len(render_cards_text([c for _, c in indexed])) > max_total_chars:
+            indexed.pop()
+        cards = [c for _, c in indexed]
 
     return cards
 

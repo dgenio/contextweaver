@@ -42,6 +42,26 @@ def test_empty_raises() -> None:
         TreeBuilder().build([])
 
 
+def test_max_children_zero_raises() -> None:
+    with pytest.raises(GraphBuildError, match="max_children must be >= 1"):
+        TreeBuilder(max_children=0)
+
+
+def test_max_children_negative_raises() -> None:
+    with pytest.raises(GraphBuildError, match="max_children must be >= 1"):
+        TreeBuilder(max_children=-5)
+
+
+def test_target_group_size_zero_raises() -> None:
+    with pytest.raises(GraphBuildError, match="target_group_size must be >= 1"):
+        TreeBuilder(target_group_size=0)
+
+
+def test_target_group_size_negative_raises() -> None:
+    with pytest.raises(GraphBuildError, match="target_group_size must be >= 1"):
+        TreeBuilder(target_group_size=-3)
+
+
 def test_all_items_reachable() -> None:
     items = [_item(f"t{i}", namespace="ns") for i in range(5)]
     graph = TreeBuilder().build(items)
