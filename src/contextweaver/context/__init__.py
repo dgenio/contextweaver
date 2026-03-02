@@ -5,6 +5,8 @@ deduplication, selection, firewall, prompt rendering, and the high-level
 :class:`~contextweaver.context.manager.ContextManager`.
 """
 
+from __future__ import annotations
+
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
 from contextweaver.context.firewall import apply_firewall, apply_firewall_to_batch

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3] - 2026-03-02
+
+### Added
+- Routing Engine implementation: Catalog, ChoiceGraph, TreeBuilder, Router, card renderer
+- KeywordLabeler with namespace detection and group summarization
+- 3 tree-building strategies: namespace grouping, Jaccard clustering, alphabetical fallback
+- Router with beam search, TF-IDF scoring, confidence gap, backtracking, debug trace
+- ChoiceGraph with cycle detection, validation, save/load JSON, stats
+- make_choice_cards() with budget/truncation, render_cards_text()
+- ChoiceCard extended with kind, namespace, has_schema, score
+- generate_sample_catalog with 8 namespace families (83 items)
+- 105 new routing tests (338 total)
+
+### Changed
+- Split graph.py into graph_node.py (ChoiceNode) and graph_io.py (save/load)
+- Topological sort uses heapq instead of list.pop(0) for O(log n) performance
+- Beam/unexplored sort keys now break ties by node ID (alphabetical)
+- Namespace tie-break in labeler uses alphabetical ordering (was insertion-order)
+
+### Fixed
+- Router backtrack threshold: was using beam_width (2) instead of top_k (20)
+- from_dict edge leak: cycle-causing edges now discarded before raising
+- Replaced assert with explicit RouteError guard in _score_node
+- Added missing `from __future__ import annotations` to all __init__.py files
+- Removed dead item_kinds field from stats()
+- TreeBuilder validation guards for max_children and target_group_size
+- cards.py: index tie-break in sort, max_desc_chars clamped to ≥4
+- catalog.py docstring: 6 families → 8 families
+
 ## [0.0.2] - 2026-03-01
 
 ### Added

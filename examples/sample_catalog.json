@@ -1,0 +1,1247 @@
+[
+  {
+    "args_schema": {},
+    "cost_hint": 0.29,
+    "description": "Export audit log entries",
+    "id": "admin.audit.export",
+    "kind": "tool",
+    "metadata": {},
+    "name": "audit_export",
+    "namespace": "admin",
+    "side_effects": true,
+    "tags": [
+      "admin",
+      "audit"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.27,
+    "description": "Query the audit log",
+    "id": "admin.audit.query",
+    "kind": "tool",
+    "metadata": {},
+    "name": "audit_query",
+    "namespace": "admin",
+    "side_effects": false,
+    "tags": [
+      "admin",
+      "audit",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.0,
+    "description": "Configure audit log retention",
+    "id": "admin.audit.retention",
+    "kind": "tool",
+    "metadata": {},
+    "name": "audit_retention",
+    "namespace": "admin",
+    "side_effects": false,
+    "tags": [
+      "admin",
+      "audit"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.25,
+    "description": "Assign a role to a user",
+    "id": "admin.roles.assign",
+    "kind": "tool",
+    "metadata": {},
+    "name": "roles_assign",
+    "namespace": "admin",
+    "side_effects": true,
+    "tags": [
+      "admin",
+      "roles",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.01,
+    "description": "Create a custom role",
+    "id": "admin.roles.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "roles_create",
+    "namespace": "admin",
+    "side_effects": false,
+    "tags": [
+      "admin",
+      "create",
+      "roles"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.1,
+    "description": "List available roles",
+    "id": "admin.roles.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "roles_list",
+    "namespace": "admin",
+    "side_effects": true,
+    "tags": [
+      "admin",
+      "roles",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.01,
+    "description": "Create a new user account",
+    "id": "admin.users.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "users_create",
+    "namespace": "admin",
+    "side_effects": false,
+    "tags": [
+      "admin",
+      "create",
+      "users"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.11,
+    "description": "Deactivate a user account",
+    "id": "admin.users.deactivate",
+    "kind": "tool",
+    "metadata": {},
+    "name": "users_deactivate",
+    "namespace": "admin",
+    "side_effects": true,
+    "tags": [
+      "admin",
+      "users",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.34,
+    "description": "List all user accounts",
+    "id": "admin.users.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "users_list",
+    "namespace": "admin",
+    "side_effects": false,
+    "tags": [
+      "admin",
+      "search",
+      "users"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.04,
+    "description": "Reset a user password",
+    "id": "admin.users.reset_password",
+    "kind": "tool",
+    "metadata": {},
+    "name": "users_reset_password",
+    "namespace": "admin",
+    "side_effects": false,
+    "tags": [
+      "admin",
+      "users"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.05,
+    "description": "Create an analytics dashboard",
+    "id": "analytics.dashboards.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "dashboards_create",
+    "namespace": "analytics",
+    "side_effects": true,
+    "tags": [
+      "analytics",
+      "create",
+      "dashboards"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.3,
+    "description": "List available dashboards",
+    "id": "analytics.dashboards.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "dashboards_list",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "dashboards",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.36,
+    "description": "Share a dashboard with a team",
+    "id": "analytics.dashboards.share",
+    "kind": "tool",
+    "metadata": {},
+    "name": "dashboards_share",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "dashboards"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.17,
+    "description": "Export analytics events to CSV",
+    "id": "analytics.events.export",
+    "kind": "tool",
+    "metadata": {},
+    "name": "events_export",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "events"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.08,
+    "description": "Query analytics events by date range",
+    "id": "analytics.events.query",
+    "kind": "tool",
+    "metadata": {},
+    "name": "events_query",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "events",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.35,
+    "description": "Track a custom analytics event",
+    "id": "analytics.events.track",
+    "kind": "tool",
+    "metadata": {},
+    "name": "events_track",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "create",
+      "events"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.31,
+    "description": "Set up an alert on a metric threshold",
+    "id": "analytics.metrics.alert",
+    "kind": "tool",
+    "metadata": {},
+    "name": "metrics_alert",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "metrics"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.49,
+    "description": "Define a custom metric",
+    "id": "analytics.metrics.define",
+    "kind": "tool",
+    "metadata": {},
+    "name": "metrics_define",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "create",
+      "metrics"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.28,
+    "description": "Query metric time-series data",
+    "id": "analytics.metrics.query",
+    "kind": "tool",
+    "metadata": {},
+    "name": "metrics_query",
+    "namespace": "analytics",
+    "side_effects": false,
+    "tags": [
+      "analytics",
+      "metrics",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.29,
+    "description": "Create a new invoice",
+    "id": "billing.invoices.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "invoices_create",
+    "namespace": "billing",
+    "side_effects": false,
+    "tags": [
+      "billing",
+      "create"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.14,
+    "description": "Retrieve a specific invoice by ID",
+    "id": "billing.invoices.get",
+    "kind": "tool",
+    "metadata": {},
+    "name": "invoices_get",
+    "namespace": "billing",
+    "side_effects": true,
+    "tags": [
+      "billing",
+      "read"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.02,
+    "description": "Search invoices by date or customer",
+    "id": "billing.invoices.search",
+    "kind": "tool",
+    "metadata": {},
+    "name": "invoices_search",
+    "namespace": "billing",
+    "side_effects": false,
+    "tags": [
+      "billing",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.12,
+    "description": "Void an unpaid invoice",
+    "id": "billing.invoices.void",
+    "kind": "tool",
+    "metadata": {},
+    "name": "invoices_void",
+    "namespace": "billing",
+    "side_effects": true,
+    "tags": [
+      "billing",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.14,
+    "description": "Charge a stored payment method",
+    "id": "billing.payments.charge",
+    "kind": "tool",
+    "metadata": {},
+    "name": "payments_charge",
+    "namespace": "billing",
+    "side_effects": true,
+    "tags": [
+      "billing",
+      "payments"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.1,
+    "description": "List payment history",
+    "id": "billing.payments.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "payments_list",
+    "namespace": "billing",
+    "side_effects": false,
+    "tags": [
+      "billing",
+      "payments",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.18,
+    "description": "Refund a completed payment",
+    "id": "billing.payments.refund",
+    "kind": "tool",
+    "metadata": {},
+    "name": "payments_refund",
+    "namespace": "billing",
+    "side_effects": false,
+    "tags": [
+      "billing",
+      "payments"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.3,
+    "description": "Generate accounts-receivable aging report",
+    "id": "billing.reports.aging",
+    "kind": "tool",
+    "metadata": {},
+    "name": "reports_aging",
+    "namespace": "billing",
+    "side_effects": false,
+    "tags": [
+      "billing",
+      "reports"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.36,
+    "description": "Generate revenue forecast",
+    "id": "billing.reports.forecast",
+    "kind": "tool",
+    "metadata": {},
+    "name": "reports_forecast",
+    "namespace": "billing",
+    "side_effects": true,
+    "tags": [
+      "billing",
+      "reports"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.47,
+    "description": "Generate revenue summary report",
+    "id": "billing.reports.revenue",
+    "kind": "tool",
+    "metadata": {},
+    "name": "reports_revenue",
+    "namespace": "billing",
+    "side_effects": true,
+    "tags": [
+      "billing",
+      "reports"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.19,
+    "description": "Create a subscription plan",
+    "id": "billing.subscriptions.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "subscriptions_create",
+    "namespace": "billing",
+    "side_effects": true,
+    "tags": [
+      "billing",
+      "subscriptions"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.39,
+    "description": "List active subscriptions",
+    "id": "billing.subscriptions.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "subscriptions_list",
+    "namespace": "billing",
+    "side_effects": false,
+    "tags": [
+      "billing",
+      "search",
+      "subscriptions"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.34,
+    "description": "Update subscription details",
+    "id": "billing.subscriptions.update",
+    "kind": "tool",
+    "metadata": {},
+    "name": "subscriptions_update",
+    "namespace": "billing",
+    "side_effects": false,
+    "tags": [
+      "billing",
+      "subscriptions"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.13,
+    "description": "Create an email draft",
+    "id": "comms.email.draft",
+    "kind": "tool",
+    "metadata": {},
+    "name": "email_draft",
+    "namespace": "comms",
+    "side_effects": false,
+    "tags": [
+      "comms",
+      "create",
+      "email"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.02,
+    "description": "Send an email message",
+    "id": "comms.email.send",
+    "kind": "tool",
+    "metadata": {},
+    "name": "email_send",
+    "namespace": "comms",
+    "side_effects": true,
+    "tags": [
+      "comms",
+      "email",
+      "send"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.16,
+    "description": "Render an email template",
+    "id": "comms.email.template",
+    "kind": "tool",
+    "metadata": {},
+    "name": "email_template",
+    "namespace": "comms",
+    "side_effects": false,
+    "tags": [
+      "comms",
+      "email"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.11,
+    "description": "List notification history",
+    "id": "comms.notifications.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "notifications_list",
+    "namespace": "comms",
+    "side_effects": false,
+    "tags": [
+      "comms",
+      "notifications",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.13,
+    "description": "Send a push notification",
+    "id": "comms.notifications.send",
+    "kind": "tool",
+    "metadata": {},
+    "name": "notifications_send",
+    "namespace": "comms",
+    "side_effects": false,
+    "tags": [
+      "comms",
+      "notifications",
+      "send"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.45,
+    "description": "Subscribe to notification events",
+    "id": "comms.notifications.subscribe",
+    "kind": "tool",
+    "metadata": {},
+    "name": "notifications_subscribe",
+    "namespace": "comms",
+    "side_effects": false,
+    "tags": [
+      "comms",
+      "notifications"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.2,
+    "description": "Post a message to a Slack channel",
+    "id": "comms.slack.post",
+    "kind": "tool",
+    "metadata": {},
+    "name": "slack_post",
+    "namespace": "comms",
+    "side_effects": false,
+    "tags": [
+      "comms",
+      "send",
+      "slack"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.12,
+    "description": "Add a reaction to a Slack message",
+    "id": "comms.slack.react",
+    "kind": "tool",
+    "metadata": {},
+    "name": "slack_react",
+    "namespace": "comms",
+    "side_effects": true,
+    "tags": [
+      "comms",
+      "slack"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.23,
+    "description": "Search Slack message history",
+    "id": "comms.slack.search",
+    "kind": "tool",
+    "metadata": {},
+    "name": "slack_search",
+    "namespace": "comms",
+    "side_effects": false,
+    "tags": [
+      "comms",
+      "search",
+      "slack"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.22,
+    "description": "Delete a logged activity",
+    "id": "crm.activities.delete",
+    "kind": "tool",
+    "metadata": {},
+    "name": "activities_delete",
+    "namespace": "crm",
+    "side_effects": true,
+    "tags": [
+      "activities",
+      "crm",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.32,
+    "description": "List recent activities for a contact",
+    "id": "crm.activities.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "activities_list",
+    "namespace": "crm",
+    "side_effects": true,
+    "tags": [
+      "activities",
+      "crm",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.27,
+    "description": "Log a customer activity",
+    "id": "crm.activities.log",
+    "kind": "tool",
+    "metadata": {},
+    "name": "activities_log",
+    "namespace": "crm",
+    "side_effects": false,
+    "tags": [
+      "activities",
+      "create",
+      "crm"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.48,
+    "description": "Get activity statistics",
+    "id": "crm.activities.stats",
+    "kind": "tool",
+    "metadata": {},
+    "name": "activities_stats",
+    "namespace": "crm",
+    "side_effects": false,
+    "tags": [
+      "activities",
+      "crm",
+      "reports"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.25,
+    "description": "Create a new contact record",
+    "id": "crm.contacts.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "contacts_create",
+    "namespace": "crm",
+    "side_effects": false,
+    "tags": [
+      "contacts",
+      "create",
+      "crm"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.02,
+    "description": "Find contacts by name or email",
+    "id": "crm.contacts.find",
+    "kind": "tool",
+    "metadata": {},
+    "name": "contacts_find",
+    "namespace": "crm",
+    "side_effects": true,
+    "tags": [
+      "contacts",
+      "crm",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.21,
+    "description": "Merge duplicate contacts",
+    "id": "crm.contacts.merge",
+    "kind": "tool",
+    "metadata": {},
+    "name": "contacts_merge",
+    "namespace": "crm",
+    "side_effects": false,
+    "tags": [
+      "contacts",
+      "crm"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.31,
+    "description": "Update contact fields",
+    "id": "crm.contacts.update",
+    "kind": "tool",
+    "metadata": {},
+    "name": "contacts_update",
+    "namespace": "crm",
+    "side_effects": true,
+    "tags": [
+      "contacts",
+      "crm",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.43,
+    "description": "Mark a deal as won or lost",
+    "id": "crm.deals.close",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deals_close",
+    "namespace": "crm",
+    "side_effects": false,
+    "tags": [
+      "crm",
+      "deals",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.19,
+    "description": "Create a new deal/opportunity",
+    "id": "crm.deals.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deals_create",
+    "namespace": "crm",
+    "side_effects": true,
+    "tags": [
+      "create",
+      "crm",
+      "deals"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.36,
+    "description": "View the deal pipeline summary",
+    "id": "crm.deals.pipeline",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deals_pipeline",
+    "namespace": "crm",
+    "side_effects": true,
+    "tags": [
+      "crm",
+      "deals"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.26,
+    "description": "Search deals by stage or value",
+    "id": "crm.deals.search",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deals_search",
+    "namespace": "crm",
+    "side_effects": false,
+    "tags": [
+      "crm",
+      "deals",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.32,
+    "description": "Archive an old page",
+    "id": "docs.pages.archive",
+    "kind": "tool",
+    "metadata": {},
+    "name": "pages_archive",
+    "namespace": "docs",
+    "side_effects": true,
+    "tags": [
+      "docs",
+      "pages"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.13,
+    "description": "Create a new documentation page",
+    "id": "docs.pages.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "pages_create",
+    "namespace": "docs",
+    "side_effects": false,
+    "tags": [
+      "create",
+      "docs",
+      "pages"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.44,
+    "description": "Publish a draft page",
+    "id": "docs.pages.publish",
+    "kind": "tool",
+    "metadata": {},
+    "name": "pages_publish",
+    "namespace": "docs",
+    "side_effects": false,
+    "tags": [
+      "docs",
+      "pages"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.08,
+    "description": "Search documentation pages",
+    "id": "docs.pages.search",
+    "kind": "tool",
+    "metadata": {},
+    "name": "pages_search",
+    "namespace": "docs",
+    "side_effects": false,
+    "tags": [
+      "docs",
+      "pages",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.09,
+    "description": "Update an existing page",
+    "id": "docs.pages.update",
+    "kind": "tool",
+    "metadata": {},
+    "name": "pages_update",
+    "namespace": "docs",
+    "side_effects": false,
+    "tags": [
+      "docs",
+      "pages",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.27,
+    "description": "Create a new page template",
+    "id": "docs.templates.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "templates_create",
+    "namespace": "docs",
+    "side_effects": false,
+    "tags": [
+      "create",
+      "docs",
+      "templates"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.46,
+    "description": "Delete a page template",
+    "id": "docs.templates.delete",
+    "kind": "tool",
+    "metadata": {},
+    "name": "templates_delete",
+    "namespace": "docs",
+    "side_effects": true,
+    "tags": [
+      "docs",
+      "templates",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.27,
+    "description": "List available templates",
+    "id": "docs.templates.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "templates_list",
+    "namespace": "docs",
+    "side_effects": false,
+    "tags": [
+      "docs",
+      "search",
+      "templates"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.42,
+    "description": "Create a new deployment",
+    "id": "infra.deployments.create",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deployments_create",
+    "namespace": "infra",
+    "side_effects": false,
+    "tags": [
+      "create",
+      "deployments",
+      "infra"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.24,
+    "description": "List recent deployments",
+    "id": "infra.deployments.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deployments_list",
+    "namespace": "infra",
+    "side_effects": true,
+    "tags": [
+      "deployments",
+      "infra",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.03,
+    "description": "Rollback to a previous deployment",
+    "id": "infra.deployments.rollback",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deployments_rollback",
+    "namespace": "infra",
+    "side_effects": false,
+    "tags": [
+      "deployments",
+      "infra"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.47,
+    "description": "Check deployment status",
+    "id": "infra.deployments.status",
+    "kind": "tool",
+    "metadata": {},
+    "name": "deployments_status",
+    "namespace": "infra",
+    "side_effects": false,
+    "tags": [
+      "deployments",
+      "infra",
+      "read"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.11,
+    "description": "Query application logs",
+    "id": "infra.logs.query",
+    "kind": "tool",
+    "metadata": {},
+    "name": "logs_query",
+    "namespace": "infra",
+    "side_effects": false,
+    "tags": [
+      "infra",
+      "logs",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.36,
+    "description": "Tail live application logs",
+    "id": "infra.logs.tail",
+    "kind": "tool",
+    "metadata": {},
+    "name": "logs_tail",
+    "namespace": "infra",
+    "side_effects": false,
+    "tags": [
+      "infra",
+      "logs"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.06,
+    "description": "Retrieve a secret value",
+    "id": "infra.secrets.get",
+    "kind": "tool",
+    "metadata": {},
+    "name": "secrets_get",
+    "namespace": "infra",
+    "side_effects": false,
+    "tags": [
+      "infra",
+      "read",
+      "secrets"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.27,
+    "description": "List available secrets",
+    "id": "infra.secrets.list",
+    "kind": "tool",
+    "metadata": {},
+    "name": "secrets_list",
+    "namespace": "infra",
+    "side_effects": false,
+    "tags": [
+      "infra",
+      "search",
+      "secrets"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.44,
+    "description": "Rotate a secret",
+    "id": "infra.secrets.rotate",
+    "kind": "tool",
+    "metadata": {},
+    "name": "secrets_rotate",
+    "namespace": "infra",
+    "side_effects": true,
+    "tags": [
+      "infra",
+      "secrets"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.38,
+    "description": "Store a secret value",
+    "id": "infra.secrets.set",
+    "kind": "tool",
+    "metadata": {},
+    "name": "secrets_set",
+    "namespace": "infra",
+    "side_effects": true,
+    "tags": [
+      "infra",
+      "secrets",
+      "write"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.26,
+    "description": "Remove a document from the index",
+    "id": "search.documents.delete",
+    "kind": "tool",
+    "metadata": {},
+    "name": "documents_delete",
+    "namespace": "search",
+    "side_effects": false,
+    "tags": [
+      "documents",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.16,
+    "description": "Index a document for full-text search",
+    "id": "search.documents.index",
+    "kind": "tool",
+    "metadata": {},
+    "name": "documents_index",
+    "namespace": "search",
+    "side_effects": true,
+    "tags": [
+      "documents",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.32,
+    "description": "Full-text search across documents",
+    "id": "search.documents.query",
+    "kind": "tool",
+    "metadata": {},
+    "name": "documents_query",
+    "namespace": "search",
+    "side_effects": false,
+    "tags": [
+      "documents",
+      "query",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.04,
+    "description": "Reindex the internal knowledge base",
+    "id": "search.internal.reindex",
+    "kind": "tool",
+    "metadata": {},
+    "name": "internal_reindex",
+    "namespace": "search",
+    "side_effects": false,
+    "tags": [
+      "internal",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.32,
+    "description": "Search internal knowledge base",
+    "id": "search.internal.search",
+    "kind": "tool",
+    "metadata": {},
+    "name": "internal_search",
+    "namespace": "search",
+    "side_effects": true,
+    "tags": [
+      "internal",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.45,
+    "description": "Suggest related internal documents",
+    "id": "search.internal.suggest",
+    "kind": "tool",
+    "metadata": {},
+    "name": "internal_suggest",
+    "namespace": "search",
+    "side_effects": true,
+    "tags": [
+      "internal",
+      "search"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.29,
+    "description": "Scrape a web page and extract text",
+    "id": "search.web.scrape",
+    "kind": "tool",
+    "metadata": {},
+    "name": "web_scrape",
+    "namespace": "search",
+    "side_effects": false,
+    "tags": [
+      "search",
+      "web"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.11,
+    "description": "Search the public web",
+    "id": "search.web.search",
+    "kind": "tool",
+    "metadata": {},
+    "name": "web_search",
+    "namespace": "search",
+    "side_effects": true,
+    "tags": [
+      "search",
+      "web"
+    ]
+  },
+  {
+    "args_schema": {},
+    "cost_hint": 0.11,
+    "description": "Summarize a web page",
+    "id": "search.web.summarize",
+    "kind": "tool",
+    "metadata": {},
+    "name": "web_summarize",
+    "namespace": "search",
+    "side_effects": true,
+    "tags": [
+      "search",
+      "web"
+    ]
+  }
+]

@@ -4,6 +4,8 @@ Exports the rule engine, extraction utilities, and concrete summarizer/extractor
 implementations used by the context firewall.
 """
 
+from __future__ import annotations
+
 from contextweaver.summarize.extract import (
     StructuredExtractor,
     extract_bullet_list,

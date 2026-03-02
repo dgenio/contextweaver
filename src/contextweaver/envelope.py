@@ -132,25 +132,37 @@ class ChoiceCard:
     """A compact, LLM-friendly representation of a :class:`SelectableItem`.
 
     Never includes full arg schemas — keeps prompt token usage minimal.
+    ``has_schema`` is a boolean flag indicating whether the source item has
+    an argument schema; the schema itself is never included.
     """
 
     id: str
     name: str
     description: str
     tags: list[str] = field(default_factory=list)
+    kind: str = "tool"
+    namespace: str = ""
+    has_schema: bool = False
+    score: float | None = None
     cost_hint: float = 0.0
     side_effects: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
-        return {
+        d: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "description": self.description,
             "tags": list(self.tags),
+            "kind": self.kind,
+            "namespace": self.namespace,
+            "has_schema": self.has_schema,
             "cost_hint": self.cost_hint,
             "side_effects": self.side_effects,
         }
+        if self.score is not None:
+            d["score"] = self.score
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChoiceCard:
@@ -160,6 +172,10 @@ class ChoiceCard:
             name=data["name"],
             description=data["description"],
             tags=list(data.get("tags", [])),
+            kind=data.get("kind", "tool"),
+            namespace=data.get("namespace", ""),
+            has_schema=bool(data.get("has_schema", False)),
+            score=data.get("score"),
             cost_hint=float(data.get("cost_hint", 0.0)),
             side_effects=bool(data.get("side_effects", False)),
         )

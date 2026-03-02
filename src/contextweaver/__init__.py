@@ -18,6 +18,8 @@ Quick start::
     print(budget.for_phase(Phase.answer))  # 6000
 """
 
+from __future__ import annotations
+
 from contextweaver import config, envelope, exceptions, protocols, types
 from contextweaver._utils import TfIdfScorer, jaccard
 from contextweaver.envelope import (
@@ -37,7 +39,7 @@ from contextweaver.types import (
     ViewSpec,
 )
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 __all__ = [
     # sub-modules
     "config",
