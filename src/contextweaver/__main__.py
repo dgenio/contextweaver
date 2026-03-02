@@ -458,7 +458,17 @@ def main() -> None:
     if handler is None:
         parser.print_help()
         sys.exit(1)
-    sys.exit(handler(args))
+    try:
+        sys.exit(handler(args))
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as exc:
+        print(f"Error: invalid JSON — {exc}", file=sys.stderr)
+        sys.exit(1)
+    except (ValueError, PermissionError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
