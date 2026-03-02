@@ -31,7 +31,7 @@ item = a2a_agent_to_selectable(agent_card)
 # item.tags  includes skill names
 ```
 
-### `a2a_result_to_envelope(task_result)`
+### `a2a_result_to_envelope(task_result, agent_name)`
 
 Converts an A2A task result dict into a `ResultEnvelope`:
 
@@ -45,9 +45,9 @@ task_result = {
     ]
 }
 
-envelope = a2a_result_to_envelope(task_result)
+envelope = a2a_result_to_envelope(task_result, "DataAgent")
 # envelope.summary contains the artifact text
-# envelope.status  == "success"
+# envelope.status  == "ok"
 ```
 
 ### `load_a2a_session_jsonl(path)`
