@@ -10,7 +10,6 @@ JSONL files into contextweaver :class:`~contextweaver.types.ContextItem` lists.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -192,51 +191,11 @@ def load_a2a_session_jsonl(path: str | Path) -> list[ContextItem]:
     Raises:
         CatalogError: If the file cannot be read or contains invalid lines.
     """
-    try:
-        lines = Path(path).read_text(encoding="utf-8").strip().splitlines()
-    except OSError as exc:
-        raise CatalogError(f"Cannot read A2A session file: {exc}") from exc
+    from contextweaver.adapters._common import _load_session_jsonl
 
-    items: list[ContextItem] = []
-    kind_map: dict[str, ItemKind] = {
-        "tool_call": ItemKind.tool_call,
-        "tool_result": ItemKind.tool_result,
-        "user_turn": ItemKind.user_turn,
-        "agent_msg": ItemKind.agent_msg,
-        "doc_snippet": ItemKind.doc_snippet,
-        "memory_fact": ItemKind.memory_fact,
-        "plan_state": ItemKind.plan_state,
-        "policy": ItemKind.policy,
-    }
-
-    for lineno, line in enumerate(lines, 1):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise CatalogError(f"Invalid JSON at line {lineno}: {exc}") from exc
-
-        if not isinstance(obj, dict):
-            raise CatalogError(f"Expected JSON object at line {lineno}, got {type(obj).__name__}")
-
-        try:
-            kind_str = obj.get("type", "agent_msg")
-            kind = kind_map.get(kind_str, ItemKind.agent_msg)
-            text = obj.get("text") or obj.get("content", "")
-
-            items.append(
-                ContextItem(
-                    id=obj.get("id", f"a2a-line-{lineno}"),
-                    kind=kind,
-                    text=str(text),
-                    token_estimate=int(obj.get("token_estimate", 0)),
-                    metadata=dict(obj.get("metadata", {})),
-                    parent_id=obj.get("parent_id"),
-                )
-            )
-        except (TypeError, ValueError, AttributeError) as exc:
-            raise CatalogError(f"Invalid context item at line {lineno}: {exc}") from exc
-
-    return items
+    return _load_session_jsonl(
+        path,
+        default_kind=ItemKind.agent_msg,
+        id_prefix="a2a",
+        label="A2A",
+    )
