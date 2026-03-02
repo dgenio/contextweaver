@@ -96,6 +96,14 @@ def a2a_result_to_envelope(
       (list of ``{"type": ..., "text": ...}`` parts).
     - ``history`` — optional list of message dicts.
 
+    .. note::
+
+        Returned :class:`~contextweaver.types.ArtifactRef` entries are
+        **metadata-only** — the underlying data is not persisted to an
+        :class:`~contextweaver.protocols.ArtifactStore`.  Callers that
+        need resolvable handles should store the raw data separately
+        (e.g. via :meth:`ContextManager.ingest_tool_result`).
+
     Args:
         task_result: Raw A2A task result dict.
         agent_name: The name of the agent that produced the result.

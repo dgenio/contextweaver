@@ -90,6 +90,14 @@ def mcp_result_to_envelope(
       ``text`` (or ``data`` / ``resource``).
     - ``isError`` (optional bool) — if ``True``, status becomes ``"error"``.
 
+    .. note::
+
+        Returned :class:`~contextweaver.types.ArtifactRef` entries are
+        **metadata-only** — the underlying data is not persisted to an
+        :class:`~contextweaver.protocols.ArtifactStore`.  Callers that
+        need resolvable handles should store the raw data separately
+        (e.g. via :meth:`ContextManager.ingest_tool_result`).
+
     Args:
         result: Raw MCP tool result dict.
         tool_name: The name of the tool that produced the result.
