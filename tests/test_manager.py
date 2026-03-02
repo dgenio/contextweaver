@@ -250,9 +250,7 @@ async def test_build_call_phase() -> None:
 async def test_build_interpret_phase() -> None:
     log = InMemoryEventLog()
     log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="query"))
-    log.append(
-        ContextItem(id="tr1", kind=ItemKind.tool_result, text="result data")
-    )
+    log.append(ContextItem(id="tr1", kind=ItemKind.tool_result, text="result data"))
     mgr = ContextManager(event_log=log)
     pack = await mgr.build(phase=Phase.interpret, query="interpret result")
     assert pack.phase == Phase.interpret

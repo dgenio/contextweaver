@@ -164,9 +164,7 @@ def test_mcp_result_to_envelope_multiple_parts() -> None:
 def test_load_mcp_session_jsonl() -> None:
     lines = [
         json.dumps({"id": "tc1", "type": "tool_call", "text": "call search"}),
-        json.dumps(
-            {"id": "tr1", "type": "tool_result", "text": "42 rows", "parent_id": "tc1"}
-        ),
+        json.dumps({"id": "tr1", "type": "tool_result", "text": "42 rows", "parent_id": "tc1"}),
     ]
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
@@ -343,3 +341,86 @@ def test_load_a2a_session_jsonl() -> None:
 def test_load_a2a_session_jsonl_missing_file() -> None:
     with pytest.raises(CatalogError, match="Cannot read"):
         load_a2a_session_jsonl("/nonexistent/file.jsonl")
+
+
+# ---------------------------------------------------------------------------
+# JSONL loaders — field validation / coercion errors
+# ---------------------------------------------------------------------------
+
+
+def test_load_mcp_session_jsonl_non_dict_line() -> None:
+    """A JSON array line should raise CatalogError, not AttributeError."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+    ) as f:
+        f.write("[1, 2, 3]\n")
+        f.flush()
+        path = f.name
+    try:
+        with pytest.raises(CatalogError, match="Expected JSON object"):
+            load_mcp_session_jsonl(path)
+    finally:
+        os.unlink(path)
+
+
+def test_load_mcp_session_jsonl_bad_token_estimate() -> None:
+    """Non-numeric token_estimate should raise CatalogError, not ValueError."""
+    line = json.dumps({"id": "x", "type": "user_turn", "text": "hi", "token_estimate": "abc"})
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+    ) as f:
+        f.write(line + "\n")
+        f.flush()
+        path = f.name
+    try:
+        with pytest.raises(CatalogError, match="Invalid context item at line 1"):
+            load_mcp_session_jsonl(path)
+    finally:
+        os.unlink(path)
+
+
+def test_load_mcp_session_jsonl_bad_metadata() -> None:
+    """Non-dict metadata should raise CatalogError, not TypeError."""
+    line = json.dumps({"id": "x", "type": "user_turn", "text": "hi", "metadata": "bad"})
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+    ) as f:
+        f.write(line + "\n")
+        f.flush()
+        path = f.name
+    try:
+        with pytest.raises(CatalogError, match="Invalid context item at line 1"):
+            load_mcp_session_jsonl(path)
+    finally:
+        os.unlink(path)
+
+
+def test_load_a2a_session_jsonl_non_dict_line() -> None:
+    """A JSON array line should raise CatalogError, not AttributeError."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+    ) as f:
+        f.write('"just a string"\n')
+        f.flush()
+        path = f.name
+    try:
+        with pytest.raises(CatalogError, match="Expected JSON object"):
+            load_a2a_session_jsonl(path)
+    finally:
+        os.unlink(path)
+
+
+def test_load_a2a_session_jsonl_bad_token_estimate() -> None:
+    """Non-numeric token_estimate should raise CatalogError."""
+    line = json.dumps({"id": "x", "type": "agent_msg", "text": "hi", "token_estimate": [1]})
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+    ) as f:
+        f.write(line + "\n")
+        f.flush()
+        path = f.name
+    try:
+        with pytest.raises(CatalogError, match="Invalid context item at line 1"):
+            load_a2a_session_jsonl(path)
+    finally:
+        os.unlink(path)

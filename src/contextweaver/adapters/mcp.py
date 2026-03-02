@@ -49,9 +49,7 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
             missing.append("name")
         if not description:
             missing.append("description")
-        raise CatalogError(
-            f"MCP tool definition missing required fields: {missing}"
-        )
+        raise CatalogError(f"MCP tool definition missing required fields: {missing}")
 
     annotations: dict[str, Any] = tool_def.get("annotations") or {}
     input_schema: dict[str, Any] = tool_def.get("inputSchema") or {}
@@ -112,12 +110,14 @@ def mcp_result_to_envelope(
         elif part_type == "image":
             mime = part.get("mimeType", "image/png")
             data_str = part.get("data", "")
-            artifacts.append(ArtifactRef(
-                handle=f"mcp:{tool_name}:image:{i}",
-                media_type=mime,
-                size_bytes=len(data_str),
-                label=f"image from {tool_name}",
-            ))
+            artifacts.append(
+                ArtifactRef(
+                    handle=f"mcp:{tool_name}:image:{i}",
+                    media_type=mime,
+                    size_bytes=len(data_str),
+                    label=f"image from {tool_name}",
+                )
+            )
         elif part_type == "resource":
             resource: dict[str, Any] = part.get("resource", {})
             mime = resource.get("mimeType", "application/octet-stream")
@@ -125,12 +125,14 @@ def mcp_result_to_envelope(
             text_content = resource.get("text", "")
             if text_content:
                 text_parts.append(str(text_content))
-            artifacts.append(ArtifactRef(
-                handle=f"mcp:{tool_name}:resource:{i}",
-                media_type=mime,
-                size_bytes=len(str(text_content)),
-                label=uri or f"resource from {tool_name}",
-            ))
+            artifacts.append(
+                ArtifactRef(
+                    handle=f"mcp:{tool_name}:resource:{i}",
+                    media_type=mime,
+                    size_bytes=len(str(text_content)),
+                    label=uri or f"resource from {tool_name}",
+                )
+            )
 
     summary = "\n".join(text_parts) if text_parts else "(no content)"
     from typing import Literal
@@ -199,21 +201,27 @@ def load_mcp_session_jsonl(path: str | Path) -> list[ContextItem]:
         try:
             obj = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise CatalogError(
-                f"Invalid JSON at line {lineno}: {exc}"
-            ) from exc
+            raise CatalogError(f"Invalid JSON at line {lineno}: {exc}") from exc
 
-        kind_str = obj.get("type", "user_turn")
-        kind = kind_map.get(kind_str, ItemKind.user_turn)
-        text = obj.get("text") or obj.get("content", "")
+        if not isinstance(obj, dict):
+            raise CatalogError(f"Expected JSON object at line {lineno}, got {type(obj).__name__}")
 
-        items.append(ContextItem(
-            id=obj.get("id", f"mcp-line-{lineno}"),
-            kind=kind,
-            text=str(text),
-            token_estimate=int(obj.get("token_estimate", 0)),
-            metadata=dict(obj.get("metadata", {})),
-            parent_id=obj.get("parent_id"),
-        ))
+        try:
+            kind_str = obj.get("type", "user_turn")
+            kind = kind_map.get(kind_str, ItemKind.user_turn)
+            text = obj.get("text") or obj.get("content", "")
+
+            items.append(
+                ContextItem(
+                    id=obj.get("id", f"mcp-line-{lineno}"),
+                    kind=kind,
+                    text=str(text),
+                    token_estimate=int(obj.get("token_estimate", 0)),
+                    metadata=dict(obj.get("metadata", {})),
+                    parent_id=obj.get("parent_id"),
+                )
+            )
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise CatalogError(f"Invalid context item at line {lineno}: {exc}") from exc
 
     return items

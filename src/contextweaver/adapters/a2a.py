@@ -51,9 +51,7 @@ def a2a_agent_to_selectable(agent_card: dict[str, Any]) -> SelectableItem:
             missing.append("name")
         if not description:
             missing.append("description")
-        raise CatalogError(
-            f"A2A agent card missing required fields: {missing}"
-        )
+        raise CatalogError(f"A2A agent card missing required fields: {missing}")
 
     skills: list[dict[str, Any]] = agent_card.get("skills") or []
     tags: list[str] = ["a2a"]
@@ -134,12 +132,14 @@ def a2a_result_to_envelope(
             elif part_type == "data":
                 mime = part.get("mimeType", "application/octet-stream")
                 data_str = part.get("data", "")
-                artifact_refs.append(ArtifactRef(
-                    handle=f"a2a:{agent_name}:artifact:{i}",
-                    media_type=mime,
-                    size_bytes=len(data_str),
-                    label=f"artifact from {agent_name}",
-                ))
+                artifact_refs.append(
+                    ArtifactRef(
+                        handle=f"a2a:{agent_name}:artifact:{i}",
+                        media_type=mime,
+                        size_bytes=len(data_str),
+                        label=f"artifact from {agent_name}",
+                    )
+                )
 
     summary_parts = list(text_parts)
     if status_msg and not text_parts:
@@ -210,21 +210,27 @@ def load_a2a_session_jsonl(path: str | Path) -> list[ContextItem]:
         try:
             obj = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise CatalogError(
-                f"Invalid JSON at line {lineno}: {exc}"
-            ) from exc
+            raise CatalogError(f"Invalid JSON at line {lineno}: {exc}") from exc
 
-        kind_str = obj.get("type", "agent_msg")
-        kind = kind_map.get(kind_str, ItemKind.agent_msg)
-        text = obj.get("text") or obj.get("content", "")
+        if not isinstance(obj, dict):
+            raise CatalogError(f"Expected JSON object at line {lineno}, got {type(obj).__name__}")
 
-        items.append(ContextItem(
-            id=obj.get("id", f"a2a-line-{lineno}"),
-            kind=kind,
-            text=str(text),
-            token_estimate=int(obj.get("token_estimate", 0)),
-            metadata=dict(obj.get("metadata", {})),
-            parent_id=obj.get("parent_id"),
-        ))
+        try:
+            kind_str = obj.get("type", "agent_msg")
+            kind = kind_map.get(kind_str, ItemKind.agent_msg)
+            text = obj.get("text") or obj.get("content", "")
+
+            items.append(
+                ContextItem(
+                    id=obj.get("id", f"a2a-line-{lineno}"),
+                    kind=kind,
+                    text=str(text),
+                    token_estimate=int(obj.get("token_estimate", 0)),
+                    metadata=dict(obj.get("metadata", {})),
+                    parent_id=obj.get("parent_id"),
+                )
+            )
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise CatalogError(f"Invalid context item at line {lineno}: {exc}") from exc
 
     return items

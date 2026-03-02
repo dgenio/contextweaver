@@ -163,9 +163,7 @@ class ContextManager:
         )
 
         if len(raw_output) > firewall_threshold:
-            processed, envelope = apply_firewall(
-                item, self._artifact_store, self._hook
-            )
+            processed, envelope = apply_firewall(item, self._artifact_store, self._hook)
             if envelope is None:
                 # Shouldn't happen for tool_result items, but be safe
                 envelope = ResultEnvelope(status="ok", summary=raw_output[:500])
@@ -207,12 +205,14 @@ class ContextManager:
             metadata: Optional metadata dict.
         """
         fact_id = f"fact:{key}:{len(self._fact_store.all())}"
-        self._fact_store.put(Fact(
-            fact_id=fact_id,
-            key=key,
-            value=value,
-            metadata=metadata or {},
-        ))
+        self._fact_store.put(
+            Fact(
+                fact_id=fact_id,
+                key=key,
+                value=value,
+                metadata=metadata or {},
+            )
+        )
 
     def add_fact_sync(self, key: str, value: str, metadata: dict[str, Any] | None = None) -> None:
         """Synchronous alias for :meth:`add_fact`."""
@@ -231,11 +231,13 @@ class ContextManager:
             summary: Summary text.
             metadata: Optional metadata dict.
         """
-        self._episodic_store.add(Episode(
-            episode_id=episode_id,
-            summary=summary,
-            metadata=metadata or {},
-        ))
+        self._episodic_store.add(
+            Episode(
+                episode_id=episode_id,
+                summary=summary,
+                metadata=metadata or {},
+            )
+        )
 
     def add_episode_sync(
         self,
