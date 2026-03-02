@@ -428,7 +428,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # init
     p_init = sub.add_parser("init", help="Scaffold contextweaver config + sample catalog in cwd.")
-    p_init.add_argument("--force", action="store_true", default=False, help="Overwrite existing files.")
+    p_init.add_argument(
+        "--force", action="store_true", default=False, help="Overwrite existing files."
+    )
 
     # ingest
     p_ingest = sub.add_parser("ingest", help="Ingest a JSONL session file.")

@@ -100,8 +100,13 @@ def _make_graph(tmp_path: Path) -> tuple[Path, Path]:
 def test_route_returns_results(tmp_path: Path) -> None:
     graph_path, catalog_path = _make_graph(tmp_path)
     result = _run(
-        "route", "--graph", str(graph_path), "--catalog", str(catalog_path),
-        "--query", "send an email",
+        "route",
+        "--graph",
+        str(graph_path),
+        "--catalog",
+        str(catalog_path),
+        "--query",
+        "send an email",
     )
     assert result.returncode == 0
     assert "query" in result.stdout.lower() or "result" in result.stdout.lower()
@@ -110,8 +115,15 @@ def test_route_returns_results(tmp_path: Path) -> None:
 def test_route_top_k(tmp_path: Path) -> None:
     graph_path, catalog_path = _make_graph(tmp_path)
     result = _run(
-        "route", "--graph", str(graph_path), "--catalog", str(catalog_path),
-        "--query", "database", "--top-k", "3",
+        "route",
+        "--graph",
+        str(graph_path),
+        "--catalog",
+        str(catalog_path),
+        "--query",
+        "database",
+        "--top-k",
+        "3",
     )
     assert result.returncode == 0
 
