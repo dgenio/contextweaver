@@ -334,6 +334,14 @@ def _cmd_replay(args: argparse.Namespace) -> int:
         item = ContextItem.from_dict(raw_event)
         mgr.ingest(item)
 
+    # Restore facts
+    for key, value in session.get("facts", {}).items():
+        mgr.add_fact(key, value)
+
+    # Restore episodes
+    for ep in session.get("episodes", []):
+        mgr.add_episode(ep["episode_id"], ep["summary"])
+
     phase = Phase(phase_str)
     pack = mgr.build_sync(phase=phase, query="replay", budget_tokens=budget_tokens)
 
