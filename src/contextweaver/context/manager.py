@@ -566,8 +566,10 @@ class ContextManager:
             tool_id: ID of the tool selected during routing.
             query: User query string for relevance scoring.
             catalog: The :class:`Catalog` containing *tool_id*.
-            schema: Override schema dict (skips hydration lookup).
-            examples: Override example strings.
+            schema: Override schema dict (replaces hydrated ``args_schema``
+                in the prompt; hydration still occurs for item metadata).
+            examples: Override example strings (replaces hydrated examples
+                in the prompt; hydration still occurs for item metadata).
             budget_tokens: Override the default ``Phase.call`` budget.
 
         Returns:
