@@ -190,6 +190,31 @@ def test_build_includes_facts_in_prompt() -> None:
     assert "Python" in pack.prompt
 
 
+def test_build_caps_facts_by_line_count() -> None:
+    """Fact injection is capped at 64 lines; excess produces an omitted notice."""
+    mgr = ContextManager()
+    # Zero-padded keys so lexicographic == numeric order
+    for i in range(80):
+        mgr.add_fact(f"k{i:03d}", f"v{i}")
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert "more facts omitted" in pack.prompt
+    # Key 063 (last within cap) should be present, key 064 should not
+    assert "k063" in pack.prompt
+    assert "- k064:" not in pack.prompt
+
+
+def test_build_caps_facts_by_char_budget() -> None:
+    """Fact injection truncates when total chars exceed 2000."""
+    mgr = ContextManager()
+    # Each fact line is ~210 chars → 10 facts ≈ 2100 chars, exceeds 2000
+    for i in range(15):
+        mgr.add_fact(f"key{i}", "x" * 200)
+    mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="hello"))
+    pack = mgr.build_sync(phase=Phase.answer)
+    assert "facts truncated to fit header budget" in pack.prompt
+
+
 def test_build_includes_episodic_in_prompt() -> None:
     mgr = ContextManager()
     mgr.add_episode("ep1", "Previously searched for billing data")

@@ -38,6 +38,10 @@ from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import Fact, InMemoryFactStore
 from contextweaver.types import ContextItem, ItemKind, Phase
 
+# Maximum facts injected into the prompt header to prevent unbounded growth.
+_MAX_FACT_LINES: int = 64
+_MAX_FACT_CHARS: int = 2000
+
 if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
     from contextweaver.routing.router import Router, RouteResult
@@ -330,12 +334,24 @@ class ContextManager:
                 ep_lines.append(f"- {ep_summary}")
             extra_sections.append("\n".join(ep_lines))
 
-        # Facts snapshot
+        # Facts snapshot — capped to avoid unbounded prompt growth.
         all_facts = self._fact_store.all()
         if all_facts:
-            fact_lines = ["[FACTS]"]
-            for fact in all_facts:
-                fact_lines.append(f"- {fact.key}: {fact.value}")
+            fact_lines: list[str] = ["[FACTS]"]
+            total_chars = len(fact_lines[0])
+            for idx, fact in enumerate(all_facts):
+                if idx >= _MAX_FACT_LINES:
+                    remaining = len(all_facts) - idx
+                    if remaining > 0:
+                        fact_lines.append(f"- ... ({remaining} more facts omitted)")
+                    break
+                line = f"- {fact.key}: {fact.value}"
+                # Stop if adding this line would exceed our character budget.
+                if total_chars + len(line) > _MAX_FACT_CHARS:
+                    fact_lines.append("- ... (facts truncated to fit header budget)")
+                    break
+                fact_lines.append(line)
+                total_chars += len(line)
             extra_sections.append("\n".join(fact_lines))
 
         # Build full header
