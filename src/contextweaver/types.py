@@ -227,6 +227,7 @@ from contextweaver.envelope import (  # noqa: E402
     BuildStats,
     ChoiceCard,
     ContextPack,
+    HydrationResult,
     ResultEnvelope,
 )
 
@@ -236,6 +237,7 @@ __all__ = [
     "ChoiceCard",
     "ContextItem",
     "ContextPack",
+    "HydrationResult",
     "ItemKind",
     "Phase",
     "ResultEnvelope",
