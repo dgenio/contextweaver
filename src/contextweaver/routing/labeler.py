@@ -141,7 +141,9 @@ class KeywordLabeler:
             if item.namespace:
                 ns_counts[item.namespace] += 1
         if ns_counts:
-            dominant_ns, dominant_count = ns_counts.most_common(1)[0]
+            # Deterministic tie-break: highest count, then alphabetical
+            dominant_ns = min(ns_counts, key=lambda ns: (-ns_counts[ns], ns))
+            dominant_count = ns_counts[dominant_ns]
             if dominant_count / len(items) >= self._namespace_threshold:
                 label = f"{dominant_ns}: {label}"
 
