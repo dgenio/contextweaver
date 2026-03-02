@@ -71,6 +71,8 @@ class SelectableItem:
     tags: list[str] = field(default_factory=list)
     namespace: str = ""
     args_schema: dict[str, Any] = field(default_factory=dict)
+    examples: list[str] = field(default_factory=list)
+    constraints: dict[str, Any] = field(default_factory=dict)
     side_effects: bool = False
     cost_hint: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -85,6 +87,8 @@ class SelectableItem:
             "tags": list(self.tags),
             "namespace": self.namespace,
             "args_schema": dict(self.args_schema),
+            "examples": list(self.examples),
+            "constraints": dict(self.constraints),
             "side_effects": self.side_effects,
             "cost_hint": self.cost_hint,
             "metadata": dict(self.metadata),
@@ -101,6 +105,8 @@ class SelectableItem:
             tags=list(data.get("tags", [])),
             namespace=data.get("namespace", ""),
             args_schema=dict(data.get("args_schema", {})),
+            examples=list(data.get("examples", [])),
+            constraints=dict(data.get("constraints", {})),
             side_effects=bool(data.get("side_effects", False)),
             cost_hint=float(data.get("cost_hint", 0.0)),
             metadata=dict(data.get("metadata", {})),

@@ -44,6 +44,7 @@ _MAX_FACT_CHARS: int = 2000
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
+    from contextweaver.routing.catalog import Catalog
     from contextweaver.routing.router import Router, RouteResult
 
 
@@ -541,3 +542,115 @@ class ContextManager:
     ) -> tuple[ContextPack, list[ChoiceCard], RouteResult]:
         """Synchronous alias for :meth:`build_route_prompt`."""
         return self.build_route_prompt(goal, query, router, budget_tokens)
+
+    # ------------------------------------------------------------------
+    # Call-phase prompt (schema injection)
+    # ------------------------------------------------------------------
+
+    def _build_call_prompt(
+        self,
+        tool_id: str,
+        query: str,
+        catalog: Catalog,
+        schema: dict[str, Any] | None = None,
+        examples: list[str] | None = None,
+        budget_tokens: int | None = None,
+    ) -> ContextPack:
+        """Build a ``Phase.call`` prompt with the tool's full schema injected.
+
+        Hydrates the selected tool from *catalog*, injects its ``args_schema``
+        and optional examples into the prompt header, then runs the standard
+        context pipeline with the remaining call-phase budget.
+
+        Args:
+            tool_id: ID of the tool selected during routing.
+            query: User query string for relevance scoring.
+            catalog: The :class:`Catalog` containing *tool_id*.
+            schema: Override schema dict (skips hydration lookup).
+            examples: Override example strings.
+            budget_tokens: Override the default ``Phase.call`` budget.
+
+        Returns:
+            A :class:`~contextweaver.envelope.ContextPack` for ``Phase.call``.
+
+        Raises:
+            ItemNotFoundError: If *tool_id* is not in *catalog*.
+        """
+        import json as _json
+
+        hydration = catalog.hydrate(tool_id)
+
+        effective_schema = schema if schema is not None else hydration.args_schema
+        effective_examples = examples if examples is not None else hydration.examples
+
+        # Assemble schema header section
+        sections: list[str] = [
+            f"[TOOL SCHEMA]\nTool: {hydration.item.name} ({hydration.item.id})",
+            f"Description: {hydration.item.description}",
+        ]
+        if effective_schema:
+            schema_text = _json.dumps(effective_schema, indent=2, sort_keys=True)
+            sections.append(f"Schema:\n{schema_text}")
+        if hydration.constraints:
+            constraints_text = _json.dumps(hydration.constraints, indent=2, sort_keys=True)
+            sections.append(f"Constraints:\n{constraints_text}")
+        if effective_examples:
+            ex_lines = "\n".join(f"  - {ex}" for ex in effective_examples)
+            sections.append(f"Examples:\n{ex_lines}")
+        if hydration.item.cost_hint > 0:
+            sections.append(f"Cost hint: {hydration.item.cost_hint}")
+        if hydration.item.side_effects:
+            sections.append("Side effects: yes")
+
+        header = "\n".join(sections)
+
+        return self._build(
+            phase=Phase.call,
+            query=query,
+            header=header,
+            budget_tokens=budget_tokens,
+        )
+
+    async def build_call_prompt(
+        self,
+        tool_id: str,
+        query: str,
+        catalog: Catalog,
+        schema: dict[str, Any] | None = None,
+        examples: list[str] | None = None,
+        budget_tokens: int | None = None,
+    ) -> ContextPack:
+        """Async wrapper for :meth:`_build_call_prompt`.
+
+        See :meth:`_build_call_prompt` for parameter documentation.
+        """
+        return self._build_call_prompt(
+            tool_id=tool_id,
+            query=query,
+            catalog=catalog,
+            schema=schema,
+            examples=examples,
+            budget_tokens=budget_tokens,
+        )
+
+    def build_call_prompt_sync(
+        self,
+        tool_id: str,
+        query: str,
+        catalog: Catalog,
+        schema: dict[str, Any] | None = None,
+        examples: list[str] | None = None,
+        budget_tokens: int | None = None,
+    ) -> ContextPack:
+        """Synchronous alias for :meth:`_build_call_prompt`.
+
+        See :meth:`_build_call_prompt` for parameter documentation.
+        """
+        return self._build_call_prompt(
+            tool_id=tool_id,
+            query=query,
+            catalog=catalog,
+            schema=schema,
+            examples=examples,
+            budget_tokens=budget_tokens,
+        )

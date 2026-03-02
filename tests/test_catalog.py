@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from contextweaver.envelope import HydrationResult
 from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.routing.catalog import (
     Catalog,
@@ -207,3 +208,66 @@ def test_generate_sample_catalog_loadable() -> None:
     data = generate_sample_catalog(n=10, seed=42)
     items = load_catalog_dicts(data)
     assert len(items) == 10
+
+
+# ------------------------------------------------------------------
+# Catalog.hydrate
+# ------------------------------------------------------------------
+
+
+def test_hydrate_returns_hydration_result() -> None:
+    catalog = Catalog()
+    catalog.register(
+        SelectableItem(
+            id="t1",
+            kind="tool",
+            name="search_db",
+            description="Search the database",
+            args_schema={"q": {"type": "string"}},
+            examples=["search_db(q='users')"],
+            constraints={"max_results": 100},
+        )
+    )
+    result = catalog.hydrate("t1")
+    assert isinstance(result, HydrationResult)
+    assert result.item.id == "t1"
+    assert result.args_schema == {"q": {"type": "string"}}
+    assert result.examples == ["search_db(q='users')"]
+    assert result.constraints == {"max_results": 100}
+
+
+def test_hydrate_missing_raises() -> None:
+    catalog = Catalog()
+    with pytest.raises(ItemNotFoundError):
+        catalog.hydrate("nonexistent")
+
+
+def test_hydrate_empty_schema() -> None:
+    catalog = Catalog()
+    catalog.register(_item("t1"))
+    result = catalog.hydrate("t1")
+    assert result.args_schema == {}
+    assert result.examples == []
+    assert result.constraints == {}
+
+
+def test_hydrate_roundtrip() -> None:
+    catalog = Catalog()
+    catalog.register(
+        SelectableItem(
+            id="t1",
+            kind="tool",
+            name="send_email",
+            description="Send an email",
+            args_schema={"to": {"type": "string"}, "body": {"type": "string"}},
+            examples=["send_email(to='a@b.com', body='hi')"],
+            constraints={"rate_limit": "10/min"},
+        )
+    )
+    result = catalog.hydrate("t1")
+    d = result.to_dict()
+    restored = HydrationResult.from_dict(d)
+    assert restored.item.id == "t1"
+    assert restored.args_schema == result.args_schema
+    assert restored.examples == result.examples
+    assert restored.constraints == result.constraints

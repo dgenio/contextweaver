@@ -28,6 +28,7 @@ from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
     ContextPack,
+    HydrationResult,
     ResultEnvelope,
 )
 from contextweaver.exceptions import (
@@ -80,7 +81,7 @@ from contextweaver.types import (
     ViewSpec,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     # sub-modules
     "config",
@@ -97,6 +98,7 @@ __all__ = [
     "ChoiceCard",
     "ContextItem",
     "ContextPack",
+    "HydrationResult",
     "ItemKind",
     "Phase",
     "ResultEnvelope",
