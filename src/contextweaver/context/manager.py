@@ -558,9 +558,9 @@ class ContextManager:
     ) -> ContextPack:
         """Build a ``Phase.call`` prompt with the tool's full schema injected.
 
-        Hydrates the selected tool from *catalog*, injects its ``args_schema``
-        and optional examples into the prompt header, then runs the standard
-        context pipeline with the remaining call-phase budget.
+        Hydrates the selected tool from *catalog*, delegates header assembly
+        to :func:`~contextweaver.context.call_prompt.build_schema_header`,
+        then runs the standard context pipeline with the call-phase budget.
 
         Args:
             tool_id: ID of the tool selected during routing.
@@ -578,33 +578,10 @@ class ContextManager:
         Raises:
             ItemNotFoundError: If *tool_id* is not in *catalog*.
         """
-        import json as _json
+        from contextweaver.context.call_prompt import build_schema_header
 
         hydration = catalog.hydrate(tool_id)
-
-        effective_schema = schema if schema is not None else hydration.args_schema
-        effective_examples = examples if examples is not None else hydration.examples
-
-        # Assemble schema header section
-        sections: list[str] = [
-            f"[TOOL SCHEMA]\nTool: {hydration.item.name} ({hydration.item.id})",
-            f"Description: {hydration.item.description}",
-        ]
-        if effective_schema:
-            schema_text = _json.dumps(effective_schema, indent=2, sort_keys=True)
-            sections.append(f"Schema:\n{schema_text}")
-        if hydration.constraints:
-            constraints_text = _json.dumps(hydration.constraints, indent=2, sort_keys=True)
-            sections.append(f"Constraints:\n{constraints_text}")
-        if effective_examples:
-            ex_lines = "\n".join(f"  - {ex}" for ex in effective_examples)
-            sections.append(f"Examples:\n{ex_lines}")
-        if hydration.item.cost_hint > 0:
-            sections.append(f"Cost hint: {hydration.item.cost_hint}")
-        if hydration.item.side_effects:
-            sections.append("Side effects: yes")
-
-        header = "\n".join(sections)
+        header = build_schema_header(hydration, schema=schema, examples=examples)
 
         return self._build(
             phase=Phase.call,
