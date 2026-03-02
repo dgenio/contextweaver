@@ -287,7 +287,7 @@ class ContextManager:
             A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
         """
         _ = extra  # reserved
-        _tags = list(query_tags or []) + list(hints or [])
+        _tags = sorted(set(list(query_tags or []) + list(hints or [])))
 
         # Override budget if requested
         effective_budget = self._budget
