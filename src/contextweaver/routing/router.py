@@ -134,7 +134,8 @@ class Router:
     def _score_node(self, query: str, node_id: str) -> float:
         """Score a single graph node against *query*."""
         self._ensure_index()
-        assert self._scorer is not None
+        if self._scorer is None:
+            raise RouteError("TF-IDF index was not built; call _ensure_index first.")
 
         idx = self._doc_id_to_idx.get(node_id)
         if idx is not None:
