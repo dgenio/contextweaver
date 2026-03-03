@@ -8,7 +8,11 @@ Thank you for your interest in contributing!
 git clone https://github.com/dgenio/contextweaver
 cd contextweaver
 pip install -e ".[dev]"
+pre-commit install
 ```
+
+Installing pre-commit hooks ensures that `ruff format`, `ruff check`, and standard
+file hygiene checks run automatically on every `git commit`.
 
 ## Development workflow
 
