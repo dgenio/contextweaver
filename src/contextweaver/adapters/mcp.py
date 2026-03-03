@@ -123,10 +123,7 @@ def mcp_result_to_envelope(
             try:
                 raw = _b64.b64decode(data_str)
             except Exception:  # noqa: BLE001
-                if isinstance(data_str, bytes):
-                    raw = data_str
-                else:
-                    raw = str(data_str).encode("utf-8")
+                raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
             artifacts.append(
                 ArtifactRef(
                     handle=handle,
