@@ -44,8 +44,9 @@ mcp_result = {
     "isError": False
 }
 
-envelope, binaries = mcp_result_to_envelope(mcp_result, "search_database")
-# envelope.summary contains the text content
+envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, "search_database")
+# envelope.summary contains truncated text (max 500 chars)
+# full_text contains the complete untruncated text
 # envelope.status  == "ok"
 # binaries maps handle → (raw_bytes, media_type, label)
 ```

@@ -47,9 +47,10 @@ def main() -> None:
     print(f"    Has schema: {bool(item.args_schema)}")
 
     # 2. Convert MCP tool result
-    envelope, binaries = mcp_result_to_envelope(MCP_TOOL_RESULT, "search_db")
+    envelope, binaries, full_text = mcp_result_to_envelope(MCP_TOOL_RESULT, "search_db")
     print(f"\n[2] Result conversion: status={envelope.status}")
     print(f"    Summary: {envelope.summary[:100]}")
+    print(f"    Full text length: {len(full_text)}")
     print(f"    Facts: {envelope.facts}")
     print(f"    Provenance: {envelope.provenance}")
     print(f"    Binary artifacts: {len(binaries)}")

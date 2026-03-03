@@ -91,12 +91,13 @@ def test_mcp_result_to_envelope_text_content() -> None:
     result = {
         "content": [{"type": "text", "text": "status: ok\ncount: 42"}],
     }
-    env, binaries = mcp_result_to_envelope(result, "search")
+    env, binaries, full_text = mcp_result_to_envelope(result, "search")
     assert env.status == "ok"
     assert "42" in env.summary
     assert env.provenance["protocol"] == "mcp"
     assert env.provenance["tool"] == "search"
     assert binaries == {}  # text-only → no binary data
+    assert full_text == "status: ok\ncount: 42"
 
 
 def test_mcp_result_to_envelope_error_flag() -> None:
@@ -104,7 +105,7 @@ def test_mcp_result_to_envelope_error_flag() -> None:
         "content": [{"type": "text", "text": "error occurred"}],
         "isError": True,
     }
-    env, _binaries = mcp_result_to_envelope(result, "tool")
+    env, _binaries, _full_text = mcp_result_to_envelope(result, "tool")
     assert env.status == "error"
 
 
@@ -118,7 +119,7 @@ def test_mcp_result_to_envelope_image_content() -> None:
             {"type": "image", "data": b64_data, "mimeType": "image/png"},
         ],
     }
-    env, binaries = mcp_result_to_envelope(result, "screenshot")
+    env, binaries, _full_text = mcp_result_to_envelope(result, "screenshot")
     assert len(env.artifacts) == 1
     assert env.artifacts[0].media_type == "image/png"
     # Binary data is base64-decoded
@@ -143,8 +144,9 @@ def test_mcp_result_to_envelope_resource_content() -> None:
             }
         ],
     }
-    env, binaries = mcp_result_to_envelope(result, "read_file")
+    env, binaries, full_text = mcp_result_to_envelope(result, "read_file")
     assert len(env.artifacts) == 1
+    assert full_text == "a,b\n1,2"  # resource text included in full_text
     assert env.artifacts[0].media_type == "text/csv"
     assert "a,b" in env.summary
     # Resource text is stored as UTF-8 bytes
@@ -157,8 +159,9 @@ def test_mcp_result_to_envelope_resource_content() -> None:
 
 def test_mcp_result_to_envelope_empty_content() -> None:
     result: dict[str, object] = {"content": []}
-    env, binaries = mcp_result_to_envelope(result, "noop")
+    env, binaries, full_text = mcp_result_to_envelope(result, "noop")
     assert env.summary == "(no content)"
+    assert full_text == "(no content)"
     assert env.status == "ok"
     assert binaries == {}
 
@@ -170,9 +173,10 @@ def test_mcp_result_to_envelope_multiple_parts() -> None:
             {"type": "text", "text": "part 2"},
         ],
     }
-    env, binaries = mcp_result_to_envelope(result, "multi")
+    env, binaries, full_text = mcp_result_to_envelope(result, "multi")
     assert "part 1" in env.summary
     assert "part 2" in env.summary
+    assert full_text == "part 1\npart 2"
     assert binaries == {}  # text-only
 
 
