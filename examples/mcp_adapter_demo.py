@@ -47,11 +47,13 @@ def main() -> None:
     print(f"    Has schema: {bool(item.args_schema)}")
 
     # 2. Convert MCP tool result
-    envelope = mcp_result_to_envelope(MCP_TOOL_RESULT, "search_db")
+    envelope, binaries, full_text = mcp_result_to_envelope(MCP_TOOL_RESULT, "search_db")
     print(f"\n[2] Result conversion: status={envelope.status}")
     print(f"    Summary: {envelope.summary[:100]}")
+    print(f"    Full text length: {len(full_text)}")
     print(f"    Facts: {envelope.facts}")
     print(f"    Provenance: {envelope.provenance}")
+    print(f"    Binary artifacts: {len(binaries)}")
 
     # 3. Ingest MCP session from JSONL
     session_path = Path(__file__).parent / "data" / "mcp_session.jsonl"
@@ -97,6 +99,20 @@ def main() -> None:
     )
     print(f"    Firewall triggers: {firewall_count}")
     print(f"    Prompt length: {len(pack.prompt)} chars")
+
+    # 7. Happy-path: ingest_mcp_result (one-call artifact persistence)
+    mgr2 = ContextManager()
+    mcp_with_image = {
+        "content": [
+            {"type": "text", "text": "Screenshot captured"},
+            {"type": "image", "data": "iVBORw0KGgo=", "mimeType": "image/png"},
+        ],
+    }
+    item2, env2 = mgr2.ingest_mcp_result("call-img", mcp_with_image, "screenshot")
+    print(f"\n[7] ingest_mcp_result: {item2.id}")
+    print(f"    Artifacts in envelope: {len(env2.artifacts)}")
+    print(f"    Artifact persisted: {mgr2.artifact_store.exists('mcp:screenshot:image:1')}")
+    print(f"    Event log count: {mgr2.event_log.count()}")
 
 
 if __name__ == "__main__":

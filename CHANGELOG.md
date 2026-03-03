@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HydrationResult` dataclass in `envelope.py` with `to_dict()` / `from_dict()`
 - `ContextManager.build_call_prompt()` / `build_call_prompt_sync()` for `Phase.call` prompts with schema injection
 - `SelectableItem.examples` and `SelectableItem.constraints` fields
+- `ContextManager.ingest_mcp_result()` / `ingest_mcp_result_sync()` for one-call MCP result ingestion with artifact persistence
+
+### Changed
+- **Breaking:** `mcp_result_to_envelope()` now returns `(ResultEnvelope, dict, str)` tuple — envelope, extracted binary data, and full untruncated text
 
 ## [0.1.0] - 2026-03-03
 

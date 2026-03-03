@@ -80,7 +80,7 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
 def mcp_result_to_envelope(
     result: dict[str, Any],
     tool_name: str,
-) -> ResultEnvelope:
+) -> tuple[ResultEnvelope, dict[str, tuple[bytes, str, str]], str]:
     """Convert an MCP tool call result to a :class:`ResultEnvelope`.
 
     The MCP result dict is expected to have:
@@ -89,26 +89,28 @@ def mcp_result_to_envelope(
       ``text`` (or ``data`` / ``resource``).
     - ``isError`` (optional bool) — if ``True``, status becomes ``"error"``.
 
-    .. note::
-
-        Returned :class:`~contextweaver.types.ArtifactRef` entries are
-        **metadata-only** — the underlying data is not persisted to an
-        :class:`~contextweaver.protocols.ArtifactStore`.  Callers that
-        need resolvable handles should store the raw data separately
-        (e.g. via :meth:`ContextManager.ingest_tool_result`).
+    Returns the envelope, a dict of binary data extracted from image and
+    resource content parts, and the full (untruncated) text.  Use
+    :meth:`ContextManager.ingest_mcp_result` for the full happy path
+    that persists artifacts automatically.
 
     Args:
         result: Raw MCP tool result dict.
         tool_name: The name of the tool that produced the result.
 
     Returns:
-        A :class:`ResultEnvelope`.
+        A ``(ResultEnvelope, binaries, full_text)`` tuple where *binaries*
+        maps ``handle -> (raw_bytes, media_type, label)`` and *full_text*
+        is the complete untruncated text content.
     """
+    import base64 as _b64
+
     is_error = bool(result.get("isError", False))
     content_parts: list[dict[str, Any]] = result.get("content") or []
 
     text_parts: list[str] = []
     artifacts: list[ArtifactRef] = []
+    binaries: dict[str, tuple[bytes, str, str]] = {}
 
     for i, part in enumerate(content_parts):
         part_type = part.get("type", "text")
@@ -116,15 +118,22 @@ def mcp_result_to_envelope(
             text_parts.append(part.get("text", ""))
         elif part_type == "image":
             mime = part.get("mimeType", "image/png")
-            data_str = part.get("data", "")
+            data_str = part.get("data") or ""
+            handle = f"mcp:{tool_name}:image:{i}"
+            # Decode base64 image data; fall back to raw bytes on error.
+            try:
+                raw = _b64.b64decode(data_str)
+            except Exception:  # noqa: BLE001
+                raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
             artifacts.append(
                 ArtifactRef(
-                    handle=f"mcp:{tool_name}:image:{i}",
+                    handle=handle,
                     media_type=mime,
-                    size_bytes=len(data_str),
+                    size_bytes=len(raw),
                     label=f"image from {tool_name}",
                 )
             )
+            binaries[handle] = (raw, mime, f"image from {tool_name}")
         elif part_type == "resource":
             resource: dict[str, Any] = part.get("resource", {})
             mime = resource.get("mimeType", "application/octet-stream")
@@ -132,16 +141,20 @@ def mcp_result_to_envelope(
             text_content = resource.get("text", "")
             if text_content:
                 text_parts.append(str(text_content))
+            handle = f"mcp:{tool_name}:resource:{i}"
+            raw = str(text_content).encode("utf-8")
+            label = uri or f"resource from {tool_name}"
             artifacts.append(
                 ArtifactRef(
-                    handle=f"mcp:{tool_name}:resource:{i}",
+                    handle=handle,
                     media_type=mime,
-                    size_bytes=len(str(text_content)),
-                    label=uri or f"resource from {tool_name}",
+                    size_bytes=len(raw),
+                    label=label,
                 )
             )
+            binaries[handle] = (raw, mime, label)
 
-    summary = "\n".join(text_parts) if text_parts else "(no content)"
+    full_text = "\n".join(text_parts) if text_parts else "(no content)"
 
     status: Literal["ok", "partial", "error"] = "error" if is_error else "ok"
 
@@ -153,13 +166,14 @@ def mcp_result_to_envelope(
             if ":" in stripped and len(stripped) < 200:
                 facts.append(stripped)
 
-    return ResultEnvelope(
+    envelope = ResultEnvelope(
         status=status,
-        summary=summary[:500] if len(summary) > 500 else summary,
+        summary=full_text[:500] if len(full_text) > 500 else full_text,
         facts=facts[:20],
         artifacts=artifacts,
         provenance={"tool": tool_name, "protocol": "mcp"},
     )
+    return envelope, binaries, full_text
 
 
 def load_mcp_session_jsonl(path: str | Path) -> list[ContextItem]:
