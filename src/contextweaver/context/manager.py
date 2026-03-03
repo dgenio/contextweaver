@@ -241,9 +241,7 @@ class ContextManager:
             # NOTE: intentional post-construction mutation — refresh refs with
             # store-canonical metadata (size_bytes, etc.).  Must be revisited
             # if ResultEnvelope is ever made frozen.
-            envelope.artifacts = [
-                stored_refs.get(a.handle, a) for a in envelope.artifacts
-            ]
+            envelope.artifacts = [stored_refs.get(a.handle, a) for a in envelope.artifacts]
 
         # Build the context item from the full raw text so the firewall
         # can offload the complete output, not the truncated summary.
