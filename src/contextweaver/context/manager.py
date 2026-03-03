@@ -266,13 +266,14 @@ class ContextManager:
         if len(raw_text) > firewall_threshold:
             processed, fw_envelope = apply_firewall(item, self._artifact_store, self._hook)
             if fw_envelope is not None:
-                # Merge: keep MCP artifacts, use firewall summary/facts
+                # Merge: keep MCP artifacts, use firewall summary/facts, preserve views
                 envelope = ResultEnvelope(
                     status=envelope.status,
                     summary=fw_envelope.summary,
                     facts=list(fw_envelope.facts) + list(envelope.facts),
                     artifacts=list(envelope.artifacts) + list(fw_envelope.artifacts),
                     provenance=envelope.provenance,
+                    views=list(envelope.views) + list(fw_envelope.views),
                 )
             item = processed
 
