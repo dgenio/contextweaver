@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-03-03
+
 ### Added
 - `Catalog.hydrate(tool_id)` returns a `HydrationResult` with full schema, examples, and constraints
 - `HydrationResult` dataclass in `envelope.py` with `to_dict()` / `from_dict()`
