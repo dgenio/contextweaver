@@ -633,17 +633,20 @@ def test_ingest_mcp_result_error() -> None:
 
 
 def test_ingest_mcp_result_large_output_firewall() -> None:
-    """Large text output triggers the context firewall."""
+    """Large text output triggers the context firewall; full raw text is preserved."""
     mgr = ContextManager()
     large_text = "row: " + "x" * 3000
     mcp_result = {
         "content": [{"type": "text", "text": large_text}],
     }
     item, env = mgr.ingest_mcp_result("call-5", mcp_result, "big_tool", firewall_threshold=100)
-    # Firewall should have truncated/summarized
+    # Firewall should have truncated/summarized the item text
     assert len(item.text) < len(large_text)
     assert item.artifact_ref is not None
     assert mgr.event_log.count() == 1
+    # Full raw text (not the truncated 500-char summary) must be in the artifact store
+    stored = mgr.artifact_store.get(item.artifact_ref.handle)
+    assert len(stored) >= len(large_text.encode("utf-8"))
 
 
 def test_ingest_mcp_result_sync() -> None:

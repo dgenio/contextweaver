@@ -242,18 +242,28 @@ class ContextManager:
                 stored_refs.get(a.handle, a) for a in envelope.artifacts
             ]
 
-        # Build the context item from the envelope summary
+        # Derive full raw text from MCP content for the firewall.
+        raw_text_parts: list[str] = []
+        for entry in mcp_result.get("content") or []:
+            if isinstance(entry, dict) and entry.get("type", "text") == "text":
+                t = entry.get("text", "")
+                if isinstance(t, str):
+                    raw_text_parts.append(t)
+        raw_text = "\n\n".join(raw_text_parts) if raw_text_parts else envelope.summary
+
+        # Build the context item from the full raw text so the firewall
+        # can offload the complete output, not the truncated summary.
         item = ContextItem(
             id=f"result:{tool_call_id}",
             kind=ItemKind.tool_result,
-            text=envelope.summary,
-            token_estimate=self._estimator.estimate(envelope.summary),
+            text=raw_text,
+            token_estimate=self._estimator.estimate(raw_text),
             metadata={"tool_name": tool_name, "protocol": "mcp"},
             parent_id=tool_call_id,
         )
 
-        # Apply firewall if text summary is large
-        if len(envelope.summary) > firewall_threshold:
+        # Apply firewall if raw text is large
+        if len(raw_text) > firewall_threshold:
             processed, fw_envelope = apply_firewall(item, self._artifact_store, self._hook)
             if fw_envelope is not None:
                 # Merge: keep MCP artifacts, use firewall summary/facts
