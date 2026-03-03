@@ -36,7 +36,7 @@ from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import Episode, InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import Fact, InMemoryFactStore
-from contextweaver.types import ContextItem, ItemKind, Phase
+from contextweaver.types import ArtifactRef, ContextItem, ItemKind, Phase
 
 # Maximum facts injected into the prompt header to prevent unbounded growth.
 _MAX_FACT_LINES: int = 64
@@ -232,9 +232,15 @@ class ContextManager:
 
         envelope, binaries = mcp_result_to_envelope(mcp_result, tool_name)
 
-        # Persist binary artifacts (images, resources)
+        # Persist binary artifacts (images, resources) and refresh envelope metadata
+        stored_refs: dict[str, ArtifactRef] = {}
         for handle, (raw_bytes, media_type, label) in sorted(binaries.items()):
-            self._artifact_store.put(handle, raw_bytes, media_type, label)
+            stored_refs[handle] = self._artifact_store.put(handle, raw_bytes, media_type, label)
+
+        if stored_refs:
+            envelope.artifacts = [
+                stored_refs.get(a.handle, a) for a in envelope.artifacts
+            ]
 
         # Build the context item from the envelope summary
         item = ContextItem(
