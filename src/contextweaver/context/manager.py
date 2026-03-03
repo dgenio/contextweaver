@@ -89,6 +89,7 @@ class ContextManager:
         self._scoring = scoring_config or ScoringConfig()
         self._estimator: TokenEstimator = estimator or CharDivFourEstimator()
         self._hook: EventHook = hook or NoOpHook()
+        self._fact_counter: int = 0
 
     # ------------------------------------------------------------------
     # Properties
@@ -290,7 +291,8 @@ class ContextManager:
             value: Fact value.
             metadata: Optional metadata dict.
         """
-        fact_id = f"fact:{key}:{len(self._fact_store.all())}"
+        self._fact_counter += 1
+        fact_id = f"fact:{key}:{self._fact_counter}"
         self._fact_store.put(
             Fact(
                 fact_id=fact_id,

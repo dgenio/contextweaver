@@ -121,10 +121,6 @@ class ArtifactStore(Protocol):
         """Return ``True`` if *handle* is in the store."""
         ...
 
-    def metadata(self, handle: str) -> ArtifactRef:
-        """Return the :class:`~contextweaver.types.ArtifactRef` for *handle*."""
-        ...
-
     def drilldown(self, handle: str, selector: dict[str, Any]) -> str:
         """Return a subset of the artifact's content according to *selector*."""
         ...
