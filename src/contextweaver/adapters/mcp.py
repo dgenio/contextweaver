@@ -117,7 +117,7 @@ def mcp_result_to_envelope(
             text_parts.append(part.get("text", ""))
         elif part_type == "image":
             mime = part.get("mimeType", "image/png")
-            data_str = part.get("data", "")
+            data_str = part.get("data") or ""
             handle = f"mcp:{tool_name}:image:{i}"
             # Decode base64 image data; fall back to raw bytes on error.
             try:
