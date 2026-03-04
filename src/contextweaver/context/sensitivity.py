@@ -30,6 +30,9 @@ _SENSITIVITY_ORDER: dict[Sensitivity, int] = {
     Sensitivity.restricted: 3,
 }
 
+# Valid values for ContextPolicy.sensitivity_action.
+_VALID_ACTIONS: set[str] = {"drop", "redact"}
+
 # Hook registry (name → instance).  Built-in hooks are registered at
 # module load time; users can add their own via :func:`register_redaction_hook`.
 _HOOK_REGISTRY: dict[str, RedactionHook] = {}
@@ -123,7 +126,6 @@ def apply_sensitivity_filter(
     floor_level = _SENSITIVITY_ORDER[policy.sensitivity_floor]
     action = policy.sensitivity_action
 
-    _VALID_ACTIONS = {"drop", "redact"}
     if action not in _VALID_ACTIONS:
         msg = f"Unknown sensitivity_action {action!r}. Valid: {sorted(_VALID_ACTIONS)}"
         raise ValueError(msg)
