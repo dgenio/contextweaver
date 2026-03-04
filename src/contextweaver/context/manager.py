@@ -186,7 +186,7 @@ class ContextManager:
             self._event_log.append(processed)
             return processed, envelope
 
-        # Small output: still extract facts but no artifact storage
+        # Small output: extract facts and store in artifact store to enable drilldown
         from contextweaver.summarize.extract import extract_facts
 
         facts = extract_facts(raw_output, item.metadata)
