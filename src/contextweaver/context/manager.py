@@ -472,6 +472,10 @@ class ContextManager:
         stats.dependency_closures = closures
         stats.header_footer_tokens = hf_tokens
         if sensitivity_drops > 0:
+            # Account for items dropped by sensitivity filtering in both the
+            # total candidate count and the drop breakdown so that
+            # dropped_count + included_count <= total_candidates remains true.
+            stats.total_candidates += sensitivity_drops
             stats.dropped_count += sensitivity_drops
             stats.dropped_reasons["sensitivity"] = sensitivity_drops
 
