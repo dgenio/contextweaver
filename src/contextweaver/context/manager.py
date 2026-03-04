@@ -404,7 +404,7 @@ class ContextManager:
 
         if inject:
             sel_type = selector.get("type", "unknown")
-            item_id = f"drilldown:{handle}:{sel_type}"
+            item_id = f"drilldown:{handle}:{sel_type}:{self._event_log.count()}"
             item = ContextItem(
                 id=item_id,
                 kind=ItemKind.tool_result,

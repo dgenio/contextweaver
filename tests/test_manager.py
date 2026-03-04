@@ -754,9 +754,27 @@ def test_drilldown_inject_into_event_log() -> None:
     )
     assert result == "line1\nline2"
     assert mgr.event_log.count() == initial_count + 1
-    injected = mgr.event_log.get(f"drilldown:{handle}:lines")
+    injected = mgr.event_log.get(f"drilldown:{handle}:lines:{initial_count}")
     assert injected.text == "line1\nline2"
     assert injected.parent_id == _item.id
+
+
+def test_drilldown_inject_repeated_same_selector() -> None:
+    """Repeated drilldown(inject=True) with the same selector must not crash."""
+    mgr = ContextManager()
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd-rep",
+        raw_output="line0\nline1\nline2\nline3\nline4",
+        tool_name="list_files",
+        firewall_threshold=10,
+    )
+    handle = env.artifacts[0].handle
+    selector = {"type": "lines", "start": 0, "end": 2}
+    count_before = mgr.event_log.count()
+    r1 = mgr.drilldown(handle, selector, inject=True)
+    r2 = mgr.drilldown(handle, selector, inject=True)
+    assert r1 == r2 == "line0\nline1"
+    assert mgr.event_log.count() == count_before + 2
 
 
 def test_drilldown_without_inject() -> None:
