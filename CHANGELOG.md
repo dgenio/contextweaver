@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MaskRedactionHook` — built-in redaction hook replacing text with `[REDACTED: {sensitivity}]`
 - `apply_sensitivity_filter()` function in `context/sensitivity.py`
 - `BuildStats.dropped_reasons["sensitivity"]` tracks sensitivity-dropped item count
+- `.pre-commit-config.yaml` with ruff format, ruff check --fix, and standard file hygiene hooks
 
 ## [0.1.1] - 2026-03-03
 
