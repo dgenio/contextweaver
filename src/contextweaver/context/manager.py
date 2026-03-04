@@ -4,11 +4,12 @@
 
 1. :func:`~contextweaver.context.candidates.generate_candidates` — phase filter
 2. :func:`~contextweaver.context.candidates.resolve_dependency_closure` — parent chain expansion
-3. :func:`~contextweaver.context.firewall.apply_firewall_to_batch` — raw output interception
-4. :func:`~contextweaver.context.scoring.score_candidates` — relevance scoring
-5. :func:`~contextweaver.context.dedup.deduplicate_candidates` — near-duplicate removal
-6. :func:`~contextweaver.context.selection.select_and_pack` — budget-aware selection
-7. :func:`~contextweaver.context.prompt.render_context` — prompt assembly
+3. :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter` — sensitivity enforcement (drop/redact)
+4. :func:`~contextweaver.context.firewall.apply_firewall_to_batch` — raw output interception
+5. :func:`~contextweaver.context.scoring.score_candidates` — relevance scoring
+6. :func:`~contextweaver.context.dedup.deduplicate_candidates` — near-duplicate removal
+7. :func:`~contextweaver.context.selection.select_and_pack` — budget-aware selection
+8. :func:`~contextweaver.context.prompt.render_context` — prompt assembly
 """
 
 from __future__ import annotations
@@ -352,7 +353,7 @@ class ContextManager:
     ) -> ContextPack:
         """Run the full context compilation pipeline (synchronous core).
 
-        All seven pipeline steps are pure computation, so no ``await`` is
+        All eight pipeline steps are pure computation, so no ``await`` is
         needed.  Both :meth:`build` (async) and :meth:`build_sync` delegate
         here.
 
