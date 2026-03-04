@@ -148,9 +148,9 @@ def test_binary_views() -> None:
     data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
     views = _binary_views(ref, data)
     assert len(views) == 1
-    assert "Metadata" in views[0].label
+    assert "Header" in views[0].label
     assert "image/png" in views[0].label
-    assert "2048" in views[0].label
+    assert views[0].selector == {"type": "head", "chars": 128}
 
 
 # ------------------------------------------------------------------
@@ -262,7 +262,7 @@ def test_registry_fallback_to_binary() -> None:
     ref = _ref(media_type="application/x-custom-binary")
     views = reg.generate_views(ref, b"\x00\x01\x02")
     assert len(views) == 1
-    assert "Metadata" in views[0].label
+    assert "Header" in views[0].label
 
 
 def test_registry_prefix_match() -> None:

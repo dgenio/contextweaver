@@ -133,12 +133,12 @@ def _text_views(ref: ArtifactRef, data: bytes) -> list[ViewSpec]:
 
 
 def _binary_views(ref: ArtifactRef, data: bytes) -> list[ViewSpec]:
-    """Generate a metadata-only view for binary/image content."""
+    """Generate a header-inspection view for binary/image content."""
     return [
         ViewSpec(
             view_id=f"{ref.handle}:meta",
-            label=f"Metadata ({ref.media_type}, {ref.size_bytes} bytes)",
-            selector={"type": "head", "chars": 0},
+            label=f"Header (128 bytes, {ref.media_type})",
+            selector={"type": "head", "chars": 128},
             artifact_ref=ref,
         )
     ]
