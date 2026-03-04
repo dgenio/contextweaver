@@ -102,6 +102,11 @@ def apply_sensitivity_filter(
     floor_level = _SENSITIVITY_ORDER[policy.sensitivity_floor]
     action = policy.sensitivity_action
 
+    _VALID_ACTIONS = {"drop", "redact"}
+    if action not in _VALID_ACTIONS:
+        msg = f"Unknown sensitivity_action {action!r}. Valid: {sorted(_VALID_ACTIONS)}"
+        raise ValueError(msg)
+
     # Fast path: if the floor is above restricted nothing can be filtered.
     if floor_level > _SENSITIVITY_ORDER[Sensitivity.restricted]:
         return items, 0

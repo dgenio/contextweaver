@@ -210,6 +210,16 @@ def test_unknown_hook_name_raises() -> None:
         apply_sensitivity_filter([item], policy)
 
 
+def test_unknown_sensitivity_action_raises() -> None:
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.confidential,
+        sensitivity_action="dorp",
+    )
+    item = _item("x", Sensitivity.confidential)
+    with pytest.raises(ValueError, match="Unknown sensitivity_action"):
+        apply_sensitivity_filter([item], policy)
+
+
 # ------------------------------------------------------------------
 # ContextItem serde roundtrip with sensitivity
 # ------------------------------------------------------------------
