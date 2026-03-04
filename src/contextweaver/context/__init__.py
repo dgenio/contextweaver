@@ -20,17 +20,21 @@ from contextweaver.context.sensitivity import (
     apply_sensitivity_filter,
     register_redaction_hook,
 )
+from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
 
 __all__ = [
     "ContextManager",
     "MaskRedactionHook",
+    "ViewRegistry",
     "apply_firewall",
     "apply_firewall_to_batch",
     "apply_sensitivity_filter",
     "register_redaction_hook",
     "build_schema_header",
     "deduplicate_candidates",
+    "drilldown_tool_spec",
     "generate_candidates",
+    "generate_views",
     "render_context",
     "render_item",
     "resolve_dependency_closure",

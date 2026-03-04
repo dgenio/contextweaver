@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.protocols import ArtifactStore, EventHook, NoOpHook
 from contextweaver.summarize.extract import extract_facts
@@ -28,6 +29,7 @@ def apply_firewall(
     item: ContextItem,
     artifact_store: ArtifactStore,
     hook: EventHook | None = None,
+    view_registry: ViewRegistry | None = None,
 ) -> tuple[ContextItem, ResultEnvelope | None]:
     """Intercept a ``tool_result`` item and store its content out-of-band.
 
@@ -75,11 +77,14 @@ def apply_firewall(
         facts = []
         status = "error" if status == "error" else "partial"
 
+    views = generate_views(ref, raw_bytes, registry=view_registry)
+
     envelope = ResultEnvelope(
         status=status,
         summary=summary,
         facts=facts,
         artifacts=[ref],
+        views=views,
         provenance={"source_item_id": item.id},
     )
 
@@ -101,6 +106,7 @@ def apply_firewall_to_batch(
     items: list[ContextItem],
     artifact_store: ArtifactStore,
     hook: EventHook | None = None,
+    view_registry: ViewRegistry | None = None,
 ) -> tuple[list[ContextItem], list[ResultEnvelope]]:
     """Apply the firewall to a list of items.
 
@@ -108,6 +114,7 @@ def apply_firewall_to_batch(
         items: Candidate items (may contain a mix of kinds).
         artifact_store: Where to store raw tool outputs.
         hook: Optional lifecycle hook.
+        view_registry: Optional custom view registry for auto-view generation.
 
     Returns:
         A 2-tuple of ``(processed_items, envelopes)``.
@@ -115,7 +122,7 @@ def apply_firewall_to_batch(
     processed = []
     envelopes = []
     for item in items:
-        p, env = apply_firewall(item, artifact_store, hook)
+        p, env = apply_firewall(item, artifact_store, hook, view_registry)
         processed.append(p)
         if env is not None:
             envelopes.append(env)
