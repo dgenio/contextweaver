@@ -389,18 +389,18 @@ class ContextManager:
         # 2. Dependency closure
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
 
-        # 2b. Sensitivity filter
+        # 3. Sensitivity filter
         candidates, sensitivity_drops = apply_sensitivity_filter(candidates, self._policy)
 
-        # 3. Firewall
+        # 4. Firewall
         candidates, envelopes = apply_firewall_to_batch(
             candidates, self._artifact_store, self._hook
         )
 
-        # 4. Score
+        # 5. Score
         scored = score_candidates(candidates, query, _tags, self._scoring)
 
-        # 5. Dedup
+        # 6. Dedup
         scored, dedup_removed = deduplicate_candidates(scored)
 
         # Pre-build episodic + fact injection text so we can estimate its
@@ -467,7 +467,7 @@ class ContextManager:
         else:
             adjusted = effective_budget
 
-        # 6. Select (budget already accounts for header/footer overhead)
+        # 7. Select (budget already accounts for header/footer overhead)
         selected, stats = select_and_pack(scored, phase, adjusted, self._policy, self._estimator)
         stats.dedup_removed = dedup_removed
         stats.dependency_closures = closures
@@ -482,7 +482,7 @@ class ContextManager:
                 stats.dropped_reasons.get("sensitivity", 0) + sensitivity_drops
             )
 
-        # 7. Render
+        # 8. Render
         prompt = render_context(selected, header=full_header, footer=footer)
 
         pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
