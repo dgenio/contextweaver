@@ -40,6 +40,7 @@ def apply_firewall(
         item: The candidate item to inspect.
         artifact_store: Where to store the raw content.
         hook: Optional lifecycle hook to notify on firewall trigger.
+        view_registry: Optional custom view registry for auto-view generation.
 
     Returns:
         A 2-tuple ``(processed_item, envelope_or_none)``.  When the firewall
