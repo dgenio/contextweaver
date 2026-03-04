@@ -107,10 +107,6 @@ def apply_sensitivity_filter(
         msg = f"Unknown sensitivity_action {action!r}. Valid: {sorted(_VALID_ACTIONS)}"
         raise ValueError(msg)
 
-    # Fast path: if the floor is above restricted nothing can be filtered.
-    if floor_level > _SENSITIVITY_ORDER[Sensitivity.restricted]:
-        return items, 0
-
     # Resolve redaction hooks once (only needed in redact mode).
     hooks: list[RedactionHook] = []
     if action == "redact":
