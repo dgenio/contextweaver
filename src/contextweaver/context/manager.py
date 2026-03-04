@@ -4,7 +4,7 @@
 
 1. :func:`~contextweaver.context.candidates.generate_candidates` — phase filter
 2. :func:`~contextweaver.context.candidates.resolve_dependency_closure` — parent chain expansion
-3. :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter` — sensitivity enforcement (drop/redact)
+3. :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter` — sensitivity enforcement
 4. :func:`~contextweaver.context.firewall.apply_firewall_to_batch` — raw output interception
 5. :func:`~contextweaver.context.scoring.score_candidates` — relevance scoring
 6. :func:`~contextweaver.context.dedup.deduplicate_candidates` — near-duplicate removal
