@@ -36,7 +36,8 @@ make ci       # fmt + lint + type + test
 ```
 
 After cloning, run `pre-commit install` once to activate the git hooks. The hooks
-run `ruff format` and `ruff check --fix` automatically on every `git commit`.
+run `ruff format` and `ruff check --fix`, plus standard file hygiene checks,
+automatically on every `git commit`.
 
 ## Conventions
 - Python ≥ 3.10, zero runtime dependencies
