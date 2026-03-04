@@ -6,7 +6,7 @@ This is contextweaver, a Python library for dynamic context management for AI ag
 - src/contextweaver/ contains the library
 - Two engines: Context Engine (phase-specific context building) and Routing Engine (bounded-choice tool routing)
 - All stores (EventLog, ArtifactStore, EpisodicStore, FactStore) are protocol-based with InMemory defaults
-- Context pipeline: generate_candidates → score_candidates → deduplicate_candidates → select_and_pack → render_context
+- Context pipeline: generate_candidates → sensitivity_filter → apply_firewall → score_candidates → deduplicate_candidates → select_and_pack → render_context
 - Routing pipeline: TreeBuilder → ChoiceGraph → Router (beam search) → ChoiceCards
 
 ## Conventions
@@ -30,3 +30,4 @@ This is contextweaver, a Python library for dynamic context management for AI ag
 - ContextPack (rendered prompt + stats + BuildStats)
 - ChoiceCard (LLM-friendly compact card, never includes full schemas)
 - ChoiceGraph (bounded DAG, serializable, validated on load)
+- MaskRedactionHook (built-in redaction hook for sensitivity enforcement)

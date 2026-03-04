@@ -158,6 +158,7 @@ class ContextItem:
     kind: ItemKind
     text: str
     token_estimate: int = 0
+    sensitivity: Sensitivity = Sensitivity.public
     metadata: dict[str, Any] = field(default_factory=dict)
     parent_id: str | None = None
     artifact_ref: ArtifactRef | None = None
@@ -169,6 +170,7 @@ class ContextItem:
             "kind": self.kind.value,
             "text": self.text,
             "token_estimate": self.token_estimate,
+            "sensitivity": self.sensitivity.value,
             "metadata": dict(self.metadata),
             "parent_id": self.parent_id,
             "artifact_ref": self.artifact_ref.to_dict() if self.artifact_ref else None,
@@ -183,6 +185,7 @@ class ContextItem:
             kind=ItemKind(data["kind"]),
             text=data["text"],
             token_estimate=int(data.get("token_estimate", 0)),
+            sensitivity=Sensitivity(data.get("sensitivity", Sensitivity.public.value)),
             metadata=dict(data.get("metadata", {})),
             parent_id=data.get("parent_id"),
             artifact_ref=ArtifactRef.from_dict(artifact_raw) if artifact_raw else None,

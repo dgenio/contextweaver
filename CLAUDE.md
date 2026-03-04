@@ -36,7 +36,7 @@ _utils.py       → text similarity (tokenize, jaccard, TfIdfScorer)
 serde.py        → to_dict/from_dict helpers
 store/          → in-memory data stores (append-only event log, artifact store, …)
 summarize/      → rule engine + fact extraction
-context/        → full context compilation pipeline
+context/        → full context compilation pipeline (incl. sensitivity.py for sensitivity enforcement)
 routing/        → catalog, DAG, beam-search router, card renderer
 adapters/       → MCP and A2A protocol conversion
 __main__.py     → CLI entry point

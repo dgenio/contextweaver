@@ -18,7 +18,7 @@ It provides two integrated engines:
 | `src/contextweaver/serde.py` | Serialisation helpers for to_dict/from_dict patterns |
 | `src/contextweaver/store/` | InMemoryArtifactStore, InMemoryEventLog, InMemoryEpisodicStore, InMemoryFactStore |
 | `src/contextweaver/summarize/` | SummarizationRule, RuleEngine, extract_facts() |
-| `src/contextweaver/context/` | Full context pipeline: candidates → scoring → dedup → selection → firewall → prompt |
+| `src/contextweaver/context/` | Full context pipeline: candidates → sensitivity filter → firewall → scoring → dedup → selection → prompt |
 | `src/contextweaver/routing/` | Catalog, ChoiceGraph, TreeBuilder, Router (beam search), cards renderer |
 | `src/contextweaver/adapters/` | MCP and A2A protocol adapters |
 | `src/contextweaver/__main__.py` | CLI: 7 subcommands (demo, build, route, print-tree, init, ingest, replay) |

@@ -4,11 +4,12 @@
 
 1. :func:`~contextweaver.context.candidates.generate_candidates` — phase filter
 2. :func:`~contextweaver.context.candidates.resolve_dependency_closure` — parent chain expansion
-3. :func:`~contextweaver.context.firewall.apply_firewall_to_batch` — raw output interception
-4. :func:`~contextweaver.context.scoring.score_candidates` — relevance scoring
-5. :func:`~contextweaver.context.dedup.deduplicate_candidates` — near-duplicate removal
-6. :func:`~contextweaver.context.selection.select_and_pack` — budget-aware selection
-7. :func:`~contextweaver.context.prompt.render_context` — prompt assembly
+3. :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter` — sensitivity enforcement
+4. :func:`~contextweaver.context.firewall.apply_firewall_to_batch` — raw output interception
+5. :func:`~contextweaver.context.scoring.score_candidates` — relevance scoring
+6. :func:`~contextweaver.context.dedup.deduplicate_candidates` — near-duplicate removal
+7. :func:`~contextweaver.context.selection.select_and_pack` — budget-aware selection
+8. :func:`~contextweaver.context.prompt.render_context` — prompt assembly
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from contextweaver.context.firewall import apply_firewall, apply_firewall_to_bat
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
+from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.envelope import ContextPack, ResultEnvelope
 from contextweaver.protocols import (
     ArtifactStore,
@@ -351,7 +353,7 @@ class ContextManager:
     ) -> ContextPack:
         """Run the full context compilation pipeline (synchronous core).
 
-        All seven pipeline steps are pure computation, so no ``await`` is
+        All eight pipeline steps are pure computation, so no ``await`` is
         needed.  Both :meth:`build` (async) and :meth:`build_sync` delegate
         here.
 
@@ -387,15 +389,18 @@ class ContextManager:
         # 2. Dependency closure
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
 
-        # 3. Firewall
+        # 3. Sensitivity filter
+        candidates, sensitivity_drops = apply_sensitivity_filter(candidates, self._policy)
+
+        # 4. Firewall
         candidates, envelopes = apply_firewall_to_batch(
             candidates, self._artifact_store, self._hook
         )
 
-        # 4. Score
+        # 5. Score
         scored = score_candidates(candidates, query, _tags, self._scoring)
 
-        # 5. Dedup
+        # 6. Dedup
         scored, dedup_removed = deduplicate_candidates(scored)
 
         # Pre-build episodic + fact injection text so we can estimate its
@@ -462,13 +467,22 @@ class ContextManager:
         else:
             adjusted = effective_budget
 
-        # 6. Select (budget already accounts for header/footer overhead)
+        # 7. Select (budget already accounts for header/footer overhead)
         selected, stats = select_and_pack(scored, phase, adjusted, self._policy, self._estimator)
         stats.dedup_removed = dedup_removed
         stats.dependency_closures = closures
         stats.header_footer_tokens = hf_tokens
+        if sensitivity_drops > 0:
+            # Account for items dropped by sensitivity filtering in both the
+            # total candidate count and the drop breakdown so that
+            # dropped_count + included_count <= total_candidates remains true.
+            stats.total_candidates += sensitivity_drops
+            stats.dropped_count += sensitivity_drops
+            stats.dropped_reasons["sensitivity"] = (
+                stats.dropped_reasons.get("sensitivity", 0) + sensitivity_drops
+            )
 
-        # 7. Render
+        # 8. Render
         prompt = render_context(selected, header=full_header, footer=footer)
 
         pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
