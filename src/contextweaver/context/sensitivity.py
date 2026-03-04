@@ -30,8 +30,29 @@ _SENSITIVITY_ORDER: dict[Sensitivity, int] = {
     Sensitivity.restricted: 3,
 }
 
-# Built-in hook registry (name → instance).
-_BUILTIN_HOOKS: dict[str, RedactionHook] = {}
+# Hook registry (name → instance).  Built-in hooks are registered at
+# module load time; users can add their own via :func:`register_redaction_hook`.
+_HOOK_REGISTRY: dict[str, RedactionHook] = {}
+
+
+def register_redaction_hook(name: str, hook: RedactionHook) -> None:
+    """Register a custom :class:`~contextweaver.protocols.RedactionHook`.
+
+    Once registered, the *name* can be used in
+    :attr:`~contextweaver.config.ContextPolicy.redaction_hooks` just like the
+    built-in ``"mask"`` hook.
+
+    Args:
+        name: Short identifier for the hook (e.g. ``"my_custom_hook"``).
+        hook: An object implementing the :class:`RedactionHook` protocol.
+
+    Raises:
+        ValueError: If *name* is already registered.
+    """
+    if name in _HOOK_REGISTRY:
+        msg = f"Redaction hook {name!r} is already registered"
+        raise ValueError(msg)
+    _HOOK_REGISTRY[name] = hook
 
 
 class MaskRedactionHook:
@@ -58,7 +79,7 @@ class MaskRedactionHook:
 
 # Register the built-in hook so it can be referenced by name in
 # ContextPolicy.redaction_hooks.
-_BUILTIN_HOOKS["mask"] = MaskRedactionHook()
+_HOOK_REGISTRY["mask"] = MaskRedactionHook()
 
 
 def _resolve_hooks(names: list[str]) -> list[RedactionHook]:
@@ -75,9 +96,9 @@ def _resolve_hooks(names: list[str]) -> list[RedactionHook]:
     """
     hooks: list[RedactionHook] = []
     for name in names:
-        hook = _BUILTIN_HOOKS.get(name)
+        hook = _HOOK_REGISTRY.get(name)
         if hook is None:
-            msg = f"Unknown redaction hook {name!r}. Available: {sorted(_BUILTIN_HOOKS)}"
+            msg = f"Unknown redaction hook {name!r}. Available: {sorted(_HOOK_REGISTRY)}"
             raise ValueError(msg)
         hooks.append(hook)
     return hooks

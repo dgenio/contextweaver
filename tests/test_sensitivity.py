@@ -7,9 +7,11 @@ import pytest
 from contextweaver.config import ContextPolicy
 from contextweaver.context.manager import ContextManager
 from contextweaver.context.sensitivity import (
+    _HOOK_REGISTRY,
     _SENSITIVITY_ORDER,
     MaskRedactionHook,
     apply_sensitivity_filter,
+    register_redaction_hook,
 )
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
@@ -299,3 +301,41 @@ def test_build_redact_mode_masks_in_prompt() -> None:
     assert "SSN" not in pack.prompt
     assert "[REDACTED: restricted]" in pack.prompt
     assert "safe question" in pack.prompt
+
+
+# ------------------------------------------------------------------
+# register_redaction_hook
+# ------------------------------------------------------------------
+
+
+def test_register_custom_hook_and_use_in_redact_mode() -> None:
+    """A user-registered hook can be referenced by name in ContextPolicy."""
+
+    class UppercaseHook:
+        def redact(self, item: ContextItem) -> ContextItem:
+            from dataclasses import replace as _replace
+
+            return _replace(item, text=item.text.upper())
+
+    # Register & use
+    register_redaction_hook("upper_test", UppercaseHook())
+    try:
+        policy = ContextPolicy(
+            sensitivity_floor=Sensitivity.confidential,
+            sensitivity_action="redact",
+            redaction_hooks=["upper_test"],
+        )
+        items = [_item("a", Sensitivity.restricted, text="secret data")]
+        result, dropped = apply_sensitivity_filter(items, policy)
+        assert dropped == 0
+        assert len(result) == 1
+        assert result[0].text == "SECRET DATA"
+    finally:
+        # Clean up so other tests are not affected.
+        del _HOOK_REGISTRY["upper_test"]
+
+
+def test_register_duplicate_hook_raises() -> None:
+    """Registering a hook with an existing name raises ValueError."""
+    with pytest.raises(ValueError, match="already registered"):
+        register_redaction_hook("mask", MaskRedactionHook())

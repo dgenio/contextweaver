@@ -24,7 +24,7 @@ from contextweaver import config, envelope, exceptions, protocols, types
 from contextweaver._utils import TfIdfScorer, jaccard
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.manager import ContextManager
-from contextweaver.context.sensitivity import MaskRedactionHook
+from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
 from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
@@ -136,6 +136,7 @@ __all__ = [
     # context engine
     "ContextManager",
     "MaskRedactionHook",
+    "register_redaction_hook",
     # routing engine
     "Catalog",
     "ChoiceGraph",
