@@ -41,7 +41,7 @@ the "context window problem" for tool-using AI agents.
 ## Context Engine pipeline
 
 The Context Engine compiles a phase-aware, budget-constrained prompt from
-the event log. The pipeline has seven stages:
+the event log. The pipeline has eight stages:
 
 1. **generate_candidates** — pull events from the event log and inject
    episodic memory and facts into the candidate pool.
