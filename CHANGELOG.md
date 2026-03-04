@@ -7,14 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-04
+
 ### Added
 - Sensitivity enforcement in context pipeline: items at or above `ContextPolicy.sensitivity_floor` are dropped or redacted
 - `ContextItem.sensitivity` field (default: `Sensitivity.public`)
 - `ContextPolicy.sensitivity_action` field (`"drop"` or `"redact"`)
 - `MaskRedactionHook` — built-in redaction hook replacing text with `[REDACTED: {sensitivity}]`
 - `apply_sensitivity_filter()` function in `context/sensitivity.py`
+- `register_redaction_hook()` for user-extensible redaction hooks
 - `BuildStats.dropped_reasons["sensitivity"]` tracks sensitivity-dropped item count
 - `.pre-commit-config.yaml` with ruff format, ruff check --fix, and standard file hygiene hooks
+
+### Fixed
+- Validate `sensitivity_action` to reject unknown values
+- Use accumulation pattern for `dropped_reasons["sensitivity"]`
+- Adjust `total_candidates` for sensitivity drops in `BuildStats`
 
 ## [0.1.1] - 2026-03-03
 
