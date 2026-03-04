@@ -22,6 +22,7 @@ from contextweaver.context.firewall import apply_firewall, apply_firewall_to_bat
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
+from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.envelope import ContextPack, ResultEnvelope
 from contextweaver.protocols import (
     ArtifactStore,
@@ -387,6 +388,9 @@ class ContextManager:
         # 2. Dependency closure
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
 
+        # 2b. Sensitivity filter
+        candidates, sensitivity_drops = apply_sensitivity_filter(candidates, self._policy)
+
         # 3. Firewall
         candidates, envelopes = apply_firewall_to_batch(
             candidates, self._artifact_store, self._hook
@@ -467,6 +471,9 @@ class ContextManager:
         stats.dedup_removed = dedup_removed
         stats.dependency_closures = closures
         stats.header_footer_tokens = hf_tokens
+        if sensitivity_drops > 0:
+            stats.dropped_count += sensitivity_drops
+            stats.dropped_reasons["sensitivity"] = sensitivity_drops
 
         # 7. Render
         prompt = render_context(selected, header=full_header, footer=footer)
