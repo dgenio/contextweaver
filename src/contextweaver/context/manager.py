@@ -477,7 +477,9 @@ class ContextManager:
             # dropped_count + included_count <= total_candidates remains true.
             stats.total_candidates += sensitivity_drops
             stats.dropped_count += sensitivity_drops
-            stats.dropped_reasons["sensitivity"] = sensitivity_drops
+            stats.dropped_reasons["sensitivity"] = (
+                stats.dropped_reasons.get("sensitivity", 0) + sensitivity_drops
+            )
 
         # 7. Render
         prompt = render_context(selected, header=full_header, footer=footer)
