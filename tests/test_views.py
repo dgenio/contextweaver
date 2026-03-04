@@ -203,11 +203,9 @@ def test_looks_like_csv_single_line() -> None:
 
 
 def test_looks_like_csv_plain_text() -> None:
-    text = "This is a sentence.\nThis is another sentence."
-    # Sentences without consistent delimiters should not look like CSV
-    # (depends on sniffer heuristic — may or may not detect)
-    result = _looks_like_csv(text)
-    assert isinstance(result, bool)
+    text = "abc\ndef"
+    # Single words per line — no delimiter for csv.Sniffer to detect
+    assert _looks_like_csv(text) is False
 
 
 # ------------------------------------------------------------------
