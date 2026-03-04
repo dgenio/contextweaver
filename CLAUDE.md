@@ -1,6 +1,7 @@
 # contextweaver — Claude Guide
 
 ## Do
+- Run `pre-commit install` once after cloning to activate git hooks (ruff format + check run on every commit)
 - Run `make ci` before submitting any change
 - Use `make fmt` to auto-format code
 - Keep each module ≤ 300 lines

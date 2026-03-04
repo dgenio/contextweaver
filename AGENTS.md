@@ -35,6 +35,9 @@ make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test
 ```
 
+After cloning, run `pre-commit install` once to activate the git hooks. The hooks
+run `ruff format` and `ruff check --fix` automatically on every `git commit`.
+
 ## Conventions
 - Python ≥ 3.10, zero runtime dependencies
 - All public APIs: type hints + docstrings
