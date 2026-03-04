@@ -47,16 +47,18 @@ the event log. The pipeline has seven stages:
    episodic memory and facts into the candidate pool.
 2. **dependency_closure** — if a selected item has a `parent_id`, bring
    the parent along even if it scored lower.
-3. **apply_firewall** — large tool results (above threshold) are
+3. **sensitivity_filter** — drop or redact items whose `sensitivity`
+   level meets or exceeds `ContextPolicy.sensitivity_floor`.
+4. **apply_firewall** — large tool results (above threshold) are
    summarised; the raw output is stored in the ArtifactStore and replaced
    with a compact reference + summary.
-4. **score_candidates** — rank candidates by recency, tag match, kind
+5. **score_candidates** — rank candidates by recency, tag match, kind
    priority, and token cost.
-5. **deduplicate_candidates** — remove near-duplicate items using Jaccard
+6. **deduplicate_candidates** — remove near-duplicate items using Jaccard
    similarity over tokenised text.
-6. **select_and_pack** — greedily pack the highest-scoring candidates
+7. **select_and_pack** — greedily pack the highest-scoring candidates
    into the token budget for the current phase.
-7. **render_context** — assemble the final prompt string, grouped by
+8. **render_context** — assemble the final prompt string, grouped by
    section (facts, history, tool results), with `BuildStats` metadata.
 
 ## Routing Engine pipeline

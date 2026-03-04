@@ -65,6 +65,23 @@ A `ResultEnvelope` captures the processed output of a tool call:
 - `views` — optional alternative representations.
 - `status` — success / error / partial.
 
+## Sensitivity Enforcement
+
+Each `ContextItem` has a `sensitivity` field (default: `public`) that
+classifies its data sensitivity level. The `ContextPolicy.sensitivity_floor`
+setting (default: `confidential`) determines which items are subject to
+filtering during context compilation.
+
+Items whose sensitivity level meets or exceeds the floor are either:
+
+- **Dropped** (`sensitivity_action="drop"`, the default) — removed from
+  the candidate list before scoring or rendering.
+- **Redacted** (`sensitivity_action="redact"`) — text replaced with
+  `[REDACTED: {sensitivity}]` via the `MaskRedactionHook`, while
+  preserving all item metadata.
+
+Dropped or redacted items are recorded in `BuildStats.dropped_reasons["sensitivity"]`.
+
 ## Build Stats
 
 Every context build produces a `BuildStats` object that explains exactly
