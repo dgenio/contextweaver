@@ -80,7 +80,7 @@ Items whose sensitivity level meets or exceeds the floor are either:
   `[REDACTED: {sensitivity}]` via the `MaskRedactionHook`, while
   preserving all item metadata.
 
-Dropped or redacted items are recorded in `BuildStats.dropped_reasons["sensitivity"]`.
+Dropped items are recorded in `BuildStats.dropped_reasons["sensitivity"]`.
 
 ## Build Stats
 
