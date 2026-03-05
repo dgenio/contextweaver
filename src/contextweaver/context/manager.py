@@ -154,7 +154,10 @@ class ContextManager:
         """Ingest a raw tool result through the context firewall.
 
         If the raw output exceeds *firewall_threshold* characters it is stored
-        in the artifact store and the LLM sees only a summary.
+        in the artifact store and the LLM sees only a summary.  Small outputs
+        are also stored in the artifact store (with ``artifact_ref`` set on the
+        returned item) to enable drilldown on all tool results regardless of
+        size.
 
         Args:
             tool_call_id: ID of the originating tool call.
@@ -165,7 +168,8 @@ class ContextManager:
                 stores the raw output out-of-band.
 
         Returns:
-            A ``(ContextItem, ResultEnvelope)`` tuple.
+            A ``(ContextItem, ResultEnvelope)`` tuple.  The item always has a
+            non-``None`` ``artifact_ref``.
         """
         item = ContextItem(
             id=f"result:{tool_call_id}",
