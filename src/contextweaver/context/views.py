@@ -230,17 +230,13 @@ class ViewRegistry:
         return _binary_views(ref, data)
 
 
-# Module-level default registry instance
-_DEFAULT_REGISTRY = ViewRegistry()
-
-
 def generate_views(
     ref: ArtifactRef,
     data: bytes,
     registry: ViewRegistry | None = None,
 ) -> list[ViewSpec]:
     """Auto-generate views for an artifact using the given or default registry."""
-    reg = registry or _DEFAULT_REGISTRY
+    reg = registry or ViewRegistry()
     return reg.generate_views(ref, data)
 
 
