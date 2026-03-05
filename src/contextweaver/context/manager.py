@@ -24,6 +24,7 @@ from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
+from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import ContextPack, ResultEnvelope
 from contextweaver.protocols import (
     ArtifactStore,
@@ -91,6 +92,7 @@ class ContextManager:
         self._scoring = scoring_config or ScoringConfig()
         self._estimator: TokenEstimator = estimator or CharDivFourEstimator()
         self._hook: EventHook = hook or NoOpHook()
+        self._view_registry: ViewRegistry = ViewRegistry()
 
     # ------------------------------------------------------------------
     # Properties
@@ -115,6 +117,11 @@ class ContextManager:
     def fact_store(self) -> InMemoryFactStore:
         """The underlying fact store."""
         return self._fact_store
+
+    @property
+    def view_registry(self) -> ViewRegistry:
+        """The view registry for auto-generating drilldown views."""
+        return self._view_registry
 
     # ------------------------------------------------------------------
     # Ingestion helpers
@@ -147,7 +154,10 @@ class ContextManager:
         """Ingest a raw tool result through the context firewall.
 
         If the raw output exceeds *firewall_threshold* characters it is stored
-        in the artifact store and the LLM sees only a summary.
+        in the artifact store and the LLM sees only a summary.  Small outputs
+        are also stored in the artifact store (with ``artifact_ref`` set on the
+        returned item) to enable drilldown on all tool results regardless of
+        size.
 
         Args:
             tool_call_id: ID of the originating tool call.
@@ -158,7 +168,8 @@ class ContextManager:
                 stores the raw output out-of-band.
 
         Returns:
-            A ``(ContextItem, ResultEnvelope)`` tuple.
+            A ``(ContextItem, ResultEnvelope)`` tuple.  The item always has a
+            non-``None`` ``artifact_ref``.
         """
         item = ContextItem(
             id=f"result:{tool_call_id}",
@@ -170,22 +181,45 @@ class ContextManager:
         )
 
         if len(raw_output) > firewall_threshold:
-            processed, envelope = apply_firewall(item, self._artifact_store, self._hook)
+            processed, envelope = apply_firewall(
+                item, self._artifact_store, self._hook, self._view_registry
+            )
             if envelope is None:
                 # Shouldn't happen for tool_result items, but be safe
                 envelope = ResultEnvelope(status="ok", summary=raw_output[:500])
             self._event_log.append(processed)
             return processed, envelope
 
-        # Small output: still extract facts but no artifact storage
+        # Small output: extract facts and store in artifact store to enable drilldown
         from contextweaver.summarize.extract import extract_facts
 
         facts = extract_facts(raw_output, item.metadata)
+        # For small outputs, store in artifact store to enable drilldown
+        raw_bytes = raw_output.encode("utf-8")
+        handle = f"artifact:{item.id}"
+        ref = self._artifact_store.put(
+            handle=handle,
+            content=raw_bytes,
+            media_type=media_type,
+            label=f"raw tool result for {item.id}",
+        )
+        views = generate_views(ref, raw_bytes, registry=self._view_registry)
         envelope = ResultEnvelope(
             status="ok",
             summary=raw_output,
             facts=facts,
+            artifacts=[ref],
+            views=views,
             provenance={"source_item_id": item.id, "tool_name": tool_name},
+        )
+        item = ContextItem(
+            id=item.id,
+            kind=item.kind,
+            text=item.text,
+            token_estimate=item.token_estimate,
+            metadata=dict(item.metadata),
+            parent_id=item.parent_id,
+            artifact_ref=ref,
         )
         self._event_log.append(item)
         return item, envelope
@@ -335,6 +369,68 @@ class ContextManager:
     ) -> None:
         """Synchronous alias for :meth:`add_episode`."""
         self.add_episode(episode_id, summary, metadata)
+
+    # ------------------------------------------------------------------
+    # Drilldown
+    # ------------------------------------------------------------------
+
+    def drilldown(
+        self,
+        handle: str,
+        selector: dict[str, Any],
+        *,
+        inject: bool = False,
+        parent_id: str | None = None,
+    ) -> str:
+        """Fetch a slice of a stored artifact via the drilldown protocol.
+
+        Wraps :meth:`~contextweaver.protocols.ArtifactStore.drilldown` and
+        optionally injects the result as a new :class:`ContextItem` in the
+        event log for subsequent context builds.
+
+        Args:
+            handle: Artifact handle to drill into.
+            selector: Drilldown selector dict (see
+                :meth:`~contextweaver.store.artifacts.InMemoryArtifactStore.drilldown`).
+            inject: If ``True``, append the drilldown result as a
+                ``tool_result`` :class:`ContextItem` to the event log.
+            parent_id: Optional parent item ID for dependency closure when
+                *inject* is ``True``.
+
+        Returns:
+            The drilldown result text.
+
+        Raises:
+            ArtifactNotFoundError: If *handle* is not in the store.
+            ValueError: If the selector type is unknown.
+        """
+        result = self._artifact_store.drilldown(handle, selector)
+
+        if inject:
+            sel_type = selector.get("type", "unknown")
+            item_id = f"drilldown:{handle}:{sel_type}:{self._event_log.count()}"
+            item = ContextItem(
+                id=item_id,
+                kind=ItemKind.tool_result,
+                text=result,
+                token_estimate=self._estimator.estimate(result),
+                metadata={"drilldown_handle": handle, "selector": selector},
+                parent_id=parent_id,
+            )
+            self._event_log.append(item)
+
+        return result
+
+    def drilldown_sync(
+        self,
+        handle: str,
+        selector: dict[str, Any],
+        *,
+        inject: bool = False,
+        parent_id: str | None = None,
+    ) -> str:
+        """Synchronous alias for :meth:`drilldown`."""
+        return self.drilldown(handle, selector, inject=inject, parent_id=parent_id)
 
     # ------------------------------------------------------------------
     # Core pipeline
