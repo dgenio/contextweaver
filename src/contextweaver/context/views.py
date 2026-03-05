@@ -134,6 +134,9 @@ def _text_views(ref: ArtifactRef, data: bytes) -> list[ViewSpec]:
 
 def _binary_views(ref: ArtifactRef, data: bytes) -> list[ViewSpec]:
     """Generate a header-inspection view for binary/image content."""
+    # NOTE: drilldown decodes to UTF-8 with errors="replace", so binary
+    # content may contain replacement characters.  This is intentional —
+    # the purpose is file-header / magic-byte inspection.
     return [
         ViewSpec(
             view_id=f"{ref.handle}:meta",
