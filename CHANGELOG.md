@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-03-05
+
 ### Added
 - Progressive disclosure for tool results: view registry + drilldown loop (#17)
 - `ViewRegistry` class in `context/views.py` — maps content-type patterns to `ViewSpec` generators
