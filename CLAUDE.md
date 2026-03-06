@@ -1,6 +1,7 @@
 # contextweaver — Claude Guide
 
 ## Do
+- Run `pre-commit install` once after cloning to activate git hooks (ruff format + check, and file hygiene checks, on every commit)
 - Run `make ci` before submitting any change
 - Use `make fmt` to auto-format code
 - Keep each module ≤ 300 lines
@@ -36,7 +37,7 @@ _utils.py       → text similarity (tokenize, jaccard, TfIdfScorer)
 serde.py        → to_dict/from_dict helpers
 store/          → in-memory data stores (append-only event log, artifact store, …)
 summarize/      → rule engine + fact extraction
-context/        → full context compilation pipeline
+context/        → full context compilation pipeline (incl. sensitivity.py for sensitivity enforcement)
 routing/        → catalog, DAG, beam-search router, card renderer
 adapters/       → MCP and A2A protocol conversion
 __main__.py     → CLI entry point

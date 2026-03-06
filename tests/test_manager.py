@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from contextweaver.context.manager import ContextManager
@@ -120,6 +122,24 @@ def test_ingest_tool_result_small() -> None:
     assert item.parent_id == "tc1"
     assert env.status == "ok"
     assert mgr.event_log.count() == 1
+
+
+def test_ingest_tool_result_small_custom_extractor() -> None:
+    """Custom extractor is used in the small-output path (below firewall threshold)."""
+
+    class TagExtractor:
+        def extract(self, raw: str, metadata: dict) -> list[str]:  # type: ignore[type-arg]
+            return [f"[fact]{raw}"]
+
+    mgr = ContextManager(extractor=TagExtractor())
+    item, env = mgr.ingest_tool_result(
+        tool_call_id="tc_ext",
+        raw_output="short output",
+        tool_name="small_tool",
+    )
+    assert env.status == "ok"
+    assert env.facts == ["[fact]short output"]
+    assert item.parent_id == "tc_ext"
 
 
 def test_ingest_tool_result_large_triggers_firewall() -> None:
@@ -691,3 +711,204 @@ def test_ingest_mcp_result_mixed_content() -> None:
     assert mgr.artifact_store.get("mcp:multi_tool:image:1") == img_bytes
     assert "Found 5 results" in env.summary
     assert "Report content" in env.summary
+
+
+# ---------------------------------------------------------------------------
+# Drilldown
+# ---------------------------------------------------------------------------
+
+
+def test_drilldown_basic() -> None:
+    """drilldown() returns a slice of a stored artifact."""
+    mgr = ContextManager()
+    large_output = json.dumps({"users": [{"id": i, "name": f"User {i}"} for i in range(100)]})
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd1",
+        raw_output=large_output,
+        tool_name="search_users",
+        media_type="application/json",
+        firewall_threshold=100,
+    )
+    assert len(env.artifacts) >= 1
+    handle = env.artifacts[0].handle
+    result = mgr.drilldown(handle, {"type": "head", "chars": 50})
+    assert len(result) <= 50
+    assert result == large_output[:50]
+
+
+def test_drilldown_json_keys() -> None:
+    """drilldown() with json_keys selector returns filtered JSON."""
+    mgr = ContextManager()
+    data = json.dumps({"name": "Alice", "age": 30, "role": "admin"})
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd2",
+        raw_output=data,
+        tool_name="get_user",
+        media_type="application/json",
+        firewall_threshold=10,
+    )
+    handle = env.artifacts[0].handle
+    result = mgr.drilldown(handle, {"type": "json_keys", "keys": ["name"]})
+    parsed = json.loads(result)
+    assert parsed == {"name": "Alice"}
+
+
+def test_drilldown_inject_into_event_log() -> None:
+    """drilldown(inject=True) appends the result as a new ContextItem."""
+    mgr = ContextManager()
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd3",
+        raw_output="line0\nline1\nline2\nline3\nline4",
+        tool_name="list_files",
+        firewall_threshold=10,
+    )
+    handle = env.artifacts[0].handle
+    initial_count = mgr.event_log.count()
+    result = mgr.drilldown(
+        handle,
+        {"type": "lines", "start": 1, "end": 3},
+        inject=True,
+        parent_id=_item.id,
+    )
+    assert result == "line1\nline2"
+    assert mgr.event_log.count() == initial_count + 1
+    injected = mgr.event_log.get(f"drilldown:{handle}:lines:{initial_count}")
+    assert injected.text == "line1\nline2"
+    assert injected.parent_id == _item.id
+
+
+def test_drilldown_inject_repeated_same_selector() -> None:
+    """Repeated drilldown(inject=True) with the same selector must not crash."""
+    mgr = ContextManager()
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd-rep",
+        raw_output="line0\nline1\nline2\nline3\nline4",
+        tool_name="list_files",
+        firewall_threshold=10,
+    )
+    handle = env.artifacts[0].handle
+    selector = {"type": "lines", "start": 0, "end": 2}
+    count_before = mgr.event_log.count()
+    r1 = mgr.drilldown(handle, selector, inject=True)
+    r2 = mgr.drilldown(handle, selector, inject=True)
+    assert r1 == r2 == "line0\nline1"
+    assert mgr.event_log.count() == count_before + 2
+
+
+def test_drilldown_without_inject() -> None:
+    """drilldown(inject=False) does not modify event log."""
+    mgr = ContextManager()
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd4",
+        raw_output="hello world",
+        tool_name="echo",
+        firewall_threshold=5,
+    )
+    handle = env.artifacts[0].handle
+    count_before = mgr.event_log.count()
+    mgr.drilldown(handle, {"type": "head", "chars": 5})
+    assert mgr.event_log.count() == count_before
+
+
+def test_drilldown_sync() -> None:
+    """drilldown_sync() is a synchronous alias."""
+    mgr = ContextManager()
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd5",
+        raw_output="sync test data",
+        tool_name="echo",
+        firewall_threshold=5,
+    )
+    handle = env.artifacts[0].handle
+    result = mgr.drilldown_sync(handle, {"type": "head", "chars": 4})
+    assert result == "sync"
+
+
+def test_drilldown_missing_handle_raises() -> None:
+    """drilldown() raises ArtifactNotFoundError for unknown handles."""
+    from contextweaver.exceptions import ArtifactNotFoundError
+
+    mgr = ContextManager()
+    with pytest.raises(ArtifactNotFoundError):
+        mgr.drilldown("no-such-handle", {"type": "head", "chars": 10})
+
+
+def test_drilldown_unknown_selector_raises() -> None:
+    """drilldown() raises ValueError for unknown selector types."""
+    mgr = ContextManager()
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-dd6",
+        raw_output="some data",
+        tool_name="echo",
+        firewall_threshold=5,
+    )
+    handle = env.artifacts[0].handle
+    with pytest.raises(ValueError, match="Unknown drilldown"):
+        mgr.drilldown(handle, {"type": "unknown_type"})
+
+
+# ---------------------------------------------------------------------------
+# Auto-generated views on ingest
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_tool_result_auto_views_json_large() -> None:
+    """Large JSON tool results have auto-generated views after firewall."""
+    mgr = ContextManager()
+    data = json.dumps({"users": [1, 2, 3], "count": 3})
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-av1",
+        raw_output=data,
+        tool_name="api_call",
+        media_type="application/json",
+        firewall_threshold=10,
+    )
+    assert len(env.views) > 0
+    view_ids = [v.view_id for v in env.views]
+    assert any("json_keys" in vid for vid in view_ids)
+
+
+def test_ingest_tool_result_auto_views_small_output() -> None:
+    """Small outputs also get auto-generated views and artifact refs."""
+    mgr = ContextManager()
+    data = json.dumps({"status": "ok"})
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-av2",
+        raw_output=data,
+        tool_name="ping",
+        media_type="application/json",
+        firewall_threshold=5000,
+    )
+    assert len(env.views) > 0
+    assert len(env.artifacts) > 0
+    assert _item.artifact_ref is not None
+
+
+def test_ingest_tool_result_views_drilldown_chain() -> None:
+    """Views from ingest can be used to drive drilldown calls."""
+    mgr = ContextManager()
+    data = json.dumps({"alpha": "aaa", "beta": "bbb", "gamma": "ccc"})
+    _item, env = mgr.ingest_tool_result(
+        tool_call_id="tc-chain",
+        raw_output=data,
+        tool_name="get_data",
+        media_type="application/json",
+        firewall_threshold=10,
+    )
+    # Pick a view and use its selector to drilldown
+    key_views = [v for v in env.views if v.selector.get("type") == "json_keys"]
+    assert len(key_views) > 0
+    view = key_views[0]
+    handle = env.artifacts[0].handle
+    result = mgr.drilldown(handle, view.selector)
+    assert len(result) > 0
+    parsed = json.loads(result)
+    assert isinstance(parsed, dict)
+
+
+def test_view_registry_accessible() -> None:
+    """ContextManager exposes view_registry property."""
+    mgr = ContextManager()
+    from contextweaver.context.views import ViewRegistry
+
+    assert isinstance(mgr.view_registry, ViewRegistry)

@@ -4,16 +4,17 @@
 
 1. :func:`~contextweaver.context.candidates.generate_candidates` — phase filter
 2. :func:`~contextweaver.context.candidates.resolve_dependency_closure` — parent chain expansion
-3. :func:`~contextweaver.context.firewall.apply_firewall_to_batch` — raw output interception
-4. :func:`~contextweaver.context.scoring.score_candidates` — relevance scoring
-5. :func:`~contextweaver.context.dedup.deduplicate_candidates` — near-duplicate removal
-6. :func:`~contextweaver.context.selection.select_and_pack` — budget-aware selection
-7. :func:`~contextweaver.context.prompt.render_context` — prompt assembly
+3. :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter` — sensitivity enforcement
+4. :func:`~contextweaver.context.firewall.apply_firewall_to_batch` — raw output interception
+5. :func:`~contextweaver.context.scoring.score_candidates` — relevance scoring
+6. :func:`~contextweaver.context.dedup.deduplicate_candidates` — near-duplicate removal
+7. :func:`~contextweaver.context.selection.select_and_pack` — budget-aware selection
+8. :func:`~contextweaver.context.prompt.render_context` — prompt assembly
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
@@ -22,13 +23,17 @@ from contextweaver.context.firewall import apply_firewall, apply_firewall_to_bat
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
+from contextweaver.context.sensitivity import apply_sensitivity_filter
+from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import ContextPack, ResultEnvelope
 from contextweaver.protocols import (
     ArtifactStore,
     CharDivFourEstimator,
     EventHook,
     EventLog,
+    Extractor,
     NoOpHook,
+    Summarizer,
     TokenEstimator,
 )
 from contextweaver.store import StoreBundle
@@ -62,6 +67,12 @@ class ContextManager:
         stores: Optional :class:`StoreBundle` — fills ``None`` fields with
             in-memory defaults.  If *event_log* or *artifact_store* are also
             provided they take precedence.
+        summarizer: Optional :class:`~contextweaver.protocols.Summarizer`
+            used by the context firewall.  Defaults to the built-in
+            first-paragraph truncation heuristic.
+        extractor: Optional :class:`~contextweaver.protocols.Extractor`
+            used by the context firewall.  Defaults to the built-in
+            :func:`~contextweaver.summarize.extract.extract_facts`.
     """
 
     def __init__(
@@ -74,6 +85,8 @@ class ContextManager:
         estimator: TokenEstimator | None = None,
         hook: EventHook | None = None,
         stores: StoreBundle | None = None,
+        summarizer: Summarizer | None = None,
+        extractor: Extractor | None = None,
     ) -> None:
         _stores = stores or StoreBundle()
         self._event_log: EventLog = event_log or _stores.event_log or InMemoryEventLog()
@@ -115,6 +128,11 @@ class ContextManager:
         """The underlying fact store."""
         return self._fact_store
 
+    @property
+    def view_registry(self) -> ViewRegistry:
+        """The view registry for auto-generating drilldown views."""
+        return self._view_registry
+
     # ------------------------------------------------------------------
     # Ingestion helpers
     # ------------------------------------------------------------------
@@ -146,7 +164,10 @@ class ContextManager:
         """Ingest a raw tool result through the context firewall.
 
         If the raw output exceeds *firewall_threshold* characters it is stored
-        in the artifact store and the LLM sees only a summary.
+        in the artifact store and the LLM sees only a summary.  Small outputs
+        are also stored in the artifact store (with ``artifact_ref`` set on the
+        returned item) to enable drilldown on all tool results regardless of
+        size.
 
         Args:
             tool_call_id: ID of the originating tool call.
@@ -157,7 +178,8 @@ class ContextManager:
                 stores the raw output out-of-band.
 
         Returns:
-            A ``(ContextItem, ResultEnvelope)`` tuple.
+            A ``(ContextItem, ResultEnvelope)`` tuple.  The item always has a
+            non-``None`` ``artifact_ref``.
         """
         item = ContextItem(
             id=f"result:{tool_call_id}",
@@ -169,22 +191,59 @@ class ContextManager:
         )
 
         if len(raw_output) > firewall_threshold:
-            processed, envelope = apply_firewall(item, self._artifact_store, self._hook)
+            processed, envelope = apply_firewall(
+                item,
+                self._artifact_store,
+                hook=self._hook,
+                view_registry=self._view_registry,
+                summarizer=self._summarizer,
+                extractor=self._extractor,
+            )
             if envelope is None:
                 # Shouldn't happen for tool_result items, but be safe
                 envelope = ResultEnvelope(status="ok", summary=raw_output[:500])
             self._event_log.append(processed)
             return processed, envelope
 
-        # Small output: still extract facts but no artifact storage
+        # Small output: extract facts and store in artifact store to enable drilldown
         from contextweaver.summarize.extract import extract_facts
 
-        facts = extract_facts(raw_output, item.metadata)
+        status: Literal["ok", "partial"] = "ok"
+        try:
+            facts = (
+                self._extractor.extract(raw_output, item.metadata)
+                if self._extractor is not None
+                else extract_facts(raw_output, item.metadata)
+            )
+        except Exception:  # noqa: BLE001
+            facts = []
+            status = "partial"
+        # For small outputs, store in artifact store to enable drilldown
+        raw_bytes = raw_output.encode("utf-8")
+        handle = f"artifact:{item.id}"
+        ref = self._artifact_store.put(
+            handle=handle,
+            content=raw_bytes,
+            media_type=media_type,
+            label=f"raw tool result for {item.id}",
+        )
+        views = generate_views(ref, raw_bytes, registry=self._view_registry)
         envelope = ResultEnvelope(
-            status="ok",
+            status=status,
             summary=raw_output,
             facts=facts,
+            artifacts=[ref],
+            views=views,
             provenance={"source_item_id": item.id, "tool_name": tool_name},
+        )
+        item = ContextItem(
+            id=item.id,
+            kind=item.kind,
+            text=item.text,
+            token_estimate=item.token_estimate,
+            metadata=dict(item.metadata),
+            parent_id=item.parent_id,
+            artifact_ref=ref,
         )
         self._event_log.append(item)
         return item, envelope
@@ -257,7 +316,14 @@ class ContextManager:
 
         # Apply firewall if full text is large
         if len(full_text) > firewall_threshold:
-            processed, fw_envelope = apply_firewall(item, self._artifact_store, self._hook)
+            processed, fw_envelope = apply_firewall(
+                item,
+                self._artifact_store,
+                hook=self._hook,
+                view_registry=None,
+                summarizer=self._summarizer,
+                extractor=self._extractor,
+            )
             if fw_envelope is not None:
                 # Merge: keep MCP artifacts, use firewall summary/facts, preserve views
                 envelope = ResultEnvelope(
@@ -337,6 +403,68 @@ class ContextManager:
         self.add_episode(episode_id, summary, metadata)
 
     # ------------------------------------------------------------------
+    # Drilldown
+    # ------------------------------------------------------------------
+
+    def drilldown(
+        self,
+        handle: str,
+        selector: dict[str, Any],
+        *,
+        inject: bool = False,
+        parent_id: str | None = None,
+    ) -> str:
+        """Fetch a slice of a stored artifact via the drilldown protocol.
+
+        Wraps :meth:`~contextweaver.protocols.ArtifactStore.drilldown` and
+        optionally injects the result as a new :class:`ContextItem` in the
+        event log for subsequent context builds.
+
+        Args:
+            handle: Artifact handle to drill into.
+            selector: Drilldown selector dict (see
+                :meth:`~contextweaver.store.artifacts.InMemoryArtifactStore.drilldown`).
+            inject: If ``True``, append the drilldown result as a
+                ``tool_result`` :class:`ContextItem` to the event log.
+            parent_id: Optional parent item ID for dependency closure when
+                *inject* is ``True``.
+
+        Returns:
+            The drilldown result text.
+
+        Raises:
+            ArtifactNotFoundError: If *handle* is not in the store.
+            ValueError: If the selector type is unknown.
+        """
+        result = self._artifact_store.drilldown(handle, selector)
+
+        if inject:
+            sel_type = selector.get("type", "unknown")
+            item_id = f"drilldown:{handle}:{sel_type}:{self._event_log.count()}"
+            item = ContextItem(
+                id=item_id,
+                kind=ItemKind.tool_result,
+                text=result,
+                token_estimate=self._estimator.estimate(result),
+                metadata={"drilldown_handle": handle, "selector": selector},
+                parent_id=parent_id,
+            )
+            self._event_log.append(item)
+
+        return result
+
+    def drilldown_sync(
+        self,
+        handle: str,
+        selector: dict[str, Any],
+        *,
+        inject: bool = False,
+        parent_id: str | None = None,
+    ) -> str:
+        """Synchronous alias for :meth:`drilldown`."""
+        return self.drilldown(handle, selector, inject=inject, parent_id=parent_id)
+
+    # ------------------------------------------------------------------
     # Core pipeline
     # ------------------------------------------------------------------
 
@@ -353,7 +481,7 @@ class ContextManager:
     ) -> ContextPack:
         """Run the full context compilation pipeline (synchronous core).
 
-        All seven pipeline steps are pure computation, so no ``await`` is
+        All eight pipeline steps are pure computation, so no ``await`` is
         needed.  Both :meth:`build` (async) and :meth:`build_sync` delegate
         here.
 
@@ -389,15 +517,22 @@ class ContextManager:
         # 2. Dependency closure
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
 
-        # 3. Firewall
+        # 3. Sensitivity filter
+        candidates, sensitivity_drops = apply_sensitivity_filter(candidates, self._policy)
+
+        # 4. Firewall
         candidates, envelopes = apply_firewall_to_batch(
-            candidates, self._artifact_store, self._hook
+            candidates,
+            self._artifact_store,
+            self._hook,
+            summarizer=self._summarizer,
+            extractor=self._extractor,
         )
 
-        # 4. Score
+        # 5. Score
         scored = score_candidates(candidates, query, _tags, self._scoring)
 
-        # 5. Dedup
+        # 6. Dedup
         scored, dedup_removed = deduplicate_candidates(scored)
 
         # Pre-build episodic + fact injection text so we can estimate its
@@ -464,13 +599,22 @@ class ContextManager:
         else:
             adjusted = effective_budget
 
-        # 6. Select (budget already accounts for header/footer overhead)
+        # 7. Select (budget already accounts for header/footer overhead)
         selected, stats = select_and_pack(scored, phase, adjusted, self._policy, self._estimator)
         stats.dedup_removed = dedup_removed
         stats.dependency_closures = closures
         stats.header_footer_tokens = hf_tokens
+        if sensitivity_drops > 0:
+            # Account for items dropped by sensitivity filtering in both the
+            # total candidate count and the drop breakdown so that
+            # dropped_count + included_count <= total_candidates remains true.
+            stats.total_candidates += sensitivity_drops
+            stats.dropped_count += sensitivity_drops
+            stats.dropped_reasons["sensitivity"] = (
+                stats.dropped_reasons.get("sensitivity", 0) + sensitivity_drops
+            )
 
-        # 7. Render
+        # 8. Render
         prompt = render_context(selected, header=full_header, footer=footer)
 
         pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)

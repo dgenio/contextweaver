@@ -101,7 +101,9 @@ class ContextPolicy:
         ttl_behavior: How to handle items that have exceeded their TTL.
             ``"drop"`` removes them; ``"warn"`` keeps them but fires a hook.
         sensitivity_floor: Items at or above this sensitivity level are
-            subject to redaction hooks before being included.
+            dropped or redacted (depending on ``sensitivity_action``).
+        sensitivity_action: ``"drop"`` (default) removes items at or above
+            the floor; ``"redact"`` replaces their text via redaction hooks.
         redaction_hooks: Names of redaction hook implementations to apply,
             in order.  Resolved at runtime by the context manager.
     """
@@ -116,5 +118,6 @@ class ContextPolicy:
     )
     ttl_behavior: Literal["drop", "warn"] = "drop"
     sensitivity_floor: Sensitivity = Sensitivity.confidential
+    sensitivity_action: str = "drop"
     redaction_hooks: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)

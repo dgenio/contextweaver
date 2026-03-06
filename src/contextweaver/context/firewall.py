@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from typing import Literal
 
+from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import ResultEnvelope
-from contextweaver.protocols import ArtifactStore, EventHook, NoOpHook
+from contextweaver.protocols import ArtifactStore, EventHook, Extractor, NoOpHook, Summarizer
 from contextweaver.summarize.extract import extract_facts
 from contextweaver.types import ContextItem, ItemKind
 
@@ -28,6 +29,9 @@ def apply_firewall(
     item: ContextItem,
     artifact_store: ArtifactStore,
     hook: EventHook | None = None,
+    view_registry: ViewRegistry | None = None,
+    summarizer: Summarizer | None = None,
+    extractor: Extractor | None = None,
 ) -> tuple[ContextItem, ResultEnvelope | None]:
     """Intercept a ``tool_result`` item and store its content out-of-band.
 
@@ -38,6 +42,13 @@ def apply_firewall(
         item: The candidate item to inspect.
         artifact_store: Where to store the raw content.
         hook: Optional lifecycle hook to notify on firewall trigger.
+        view_registry: Optional custom view registry for auto-view generation.
+        summarizer: Optional :class:`~contextweaver.protocols.Summarizer`
+            implementation.  When provided it replaces the built-in
+            ``_default_summary`` heuristic.
+        extractor: Optional :class:`~contextweaver.protocols.Extractor`
+            implementation.  When provided it replaces the built-in
+            :func:`~contextweaver.summarize.extract.extract_facts` call.
 
     Returns:
         A 2-tuple ``(processed_item, envelope_or_none)``.  When the firewall
@@ -64,22 +75,31 @@ def apply_firewall(
 
     status: Literal["ok", "partial", "error"] = "ok"
     try:
-        summary = _default_summary(item.text)
+        if summarizer is not None:
+            summary = summarizer.summarize(item.text, dict(item.metadata))
+        else:
+            summary = _default_summary(item.text)
     except Exception:  # noqa: BLE001
         summary = "(summary unavailable)"
         status = "error"
 
     try:
-        facts = extract_facts(item.text, item.metadata)
+        if extractor is not None:
+            facts = extractor.extract(item.text, dict(item.metadata))
+        else:
+            facts = extract_facts(item.text, item.metadata)
     except Exception:  # noqa: BLE001
         facts = []
         status = "error" if status == "error" else "partial"
+
+    views = generate_views(ref, raw_bytes, registry=view_registry)
 
     envelope = ResultEnvelope(
         status=status,
         summary=summary,
         facts=facts,
         artifacts=[ref],
+        views=views,
         provenance={"source_item_id": item.id},
     )
 
@@ -101,6 +121,9 @@ def apply_firewall_to_batch(
     items: list[ContextItem],
     artifact_store: ArtifactStore,
     hook: EventHook | None = None,
+    view_registry: ViewRegistry | None = None,
+    summarizer: Summarizer | None = None,
+    extractor: Extractor | None = None,
 ) -> tuple[list[ContextItem], list[ResultEnvelope]]:
     """Apply the firewall to a list of items.
 
@@ -108,6 +131,11 @@ def apply_firewall_to_batch(
         items: Candidate items (may contain a mix of kinds).
         artifact_store: Where to store raw tool outputs.
         hook: Optional lifecycle hook.
+        view_registry: Optional custom view registry for auto-view generation.
+        summarizer: Optional :class:`~contextweaver.protocols.Summarizer`
+            passed through to each :func:`apply_firewall` call.
+        extractor: Optional :class:`~contextweaver.protocols.Extractor`
+            passed through to each :func:`apply_firewall` call.
 
     Returns:
         A 2-tuple of ``(processed_items, envelopes)``.
@@ -115,7 +143,7 @@ def apply_firewall_to_batch(
     processed = []
     envelopes = []
     for item in items:
-        p, env = apply_firewall(item, artifact_store, hook)
+        p, env = apply_firewall(item, artifact_store, hook, view_registry, summarizer, extractor)
         processed.append(p)
         if env is not None:
             envelopes.append(env)

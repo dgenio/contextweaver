@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-03-06
+
+### Added
+- `Summarizer` protocol in `protocols.py` — converts raw tool output into human/LLM-readable summaries
+- `Extractor` protocol in `protocols.py` — extracts structured facts from raw tool output
+- Pluggable `summarizer` and `extractor` parameters on `apply_firewall()` and `apply_firewall_sync()`
+- `ContextManager` now accepts optional `summarizer` and `extractor` at construction, wired through `build()` / `build_sync()`
+
+### Fixed
+- `infer_namespace()` now guards against empty prefixes caused by leading separators (e.g. `.foo` or `/bar`)
+
+## [0.1.3] - 2026-03-05
+
+### Added
+- `infer_namespace()` helper in MCP adapter — infers namespace from tool name prefixes (dot, slash, underscore) (#43)
+- Progressive disclosure for tool results: view registry + drilldown loop (#17)
+- `ViewRegistry` class in `context/views.py` — maps content-type patterns to `ViewSpec` generators
+- Built-in view generators for `application/json`, `text/csv`, `text/plain`, and binary/image content
+- `generate_views()` function for auto-generating `ViewSpec` entries from artifact data
+- `drilldown_tool_spec()` helper — generates a `SelectableItem` exposing drilldown as an agent-callable tool
+- `ContextManager.drilldown()` / `drilldown_sync()` — agent-facing wrapper for `ArtifactStore.drilldown()` with optional context injection
+- `ContextManager.view_registry` property for accessing/extending the view registry
+- Auto-generated `ViewSpec` entries during `ingest_tool_result()` (both large and small outputs)
+- Auto-generated `ViewSpec` entries during `apply_firewall()` via view registry
+- Content-type detection heuristics for generic `application/octet-stream` artifacts
+- Small tool outputs now stored in artifact store with `artifact_ref` for drilldown support
+
+### Changed
+- `mcp_tool_to_selectable()` now uses `infer_namespace()` instead of hardcoding `namespace="mcp"`
+
+## [0.1.2] - 2026-03-04
+
+### Added
+- Sensitivity enforcement in context pipeline: items at or above `ContextPolicy.sensitivity_floor` are dropped or redacted
+- `ContextItem.sensitivity` field (default: `Sensitivity.public`)
+- `ContextPolicy.sensitivity_action` field (`"drop"` or `"redact"`)
+- `MaskRedactionHook` — built-in redaction hook replacing text with `[REDACTED: {sensitivity}]`
+- `apply_sensitivity_filter()` function in `context/sensitivity.py`
+- `register_redaction_hook()` for user-extensible redaction hooks
+- `BuildStats.dropped_reasons["sensitivity"]` tracks sensitivity-dropped item count
+- `.pre-commit-config.yaml` with ruff format, ruff check --fix, and standard file hygiene hooks
+
+### Fixed
+- Validate `sensitivity_action` to reject unknown values
+- Use accumulation pattern for `dropped_reasons["sensitivity"]`
+- Adjust `total_candidates` for sensitivity drops in `BuildStats`
+
 ## [0.1.1] - 2026-03-03
 
 ### Added

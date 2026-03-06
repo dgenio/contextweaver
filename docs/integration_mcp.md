@@ -32,6 +32,18 @@ item = mcp_tool_to_selectable(mcp_tool)
 # item.name  == "search_database"
 ```
 
+The namespace is inferred automatically from the tool name prefix:
+
+| Tool name              | Inferred namespace |
+|------------------------|--------------------|
+| `github.create_issue`  | `github`           |
+| `filesystem/read`      | `filesystem`       |
+| `slack_send_message`   | `slack`            |
+| `search_database`      | `mcp` (fallback)   |
+
+Use `infer_namespace(tool_name)` directly if you need the logic outside of
+`mcp_tool_to_selectable()`.
+
 ### `mcp_result_to_envelope(result_dict, tool_name)`
 
 Converts an MCP tool result dict into a `ResultEnvelope`:

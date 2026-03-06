@@ -18,7 +18,7 @@ It provides two integrated engines:
 | `src/contextweaver/serde.py` | Serialisation helpers for to_dict/from_dict patterns |
 | `src/contextweaver/store/` | InMemoryArtifactStore, InMemoryEventLog, InMemoryEpisodicStore, InMemoryFactStore |
 | `src/contextweaver/summarize/` | SummarizationRule, RuleEngine, extract_facts() |
-| `src/contextweaver/context/` | Full context pipeline: candidates → scoring → dedup → selection → firewall → prompt |
+| `src/contextweaver/context/` | Full context pipeline: candidates → sensitivity filter → firewall → scoring → dedup → selection → prompt |
 | `src/contextweaver/routing/` | Catalog, ChoiceGraph, TreeBuilder, Router (beam search), cards renderer |
 | `src/contextweaver/adapters/` | MCP and A2A protocol adapters |
 | `src/contextweaver/__main__.py` | CLI: 7 subcommands (demo, build, route, print-tree, init, ingest, replay) |
@@ -34,6 +34,10 @@ make example  # run all example scripts
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test
 ```
+
+After cloning, run `pre-commit install` once to activate the git hooks. The hooks
+run `ruff format` and `ruff check --fix`, plus standard file hygiene checks,
+automatically on every `git commit`.
 
 ## Conventions
 - Python ≥ 3.10, zero runtime dependencies
