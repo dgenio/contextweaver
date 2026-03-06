@@ -144,7 +144,47 @@ def test_batch_passes_summarizer_and_extractor() -> None:
         def summarize(self, raw: str, metadata: dict) -> str:
             return f"[summary]{raw}"
 
+    class TagExtractor:
+        def extract(self, raw: str, metadata: dict) -> list[str]:
+            return [f"[fact]{raw}"]
+
     items = [ContextItem(id="r9", kind=ItemKind.tool_result, text="data")]
     store = InMemoryArtifactStore()
-    processed, envelopes = apply_firewall_to_batch(items, store, summarizer=TagSummarizer())
+    processed, envelopes = apply_firewall_to_batch(
+        items,
+        store,
+        summarizer=TagSummarizer(),
+        extractor=TagExtractor(),
+    )
     assert envelopes[0].summary == "[summary]data"
+    assert envelopes[0].facts == ["[fact]data"]
+
+
+def test_custom_summarizer_error_falls_back() -> None:
+    """When a custom Summarizer raises, status is 'error' and fallback summary is used."""
+
+    class BrokenSummarizer:
+        def summarize(self, raw: str, metadata: dict) -> str:
+            raise ValueError("boom")
+
+    item = ContextItem(id="r10", kind=ItemKind.tool_result, text="some output")
+    store = InMemoryArtifactStore()
+    _, env = apply_firewall(item, store, summarizer=BrokenSummarizer())
+    assert env is not None
+    assert env.status == "error"
+    assert env.summary == "(summary unavailable)"
+
+
+def test_custom_extractor_error_falls_back() -> None:
+    """When a custom Extractor raises, status is 'partial' and facts fall back to []."""
+
+    class BrokenExtractor:
+        def extract(self, raw: str, metadata: dict) -> list[str]:
+            raise ValueError("boom")
+
+    item = ContextItem(id="r11", kind=ItemKind.tool_result, text="some output")
+    store = InMemoryArtifactStore()
+    _, env = apply_firewall(item, store, extractor=BrokenExtractor())
+    assert env is not None
+    assert env.status == "partial"
+    assert env.facts == []

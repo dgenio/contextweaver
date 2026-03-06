@@ -124,6 +124,24 @@ def test_ingest_tool_result_small() -> None:
     assert mgr.event_log.count() == 1
 
 
+def test_ingest_tool_result_small_custom_extractor() -> None:
+    """Custom extractor is used in the small-output path (below firewall threshold)."""
+
+    class TagExtractor:
+        def extract(self, raw: str, metadata: dict) -> list[str]:  # type: ignore[type-arg]
+            return [f"[fact]{raw}"]
+
+    mgr = ContextManager(extractor=TagExtractor())
+    item, env = mgr.ingest_tool_result(
+        tool_call_id="tc_ext",
+        raw_output="short output",
+        tool_name="small_tool",
+    )
+    assert env.status == "ok"
+    assert env.facts == ["[fact]short output"]
+    assert item.parent_id == "tc_ext"
+
+
 def test_ingest_tool_result_large_triggers_firewall() -> None:
     mgr = ContextManager()
     large_output = "data: " + "x" * 3000

@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
@@ -196,10 +196,10 @@ class ContextManager:
             processed, envelope = apply_firewall(
                 item,
                 self._artifact_store,
-                self._hook,
-                self._view_registry,
-                self._summarizer,
-                self._extractor,
+                hook=self._hook,
+                view_registry=self._view_registry,
+                summarizer=self._summarizer,
+                extractor=self._extractor,
             )
             if envelope is None:
                 # Shouldn't happen for tool_result items, but be safe
@@ -210,11 +210,16 @@ class ContextManager:
         # Small output: extract facts and store in artifact store to enable drilldown
         from contextweaver.summarize.extract import extract_facts
 
-        facts = (
-            self._extractor.extract(raw_output, item.metadata)
-            if self._extractor is not None
-            else extract_facts(raw_output, item.metadata)
-        )
+        status: Literal["ok", "partial"] = "ok"
+        try:
+            facts = (
+                self._extractor.extract(raw_output, item.metadata)
+                if self._extractor is not None
+                else extract_facts(raw_output, item.metadata)
+            )
+        except Exception:  # noqa: BLE001
+            facts = []
+            status = "partial"
         # For small outputs, store in artifact store to enable drilldown
         raw_bytes = raw_output.encode("utf-8")
         handle = f"artifact:{item.id}"
@@ -226,7 +231,7 @@ class ContextManager:
         )
         views = generate_views(ref, raw_bytes, registry=self._view_registry)
         envelope = ResultEnvelope(
-            status="ok",
+            status=status,
             summary=raw_output,
             facts=facts,
             artifacts=[ref],
@@ -316,10 +321,10 @@ class ContextManager:
             processed, fw_envelope = apply_firewall(
                 item,
                 self._artifact_store,
-                self._hook,
-                None,
-                self._summarizer,
-                self._extractor,
+                hook=self._hook,
+                view_registry=None,
+                summarizer=self._summarizer,
+                extractor=self._extractor,
             )
             if fw_envelope is not None:
                 # Merge: keep MCP artifacts, use firewall summary/facts, preserve views
@@ -518,7 +523,11 @@ class ContextManager:
 
         # 4. Firewall
         candidates, envelopes = apply_firewall_to_batch(
-            candidates, self._artifact_store, self._hook
+            candidates,
+            self._artifact_store,
+            self._hook,
+            summarizer=self._summarizer,
+            extractor=self._extractor,
         )
 
         # 5. Score
