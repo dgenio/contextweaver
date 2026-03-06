@@ -12,6 +12,7 @@ from contextweaver.adapters.a2a import (
     load_a2a_session_jsonl,
 )
 from contextweaver.adapters.mcp import (
+    infer_namespace,
     load_mcp_session_jsonl,
     mcp_result_to_envelope,
     mcp_tool_to_selectable,
@@ -20,6 +21,7 @@ from contextweaver.adapters.mcp import (
 __all__ = [
     "a2a_agent_to_selectable",
     "a2a_result_to_envelope",
+    "infer_namespace",
     "load_a2a_session_jsonl",
     "load_mcp_session_jsonl",
     "mcp_result_to_envelope",
