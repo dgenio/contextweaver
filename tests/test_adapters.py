@@ -124,6 +124,9 @@ def test_mcp_tool_to_selectable_missing_description() -> None:
         ("read_file", "mcp"),
         ("search", "mcp"),
         ("", "mcp"),
+        (".hidden", "mcp"),
+        ("/path", "mcp"),
+        ("_a_b", "mcp"),
     ],
 )
 def test_infer_namespace(tool_name: str, expected: str) -> None:

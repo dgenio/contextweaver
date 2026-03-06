@@ -39,11 +39,15 @@ def infer_namespace(tool_name: str) -> str:
         The inferred namespace string.
     """
     if "." in tool_name:
-        return tool_name.split(".", 1)[0]
+        prefix = tool_name.split(".", 1)[0]
+        if prefix:
+            return prefix
     if "/" in tool_name:
-        return tool_name.split("/", 1)[0]
+        prefix = tool_name.split("/", 1)[0]
+        if prefix:
+            return prefix
     parts = tool_name.split("_")
-    if len(parts) >= 3:
+    if len(parts) >= 3 and parts[0]:
         return parts[0]
     return "mcp"
 
