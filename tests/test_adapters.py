@@ -14,6 +14,7 @@ from contextweaver.adapters.a2a import (
     load_a2a_session_jsonl,
 )
 from contextweaver.adapters.mcp import (
+    infer_namespace,
     load_mcp_session_jsonl,
     mcp_result_to_envelope,
     mcp_tool_to_selectable,
@@ -32,7 +33,7 @@ def test_mcp_tool_to_selectable_basic() -> None:
     assert item.kind == "tool"
     assert item.name == "search"
     assert item.description == "Search the database"
-    assert item.namespace == "mcp"
+    assert item.namespace == "mcp"  # no prefix → fallback
     assert "mcp" in item.tags
 
 
@@ -72,6 +73,30 @@ def test_mcp_tool_to_selectable_with_schema() -> None:
     assert item.args_schema == {"type": "object", "properties": {"sql": {"type": "string"}}}
 
 
+def test_mcp_tool_to_selectable_namespace_dotted() -> None:
+    tool_def = {"name": "github.create_issue", "description": "Create an issue"}
+    item = mcp_tool_to_selectable(tool_def)
+    assert item.namespace == "github"
+
+
+def test_mcp_tool_to_selectable_namespace_slash() -> None:
+    tool_def = {"name": "filesystem/read", "description": "Read a file"}
+    item = mcp_tool_to_selectable(tool_def)
+    assert item.namespace == "filesystem"
+
+
+def test_mcp_tool_to_selectable_namespace_underscore_3_segments() -> None:
+    tool_def = {"name": "slack_send_message", "description": "Send a Slack message"}
+    item = mcp_tool_to_selectable(tool_def)
+    assert item.namespace == "slack"
+
+
+def test_mcp_tool_to_selectable_namespace_underscore_2_segments_fallback() -> None:
+    tool_def = {"name": "read_file", "description": "Read a file"}
+    item = mcp_tool_to_selectable(tool_def)
+    assert item.namespace == "mcp"  # only 2 segments → fallback
+
+
 def test_mcp_tool_to_selectable_missing_name() -> None:
     with pytest.raises(CatalogError, match="missing required fields"):
         mcp_tool_to_selectable({"description": "no name"})
@@ -80,6 +105,29 @@ def test_mcp_tool_to_selectable_missing_name() -> None:
 def test_mcp_tool_to_selectable_missing_description() -> None:
     with pytest.raises(CatalogError, match="missing required fields"):
         mcp_tool_to_selectable({"name": "tool"})
+
+
+# ---------------------------------------------------------------------------
+# MCP adapter — infer_namespace
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "expected"),
+    [
+        ("github.create_issue", "github"),
+        ("github.repos.list", "github"),
+        ("filesystem/read", "filesystem"),
+        ("db/tables/list", "db"),
+        ("slack_send_message", "slack"),
+        ("aws_s3_list_buckets", "aws"),
+        ("read_file", "mcp"),
+        ("search", "mcp"),
+        ("", "mcp"),
+    ],
+)
+def test_infer_namespace(tool_name: str, expected: str) -> None:
+    assert infer_namespace(tool_name) == expected
 
 
 # ---------------------------------------------------------------------------

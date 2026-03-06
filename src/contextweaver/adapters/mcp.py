@@ -18,6 +18,36 @@ from contextweaver.exceptions import CatalogError
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
 
 
+def infer_namespace(tool_name: str) -> str:
+    """Infer a namespace from an MCP tool name.
+
+    Examines the tool name for common separators used by MCP servers to
+    encode the server-of-origin:
+
+    - **Dot** (``"."``): ``"github.create_issue"`` → ``"github"``
+    - **Slash** (``"/"``): ``"filesystem/read"`` → ``"filesystem"``
+    - **Underscore** (``"_"``): ``"slack_send_message"`` → ``"slack"``
+      (only when there are 3+ segments to avoid false positives like
+      ``"read_file"``)
+
+    Falls back to ``"mcp"`` when no prefix can be detected.
+
+    Args:
+        tool_name: The raw MCP tool name string.
+
+    Returns:
+        The inferred namespace string.
+    """
+    if "." in tool_name:
+        return tool_name.split(".", 1)[0]
+    if "/" in tool_name:
+        return tool_name.split("/", 1)[0]
+    parts = tool_name.split("_")
+    if len(parts) >= 3:
+        return parts[0]
+    return "mcp"
+
+
 def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     """Convert an MCP tool definition dict to a :class:`SelectableItem`.
 
@@ -33,8 +63,8 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
         tool_def: Raw MCP tool definition as returned by ``tools/list``.
 
     Returns:
-        A :class:`SelectableItem` with ``kind="tool"`` and
-        ``namespace="mcp"``.
+        A :class:`SelectableItem` with ``kind="tool"`` and a namespace
+        inferred from the tool name (see :func:`infer_namespace`).
 
     Raises:
         CatalogError: If required fields (``name``, ``description``) are
@@ -69,7 +99,7 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
         name=str(name),
         description=str(description),
         tags=sorted(tags),
-        namespace="mcp",
+        namespace=infer_namespace(str(name)),
         args_schema=dict(input_schema),
         side_effects=side_effects,
         cost_hint=cost_hint,

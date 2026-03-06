@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `infer_namespace()` helper in MCP adapter — infers namespace from tool name prefixes (dot, slash, underscore) (#43)
+- `mcp_tool_to_selectable()` now uses `infer_namespace()` instead of hardcoding `namespace="mcp"`
+
+### Added
 - Progressive disclosure for tool results: view registry + drilldown loop (#17)
 - `ViewRegistry` class in `context/views.py` — maps content-type patterns to `ViewSpec` generators
 - Built-in view generators for `application/json`, `text/csv`, `text/plain`, and binary/image content
