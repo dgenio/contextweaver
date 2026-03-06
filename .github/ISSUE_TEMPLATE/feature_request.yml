@@ -1,0 +1,64 @@
+name: Feature Request
+description: Propose a new feature or improvement to contextweaver.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement!
+        Please fill in each section so we can evaluate and prioritise your request.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this feature solve? Who is affected and how?
+      placeholder: "As a … I need … because …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the change you would like to see, including any API surface changes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider, and why did you reject them?
+    validations:
+      required: false
+
+  - type: input
+    id: modules
+    attributes:
+      label: Affected modules
+      description: Which modules or packages would likely need to change?
+      placeholder: "e.g. context/manager.py, routing/router.py"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Estimated effort
+      description: Your rough estimate of the implementation effort.
+      options:
+        - "XS (< 1 day)"
+        - "S (1-2 days)"
+        - "M (3-5 days)"
+        - "L (1-2 weeks)"
+        - "XL (> 2 weeks)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Links to prior art, related issues, or any other context.
