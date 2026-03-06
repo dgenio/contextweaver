@@ -232,6 +232,256 @@ def test_mcp_result_to_envelope_multiple_parts() -> None:
 
 
 # ---------------------------------------------------------------------------
+# MCP adapter — outputSchema support
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_tool_to_selectable_with_output_schema() -> None:
+    schema = {"type": "object", "properties": {"result": {"type": "string"}}}
+    tool_def = {
+        "name": "query",
+        "description": "Query data",
+        "outputSchema": schema,
+    }
+    item = mcp_tool_to_selectable(tool_def)
+    assert item.output_schema == schema
+
+
+def test_mcp_tool_to_selectable_without_output_schema() -> None:
+    tool_def = {"name": "search", "description": "Search the database"}
+    item = mcp_tool_to_selectable(tool_def)
+    assert item.output_schema is None
+
+
+# ---------------------------------------------------------------------------
+# MCP adapter — audio content type
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_result_to_envelope_audio_content() -> None:
+    import base64
+
+    wav_bytes = b"RIFF_fake_audio_data"
+    b64_data = base64.b64encode(wav_bytes).decode()
+    result = {
+        "content": [
+            {"type": "audio", "data": b64_data, "mimeType": "audio/wav"},
+        ],
+    }
+    env, binaries, _full_text = mcp_result_to_envelope(result, "transcribe")
+    assert len(env.artifacts) == 1
+    assert env.artifacts[0].media_type == "audio/wav"
+    assert env.artifacts[0].label == "audio from transcribe"
+    handle = "mcp:transcribe:audio:0"
+    assert handle in binaries
+    raw, mime, label = binaries[handle]
+    assert raw == wav_bytes
+    assert mime == "audio/wav"
+
+
+def test_mcp_result_to_envelope_audio_invalid_base64() -> None:
+    result = {
+        "content": [
+            {"type": "audio", "data": "not-valid-base64!!!", "mimeType": "audio/mp3"},
+        ],
+    }
+    env, binaries, _full_text = mcp_result_to_envelope(result, "audio_tool")
+    assert len(env.artifacts) == 1
+    handle = "mcp:audio_tool:audio:0"
+    assert handle in binaries
+    raw, mime, _label = binaries[handle]
+    assert raw == b"not-valid-base64!!!"
+    assert mime == "audio/mp3"
+
+
+# ---------------------------------------------------------------------------
+# MCP adapter — resource_link content type
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_result_to_envelope_resource_link() -> None:
+    result = {
+        "content": [
+            {
+                "type": "resource_link",
+                "uri": "file:///data/report.csv",
+                "mimeType": "text/csv",
+                "name": "Monthly Report",
+            },
+        ],
+    }
+    env, binaries, _full_text = mcp_result_to_envelope(result, "reporter")
+    assert len(env.artifacts) == 1
+    ref = env.artifacts[0]
+    assert ref.media_type == "text/csv"
+    assert ref.label == "Monthly Report"
+    assert ref.size_bytes == 0  # URI reference, no inline payload
+    handle = "mcp:reporter:resource_link:0"
+    assert handle in binaries
+    raw, mime, _label = binaries[handle]
+    assert raw == b"file:///data/report.csv"
+
+
+def test_mcp_result_to_envelope_resource_link_no_name() -> None:
+    result = {
+        "content": [
+            {
+                "type": "resource_link",
+                "uri": "file:///data.json",
+            },
+        ],
+    }
+    env, _binaries, _full_text = mcp_result_to_envelope(result, "tool")
+    assert env.artifacts[0].label == "file:///data.json"
+
+
+# ---------------------------------------------------------------------------
+# MCP adapter — structuredContent
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_result_to_envelope_structured_content() -> None:
+    structured = {"count": 42, "status": "done", "items": [1, 2, 3]}
+    result: dict[str, object] = {
+        "content": [{"type": "text", "text": "summary line"}],
+        "structuredContent": structured,
+    }
+    env, binaries, full_text = mcp_result_to_envelope(result, "query")
+    # Text content still present
+    assert "summary line" in full_text
+    # Structured content stored as artifact
+    sc_handle = "mcp:query:structured_content"
+    assert sc_handle in binaries
+    raw, mime, _label = binaries[sc_handle]
+    assert mime == "application/json"
+    import json as _json
+
+    parsed = _json.loads(raw)
+    assert parsed["count"] == 42
+    assert parsed["status"] == "done"
+    # Facts extracted from top-level keys
+    assert any("count: 42" in f for f in env.facts)
+    assert any("status: done" in f for f in env.facts)
+    # ArtifactRef is present
+    assert any(a.handle == sc_handle for a in env.artifacts)
+
+
+def test_mcp_result_to_envelope_structured_content_only() -> None:
+    """structuredContent without content parts."""
+    result: dict[str, object] = {
+        "content": [],
+        "structuredContent": {"key": "value"},
+    }
+    env, binaries, full_text = mcp_result_to_envelope(result, "tool")
+    assert "mcp:tool:structured_content" in binaries
+    # Facts from structured content appear in the text
+    assert "key: value" in full_text
+
+
+# ---------------------------------------------------------------------------
+# MCP adapter — content-part annotations
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_result_to_envelope_content_annotations() -> None:
+    result = {
+        "content": [
+            {
+                "type": "text",
+                "text": "for humans only",
+                "annotations": {"audience": ["human"], "priority": 0.9},
+            },
+            {
+                "type": "text",
+                "text": "for the model",
+                "annotations": {"audience": ["assistant"], "priority": 0.5},
+            },
+        ],
+    }
+    env, _binaries, _full_text = mcp_result_to_envelope(result, "annotated")
+    annotations = env.provenance.get("content_annotations")
+    assert annotations is not None
+    assert len(annotations) == 2
+    assert annotations[0]["audience"] == ["human"]
+    assert annotations[0]["priority"] == 0.9
+    assert annotations[0]["part_index"] == 0
+    assert annotations[1]["audience"] == ["assistant"]
+    assert annotations[1]["part_index"] == 1
+
+
+def test_mcp_result_to_envelope_no_annotations() -> None:
+    result = {
+        "content": [{"type": "text", "text": "plain"}],
+    }
+    env, _binaries, _full_text = mcp_result_to_envelope(result, "plain")
+    assert "content_annotations" not in env.provenance
+
+
+# ---------------------------------------------------------------------------
+# MCP adapter — backward compat: existing text/image/resource still work
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_result_to_envelope_mixed_old_and_new_types() -> None:
+    """Verify text + image + audio + resource_link coexist correctly."""
+    import base64
+
+    png = b"\x89PNG"
+    wav = b"RIFF"
+    result = {
+        "content": [
+            {"type": "text", "text": "hello"},
+            {"type": "image", "data": base64.b64encode(png).decode(), "mimeType": "image/png"},
+            {"type": "audio", "data": base64.b64encode(wav).decode(), "mimeType": "audio/wav"},
+            {
+                "type": "resource_link",
+                "uri": "file:///x",
+                "mimeType": "text/plain",
+                "name": "X",
+            },
+        ],
+        "structuredContent": {"mixed": True},
+    }
+    env, binaries, full_text = mcp_result_to_envelope(result, "mix")
+    assert "hello" in full_text
+    # 4 artifacts: image + audio + resource_link + structured_content
+    assert len(env.artifacts) == 4
+    assert len(binaries) == 4
+
+
+# ---------------------------------------------------------------------------
+# SelectableItem — output_schema round-trip
+# ---------------------------------------------------------------------------
+
+
+def test_selectable_item_output_schema_round_trip() -> None:
+    from contextweaver.types import SelectableItem
+
+    schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
+    item = SelectableItem(
+        id="t1",
+        kind="tool",
+        name="t1",
+        description="test",
+        output_schema=schema,
+    )
+    d = item.to_dict()
+    assert d["output_schema"] == schema
+    restored = SelectableItem.from_dict(d)
+    assert restored.output_schema == schema
+
+
+def test_selectable_item_output_schema_none_round_trip() -> None:
+    from contextweaver.types import SelectableItem
+
+    item = SelectableItem(id="t2", kind="tool", name="t2", description="test")
+    d = item.to_dict()
+    assert d["output_schema"] is None
+    restored = SelectableItem.from_dict(d)
+    assert restored.output_schema is None
+
+
+# ---------------------------------------------------------------------------
 # MCP adapter — load_mcp_session_jsonl
 # ---------------------------------------------------------------------------
 

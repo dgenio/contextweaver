@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - PR template and YAML issue forms (`.github/`)
+- `output_schema` field on `SelectableItem` — stores MCP `outputSchema` JSON Schema (#102)
+- `mcp_tool_to_selectable()` now maps `outputSchema` to `SelectableItem.output_schema`
+- `mcp_result_to_envelope()` handles `audio` content type (base64-decoded, stored as binary artifact)
+- `mcp_result_to_envelope()` handles `resource_link` content type (URI reference as `ArtifactRef`)
+- `mcp_result_to_envelope()` handles top-level `structuredContent` (stored as `application/json` artifact with fact extraction)
+- `mcp_result_to_envelope()` collects per-part `annotations` (`audience`, `priority`) into `provenance["content_annotations"]`
 
 ## [0.1.4] - 2026-03-06
 

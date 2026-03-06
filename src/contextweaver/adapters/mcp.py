@@ -60,6 +60,7 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     - ``name`` (required)
     - ``description`` (required)
     - ``inputSchema`` (optional JSON Schema dict)
+    - ``outputSchema`` (optional JSON Schema dict for structured output)
     - ``annotations`` (optional dict with ``title``, ``readOnlyHint``,
       ``destructiveHint``, ``costHint``, etc.)
 
@@ -86,6 +87,8 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
 
     annotations: dict[str, Any] = tool_def.get("annotations") or {}
     input_schema: dict[str, Any] = tool_def.get("inputSchema") or {}
+    output_schema_raw: dict[str, Any] | None = tool_def.get("outputSchema")
+    output_schema: dict[str, Any] | None = dict(output_schema_raw) if output_schema_raw else None
 
     # Derive tags from annotation hints
     tags: list[str] = ["mcp"]
@@ -105,6 +108,7 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
         tags=sorted(tags),
         namespace=infer_namespace(str(name)),
         args_schema=dict(input_schema),
+        output_schema=output_schema,
         side_effects=side_effects,
         cost_hint=cost_hint,
         metadata={k: v for k, v in annotations.items() if k != "costHint"},
@@ -120,12 +124,19 @@ def mcp_result_to_envelope(
     The MCP result dict is expected to have:
 
     - ``content`` — a list of content parts, each with ``type`` and
-      ``text`` (or ``data`` / ``resource``).
+      ``text`` (or ``data`` / ``resource``).  Supported content types:
+      ``text``, ``image``, ``resource``, ``resource_link``, ``audio``.
+    - ``structuredContent`` (optional) — a JSON object with typed tool
+      output; stored as a structured artifact.
     - ``isError`` (optional bool) — if ``True``, status becomes ``"error"``.
 
-    Returns the envelope, a dict of binary data extracted from image and
-    resource content parts, and the full (untruncated) text.  Use
-    :meth:`ContextManager.ingest_mcp_result` for the full happy path
+    Each content part may carry per-part ``annotations`` with ``audience``
+    and ``priority`` fields.  These are collected into the envelope's
+    ``provenance["content_annotations"]`` list.
+
+    Returns the envelope, a dict of binary data extracted from image,
+    audio, and resource content parts, and the full (untruncated) text.
+    Use :meth:`ContextManager.ingest_mcp_result` for the full happy path
     that persists artifacts automatically.
 
     Args:
@@ -138,16 +149,25 @@ def mcp_result_to_envelope(
         is the complete untruncated text content.
     """
     import base64 as _b64
+    import json as _json
 
     is_error = bool(result.get("isError", False))
     content_parts: list[dict[str, Any]] = result.get("content") or []
+    structured_content: dict[str, Any] | None = result.get("structuredContent")
 
     text_parts: list[str] = []
     artifacts: list[ArtifactRef] = []
     binaries: dict[str, tuple[bytes, str, str]] = {}
+    content_annotations: list[dict[str, Any]] = []
 
     for i, part in enumerate(content_parts):
         part_type = part.get("type", "text")
+
+        # Collect per-part annotations (audience / priority)
+        part_annotations: dict[str, Any] | None = part.get("annotations")
+        if part_annotations:
+            content_annotations.append({"part_index": i, **part_annotations})
+
         if part_type == "text":
             text_parts.append(part.get("text", ""))
         elif part_type == "image":
@@ -168,6 +188,23 @@ def mcp_result_to_envelope(
                 )
             )
             binaries[handle] = (raw, mime, f"image from {tool_name}")
+        elif part_type == "audio":
+            mime = part.get("mimeType", "audio/wav")
+            data_str = part.get("data") or ""
+            handle = f"mcp:{tool_name}:audio:{i}"
+            try:
+                raw = _b64.b64decode(data_str)
+            except Exception:  # noqa: BLE001
+                raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
+            artifacts.append(
+                ArtifactRef(
+                    handle=handle,
+                    media_type=mime,
+                    size_bytes=len(raw),
+                    label=f"audio from {tool_name}",
+                )
+            )
+            binaries[handle] = (raw, mime, f"audio from {tool_name}")
         elif part_type == "resource":
             resource: dict[str, Any] = part.get("resource", {})
             mime = resource.get("mimeType", "application/octet-stream")
@@ -187,6 +224,43 @@ def mcp_result_to_envelope(
                 )
             )
             binaries[handle] = (raw, mime, label)
+        elif part_type == "resource_link":
+            uri = part.get("uri", "")
+            mime = part.get("mimeType", "application/octet-stream")
+            name = part.get("name", "")
+            handle = f"mcp:{tool_name}:resource_link:{i}"
+            label = name or uri or f"resource link from {tool_name}"
+            artifacts.append(
+                ArtifactRef(
+                    handle=handle,
+                    media_type=mime,
+                    size_bytes=0,
+                    label=label,
+                )
+            )
+            # No binary payload — resource_link is a URI reference only.
+            # Store a placeholder so callers can resolve the URI themselves.
+            binaries[handle] = (uri.encode("utf-8"), mime, label)
+
+    # Handle structuredContent (top-level JSON output per MCP spec)
+    if structured_content is not None:
+        sc_handle = f"mcp:{tool_name}:structured_content"
+        sc_bytes = _json.dumps(structured_content, sort_keys=True).encode("utf-8")
+        artifacts.append(
+            ArtifactRef(
+                handle=sc_handle,
+                media_type="application/json",
+                size_bytes=len(sc_bytes),
+                label=f"structured content from {tool_name}",
+            )
+        )
+        binaries[sc_handle] = (sc_bytes, "application/json", f"structured content from {tool_name}")
+        # Extract facts from top-level keys
+        for key, value in structured_content.items():
+            rendered = str(value)
+            if len(rendered) < 200:
+                facts_line = f"{key}: {rendered}"
+                text_parts.append(facts_line)
 
     full_text = "\n".join(text_parts) if text_parts else "(no content)"
 
@@ -200,12 +274,16 @@ def mcp_result_to_envelope(
             if ":" in stripped and len(stripped) < 200:
                 facts.append(stripped)
 
+    provenance: dict[str, Any] = {"tool": tool_name, "protocol": "mcp"}
+    if content_annotations:
+        provenance["content_annotations"] = content_annotations
+
     envelope = ResultEnvelope(
         status=status,
         summary=full_text[:500] if len(full_text) > 500 else full_text,
         facts=facts[:20],
         artifacts=artifacts,
-        provenance={"tool": tool_name, "protocol": "mcp"},
+        provenance=provenance,
     )
     return envelope, binaries, full_text
 
