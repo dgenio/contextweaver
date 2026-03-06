@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-03-06
+
+### Added
+- `Summarizer` protocol in `protocols.py` — converts raw tool output into human/LLM-readable summaries
+- `Extractor` protocol in `protocols.py` — extracts structured facts from raw tool output
+- Pluggable `summarizer` and `extractor` parameters on `apply_firewall()` and `apply_firewall_sync()`
+- `ContextManager` now accepts optional `summarizer` and `extractor` at construction, wired through `build()` / `build_sync()`
+
+### Fixed
+- `infer_namespace()` now guards against empty prefixes caused by leading separators (e.g. `.foo` or `/bar`)
+
 ## [0.1.3] - 2026-03-05
 
 ### Added
