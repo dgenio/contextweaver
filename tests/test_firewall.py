@@ -107,3 +107,44 @@ def test_firewall_defaults_media_type_to_text_plain() -> None:
     assert env is not None
     assert processed.artifact_ref is not None
     assert processed.artifact_ref.media_type == "text/plain"
+
+
+def test_custom_summarizer_is_used() -> None:
+    """When a Summarizer is provided it replaces the built-in heuristic."""
+
+    class UpperSummarizer:
+        def summarize(self, raw: str, metadata: dict) -> str:
+            return raw.upper()
+
+    item = ContextItem(id="r7", kind=ItemKind.tool_result, text="hello world")
+    store = InMemoryArtifactStore()
+    _, env = apply_firewall(item, store, summarizer=UpperSummarizer())
+    assert env is not None
+    assert env.summary == "HELLO WORLD"
+
+
+def test_custom_extractor_is_used() -> None:
+    """When an Extractor is provided it replaces the built-in extract_facts."""
+
+    class ConstExtractor:
+        def extract(self, raw: str, metadata: dict) -> list[str]:
+            return ["custom-fact"]
+
+    item = ContextItem(id="r8", kind=ItemKind.tool_result, text="any text")
+    store = InMemoryArtifactStore()
+    _, env = apply_firewall(item, store, extractor=ConstExtractor())
+    assert env is not None
+    assert env.facts == ["custom-fact"]
+
+
+def test_batch_passes_summarizer_and_extractor() -> None:
+    """apply_firewall_to_batch forwards summarizer/extractor to each call."""
+
+    class TagSummarizer:
+        def summarize(self, raw: str, metadata: dict) -> str:
+            return f"[summary]{raw}"
+
+    items = [ContextItem(id="r9", kind=ItemKind.tool_result, text="data")]
+    store = InMemoryArtifactStore()
+    processed, envelopes = apply_firewall_to_batch(items, store, summarizer=TagSummarizer())
+    assert envelopes[0].summary == "[summary]data"
