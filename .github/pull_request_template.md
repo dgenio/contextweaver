@@ -13,7 +13,7 @@ Fixes # <!-- issue number, if applicable -->
 ## Checklist
 
 - [ ] Tests added or updated for every new/changed public function
-- [ ] `make ci` passes locally (fmt + lint + type + test + examples)
+- [ ] `make ci` passes locally (fmt + lint + type + test + example + demo)
 - [ ] `CHANGELOG.md` updated under `## [Unreleased]`
 - [ ] Docstrings added for all new public APIs (Google-style)
 - [ ] Every modified module stays ≤ 300 lines (or a decomposition issue is linked above)
