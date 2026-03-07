@@ -232,17 +232,18 @@ def mcp_result_to_envelope(
             name = part.get("name", "")
             handle = f"mcp:{tool_name}:resource_link:{i}"
             label = name or uri or f"resource link from {tool_name}"
+            uri_bytes = uri.encode("utf-8")
             artifacts.append(
                 ArtifactRef(
                     handle=handle,
                     media_type=mime,
-                    size_bytes=0,
+                    size_bytes=len(uri_bytes),
                     label=label,
                 )
             )
-            # No binary payload — resource_link is a URI reference only.
-            # Store a placeholder so callers can resolve the URI themselves.
-            binaries[handle] = (uri.encode("utf-8"), mime, label)
+            # No dereferenced payload — resource_link is a URI reference only.
+            # Store the URI bytes so callers can resolve the URI themselves.
+            binaries[handle] = (uri_bytes, mime, label)
 
     # Handle structuredContent (top-level JSON output per MCP spec)
     if structured_content is not None:

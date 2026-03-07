@@ -315,7 +315,7 @@ def test_mcp_result_to_envelope_resource_link() -> None:
     ref = env.artifacts[0]
     assert ref.media_type == "text/csv"
     assert ref.label == "Monthly Report"
-    assert ref.size_bytes == 0  # URI reference, no inline payload
+    assert ref.size_bytes == len(b"file:///data/report.csv")  # URI bytes length
     handle = "mcp:reporter:resource_link:0"
     assert handle in binaries
     raw, mime, _label = binaries[handle]
