@@ -320,6 +320,8 @@ def test_mcp_result_to_envelope_resource_link() -> None:
     assert handle in binaries
     raw, mime, _label = binaries[handle]
     assert raw == b"file:///data/report.csv"
+    # Binaries MIME reflects the actual payload (a URI), not the linked resource.
+    assert mime == "text/uri-list"
 
 
 def test_mcp_result_to_envelope_resource_link_no_name() -> None:

@@ -243,7 +243,9 @@ def mcp_result_to_envelope(
             )
             # No dereferenced payload — resource_link is a URI reference only.
             # Store the URI bytes so callers can resolve the URI themselves.
-            binaries[handle] = (uri_bytes, mime, label)
+            # Use text/uri-list (RFC 2483) since the payload is a URI, not the
+            # linked resource; the resource's declared MIME stays in ArtifactRef.
+            binaries[handle] = (uri_bytes, "text/uri-list", label)
 
     # Handle structuredContent (top-level JSON output per MCP spec)
     if structured_content is not None:
