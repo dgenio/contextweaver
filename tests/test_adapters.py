@@ -481,6 +481,22 @@ def test_selectable_item_output_schema_none_round_trip() -> None:
     assert restored.output_schema is None
 
 
+def test_selectable_item_output_schema_empty_dict_round_trip() -> None:
+    from contextweaver.types import SelectableItem
+
+    item = SelectableItem(id="t3", kind="tool", name="t3", description="test", output_schema={})
+    d = item.to_dict()
+    assert d["output_schema"] == {}
+    restored = SelectableItem.from_dict(d)
+    assert restored.output_schema == {}
+
+
+def test_mcp_tool_to_selectable_with_empty_output_schema() -> None:
+    tool_def = {"name": "any_output", "description": "Accepts any output", "outputSchema": {}}
+    item = mcp_tool_to_selectable(tool_def)
+    assert item.output_schema == {}
+
+
 # ---------------------------------------------------------------------------
 # MCP adapter — load_mcp_session_jsonl
 # ---------------------------------------------------------------------------

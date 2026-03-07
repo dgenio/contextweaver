@@ -88,7 +88,7 @@ class SelectableItem:
             "tags": list(self.tags),
             "namespace": self.namespace,
             "args_schema": dict(self.args_schema),
-            "output_schema": dict(self.output_schema) if self.output_schema else None,
+            "output_schema": dict(self.output_schema) if self.output_schema is not None else None,
             "examples": list(self.examples),
             "constraints": dict(self.constraints),
             "side_effects": self.side_effects,
@@ -107,7 +107,9 @@ class SelectableItem:
             tags=list(data.get("tags", [])),
             namespace=data.get("namespace", ""),
             args_schema=dict(data.get("args_schema", {})),
-            output_schema=dict(data["output_schema"]) if data.get("output_schema") else None,
+            output_schema=dict(data["output_schema"])
+            if data.get("output_schema") is not None
+            else None,
             examples=list(data.get("examples", [])),
             constraints=dict(data.get("constraints", {})),
             side_effects=bool(data.get("side_effects", False)),

@@ -88,7 +88,9 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     annotations: dict[str, Any] = tool_def.get("annotations") or {}
     input_schema: dict[str, Any] = tool_def.get("inputSchema") or {}
     output_schema_raw: dict[str, Any] | None = tool_def.get("outputSchema")
-    output_schema: dict[str, Any] | None = dict(output_schema_raw) if output_schema_raw else None
+    output_schema: dict[str, Any] | None = (
+        dict(output_schema_raw) if output_schema_raw is not None else None
+    )
 
     # Derive tags from annotation hints
     tags: list[str] = ["mcp"]
