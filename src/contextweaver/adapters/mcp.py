@@ -178,7 +178,7 @@ def mcp_result_to_envelope(
             handle = f"mcp:{tool_name}:image:{i}"
             # Decode base64 image data; fall back to raw bytes on error.
             try:
-                raw = _b64.b64decode(data_str)
+                raw = _b64.b64decode(data_str, validate=True)
             except Exception:  # noqa: BLE001
                 raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
             artifacts.append(
@@ -195,7 +195,7 @@ def mcp_result_to_envelope(
             data_str = part.get("data") or ""
             handle = f"mcp:{tool_name}:audio:{i}"
             try:
-                raw = _b64.b64decode(data_str)
+                raw = _b64.b64decode(data_str, validate=True)
             except Exception:  # noqa: BLE001
                 raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
             artifacts.append(
