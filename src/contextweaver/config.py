@@ -7,7 +7,7 @@ they care about.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from contextweaver.types import ItemKind, Phase, Sensitivity
 
@@ -116,7 +116,7 @@ class ContextPolicy:
     max_items_per_kind: dict[ItemKind, int] = field(
         default_factory=lambda: {k: 50 for k in ItemKind}
     )
-    ttl_behavior: str = "drop"
+    ttl_behavior: Literal["drop", "warn"] = "drop"
     sensitivity_floor: Sensitivity = Sensitivity.confidential
     sensitivity_action: str = "drop"
     redaction_hooks: list[str] = field(default_factory=list)
