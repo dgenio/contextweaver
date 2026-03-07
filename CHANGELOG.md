@@ -7,14 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-03-07
+
 ### Added
+- MCP structured content (`structuredContent`) support — JSON output stored as artifact with facts extracted from top-level keys
+- MCP `outputSchema` support for tool definitions; `SelectableItem` now includes `output_schema` field (#102)
+- MCP content types: `audio` (base64-decoded binary artifact) and `resource_link` (URI reference as `ArtifactRef`)
+- Per-part content `annotations` (`audience`, `priority`) tracked in `provenance["content_annotations"]`
 - PR template and YAML issue forms (`.github/`)
-- `output_schema` field on `SelectableItem` — stores MCP `outputSchema` JSON Schema (#102)
-- `mcp_tool_to_selectable()` now maps `outputSchema` to `SelectableItem.output_schema`
-- `mcp_result_to_envelope()` handles `audio` content type (base64-decoded, stored as binary artifact)
-- `mcp_result_to_envelope()` handles `resource_link` content type (URI reference as `ArtifactRef`)
-- `mcp_result_to_envelope()` handles top-level `structuredContent` (stored as `application/json` artifact with fact extraction)
-- `mcp_result_to_envelope()` collects per-part `annotations` (`audience`, `priority`) into `provenance["content_annotations"]`
+
+### Fixed
+- Use `text/uri-list` MIME for `resource_link` binaries payload
+- Use `validate=True` for base64 decoding in image and audio parts
+- Add `isinstance` guard for `structuredContent` fact extraction and per-part annotations
+- Use `is not None` for `output_schema` checks to preserve empty dict schemas
+- Set `resource_link` `size_bytes` to actual URI length
+- Widen `structured_content` annotation to `Any` for MCP spec compliance
+
+### Changed
+- Extracted `_decode_binary_part` helper for image/audio binary decoding
 
 ## [0.1.4] - 2026-03-06
 
