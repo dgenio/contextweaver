@@ -76,13 +76,13 @@ envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, "search_datab
 
 #### Supported content types
 
-| Content type    | Handling                                                        |
-|-----------------|-----------------------------------------------------------------|
-| `text`          | Concatenated into `full_text` and `summary`                     |
-| `image`         | Base64-decoded; stored as binary artifact                       |
-| `audio`         | Base64-decoded; stored as binary artifact (e.g. `audio/wav`)    |
-| `resource`      | Text extracted into `full_text`; raw bytes stored as artifact   |
-| `resource_link` | URI stored as `ArtifactRef` (no inline payload, `size_bytes=0`) |
+| Content type    | Handling                                                                                      |
+|-----------------|-----------------------------------------------------------------------------------------------|
+| `text`          | Concatenated into `full_text` and `summary`                                                   |
+| `image`         | Base64-decoded; stored as binary artifact                                                     |
+| `audio`         | Base64-decoded; stored as binary artifact (e.g. `audio/wav`)                                  |
+| `resource`      | Text extracted into `full_text`; raw bytes stored as artifact                                 |
+| `resource_link` | URI stored as `ArtifactRef` (`size_bytes=0`); URI string in `binaries` for caller resolution  |
 
 #### Structured content
 
