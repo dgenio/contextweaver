@@ -117,6 +117,33 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     )
 
 
+def _decode_binary_part(
+    part: dict[str, Any],
+    tool_name: str,
+    index: int,
+    default_mime: str,
+    kind: str,
+) -> tuple[ArtifactRef, tuple[bytes, str, str]]:
+    """Decode a base64-encoded content part (image, audio, etc.)."""
+    import base64 as _b64
+
+    mime = part.get("mimeType", default_mime)
+    data_str = part.get("data") or ""
+    handle = f"mcp:{tool_name}:{kind}:{index}"
+    label = f"{kind} from {tool_name}"
+    try:
+        raw = _b64.b64decode(data_str, validate=True)
+    except Exception:  # noqa: BLE001
+        raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
+    ref = ArtifactRef(
+        handle=handle,
+        media_type=mime,
+        size_bytes=len(raw),
+        label=label,
+    )
+    return ref, (raw, mime, label)
+
+
 def mcp_result_to_envelope(
     result: dict[str, Any],
     tool_name: str,
@@ -150,7 +177,6 @@ def mcp_result_to_envelope(
         maps ``handle -> (raw_bytes, media_type, label)`` and *full_text*
         is the complete untruncated text content.
     """
-    import base64 as _b64
     import json as _json
 
     is_error = bool(result.get("isError", False))
@@ -174,40 +200,13 @@ def mcp_result_to_envelope(
         if part_type == "text":
             text_parts.append(part.get("text", ""))
         elif part_type == "image":
-            mime = part.get("mimeType", "image/png")
-            data_str = part.get("data") or ""
-            handle = f"mcp:{tool_name}:image:{i}"
-            # Decode base64 image data; fall back to raw bytes on error.
-            try:
-                raw = _b64.b64decode(data_str, validate=True)
-            except Exception:  # noqa: BLE001
-                raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
-            artifacts.append(
-                ArtifactRef(
-                    handle=handle,
-                    media_type=mime,
-                    size_bytes=len(raw),
-                    label=f"image from {tool_name}",
-                )
-            )
-            binaries[handle] = (raw, mime, f"image from {tool_name}")
+            ref, blob = _decode_binary_part(part, tool_name, i, "image/png", "image")
+            artifacts.append(ref)
+            binaries[ref.handle] = blob
         elif part_type == "audio":
-            mime = part.get("mimeType", "audio/wav")
-            data_str = part.get("data") or ""
-            handle = f"mcp:{tool_name}:audio:{i}"
-            try:
-                raw = _b64.b64decode(data_str, validate=True)
-            except Exception:  # noqa: BLE001
-                raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
-            artifacts.append(
-                ArtifactRef(
-                    handle=handle,
-                    media_type=mime,
-                    size_bytes=len(raw),
-                    label=f"audio from {tool_name}",
-                )
-            )
-            binaries[handle] = (raw, mime, f"audio from {tool_name}")
+            ref, blob = _decode_binary_part(part, tool_name, i, "audio/wav", "audio")
+            artifacts.append(ref)
+            binaries[ref.handle] = blob
         elif part_type == "resource":
             resource: dict[str, Any] = part.get("resource", {})
             mime = resource.get("mimeType", "application/octet-stream")
