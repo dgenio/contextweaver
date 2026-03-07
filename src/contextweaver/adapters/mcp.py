@@ -128,8 +128,8 @@ def mcp_result_to_envelope(
     - ``content`` — a list of content parts, each with ``type`` and
       ``text`` (or ``data`` / ``resource``).  Supported content types:
       ``text``, ``image``, ``resource``, ``resource_link``, ``audio``.
-    - ``structuredContent`` (optional) — a JSON object with typed tool
-      output; stored as a structured artifact.
+    - ``structuredContent`` (optional) — a JSON value with typed tool
+      output; stored as a structured artifact.  Only dicts get fact extraction.
     - ``isError`` (optional bool) — if ``True``, status becomes ``"error"``.
 
     Each content part may carry per-part ``annotations`` with ``audience``
@@ -155,7 +155,8 @@ def mcp_result_to_envelope(
 
     is_error = bool(result.get("isError", False))
     content_parts: list[dict[str, Any]] = result.get("content") or []
-    structured_content: dict[str, Any] | None = result.get("structuredContent")
+    # MCP spec allows any JSON value; only dicts get fact extraction.
+    structured_content: Any = result.get("structuredContent")
 
     text_parts: list[str] = []
     artifacts: list[ArtifactRef] = []
