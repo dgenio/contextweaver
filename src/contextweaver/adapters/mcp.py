@@ -166,8 +166,8 @@ def mcp_result_to_envelope(
         part_type = part.get("type", "text")
 
         # Collect per-part annotations (audience / priority)
-        part_annotations: dict[str, Any] | None = part.get("annotations")
-        if part_annotations:
+        part_annotations = part.get("annotations")
+        if isinstance(part_annotations, dict) and part_annotations:
             content_annotations.append({"part_index": i, **part_annotations})
 
         if part_type == "text":
