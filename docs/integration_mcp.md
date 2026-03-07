@@ -23,14 +23,25 @@ mcp_tool = {
             "query": {"type": "string"},
             "limit": {"type": "integer", "default": 10}
         }
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "results": {"type": "array"},
+            "total": {"type": "integer"}
+        }
     }
 }
 
 item = mcp_tool_to_selectable(mcp_tool)
-# item.id    == "mcp:search_database"
-# item.kind  == "tool"
-# item.name  == "search_database"
+# item.id            == "mcp:search_database"
+# item.kind          == "tool"
+# item.name          == "search_database"
+# item.output_schema == {"type": "object", ...}
 ```
+
+If the tool definition includes an `outputSchema`, it is preserved in
+`item.output_schema`.  When absent the field is `None`.
 
 The namespace is inferred automatically from the tool name prefix:
 
@@ -61,6 +72,47 @@ envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, "search_datab
 # full_text contains the complete untruncated text
 # envelope.status  == "ok"
 # binaries maps handle → (raw_bytes, media_type, label)
+```
+
+#### Supported content types
+
+| Content type    | Handling                                                                                      |
+|-----------------|-----------------------------------------------------------------------------------------------|
+| `text`          | Concatenated into `full_text` and `summary`                                                   |
+| `image`         | Base64-decoded; stored as binary artifact                                                     |
+| `audio`         | Base64-decoded; stored as binary artifact (e.g. `audio/wav`)                                  |
+| `resource`      | Text extracted into `full_text`; raw bytes stored as artifact                                 |
+| `resource_link` | URI stored as `ArtifactRef`; URI string in `binaries` for caller resolution                |
+
+#### Structured content
+
+If the result contains a top-level `structuredContent` dict, it is
+serialized as a JSON artifact and its top-level keys are extracted as
+facts:
+
+```python
+mcp_result = {
+    "content": [{"type": "text", "text": "query done"}],
+    "structuredContent": {"count": 42, "status": "done"},
+}
+envelope, binaries, _ = mcp_result_to_envelope(mcp_result, "query")
+# binaries["mcp:query:structured_content"] → JSON bytes
+# envelope.facts includes "count: 42", "status: done"
+```
+
+#### Content-part annotations
+
+Per-part `annotations` (with `audience` and `priority` fields) are
+collected into `envelope.provenance["content_annotations"]`:
+
+```python
+mcp_result = {
+    "content": [
+        {"type": "text", "text": "...", "annotations": {"audience": ["human"], "priority": 0.9}},
+    ],
+}
+envelope, _, _ = mcp_result_to_envelope(mcp_result, "tool")
+# envelope.provenance["content_annotations"] == [{"part_index": 0, "audience": ["human"], ...}]
 ```
 
 ### `load_mcp_session_jsonl(path)`
