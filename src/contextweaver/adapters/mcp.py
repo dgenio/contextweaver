@@ -258,12 +258,13 @@ def mcp_result_to_envelope(
             )
         )
         binaries[sc_handle] = (sc_bytes, "application/json", f"structured content from {tool_name}")
-        # Extract facts from top-level keys
-        for key, value in structured_content.items():
-            rendered = str(value)
-            if len(rendered) < 200:
-                facts_line = f"{key}: {rendered}"
-                text_parts.append(facts_line)
+        # Extract facts from top-level keys when structured_content is a mapping.
+        if isinstance(structured_content, dict):
+            for key, value in structured_content.items():
+                rendered = str(value)
+                if len(rendered) < 200:
+                    facts_line = f"{key}: {rendered}"
+                    text_parts.append(facts_line)
 
     full_text = "\n".join(text_parts) if text_parts else "(no content)"
 
