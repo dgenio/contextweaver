@@ -18,6 +18,7 @@ Fixes # <!-- issue number, if applicable -->
 - [ ] Docstrings added for all new public APIs (Google-style)
 - [ ] Every modified module stays ≤ 300 lines (or a decomposition issue is linked above)
 - [ ] Related issue linked in the summary above
+- [ ] Agent-facing docs updated if pipeline, API, or conventions changed
 
 ## Notes for reviewers
 

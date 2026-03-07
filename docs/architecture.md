@@ -25,7 +25,7 @@ the "context window problem" for tool-using AI agents.
 | Path | Responsibility |
 |---|---|
 | `types.py` | Core dataclasses and enums (`SelectableItem`, `ContextItem`, `Phase`, `ItemKind`) |
-| `envelope.py` | Result types (`ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`) |
+| `envelope.py` | Result types (`ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`) |
 | `config.py` | Configuration dataclasses (`ContextBudget`, `ContextPolicy`, `ScoringConfig`) |
 | `protocols.py` | Protocol interfaces (`TokenEstimator`, `EventHook`, `Summarizer`, …) |
 | `exceptions.py` | Custom exception hierarchy |
@@ -86,10 +86,18 @@ All stores are protocol-based with in-memory defaults:
 - **FactStore** — key-value fact entries persisted across turns.
 - **StoreBundle** — convenience wrapper grouping all four stores.
 
+## Progressive disclosure
+
+`context/views.py` provides a `ViewRegistry` that maps content-type patterns
+to view generators. When the firewall stores a large tool output as an artifact,
+the view system generates alternative representations (JSON subset, CSV summary,
+etc.) the agent can drilldown into without retrieving the full blob.
+`drilldown_tool_spec()` exposes drilldown as an agent-callable tool.
+
 ## Design principles
 
 - **Zero runtime dependencies** — stdlib-only, Python ≥ 3.10.
-- **Deterministic** — tie-break by ID, sorted keys, seeded generation.
+- **Deterministic** — tie-break by ID, sorted keys.
 - **Protocol-based** — all store and estimator interfaces are
   `typing.Protocol`, allowing custom implementations.
 - **Async-first** — the Context Engine exposes `build()` (async) with a

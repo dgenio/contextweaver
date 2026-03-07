@@ -127,3 +127,20 @@ contextweaver supports two forms of persistent memory:
 
 Both are capped in the prompt to prevent memory from crowding out the
 current conversation.
+
+## View Registry
+
+The `ViewRegistry` (in `context/views.py`) maps content-type patterns to view
+generators. When the context firewall stores a large tool output as an artifact,
+the view system can generate alternative representations — a JSON subset, a CSV
+summary, or a column listing — that the agent can request via drilldown without
+retrieving the full blob. This progressive-disclosure mechanism keeps the
+context window focused while preserving access to the raw data.
+
+## Hydration Result
+
+A `HydrationResult` (in `envelope.py`) captures the output of hydrating a
+tool call with context. Hydration enriches a tool call's arguments or
+description with context-aware information before execution, and the
+`HydrationResult` carries both the enriched payload and metadata about
+what context was used.
