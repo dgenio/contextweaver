@@ -7,10 +7,13 @@ receives only :class:`~contextweaver.types.ArtifactRef` handles and summaries.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from contextweaver.exceptions import ArtifactNotFoundError
 from contextweaver.types import ArtifactRef
+
+logger = logging.getLogger("contextweaver.store")
 
 # FUTURE: FileArtifactStore backed by local filesystem for persistent storage.
 
@@ -52,6 +55,7 @@ class InMemoryArtifactStore:
         )
         self._data[handle] = content
         self._meta[handle] = ref
+        logger.debug("artifact_store.put: handle=%s, size=%d", handle, len(content))
         return ref
 
     def get(self, handle: str) -> bytes:

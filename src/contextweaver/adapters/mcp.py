@@ -10,12 +10,15 @@ JSONL files into contextweaver :class:`~contextweaver.types.ContextItem` lists.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
+
+logger = logging.getLogger("contextweaver.adapters")
 
 
 def infer_namespace(tool_name: str) -> str:
@@ -102,6 +105,7 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     side_effects = not annotations.get("readOnlyHint", False)
     cost_hint = float(annotations.get("costHint", 0.0))
 
+    logger.debug("mcp_tool_to_selectable: name=%s, tags=%s", name, sorted(tags))
     return SelectableItem(
         id=f"mcp:{name}",
         kind="tool",
@@ -290,6 +294,13 @@ def mcp_result_to_envelope(
         facts=facts[:20],
         artifacts=artifacts,
         provenance=provenance,
+    )
+    logger.debug(
+        "mcp_result_to_envelope: tool=%s, status=%s, artifacts=%d, facts=%d",
+        tool_name,
+        status,
+        len(artifacts),
+        len(facts[:20]),
     )
     return envelope, binaries, full_text
 

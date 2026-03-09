@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Literal
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
@@ -51,6 +52,8 @@ if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
     from contextweaver.routing.catalog import Catalog
     from contextweaver.routing.router import Router, RouteResult
+
+logger = logging.getLogger("contextweaver.context")
 
 
 class ContextManager:
@@ -146,6 +149,7 @@ class ContextManager:
             item: The context item to ingest.
         """
         self._event_log.append(item)
+        logger.debug("ingest: item_id=%s, kind=%s", item.id, item.kind.value)
 
     def ingest_sync(self, item: ContextItem) -> None:
         """Synchronous alias for :meth:`ingest`."""
@@ -205,6 +209,11 @@ class ContextManager:
                 # Shouldn't happen for tool_result items, but be safe
                 envelope = ResultEnvelope(status="ok", summary=raw_output[:500])
             self._event_log.append(processed)
+            logger.debug(
+                "ingest_tool_result: item_id=%s, firewall=True, output_len=%d",
+                processed.id,
+                len(raw_output),
+            )
             return processed, envelope
 
         # Small output: extract facts and store in artifact store to enable drilldown
@@ -248,6 +257,11 @@ class ContextManager:
             artifact_ref=ref,
         )
         self._event_log.append(item)
+        logger.debug(
+            "ingest_tool_result: item_id=%s, firewall=False, output_len=%d",
+            item.id,
+            len(raw_output),
+        )
         return item, envelope
 
     def ingest_tool_result_sync(
@@ -620,6 +634,14 @@ class ContextManager:
 
         pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
         self._hook.on_context_built(pack)
+        logger.info(
+            "context build: phase=%s, included=%d, dropped=%d, tokens=%d/%d",
+            phase.value,
+            stats.included_count,
+            stats.dropped_count,
+            sum(stats.tokens_per_section.values()),
+            effective_budget.for_phase(phase),
+        )
         return pack
 
     async def build(

@@ -145,6 +145,8 @@ See [docs/agent-context/invariants.md](docs/agent-context/invariants.md) for the
 3. `make test` — run the test suite.
 4. Check `BuildStats` fields to understand what the context engine dropped and why.
 5. Use `ContextManager.artifact_store.list_refs()` to inspect intercepted tool outputs.
+6. Enable `logging.DEBUG` on `contextweaver.context` to trace pipeline stages (candidate counts, scores, drops, budget usage).
+7. Enable `logging.DEBUG` on `contextweaver.routing` to trace beam search expansions and scoring.
 
 ## Adding a Feature
 

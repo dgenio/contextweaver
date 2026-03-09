@@ -6,10 +6,13 @@ that can be injected into the context as ``memory_fact`` items.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver.exceptions import ItemNotFoundError
+
+logger = logging.getLogger("contextweaver.store")
 
 
 @dataclass
@@ -62,6 +65,7 @@ class InMemoryFactStore:
             fact: The :class:`Fact` to store.
         """
         self._facts[fact.fact_id] = fact
+        logger.debug("fact_store.put: id=%s, key=%s", fact.fact_id, fact.key)
 
     def get(self, fact_id: str) -> Fact:
         """Return the fact with *fact_id*.

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Python `logging` integration with structured events across all subsystems (#111)
+  - Loggers: `contextweaver.context`, `contextweaver.routing`, `contextweaver.store`, `contextweaver.adapters`
+  - DEBUG-level messages at each context pipeline stage (candidate generation, scoring, dedup, selection, firewall, sensitivity)
+  - INFO-level summary messages for context builds and route completions
+  - Sensitivity guard: item text content is never logged at any level
+
 ## [0.1.5] - 2026-03-07
 
 ### Added

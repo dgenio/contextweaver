@@ -7,10 +7,13 @@ from this store when generating context candidates.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.types import ContextItem, ItemKind
+
+logger = logging.getLogger("contextweaver.store")
 
 
 class InMemoryEventLog:
@@ -37,6 +40,7 @@ class InMemoryEventLog:
             raise ValueError(f"Duplicate item id: {item.id!r}")
         self._index[item.id] = len(self._items)
         self._items.append(item)
+        logger.debug("event_log.append: id=%s, kind=%s", item.id, item.kind.value)
 
     def get(self, item_id: str) -> ContextItem:
         """Return the item with *item_id*.
