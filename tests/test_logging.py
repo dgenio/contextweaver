@@ -15,7 +15,8 @@ from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import Fact, InMemoryFactStore
-from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem
+from contextweaver.config import ContextPolicy
+from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem, Sensitivity
 
 # ------------------------------------------------------------------
 # Logger existence
@@ -85,6 +86,36 @@ async def test_context_build_no_text_content_logged(caplog: pytest.LogCaptureFix
     for record in caplog.records:
         assert secret_text not in record.message, (
             f"Item text content leaked into log: {record.message!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_context_build_redact_mode_no_text_content_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """In redact mode, original item text must not appear in any log record."""
+    secret_text = "REDACT_MODE_SECRET_67890"
+    log = InMemoryEventLog()
+    log.append(
+        ContextItem(
+            id="s1",
+            kind=ItemKind.user_turn,
+            text=secret_text,
+            sensitivity=Sensitivity.internal,
+        )
+    )
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.internal,
+        sensitivity_action="redact",
+    )
+    mgr = ContextManager(event_log=log, policy=policy)
+
+    with caplog.at_level(logging.DEBUG, logger="contextweaver"):
+        await mgr.build(phase=Phase.answer, query="test")
+
+    for record in caplog.records:
+        assert secret_text not in record.message, (
+            f"Original text leaked into log in redact mode: {record.message!r}"
         )
 
 
