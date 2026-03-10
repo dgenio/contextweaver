@@ -7,11 +7,14 @@ similarity to a query for injection into future contexts.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
 from contextweaver.exceptions import ItemNotFoundError
+
+logger = logging.getLogger("contextweaver.store")
 
 # FUTURE: vector retrieval backend for high-dimensional similarity search.
 
@@ -66,6 +69,7 @@ class InMemoryEpisodicStore:
         """
         self._episodes.append(episode)
         self._dirty = True
+        logger.debug("episodic_store.add: id=%s", episode.episode_id)
 
     def get(self, episode_id: str) -> Episode | None:
         """Return the episode with *episode_id*, or ``None`` if not found.
@@ -104,7 +108,9 @@ class InMemoryEpisodicStore:
             q_tokens = tokenize(query)
             scores = [jaccard(q_tokens, tokenize(ep.summary)) for ep in self._episodes]
         ranked = sorted(range(len(self._episodes)), key=lambda i: scores[i], reverse=True)
-        return [self._episodes[i] for i in ranked[:top_k]]
+        result = [self._episodes[i] for i in ranked[:top_k]]
+        logger.debug("episodic_store.search: query_len=%d, results=%d", len(query), len(result))
+        return result
 
     def all(self) -> list[Episode]:
         """Return all episodes in insertion order."""

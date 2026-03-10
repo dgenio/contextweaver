@@ -8,6 +8,7 @@ containing a human-readable summary, extracted facts, and an
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from contextweaver.context.views import ViewRegistry, generate_views
@@ -15,6 +16,8 @@ from contextweaver.envelope import ResultEnvelope
 from contextweaver.protocols import ArtifactStore, EventHook, Extractor, NoOpHook, Summarizer
 from contextweaver.summarize.extract import extract_facts
 from contextweaver.types import ContextItem, ItemKind
+
+logger = logging.getLogger("contextweaver.context")
 
 
 def _default_summary(raw: str, max_chars: int = 500) -> str:
@@ -114,6 +117,7 @@ def apply_firewall(
     )
 
     _hook.on_firewall_triggered(item, "tool_result intercepted")
+    logger.debug("firewall: intercepted item_id=%s, summary_len=%d", item.id, len(summary))
     return processed, envelope
 
 
@@ -147,4 +151,9 @@ def apply_firewall_to_batch(
         processed.append(p)
         if env is not None:
             envelopes.append(env)
+    logger.debug(
+        "firewall_batch: processed=%d, intercepted=%d",
+        len(processed),
+        len(envelopes),
+    )
     return processed, envelopes

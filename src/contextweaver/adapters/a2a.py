@@ -10,12 +10,15 @@ JSONL files into contextweaver :class:`~contextweaver.types.ContextItem` lists.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Literal
 
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
+
+logger = logging.getLogger("contextweaver.adapters")
 
 
 def a2a_agent_to_selectable(agent_card: dict[str, Any]) -> SelectableItem:
@@ -62,6 +65,7 @@ def a2a_agent_to_selectable(agent_card: dict[str, Any]) -> SelectableItem:
     input_modes: list[str] = agent_card.get("defaultInputModes") or []
     output_modes: list[str] = agent_card.get("defaultOutputModes") or []
 
+    logger.debug("a2a_agent_to_selectable: name=%s, skills=%d", name, len(skills))
     return SelectableItem(
         id=f"a2a:{name}",
         kind="agent",
@@ -161,6 +165,12 @@ def a2a_result_to_envelope(
             if ":" in stripped and len(stripped) < 200:
                 facts.append(stripped)
 
+    logger.debug(
+        "a2a_result_to_envelope: agent=%s, status=%s, artifacts=%d",
+        agent_name,
+        env_status,
+        len(artifact_refs),
+    )
     return ResultEnvelope(
         status=env_status,
         summary=summary[:500] if len(summary) > 500 else summary,

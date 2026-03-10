@@ -6,8 +6,12 @@ pass.  Uses Jaccard similarity on tokenised text to identify duplicates.
 
 from __future__ import annotations
 
+import logging
+
 from contextweaver._utils import jaccard, tokenize
 from contextweaver.types import ContextItem
+
+logger = logging.getLogger("contextweaver.context")
 
 # FUTURE: merge compression to combine near-duplicate items instead of dropping.
 
@@ -50,4 +54,5 @@ def deduplicate_candidates(
         else:
             removed += 1
 
+    logger.debug("deduplicate_candidates: removed=%d, kept=%d", removed, len(kept))
     return kept, removed

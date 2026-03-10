@@ -80,6 +80,8 @@
 3. `make test` — test suite.
 4. Check `BuildStats` fields to understand what the context engine dropped and why.
 5. Use `ContextManager.artifact_store.list_refs()` to inspect intercepted tool outputs.
+6. Enable `logging.DEBUG` on `contextweaver.context` to trace pipeline stages.
+7. Enable `logging.DEBUG` on `contextweaver.routing` to trace beam search.
 
 ## Running Tests
 

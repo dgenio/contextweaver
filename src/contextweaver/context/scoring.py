@@ -6,9 +6,13 @@ tag overlap with the query, item-kind priority, and token cost penalty.
 
 from __future__ import annotations
 
+import logging
+
 from contextweaver._utils import jaccard, tokenize
 from contextweaver.config import ScoringConfig
 from contextweaver.types import ContextItem, ItemKind
+
+logger = logging.getLogger("contextweaver.context")
 
 # Higher value → higher priority when included in context
 _KIND_PRIORITY: dict[ItemKind, float] = {
@@ -96,4 +100,11 @@ def score_candidates(
         for i, item in enumerate(items)
     ]
     scored.sort(key=lambda x: (-x[0], x[1].id))
+    if scored:
+        logger.debug(
+            "score_candidates: total=%d, top_score=%.4f, bottom_score=%.4f",
+            len(scored),
+            scored[0][0],
+            scored[-1][0],
+        )
     return scored

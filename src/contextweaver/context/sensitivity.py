@@ -16,11 +16,14 @@ The built-in :class:`MaskRedactionHook` replaces the text with
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 
 from contextweaver.config import ContextPolicy
 from contextweaver.protocols import RedactionHook
 from contextweaver.types import ContextItem, Sensitivity
+
+logger = logging.getLogger("contextweaver.context")
 
 # Ordered severity levels for comparison.
 _SENSITIVITY_ORDER: dict[Sensitivity, int] = {
@@ -152,4 +155,11 @@ def apply_sensitivity_filter(
         else:
             result.append(item)
 
+    logger.debug(
+        "sensitivity_filter: action=%s, floor=%s, passed=%d, dropped=%d",
+        action,
+        policy.sensitivity_floor.value,
+        len(result),
+        dropped,
+    )
     return result, dropped

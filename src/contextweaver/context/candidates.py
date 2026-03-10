@@ -7,10 +7,14 @@ filtering to produce an initial candidate list.
 
 from __future__ import annotations
 
+import logging
+
 from contextweaver.config import ContextPolicy
 from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.protocols import EventLog
 from contextweaver.types import ContextItem, Phase
+
+logger = logging.getLogger("contextweaver.context")
 
 
 def generate_candidates(
@@ -32,7 +36,14 @@ def generate_candidates(
         A list of :class:`~contextweaver.types.ContextItem` in log order.
     """
     allowed = set(policy.allowed_kinds_per_phase.get(phase, []))
-    return [item for item in event_log.all() if item.kind in allowed]
+    result = [item for item in event_log.all() if item.kind in allowed]
+    logger.debug(
+        "generate_candidates: phase=%s, allowed_kinds=%s, candidates=%d",
+        phase.value,
+        sorted(k.value for k in allowed),
+        len(result),
+    )
+    return result
 
 
 def resolve_dependency_closure(
@@ -73,4 +84,5 @@ def resolve_dependency_closure(
     # Preserve log order by re-sorting via original indices
     all_ids = {item.id: item for item in items + extra}
     ordered = [item for item in event_log.all() if item.id in all_ids]
+    logger.debug("dependency_closure: added=%d parents", closures)
     return ordered, closures

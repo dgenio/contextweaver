@@ -6,10 +6,14 @@ configured token budget for the current phase.
 
 from __future__ import annotations
 
+import logging
+
 from contextweaver.config import ContextBudget, ContextPolicy
 from contextweaver.envelope import BuildStats
 from contextweaver.protocols import TokenEstimator
 from contextweaver.types import ContextItem, Phase
+
+logger = logging.getLogger("contextweaver.context")
 
 
 def select_and_pack(
@@ -80,5 +84,13 @@ def select_and_pack(
         included_count=included,
         dropped_count=dropped,
         dropped_reasons=dropped_reasons,
+    )
+    logger.debug(
+        "select_and_pack: included=%d, dropped=%d, tokens=%d/%d, reasons=%s",
+        included,
+        dropped,
+        tokens_used,
+        token_limit,
+        dropped_reasons,
     )
     return selected, stats

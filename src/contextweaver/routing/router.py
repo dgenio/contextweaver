@@ -6,6 +6,7 @@ to find the top-k items that best satisfy a user query.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -13,6 +14,8 @@ from contextweaver._utils import TfIdfScorer, jaccard, tokenize
 from contextweaver.exceptions import RouteError
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.types import SelectableItem
+
+logger = logging.getLogger("contextweaver.routing")
 
 # ---------------------------------------------------------------------------
 # RouteResult
@@ -295,6 +298,14 @@ class Router:
         if debug:
             result.debug_trace = trace
 
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "route: query_len=%d, top_k=%d, candidates=%d, scores=%s",
+                len(query),
+                self._top_k,
+                len(result.candidate_ids),
+                [round(s, 4) for s in result.scores[:5]],
+            )
         return result
 
     def _expand_subtree(
