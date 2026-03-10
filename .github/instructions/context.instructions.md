@@ -34,10 +34,11 @@ firewall must run before scoring (summaries, not raw text, must be scored).
 
 ## Async-first pattern
 
-- `build()` is `async`. The sync entry point is `build_sync()`, which is a thin
-  `asyncio.run(self.build(...))` wrapper.
-- All new pipeline stages must be `async` with `_sync` wrappers where needed.
-- Do not introduce blocking I/O inside `async` pipeline functions.
+- The core pipeline runs in `_build()`, which is **synchronous**. Both `build()`
+  (async) and `build_sync()` (sync) delegate directly to `_build()`.
+- `build()` is `async def` so callers can `await` it today; true async I/O will
+  be added if pipeline stages gain `await`-able steps in the future.
+- Do not wrap `_build()` in `asyncio.run()` — `build_sync()` calls it directly.
 
 ## Dependency closure
 
