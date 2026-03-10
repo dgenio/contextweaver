@@ -300,7 +300,8 @@ class Router:
 
         if logger.isEnabledFor(logging.INFO):
             logger.info(
-                "route: top_k=%d, candidates=%d, scores=%s",
+                "route: query_len=%d, top_k=%d, candidates=%d, scores=%s",
+                len(query),
                 self._top_k,
                 len(result.candidate_ids),
                 [round(s, 4) for s in result.scores[:5]],
