@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Path-scoped Copilot instructions for `context/` and `routing/` (#95)
+
 ## [0.1.5] - 2026-03-07
 
 ### Added
