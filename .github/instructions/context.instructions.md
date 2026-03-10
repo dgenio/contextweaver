@@ -39,6 +39,8 @@ firewall must run before scoring (summaries, not raw text, must be scored).
 - `build()` is `async def` so callers can `await` it today; true async I/O will
   be added if pipeline stages gain `await`-able steps in the future.
 - Do not wrap `_build()` in `asyncio.run()` — `build_sync()` calls it directly.
+- The same pattern applies to `_build_call_prompt()` → `build_call_prompt()` /
+  `build_call_prompt_sync()`.
 
 ## Dependency closure
 
