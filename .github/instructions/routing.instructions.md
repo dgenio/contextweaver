@@ -45,7 +45,7 @@ coalesced via `_coalesce_groups()` or re-split before adding edges.
   scores differ by less than the gap. Must stay in `[0.0, 1.0]`.
 - Results are ranked `(-score, item_id)` — same determinism guarantee end-to-end.
 - The TF-IDF index is lazily built on first `route()` call via `_ensure_index()`.
-  Items are indexed by sorted `item_id` before non-leaf nodes; do not change order.
+  Items are indexed by sorted `item_id` before non-item (navigation) nodes; do not change order.
 - Fallback scoring (nodes not in TF-IDF index) uses `jaccard()` from
   `contextweaver._utils` — never duplicate this logic here.
 
