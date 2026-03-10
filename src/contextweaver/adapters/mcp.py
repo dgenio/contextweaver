@@ -300,7 +300,7 @@ def mcp_result_to_envelope(
         tool_name,
         status,
         len(artifacts),
-        len(facts[:20]),
+        len(envelope.facts),
     )
     return envelope, binaries, full_text
 
