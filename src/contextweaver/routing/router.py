@@ -298,12 +298,13 @@ class Router:
         if debug:
             result.debug_trace = trace
 
-        logger.info(
-            "route: top_k=%d, candidates=%d, scores=%s",
-            self._top_k,
-            len(result.candidate_ids),
-            [round(s, 4) for s in result.scores[:5]],
-        )
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "route: top_k=%d, candidates=%d, scores=%s",
+                self._top_k,
+                len(result.candidate_ids),
+                [round(s, 4) for s in result.scores[:5]],
+            )
         return result
 
     def _expand_subtree(
