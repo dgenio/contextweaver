@@ -82,6 +82,6 @@ coalesced via `_coalesce_groups()` or re-split before adding edges.
 
 ## Related issues
 
-- dgenio/contextweaver#73 — module size tracking (routing/graph.py is 316 lines)
+- dgenio/contextweaver#73 — module size tracking
 - dgenio/contextweaver#69 — routing refactor work
 - dgenio/contextweaver#63 — ChoiceGraph design and validation
