@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - DEBUG-level messages at each context pipeline stage (candidate generation, scoring, dedup, selection, firewall, sensitivity)
   - INFO-level summary messages for context builds and route completions
   - Sensitivity guard: item text content is never logged at any level
+- Path-scoped Copilot instructions for `context/` and `routing/` (#95)
 
 ## [0.1.5] - 2026-03-07
 
