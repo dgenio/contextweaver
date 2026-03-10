@@ -88,6 +88,7 @@ class Router:
         self._items: dict[str, SelectableItem] = {}
         self._scorer = scorer
         self._indexed = False
+        self._doc_id_to_idx: dict[str, int] = {}
         if items is not None:
             self.set_items(items)
 
@@ -124,7 +125,7 @@ class Router:
                 doc_ids.append(node_id)
 
         self._scorer.fit(docs)
-        self._doc_id_to_idx: dict[str, int] = {did: i for i, did in enumerate(doc_ids)}
+        self._doc_id_to_idx = {did: i for i, did in enumerate(doc_ids)}
         self._indexed = True
 
     def _score_node(self, query: str, node_id: str) -> float:
