@@ -8,6 +8,7 @@ import pytest
 
 from contextweaver.adapters.a2a import a2a_agent_to_selectable, a2a_result_to_envelope
 from contextweaver.adapters.mcp import mcp_result_to_envelope, mcp_tool_to_selectable
+from contextweaver.config import ContextPolicy
 from contextweaver.context.manager import ContextManager
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
@@ -15,7 +16,6 @@ from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import Fact, InMemoryFactStore
-from contextweaver.config import ContextPolicy
 from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem, Sensitivity
 
 # ------------------------------------------------------------------
