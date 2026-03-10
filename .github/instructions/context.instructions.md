@@ -14,7 +14,7 @@ Path-scoped guidance for `src/contextweaver/context/`. Read before modifying any
 2. `resolve_dependency_closure` (`candidates.py`) — pull in parent items via `parent_id`
 3. `apply_sensitivity_filter` (`sensitivity.py`) — drop/redact by sensitivity level
 4. `apply_firewall_to_batch` (`firewall.py`) — intercept raw `tool_result` text
-5. `score_candidates` (`scoring.py`) — TF-IDF relevance scoring
+5. `score_candidates` (`scoring.py`) — recency + Jaccard token overlap + kind priority + token penalty
 6. `deduplicate_candidates` (`dedup.py`) — near-duplicate removal
 7. `select_and_pack` (`selection.py`) — budget-aware token selection
 8. `render_context` (`prompt.py`) — final prompt assembly
