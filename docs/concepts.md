@@ -53,7 +53,7 @@ large tool outputs from consuming the entire token budget. In practice:
 
 1. Stores the raw output in the `ArtifactStore`.
 2. Generates a compact summary using the `Summarizer`.
-3. Extracts structured facts for the `FactStore`.
+3. Extracts structured facts into the `ResultEnvelope`.
 4. Replaces the original item text with a summary + artifact reference.
 
 ## Result Envelope
