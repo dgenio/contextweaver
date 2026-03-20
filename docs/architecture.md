@@ -43,8 +43,8 @@ the "context window problem" for tool-using AI agents.
 The Context Engine compiles a phase-aware, budget-constrained prompt from
 the event log. The pipeline has eight stages:
 
-1. **generate_candidates** — pull events from the event log and inject
-   episodic memory and facts into the candidate pool.
+1. **generate_candidates** — pull phase-relevant events from the event log
+   into the initial candidate pool.
 2. **dependency_closure** — if a selected item has a `parent_id`, bring
    the parent along even if it scored lower.
 3. **sensitivity_filter** — drop or redact items whose `sensitivity`

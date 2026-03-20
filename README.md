@@ -64,7 +64,7 @@ contextweaver provides two cooperating engines:
 
 **Context Engine** — eight-stage pipeline:
 
-1. **generate_candidates** — pull events from the log; inject episodic memory and facts.
+1. **generate_candidates** — pull phase-relevant events from the log for this request.
 2. **dependency_closure** — if a selected item has a `parent_id`, include the parent automatically.
 3. **sensitivity_filter** — drop or redact items at or above the configured sensitivity floor.
 4. **apply_firewall** — large tool outputs are summarised; raw bytes move to `ArtifactStore`.
