@@ -8,9 +8,10 @@ the "context window problem" for tool-using AI agents.
 ```
                ┌────────────────────────────┐
   Events ─────>│      Context Engine         │──> ContextPack (prompt)
-               │  candidates → score →       │
-               │  dedup → select → firewall  │
-               │  → prompt                   │
+               │  candidates → closure →     │
+               │  sensitivity → firewall →   │
+               │  score → dedup → select →   │
+               │  render                     │
                └────────────────────────────┘
                           ▲ facts / episodes
                ┌──────────┴─────────────────┐
@@ -43,15 +44,15 @@ the "context window problem" for tool-using AI agents.
 The Context Engine compiles a phase-aware, budget-constrained prompt from
 the event log. The pipeline has eight stages:
 
-1. **generate_candidates** — pull events from the event log and inject
-   episodic memory and facts into the candidate pool.
+1. **generate_candidates** — pull phase-relevant events from the event log
+   into the initial candidate pool.
 2. **dependency_closure** — if a selected item has a `parent_id`, bring
    the parent along even if it scored lower.
 3. **sensitivity_filter** — drop or redact items whose `sensitivity`
    level meets or exceeds `ContextPolicy.sensitivity_floor`.
-4. **apply_firewall** — large tool results (above threshold) are
-   summarised; the raw output is stored in the ArtifactStore and replaced
-   with a compact reference + summary.
+4. **apply_firewall** — tool results are stored out-of-band in the
+   ArtifactStore and replaced with summarized/truncated text for prompt
+   assembly.
 5. **score_candidates** — rank candidates by recency, tag match, kind
    priority, and token cost.
 6. **deduplicate_candidates** — remove near-duplicate items using Jaccard
