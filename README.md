@@ -2,7 +2,7 @@
 
 > Phase-specific, budget-aware context compilation for tool-using AI agents.
 
-**536 tests passing · zero runtime dependencies · deterministic output · Python ≥ 3.10**
+**500+ tests passing · zero runtime dependencies · deterministic output · Python ≥ 3.10**
 
 ---
 
@@ -152,7 +152,7 @@ print(result.candidate_ids)
 
 | Proof point | Detail |
 |---|---|
-| **536 tests passing** | Context pipeline, routing engine, firewall, adapters, CLI, sensitivity enforcement |
+| **500+ tests passing** | Context pipeline, routing engine, firewall, adapters, CLI, sensitivity enforcement |
 | **Zero runtime dependencies** | Stdlib-only, Python ≥ 3.10. Works with any LLM provider. No vendor lock-in. |
 | **Deterministic** | Tie-break by ID, sorted keys. Identical inputs always produce identical outputs. |
 | **Protocol-based stores** | `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` are `typing.Protocol` interfaces — swap any backend. |
