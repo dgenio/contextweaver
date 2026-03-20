@@ -67,7 +67,7 @@ contextweaver provides two cooperating engines:
 1. **generate_candidates** — pull phase-relevant events from the log for this request.
 2. **dependency_closure** — if a selected item has a `parent_id`, include the parent automatically.
 3. **sensitivity_filter** — drop or redact items at or above the configured sensitivity floor.
-4. **apply_firewall** — large tool outputs are summarised; raw bytes move to `ArtifactStore`.
+4. **apply_firewall** — tool results are stored out-of-band; large outputs are summarized/truncated before prompt assembly.
 5. **score_candidates** — rank by recency, tag match, kind priority, and token cost.
 6. **deduplicate_candidates** — remove near-duplicates using Jaccard similarity.
 7. **select_and_pack** — greedily pack highest-scoring items into the phase token budget.
@@ -167,7 +167,7 @@ print(result.candidate_ids)
 |---|---|
 | `ContextItem` | Atomic event log entry: user turn, agent message, tool call, tool result, fact, plan state. |
 | `Phase` | `route` / `call` / `interpret` / `answer` — each with its own token budget. |
-| `ContextFirewall` | Intercepts large tool outputs: stores raw bytes out-of-band, injects compact summary. |
+| `ContextFirewall` | Intercepts tool results: stores raw bytes out-of-band, injects compact summary (with truncation for large outputs). |
 | `ChoiceGraph` | Bounded DAG over the tool catalog. Router beam-searches it; LLM sees only a focused shortlist. |
 | `ResultEnvelope` | Structured tool output: summary + extracted facts + artifact handles + views. |
 | `BuildStats` | Per-build diagnostics: candidate count, included/dropped counts, token usage, drop reasons. |

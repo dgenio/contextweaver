@@ -49,9 +49,9 @@ the event log. The pipeline has eight stages:
    the parent along even if it scored lower.
 3. **sensitivity_filter** — drop or redact items whose `sensitivity`
    level meets or exceeds `ContextPolicy.sensitivity_floor`.
-4. **apply_firewall** — large tool results (above threshold) are
-   summarised; the raw output is stored in the ArtifactStore and replaced
-   with a compact reference + summary.
+4. **apply_firewall** — tool results are stored out-of-band in the
+   ArtifactStore and replaced with summarized/truncated text for prompt
+   assembly.
 5. **score_candidates** — rank candidates by recency, tag match, kind
    priority, and token cost.
 6. **deduplicate_candidates** — remove near-duplicate items using Jaccard

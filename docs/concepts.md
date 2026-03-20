@@ -46,9 +46,10 @@ Key fields: `id`, `kind`, `name`, `description`, `tags`, `namespace`,
 
 ## Context Firewall
 
-The context firewall prevents large tool outputs from consuming the
-entire token budget. When a tool result exceeds the configured threshold
-(default 2 000 characters), the firewall:
+The context firewall intercepts `tool_result` items before raw output
+reaches the prompt. It stores the raw output in the `ArtifactStore`,
+replaces the prompt-facing text with a compact summary, and prevents
+large tool outputs from consuming the entire token budget. In practice:
 
 1. Stores the raw output in the `ArtifactStore`.
 2. Generates a compact summary using the `Summarizer`.
