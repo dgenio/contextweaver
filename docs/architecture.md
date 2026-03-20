@@ -8,9 +8,10 @@ the "context window problem" for tool-using AI agents.
 ```
                ┌────────────────────────────┐
   Events ─────>│      Context Engine         │──> ContextPack (prompt)
-               │  candidates → score →       │
-               │  dedup → select → firewall  │
-               │  → prompt                   │
+               │  candidates → closure →     │
+               │  sensitivity → firewall →   │
+               │  score → dedup → select →   │
+               │  render                     │
                └────────────────────────────┘
                           ▲ facts / episodes
                ┌──────────┴─────────────────┐
