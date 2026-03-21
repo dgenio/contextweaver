@@ -40,6 +40,20 @@ Windows PowerShell:
 .venv\Scripts\Activate.ps1
 ```
 
+If you see an error like `running scripts is disabled on this system`, either:
+
+- run the activation script from **Command Prompt (cmd.exe)** instead:
+
+  ```cmd
+  .venv\Scripts\activate.bat
+  ```
+
+- or relax the execution policy for your current user in **PowerShell** (recommended only on machines you control):
+
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+
 ## 2. Install (30 seconds)
 
 Install from PyPI:
@@ -188,9 +202,9 @@ Artifacts stored: 1
 
 What just happened:
 
-- The tool result was large enough to trigger the firewall during context build.
+- The tool result was processed by the firewall during context build (all `tool_result` items go through it by default).
 - `contextweaver` stored the raw result in the artifact store.
-- The prompt kept a compact summary plus an artifact reference instead of the full payload.
+- The prompt kept only a compact summary plus an artifact reference instead of the full payload.
 
 ## 5. Try Tool Routing (2 minutes)
 
