@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 10-minute quickstart guide with three runnable onboarding examples in `docs/quickstart.md`
 
 ### Changed
-- README now links to the dedicated quickstart guide and fixes the context pipeline count to eight stages
+- README now links to the dedicated quickstart guide
 
 ## [0.1.6] - 2026-03-10
 
