@@ -98,6 +98,11 @@ cd contextweaver
 pip install -e ".[dev]"
 ```
 
+## 10-Minute Quickstart
+
+For a guided setup with prerequisites, three runnable examples, expected output,
+and next steps, see [docs/quickstart.md](docs/quickstart.md).
+
 ### Minimal agent loop
 
 ```python
