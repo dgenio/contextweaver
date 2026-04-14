@@ -25,6 +25,7 @@ At each step the agent must answer four questions:
 100 tool schemas (≈50k tokens) + 50 turns (≈30k tokens) = 80k tokens
 Cost: $0.48/request at GPT-4o rates  ·  Latency: 3–5s TTFT
 Quality: LLM loses focus — needle-in-haystack accuracy drops with context size
+Token limit: 8k → 10× overflow
 ```
 
 **Naive approach B — cherry-pick manually:**
@@ -226,6 +227,7 @@ contextweaver replay --session session.json --phase answer
 | `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
 | `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
 | `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
+| `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 
 ```bash
 make example   # run all examples

@@ -37,6 +37,9 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
 ]
+langchain = [
+    "langchain-core>=0.3",
+]
 
 [project.scripts]
 contextweaver = "contextweaver.__main__:main"
