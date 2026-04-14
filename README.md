@@ -138,6 +138,20 @@ result = router.route("send a reminder email about unpaid invoices")
 print(result.candidate_ids)
 ```
 
+## Runtime Loop (4 Phases)
+
+For a complete route -> call -> interpret -> answer reference flow, see:
+
+- `examples/full_agent_loop.py` for a runnable end-to-end script.
+- `docs/guide_agent_loop.md` for the flow diagram, pseudo-code, and module map.
+
+The runtime loop example demonstrates:
+
+1. Route-phase prompt assembly with ChoiceCards.
+2. Call-phase prompt assembly with selected tool schema hydration.
+3. Interpret-phase firewall behavior (large tool output summarized into context).
+4. Answer-phase context composition with accumulated history and result envelopes.
+
 ---
 
 ## Framework Integrations
@@ -201,6 +215,7 @@ contextweaver replay --session session.json --phase answer
 | Script | Description |
 |---|---|
 | `minimal_loop.py` | Basic event ingestion → context build |
+| `full_agent_loop.py` | End-to-end route → call → interpret → answer runtime loop |
 | `tool_wrapping.py` | Context firewall in action |
 | `routing_demo.py` | Build catalog → route queries → choice cards |
 | `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
