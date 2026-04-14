@@ -8,6 +8,9 @@
 
 ## The Problem
 
+Even with 200K-token context windows, dumping everything into the prompt is expensive,
+slow, and degrades output quality. More context ≠ better answers.
+
 Imagine a tool-using agent with a 100-tool catalog and a 50-turn conversation history.
 At each step the agent must answer four questions:
 
@@ -20,7 +23,8 @@ At each step the agent must answer four questions:
 
 ```
 100 tool schemas (≈50k tokens) + 50 turns (≈30k tokens) = 80k tokens
-Token limit: 8k → 10× overflow
+Cost: $0.48/request at GPT-4o rates  ·  Latency: 3–5s TTFT
+Quality: LLM loses focus — needle-in-haystack accuracy drops with context size
 ```
 
 **Naive approach B — cherry-pick manually:**
@@ -36,6 +40,7 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
+Cost:         70% lower  ·  Latency: sub-second  ·  Quality: relevant context only
 ```
 
 See [`examples/before_after.py`](examples/before_after.py) for a runnable side-by-side comparison.
