@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make example` now runs `examples/full_agent_loop.py`
 - `_pick_tool()` in `examples/full_agent_loop.py` now guards against empty router results (raises `ValueError`) and prefers `analytics.metrics.query` for internal consistency with the hardcoded tool-call text (#169 review)
 - `docs/guide_agent_loop.md` table separator uses explicit spaces (`| --- |`) for robust rendering across Markdown parsers (#169 review)
+- `_pick_tool()` simplified: removed false `analytics.metrics.query` guarantee; tool-call text now generated dynamically from the selected tool's hydrated schema (#169 review)
+- `catalog.hydrate()` used instead of `catalog.get()` for post-routing schema access in `examples/full_agent_loop.py` (#169 review)
+- `_simulate_large_result()` made generic (no analytics-specific field names) (#169 review)
 
 ## [0.1.7] - 2026-03-21
 

@@ -102,11 +102,19 @@ def _build_catalog() -> Catalog:
 
 
 def _pick_tool(route_ids: list[str], catalog: Catalog) -> str:
-    """Simulate model selection: prefer analytics.metrics.query, then any tool with a schema.
+    """Simulate model selection: pick the first routed tool with an explicit schema.
 
-    Preferring the intended analytics tool ensures that the tool-call text and
-    simulated result ingested later remain internally consistent with the selected
-    tool's schema (the user query concerns daily-active-user trends).
+    This function acts as a deterministic stand-in for an LLM's tool-selection step.
+    It returns the first candidate (in routing-rank order) that carries a full argument
+    schema, so the call-phase prompt can demonstrate schema hydration.  If no candidate
+    has a schema, it falls back to the top-ranked candidate.
+
+    Args:
+        route_ids: Ordered list of candidate tool IDs from the router.
+        catalog: The catalog used to look up item schemas.
+
+    Returns:
+        The selected tool ID.
 
     Raises:
         ValueError: If the router returned no candidate tools.
@@ -115,10 +123,6 @@ def _pick_tool(route_ids: list[str], catalog: Catalog) -> str:
         raise ValueError(
             "Router returned no candidates. Ensure the catalog contains reachable items."
         )
-    # Prefer the intended analytics tool — the query is about DAU trends.
-    if "analytics.metrics.query" in route_ids:
-        return "analytics.metrics.query"
-    # Fall back to the first routed tool that carries an explicit schema.
     for item_id in route_ids:
         if catalog.get(item_id).args_schema:
             return item_id
@@ -126,13 +130,16 @@ def _pick_tool(route_ids: list[str], catalog: Catalog) -> str:
 
 
 def _simulate_large_result(tool_id: str) -> str:
-    """Build a large deterministic JSON payload to trigger firewall summarization."""
+    """Build a large deterministic JSON payload to trigger firewall summarization.
+
+    The payload is generic (not tool-specific) so it remains valid regardless of
+    which tool _pick_tool() selects.
+    """
     rows = []
     for idx in range(1, 101):
         rows.append(
             {
-                "day": f"2026-03-{idx % 30 + 1:02d}",
-                "metric": "daily_active_users",
+                "record_id": idx,
                 "value": 1500 + idx,
                 "tool": tool_id,
             }
@@ -141,7 +148,7 @@ def _simulate_large_result(tool_id: str) -> str:
         "status": "ok",
         "rows": rows,
         "summary": {
-            "window_days": 30,
+            "count": len(rows),
             "max": max(row["value"] for row in rows),
             "min": min(row["value"] for row in rows),
         },
@@ -188,7 +195,9 @@ def main() -> None:
     print(f"routed_candidates: {route_result.candidate_ids}")
 
     selected_tool_id = _pick_tool(route_result.candidate_ids, catalog)
-    selected = catalog.get(selected_tool_id)
+    # Hydrate the selected tool — returns full schema/examples/constraints as HydrationResult.
+    # catalog.hydrate() is the idiomatic post-routing call before building the call-phase prompt.
+    hydrated = catalog.hydrate(selected_tool_id)
     print(f"model_selected_tool_id: {selected_tool_id}")
 
     manager.ingest(
@@ -199,15 +208,16 @@ def main() -> None:
             parent_id="u1",
         )
     )
-    # _pick_tool() guarantees analytics.metrics.query for this DAU query, so the
-    # hardcoded args below are internally consistent with the selected tool's schema.
+    # Build a call text that is internally consistent with the selected tool's schema.
+    # Arguments are derived from the hydrated schema so the call-phase prompt is always valid.
+    props = hydrated.args_schema.get("properties", {})
+    required_keys = hydrated.args_schema.get("required") or list(props.keys())
+    call_args = ", ".join(f"{k}=..." for k in (required_keys or list(props.keys()))[:3])
     manager.ingest(
         ContextItem(
             id="tc1",
             kind=ItemKind.tool_call,
-            text=(
-                f"{selected_tool_id}(metric='daily_active_users', window_days=30, group_by='day')"
-            ),
+            text=f"{selected_tool_id}({call_args})",
             parent_id="u1",
         )
     )
@@ -228,7 +238,7 @@ def main() -> None:
         stats_hf_tokens=call_pack.stats.header_footer_tokens,
         stats_tokens_per_section=call_pack.stats.tokens_per_section,
     )
-    print(f"selected_schema_keys: {sorted(selected.args_schema.get('properties', {}).keys())}")
+    print(f"selected_schema_keys: {sorted(hydrated.args_schema.get('properties', {}).keys())}")
 
     # Execute (simulated): create a large tool result that exceeds firewall threshold.
     large_result = _simulate_large_result(selected_tool_id)
