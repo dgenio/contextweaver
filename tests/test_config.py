@@ -29,7 +29,6 @@ def test_scoring_config_defaults() -> None:
 def test_context_policy_defaults() -> None:
     policy = ContextPolicy()
     assert ItemKind.user_turn in policy.allowed_kinds_per_phase[Phase.route]
-    assert policy.ttl_behavior == "drop"
 
 
 def test_context_policy_max_items_per_kind() -> None:

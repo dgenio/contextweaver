@@ -98,8 +98,6 @@ class ContextPolicy:
             permitted in that phase.
         max_items_per_kind: Maximum number of items per :class:`~contextweaver.types.ItemKind`
             included in a single context build.
-        ttl_behavior: How to handle items that have exceeded their TTL.
-            ``"drop"`` removes them; ``"warn"`` keeps them but fires a hook.
         sensitivity_floor: Items at or above this sensitivity level are
             dropped or redacted (depending on ``sensitivity_action``).
         sensitivity_action: ``"drop"`` (default) removes items at or above
@@ -116,7 +114,6 @@ class ContextPolicy:
     max_items_per_kind: dict[ItemKind, int] = field(
         default_factory=lambda: {k: 50 for k in ItemKind}
     )
-    ttl_behavior: str = "drop"
     sensitivity_floor: Sensitivity = Sensitivity.confidential
     sensitivity_action: str = "drop"
     redaction_hooks: list[str] = field(default_factory=list)
