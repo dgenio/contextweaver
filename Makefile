@@ -14,6 +14,7 @@ test:
 
 example:
 	python examples/minimal_loop.py
+	python examples/full_agent_loop.py
 	python examples/tool_wrapping.py
 	python examples/routing_demo.py
 	python examples/before_after.py

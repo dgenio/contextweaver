@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
+- Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
+
+### Changed
+- README now includes a "Runtime Loop (4 Phases)" section and references the new example/guide
+- `make example` now runs `examples/full_agent_loop.py`
+
 ## [0.1.7] - 2026-03-21
 
 ### Added
