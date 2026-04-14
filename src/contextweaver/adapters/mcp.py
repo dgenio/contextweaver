@@ -67,6 +67,14 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     - ``annotations`` (optional dict with ``title``, ``readOnlyHint``,
       ``destructiveHint``, ``costHint``, etc.)
 
+    .. warning::
+        MCP annotations (``readOnlyHint``, ``destructiveHint``, ``costHint``)
+        are **server-declared hints**, not verified security properties.  Do not
+        make access-control or safety-critical decisions based solely on these
+        values.  The MCP specification explicitly states that clients should not
+        make security-critical decisions based on annotations.  Use
+        :class:`CapabilityToken` for authorization.
+
     Args:
         tool_def: Raw MCP tool definition as returned by ``tools/list``.
 
@@ -95,6 +103,12 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
         dict(output_schema_raw) if output_schema_raw is not None else None
     )
 
+    # SECURITY NOTE: The annotation fields below (readOnlyHint, destructiveHint,
+    # costHint) are server-declared hints only.  They are mapped to informational
+    # routing fields (tags, side_effects, cost_hint) for UX purposes.  Do NOT
+    # use these values for access-control or safety-critical decisions — a
+    # malicious or misconfigured server can declare any hint value.  See the MCP
+    # specification: https://modelcontextprotocol.io/legacy/concepts/tools
     # Derive tags from annotation hints
     tags: list[str] = ["mcp"]
     if annotations.get("readOnlyHint", False):

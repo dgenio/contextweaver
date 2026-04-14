@@ -171,3 +171,40 @@ print(pack.prompt)
 ```
 
 See `examples/mcp_adapter_demo.py` for the full runnable demo.
+
+## Security Considerations
+
+### MCP annotations are untrusted hints
+
+MCP tool annotations — `readOnlyHint`, `destructiveHint`, `costHint` — are
+**server-declared metadata**, not verified security properties.  The
+[MCP specification](https://modelcontextprotocol.io/legacy/concepts/tools)
+explicitly states:
+
+> _"Clients SHOULD NOT make security-critical decisions based solely on tool
+> annotations. Annotations are informational metadata, not security controls."_
+
+contextweaver maps these hints to informational fields on `SelectableItem`:
+
+| Annotation       | Field mapped to             | Purpose               |
+|------------------|-----------------------------|-----------------------|
+| `readOnlyHint`   | `side_effects=False`, tag `"read-only"` | Routing UX display |
+| `destructiveHint`| tag `"destructive"`         | Routing UX display    |
+| `costHint`       | `cost_hint` (float)         | Routing cost scoring  |
+
+### `side_effects` is informational only
+
+`item.side_effects = False` (derived from `readOnlyHint=True`) means the
+**server advertised** the tool as read-only.  It does **not** guarantee the
+tool has no side effects.  A malicious or misconfigured MCP server could
+declare `readOnlyHint: True` on a destructive tool; contextweaver would
+faithfully tag it `"read-only"` with `side_effects=False`.
+
+**Do not build access-control or safety-gate logic on these fields.**
+
+### Recommended: use CapabilityToken for authorization
+
+For actual access control, use `CapabilityToken` (see
+[issue #20](https://github.com/dgenio/contextweaver/issues/20)) rather than
+relying on server-declared annotation hints.  CapabilityTokens are verified
+by your own policy layer, not by the remote MCP server.
