@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci
+.PHONY: fmt lint type test example demo ci docs docs-serve
 
 fmt:
 	ruff format src/ tests/ examples/
@@ -25,5 +25,11 @@ example:
 
 demo:
 	python -m contextweaver demo
+
+docs:
+	mkdocs build --clean
+
+docs-serve:
+	mkdocs serve
 
 ci: fmt lint type test example demo

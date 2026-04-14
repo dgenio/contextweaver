@@ -1,0 +1,79 @@
+site_name: contextweaver
+site_url: https://dgenio.github.io/contextweaver
+site_description: >-
+  Phase-specific, budget-aware context compilation for tool-using AI agents.
+  Zero runtime dependencies. Python ≥ 3.10.
+
+repo_url: https://github.com/dgenio/contextweaver
+repo_name: dgenio/contextweaver
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            unwrap_annotated: true
+            filters:
+              - "!^_"
+            merge_init_into_class: true
+            show_if_no_docstring: false
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Concepts: concepts.md
+  - Guides:
+      - Runtime Loop: guide_agent_loop.md
+      - MCP Integration: integration_mcp.md
+      - A2A Integration: integration_a2a.md
+  - Architecture: architecture.md
+  - API Reference: reference/
+
+exclude_docs: |
+  agent-context/*
+  gen_ref_pages.py
+
+not_in_nav: |
+  agent-context/*
+  gen_ref_pages.py

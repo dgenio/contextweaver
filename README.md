@@ -4,6 +4,8 @@
 
 **500+ tests passing · zero runtime dependencies · deterministic output · Python ≥ 3.10**
 
+[📖 Documentation](https://dgenio.github.io/contextweaver)
+
 ---
 
 ## The Problem

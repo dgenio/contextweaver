@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Auto-generated API reference documentation site using MkDocs + Material + mkdocstrings (#110)
+  - `mkdocs.yml` — site configuration with Material theme, auto-nav, and mkdocstrings
+  - `docs/gen_ref_pages.py` — build-time script that walks `src/contextweaver` and emits one reference page per public module; new modules are picked up automatically
+  - `docs/index.md` — public landing page for the docs site
+  - `[docs]` extras group in `pyproject.toml` (`mkdocs`, `mkdocs-material`, `mkdocstrings[python]`, `mkdocs-gen-files`, `mkdocs-literate-nav`, `mkdocs-section-index`)
+  - `make docs` builds the site; `make docs-serve` starts a local preview server
+  - `.github/workflows/docs.yml` — publishes to GitHub Pages on every push to `main`
+  - README now links to `https://dgenio.github.io/contextweaver`
 - End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
 - Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
 - LangChain memory replacement example in `examples/langchain_memory_demo.py` (#170) — demonstrates replacing `InMemoryChatMessageHistory` with phase-specific budgets and the context firewall using a deterministic mock LLM and real `langchain-core` objects
