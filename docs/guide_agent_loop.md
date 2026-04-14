@@ -66,7 +66,7 @@ answer_pack = manager.build_sync(phase=Phase.answer, query=final_query)
 ## When To Use Each Phase
 
 | Phase | Primary goal | Typical contents | Budget posture |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `route` | Choose tools | user intent, policy, compact cards | small |
 | `call` | Generate arguments | selected tool schema, examples, constraints | medium |
 | `interpret` | Understand result | tool call + summarized result + extracted facts | medium |

@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - README now includes a "Runtime Loop (4 Phases)" section and references the new example/guide
 - `make example` now runs `examples/full_agent_loop.py`
+- `_pick_tool()` in `examples/full_agent_loop.py` now guards against empty router results (raises `ValueError`) and prefers `analytics.metrics.query` for internal consistency with the hardcoded tool-call text (#169 review)
+- `docs/guide_agent_loop.md` table separator uses explicit spaces (`| --- |`) for robust rendering across Markdown parsers (#169 review)
 
 ## [0.1.7] - 2026-03-21
 

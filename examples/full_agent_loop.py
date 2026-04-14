@@ -102,7 +102,23 @@ def _build_catalog() -> Catalog:
 
 
 def _pick_tool(route_ids: list[str], catalog: Catalog) -> str:
-    """Simulate model selection by choosing the first routed tool with a schema."""
+    """Simulate model selection: prefer analytics.metrics.query, then any tool with a schema.
+
+    Preferring the intended analytics tool ensures that the tool-call text and
+    simulated result ingested later remain internally consistent with the selected
+    tool's schema (the user query concerns daily-active-user trends).
+
+    Raises:
+        ValueError: If the router returned no candidate tools.
+    """
+    if not route_ids:
+        raise ValueError(
+            "Router returned no candidates. Ensure the catalog contains reachable items."
+        )
+    # Prefer the intended analytics tool — the query is about DAU trends.
+    if "analytics.metrics.query" in route_ids:
+        return "analytics.metrics.query"
+    # Fall back to the first routed tool that carries an explicit schema.
     for item_id in route_ids:
         if catalog.get(item_id).args_schema:
             return item_id
@@ -183,6 +199,8 @@ def main() -> None:
             parent_id="u1",
         )
     )
+    # _pick_tool() guarantees analytics.metrics.query for this DAU query, so the
+    # hardcoded args below are internally consistent with the selected tool's schema.
     manager.ingest(
         ContextItem(
             id="tc1",
