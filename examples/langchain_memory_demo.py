@@ -22,8 +22,13 @@ Or via the project test suite::
 
 from __future__ import annotations
 
-from langchain_core.chat_history import InMemoryChatMessageHistory
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+try:
+    from langchain_core.chat_history import InMemoryChatMessageHistory
+    from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+
+    _LANGCHAIN_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _LANGCHAIN_AVAILABLE = False
 
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
@@ -31,7 +36,7 @@ from contextweaver.protocols import CharDivFourEstimator
 from contextweaver.types import ContextItem, ItemKind, Phase
 
 # Large database result — triggers the context firewall (> 200 chars).
-# Ten users + query stats keeps this realistic and exercies the 500-char
+# Six users + query stats keeps this realistic and exercises the 500-char
 # summary truncation in _default_summary.
 LARGE_DB_RESULT = (
     '{"users": ['
@@ -52,21 +57,9 @@ LARGE_DB_RESULT = (
     ' "last_login": "2026-04-13T11:00:00Z", "projects": ["infra"]},'
     '{"id": 6, "name": "Frank Lee", "email": "frank@example.com",'
     ' "department": "HR", "active": true, "role": "user",'
-    ' "last_login": "2026-04-08T10:15:00Z", "projects": []},'
-    '{"id": 7, "name": "Grace Kim", "email": "grace@example.com",'
-    ' "department": "Engineering", "active": true, "role": "manager",'
-    ' "last_login": "2026-04-14T07:30:00Z", "projects": ["platform", "ml"]},'
-    '{"id": 8, "name": "Henry Wang", "email": "henry@example.com",'
-    ' "department": "Marketing", "active": true, "role": "user",'
-    ' "last_login": "2026-04-10T13:00:00Z", "projects": ["seo"]},'
-    '{"id": 9, "name": "Iris Chen", "email": "iris@example.com",'
-    ' "department": "Sales", "active": true, "role": "manager",'
-    ' "last_login": "2026-04-12T09:20:00Z", "projects": ["enterprise"]},'
-    '{"id": 10, "name": "Jack Park", "email": "jack@example.com",'
-    ' "department": "Engineering", "active": true, "role": "user",'
-    ' "last_login": "2026-04-11T10:00:00Z", "projects": ["api"]}'
-    '], "total": 10, "query": "SELECT * FROM users WHERE active = true",'
-    ' "query_stats": {"rows_scanned": 10, "execution_time_ms": 89,'
+    ' "last_login": "2026-04-08T10:15:00Z", "projects": []}'
+    '], "total": 6, "query": "SELECT * FROM users WHERE active = true",'
+    ' "query_stats": {"rows_scanned": 6, "execution_time_ms": 89,'
     ' "index_used": "idx_users_active", "cache_hit": false}}'
 )
 
@@ -233,6 +226,12 @@ def with_contextweaver() -> tuple[dict[str, int], int, int, int]:
 
 def main() -> None:
     """Print a side-by-side comparison of naive LangChain memory vs contextweaver."""
+    if not _LANGCHAIN_AVAILABLE:  # pragma: no cover
+        print(
+            "langchain-core is not installed — skipping demo.\n"
+            "Install with:  pip install -e '.[langchain]'"
+        )
+        return
     print("=" * 70)
     print("contextweaver — LangChain Memory Replacement Demo")
     print("Replacing InMemoryChatMessageHistory with phase-specific budgets")
