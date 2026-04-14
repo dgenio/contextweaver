@@ -10,7 +10,7 @@ import json
 import logging
 from typing import Any
 
-from contextweaver.exceptions import ArtifactNotFoundError
+from contextweaver.exceptions import ArtifactNotFoundError, ContextWeaverError
 from contextweaver.types import ArtifactRef
 
 logger = logging.getLogger("contextweaver.store")
@@ -152,7 +152,7 @@ class InMemoryArtifactStore:
 
         Raises:
             ArtifactNotFoundError: If *handle* is not in the store.
-            ValueError: If the selector type is unknown.
+            ContextWeaverError: If the selector type is unknown.
         """
         raw = self.get(handle).decode("utf-8", errors="replace")
         sel_type = selector.get("type", "")
@@ -185,7 +185,7 @@ class InMemoryArtifactStore:
             end = selector.get("end", len(lines))
             return "\n".join(lines[start:end])
 
-        raise ValueError(f"Unknown drilldown selector type: {sel_type!r}")
+        raise ContextWeaverError(f"Unknown drilldown selector type: {sel_type!r}")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the store's metadata index to a JSON-compatible dict."""

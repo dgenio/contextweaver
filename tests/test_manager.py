@@ -7,7 +7,7 @@ import json
 import pytest
 
 from contextweaver.context.manager import ContextManager
-from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.exceptions import ContextWeaverError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
@@ -843,7 +843,7 @@ def test_drilldown_unknown_selector_raises() -> None:
         firewall_threshold=5,
     )
     handle = env.artifacts[0].handle
-    with pytest.raises(ValueError, match="Unknown drilldown"):
+    with pytest.raises(ContextWeaverError, match="Unknown drilldown"):
         mgr.drilldown(handle, {"type": "unknown_type"})
 
 
