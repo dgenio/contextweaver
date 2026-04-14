@@ -36,7 +36,7 @@ jobs:
         run: mypy src/
 
       - name: Test
-        run: pytest -q
+        run: pytest --cov=contextweaver --cov-report=term-missing -q
 
       - name: Examples
         run: make example

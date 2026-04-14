@@ -10,7 +10,7 @@ type:
 	mypy src/
 
 test:
-	pytest -q
+	pytest --cov=contextweaver --cov-report=term-missing -q
 
 example:
 	python examples/minimal_loop.py
