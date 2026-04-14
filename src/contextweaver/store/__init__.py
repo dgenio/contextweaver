@@ -37,6 +37,28 @@ class StoreBundle:
             "fact_store": self.fact_store.to_dict() if self.fact_store else None,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> StoreBundle:
+        """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`."""
+        raw_artifact = data.get("artifact_store")
+        raw_event_log = data.get("event_log")
+        raw_episodic = data.get("episodic_store")
+        raw_fact = data.get("fact_store")
+        return cls(
+            artifact_store=InMemoryArtifactStore.from_dict(raw_artifact)
+            if raw_artifact is not None
+            else None,
+            event_log=InMemoryEventLog.from_dict(raw_event_log)
+            if raw_event_log is not None
+            else None,
+            episodic_store=InMemoryEpisodicStore.from_dict(raw_episodic)
+            if raw_episodic is not None
+            else None,
+            fact_store=InMemoryFactStore.from_dict(raw_fact)
+            if raw_fact is not None
+            else None,
+        )
+
 
 __all__ = [
     "InMemoryArtifactStore",
