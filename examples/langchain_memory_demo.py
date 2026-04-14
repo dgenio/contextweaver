@@ -249,13 +249,19 @@ def main() -> None:
         print(f"  {phase_name:<12} {tok:>6,} tokens{note}")
 
     # WITH
+    # Route/call phases may exceed the naive count: contextweaver compiles a richer,
+    # phase-specific context (tool schemas, agent decisions, dependency closure).
+    # The reduction is most pronounced at interpret/answer where the large tool
+    # result dominates — that is the intended headline.
     phase_budgets = {"route": 300, "call": 600, "interpret": 500, "answer": 1500}
     print("\nWITH contextweaver  (phase-specific budgets + context firewall)")
     print("─" * 60)
     for phase_name, tok in with_tokens.items():
         cap = phase_budgets[phase_name]
         status = "within budget" if tok <= cap else "over budget"
-        print(f"  {phase_name:<12} {tok:>6,} tokens  (limit: {cap:,})  [{status}]")
+        naive = without_tokens[phase_name]
+        note = "  ← richer prompt (tool schema + context items)" if tok > naive else ""
+        print(f"  {phase_name:<12} {tok:>6,} tokens  (limit: {cap:,})  [{status}]{note}")
 
     # BuildStats (answer phase)
     # dep. closures = 0 is expected here: all parent items are naturally in the
