@@ -1,0 +1,1101 @@
+# contextweaver — Full Documentation
+
+> Dynamic context management for tool-using AI agents.
+
+---
+
+<!-- FILE: README.md -->
+
+# contextweaver
+
+> Phase-specific, budget-aware context compilation for tool-using AI agents.
+
+**500+ tests passing · zero runtime dependencies · deterministic output · Python ≥ 3.10**
+
+---
+
+## The Problem
+
+Imagine a tool-using agent with a 100-tool catalog and a 50-turn conversation history.
+At each step the agent must answer four questions:
+
+1. **Route** — which tool should I call?
+2. **Call** — what arguments?
+3. **Interpret** — what did it return?
+4. **Answer** — how do I respond to the user?
+
+**Naive approach A — concatenate everything:**
+
+```
+100 tool schemas (≈50k tokens) + 50 turns (≈30k tokens) = 80k tokens
+Token limit: 8k → 10× overflow
+```
+
+**Naive approach B — cherry-pick manually:**
+
+```
+Pick 10 tools, last 5 turns → lose dependency chains
+Agent hallucinates tool calls, repeats questions, forgets context
+```
+
+**contextweaver approach — phase-specific budgeted compilation:**
+
+```
+Route phase:  5 tool cards (≈500 tokens), no full schemas
+Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
+Result:       2.5k tokens, complete context, deterministic
+```
+
+See [`examples/before_after.py`](examples/before_after.py) for a runnable side-by-side comparison.
+
+---
+
+## How contextweaver Solves It
+
+contextweaver provides two cooperating engines:
+
+```
+                ┌────────────────────────────┐
+  Events ──────>│      Context Engine         │──> ContextPack (prompt)
+                │  candidates → closure →     │
+                │  sensitivity → firewall →   │
+                │  score → dedup → select →   │
+                │  render                     │
+                └────────────────────────────┘
+                           ▲ facts / episodes
+                ┌──────────┴─────────────────┐
+  Tools ───────>│      Routing Engine         │──> ChoiceCards
+                │  Catalog → TreeBuilder →    │
+                │  ChoiceGraph → Router       │
+                └────────────────────────────┘
+```
+
+**Context Engine** — eight-stage pipeline:
+
+1. **generate_candidates** — pull phase-relevant events from the log for this request.
+2. **dependency_closure** — if a selected item has a `parent_id`, include the parent automatically.
+3. **sensitivity_filter** — drop or redact items at or above the configured sensitivity floor.
+4. **apply_firewall** — tool results are stored out-of-band; large outputs are summarized/truncated before prompt assembly.
+5. **score_candidates** — rank by recency, tag match, kind priority, and token cost.
+6. **deduplicate_candidates** — remove near-duplicates using Jaccard similarity.
+7. **select_and_pack** — greedily pack highest-scoring items into the phase token budget.
+8. **render_context** — assemble final prompt string with `BuildStats` metadata.
+
+**Routing Engine** — four-stage pipeline:
+
+1. **Catalog** — register and manage `SelectableItem` objects.
+2. **TreeBuilder** — convert a flat catalog into a bounded `ChoiceGraph` DAG.
+3. **Router** — beam-search over the graph; deterministic tie-breaking by ID.
+4. **ChoiceCards** — compact, LLM-friendly cards (never includes full schemas).
+
+---
+
+## Quickstart
+
+### Install
+
+```bash
+pip install contextweaver
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/dgenio/contextweaver.git
+cd contextweaver
+pip install -e ".[dev]"
+```
+
+## 10-Minute Quickstart
+
+For a guided setup with prerequisites, three runnable examples, expected output,
+and next steps, see [docs/quickstart.md](docs/quickstart.md).
+
+### Minimal agent loop
+
+```python
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ContextItem, ItemKind, Phase
+
+mgr = ContextManager()
+mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="How many users?"))
+mgr.ingest(ContextItem(id="tc1", kind=ItemKind.tool_call,
+                       text="db_query('SELECT COUNT(*) FROM users')", parent_id="u1"))
+mgr.ingest(ContextItem(id="tr1", kind=ItemKind.tool_result,
+                       text="count: 1042", parent_id="tc1"))
+
+pack = mgr.build_sync(phase=Phase.answer, query="user count")
+print(pack.prompt)   # budget-aware compiled context
+print(pack.stats)    # what was kept, dropped, deduplicated
+```
+
+### Route a large tool catalog
+
+```python
+from contextweaver.routing.catalog import Catalog, load_catalog_json
+from contextweaver.routing.tree import TreeBuilder
+from contextweaver.routing.router import Router
+
+catalog = Catalog()
+for item in load_catalog_json("catalog.json"):
+    catalog.register(item)
+
+graph = TreeBuilder(max_children=10).build(catalog.all())
+router = Router(graph, items=catalog.all(), beam_width=3, top_k=5)
+result = router.route("send a reminder email about unpaid invoices")
+print(result.candidate_ids)
+```
+
+---
+
+## Framework Integrations
+
+| Framework | Guide | Use Case |
+|---|---|---|
+| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
+| A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
+| LlamaIndex | Guide (coming soon) | RAG + tools with budget control |
+| OpenAI Agents SDK | Guide (coming soon) | Function-calling agents with routing |
+| Google ADK | Guide (coming soon) | Gemini tool-use with context budgets |
+| LangChain / LangGraph | Guide (coming soon) | Chain + graph agents with firewall |
+
+---
+
+## Why Trust contextweaver?
+
+| Proof point | Detail |
+|---|---|
+| **500+ tests passing** | Context pipeline, routing engine, firewall, adapters, CLI, sensitivity enforcement |
+| **Zero runtime dependencies** | Stdlib-only, Python ≥ 3.10. Works with any LLM provider. No vendor lock-in. |
+| **Deterministic** | Tie-break by ID, sorted keys. Identical inputs always produce identical outputs. |
+| **Protocol-based stores** | `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` are `typing.Protocol` interfaces — swap any backend. |
+| **MCP + A2A adapters** | First-class support for both emerging agentic standards. |
+| **`BuildStats` transparency** | Every context build reports exactly what was kept, dropped, deduplicated, and why. |
+
+---
+
+## Core Concepts
+
+| Concept | Description |
+|---|---|
+| `ContextItem` | Atomic event log entry: user turn, agent message, tool call, tool result, fact, plan state. |
+| `Phase` | `route` / `call` / `interpret` / `answer` — each with its own token budget. |
+| `ContextFirewall` | Intercepts tool results: stores raw bytes out-of-band, injects compact summary (with truncation for large outputs). |
+| `ChoiceGraph` | Bounded DAG over the tool catalog. Router beam-searches it; LLM sees only a focused shortlist. |
+| `ResultEnvelope` | Structured tool output: summary + extracted facts + artifact handles + views. |
+| `BuildStats` | Per-build diagnostics: candidate count, included/dropped counts, token usage, drop reasons. |
+
+See [`docs/concepts.md`](docs/concepts.md) for the full glossary and
+[`docs/architecture.md`](docs/architecture.md) for pipeline detail and design rationale.
+
+---
+
+## CLI
+
+contextweaver ships with a CLI for quick experimentation:
+
+```bash
+contextweaver demo                                    # end-to-end demonstration
+contextweaver init                                    # scaffold config + sample catalog
+contextweaver build --catalog c.json --out g.json    # build routing graph
+contextweaver route --graph g.json --query "send email"
+contextweaver print-tree --graph g.json
+contextweaver ingest --events session.jsonl --out session.json
+contextweaver replay --session session.json --phase answer
+```
+
+## Examples
+
+| Script | Description |
+|---|---|
+| `minimal_loop.py` | Basic event ingestion → context build |
+| `tool_wrapping.py` | Context firewall in action |
+| `routing_demo.py` | Build catalog → route queries → choice cards |
+| `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
+| `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
+| `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
+
+```bash
+make example   # run all examples
+```
+
+---
+
+## Development
+
+```bash
+make fmt      # format (ruff)
+make lint     # lint (ruff)
+make type     # type-check (mypy)
+make test     # run tests (pytest)
+make example  # run all examples
+make demo     # run the built-in demo
+make ci       # all of the above
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
+
+---
+
+## Roadmap
+
+| Milestone | Status | Highlights |
+|---|---|---|
+| **v0.1 — Foundation** | ✅ complete | Context Engine, Routing Engine, MCP + A2A adapters, CLI, sensitivity enforcement, logging |
+| **v0.2 — Integrations** | 🚧 in progress | Framework integration guides (LlamaIndex, OpenAI Agents SDK, Google ADK, LangChain) |
+| **v0.3 — Tooling** | 📋 planned | DAG visualization, merge compression, LLM-assisted labeler |
+| **Future** | 📋 planned | Context versioning, distributed stores, multi-agent coordination |
+
+See [CHANGELOG.md](CHANGELOG.md) for the detailed release history.
+
+---
+
+## License
+
+Apache-2.0
+
+---
+
+<!-- FILE: docs/architecture.md -->
+
+# Architecture
+
+contextweaver is structured around two cooperating engines that together solve
+the "context window problem" for tool-using AI agents.
+
+## High-level overview
+
+```
+               ┌────────────────────────────┐
+  Events ─────>│      Context Engine         │──> ContextPack (prompt)
+               │  candidates → closure →     │
+               │  sensitivity → firewall →   │
+               │  score → dedup → select →   │
+               │  render                     │
+               └────────────────────────────┘
+                          ▲ facts / episodes
+               ┌──────────┴─────────────────┐
+  Tools ──────>│      Routing Engine         │──> ChoiceCards
+               │  Catalog → TreeBuilder →    │
+               │  ChoiceGraph → Router       │
+               └────────────────────────────┘
+```
+
+## Package layout
+
+| Path | Responsibility |
+|---|---|
+| `types.py` | Core dataclasses and enums (`SelectableItem`, `ContextItem`, `Phase`, `ItemKind`) |
+| `envelope.py` | Result types (`ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`) |
+| `config.py` | Configuration dataclasses (`ContextBudget`, `ContextPolicy`, `ScoringConfig`) |
+| `protocols.py` | Protocol interfaces (`TokenEstimator`, `EventHook`, `Summarizer`, …) |
+| `exceptions.py` | Custom exception hierarchy |
+| `_utils.py` | Text similarity primitives (`tokenize`, `jaccard`, `TfIdfScorer`) |
+| `serde.py` | Serialisation helpers for `to_dict` / `from_dict` patterns |
+| `store/` | In-memory data stores (`EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`) |
+| `summarize/` | Rule engine and structured fact extraction |
+| `context/` | Full context compilation pipeline |
+| `routing/` | Catalog, DAG builder, beam-search router, card renderer |
+| `adapters/` | MCP and A2A protocol adapters |
+| `__main__.py` | CLI entry point (7 subcommands) |
+
+## Context Engine pipeline
+
+The Context Engine compiles a phase-aware, budget-constrained prompt from
+the event log. The pipeline has eight stages:
+
+1. **generate_candidates** — pull phase-relevant events from the event log
+   into the initial candidate pool.
+2. **dependency_closure** — if a selected item has a `parent_id`, bring
+   the parent along even if it scored lower.
+3. **sensitivity_filter** — drop or redact items whose `sensitivity`
+   level meets or exceeds `ContextPolicy.sensitivity_floor`.
+4. **apply_firewall** — tool results are stored out-of-band in the
+   ArtifactStore and replaced with summarized/truncated text for prompt
+   assembly.
+5. **score_candidates** — rank candidates by recency, tag match, kind
+   priority, and token cost.
+6. **deduplicate_candidates** — remove near-duplicate items using Jaccard
+   similarity over tokenised text.
+7. **select_and_pack** — greedily pack the highest-scoring candidates
+   into the token budget for the current phase.
+8. **render_context** — assemble the final prompt string, grouped by
+   section (facts, history, tool results), with `BuildStats` metadata.
+
+## Routing Engine pipeline
+
+The Routing Engine efficiently navigates large tool catalogs so the LLM
+never sees all tools at once:
+
+1. **Catalog** — register and manage `SelectableItem` objects.
+2. **TreeBuilder** — convert a flat item list into a bounded
+   `ChoiceGraph` DAG using namespace grouping, Jaccard clustering, or
+   alphabetical fallback.
+3. **Router** — beam-search over the graph to find the top-k items most
+   relevant to a user query.
+4. **ChoiceCards** — render compact, LLM-friendly cards for the selected
+   items (never includes full schemas).
+
+## Data stores
+
+All stores are protocol-based with in-memory defaults:
+
+- **EventLog** — append-only log of `ContextItem` events.
+- **ArtifactStore** — blob storage for raw tool outputs intercepted by
+  the firewall.
+- **EpisodicStore** — short episodic memory entries (keyed by episode ID).
+- **FactStore** — key-value fact entries persisted across turns.
+- **StoreBundle** — convenience wrapper grouping all four stores.
+
+## Progressive disclosure
+
+`context/views.py` provides a `ViewRegistry` that maps content-type patterns
+to view generators. When the firewall stores a large tool output as an artifact,
+the view system generates alternative representations (JSON subset, CSV summary,
+etc.) the agent can drilldown into without retrieving the full blob.
+`drilldown_tool_spec()` exposes drilldown as an agent-callable tool.
+
+## Design principles
+
+- **Zero runtime dependencies** — stdlib-only, Python ≥ 3.10.
+- **Deterministic** — tie-break by ID, sorted keys.
+- **Protocol-based** — all store and estimator interfaces are
+  `typing.Protocol`, allowing custom implementations.
+- **Async-first** — the Context Engine exposes `build()` (async) with a
+  `build_sync()` wrapper for synchronous callers.
+- **Budget-aware** — every build is constrained by the phase-specific
+  token budget; `BuildStats` explains what was kept and what was dropped.
+
+---
+
+<!-- FILE: docs/concepts.md -->
+
+# Concepts
+
+This document explains the core concepts in contextweaver.
+
+## Context Item
+
+A `ContextItem` is the atomic unit of the event log. Every user turn,
+agent message, tool call, tool result, documentation snippet, memory
+fact, plan state, or policy rule is represented as a `ContextItem`.
+
+Key fields:
+
+| Field | Description |
+|---|---|
+| `id` | Unique identifier |
+| `kind` | One of the `ItemKind` enum values |
+| `text` | The textual content |
+| `parent_id` | Optional link to a parent item (e.g. tool_result → tool_call) |
+| `token_estimate` | Pre-computed token count (optional) |
+| `sensitivity` | Data sensitivity level (`public`, `internal`, `confidential`, `restricted`) |
+| `metadata` | Arbitrary key-value metadata |
+
+## Phases
+
+contextweaver organises agent execution into four phases, each with its
+own token budget:
+
+- **route** — selecting which tool(s) to call.
+- **call** — preparing tool call arguments.
+- **interpret** — understanding tool results.
+- **answer** — composing the final response to the user.
+
+The `ContextBudget` dataclass defines the token limit for each phase.
+Different phases emphasise different item kinds — for example, the
+`answer` phase prioritises user turns and tool results, while the
+`route` phase prioritises tool descriptions.
+
+## Selectable Item (ToolCard)
+
+A `SelectableItem` is the unified representation of anything the Routing
+Engine can select — a tool, agent, skill, or internal function. The type
+alias `ToolCard` is used when emphasising the LLM-facing card framing.
+
+Key fields: `id`, `kind`, `name`, `description`, `tags`, `namespace`,
+`side_effects`, `cost_hint`.
+
+## Context Firewall
+
+The context firewall intercepts `tool_result` items before raw output
+reaches the prompt. It stores the raw output in the `ArtifactStore`,
+replaces the prompt-facing text with a compact summary, and prevents
+large tool outputs from consuming the entire token budget. In practice:
+
+1. Stores the raw output in the `ArtifactStore`.
+2. Generates a compact summary using the `Summarizer`.
+3. Extracts structured facts into the `ResultEnvelope`.
+4. Replaces the original item text with a summary + artifact reference.
+
+## Result Envelope
+
+A `ResultEnvelope` captures the processed output of a tool call:
+
+- `summary` — compact text summary of the result.
+- `facts` — list of extracted factual statements.
+- `artifacts` — list of `ArtifactRef` handles for raw data.
+- `views` — optional alternative representations.
+- `status` — success / error / partial.
+
+## Sensitivity Enforcement
+
+Each `ContextItem` has a `sensitivity` field (default: `public`) that
+classifies its data sensitivity level. The `ContextPolicy.sensitivity_floor`
+setting (default: `confidential`) determines which items are subject to
+filtering during context compilation.
+
+Items whose sensitivity level meets or exceeds the floor are either:
+
+- **Dropped** (`sensitivity_action="drop"`, the default) — removed from
+  the candidate list before scoring or rendering.
+- **Redacted** (`sensitivity_action="redact"`) — text replaced with
+  `[REDACTED: {sensitivity}]` via the `MaskRedactionHook`, while
+  preserving all item metadata.
+
+Dropped items are recorded in `BuildStats.dropped_reasons["sensitivity"]`.
+
+## Build Stats
+
+Every context build produces a `BuildStats` object that explains exactly
+what happened:
+
+- How many candidates were generated.
+- How many were included, dropped, or deduplicated.
+- Token usage per section.
+- Which items were dropped and why.
+- Dependency closures applied.
+
+## Choice Graph
+
+The `ChoiceGraph` is a bounded DAG used by the Routing Engine. Interior
+nodes are labelled navigation points; leaf nodes are items from the
+catalog. The `TreeBuilder` constructs the graph using one of three
+strategies:
+
+1. **Namespace grouping** — items sharing a namespace prefix are grouped.
+2. **Jaccard clustering** — farthest-first seeding + nearest assignment
+   based on text similarity.
+3. **Alphabetical fallback** — sorted by name, split into labelled
+   chunks.
+
+The `Router` performs beam search over this graph, scoring each path
+to find the top-k most relevant items for a given query.
+
+## Choice Cards
+
+A `ChoiceCard` is the LLM-friendly representation of a routing result.
+It contains the item name, description, relevance score, and optional
+side-effect warning — but **never** the full argument schema. This keeps
+the LLM's context focused on *which* tool to use, not *how* to call it.
+
+## Episodic Memory & Facts
+
+contextweaver supports two forms of persistent memory:
+
+- **EpisodicStore** — stores short summaries of past interactions,
+  keyed by episode ID. These are injected into the prompt header.
+- **FactStore** — stores key-value pairs (e.g. `user_timezone=UTC`).
+  Facts are injected into the prompt alongside episodic memory.
+
+Both are capped in the prompt to prevent memory from crowding out the
+current conversation.
+
+## View Registry
+
+The `ViewRegistry` (in `context/views.py`) maps content-type patterns to view
+generators. When the context firewall stores a large tool output as an artifact,
+the view system can generate alternative representations — a JSON subset, a CSV
+summary, or a column listing — that the agent can request via drilldown without
+retrieving the full blob. This progressive-disclosure mechanism keeps the
+context window focused while preserving access to the raw data.
+
+## Hydration Result
+
+A `HydrationResult` (in `envelope.py`) captures the output of hydrating a
+tool call with context. Hydration enriches a tool call's arguments or
+description with context-aware information before execution, and the
+`HydrationResult` carries both the enriched payload and metadata about
+what context was used.
+
+---
+
+<!-- FILE: docs/quickstart.md -->
+
+# 10-Minute Quickstart
+
+This guide gets you to a working context build, a firewall-protected tool result,
+and a routed tool shortlist in under 10 minutes.
+
+Time budget:
+
+- Prerequisites: 30 seconds
+- Install: 30 seconds
+- Your first context build: 3 minutes
+- Try the context firewall: 4 minutes
+- Try tool routing: 2 minutes
+- What to try next: 1 minute
+
+## 1. Prerequisites (30 seconds)
+
+`contextweaver` requires Python 3.10 or newer.
+
+Check your Python version:
+
+```bash
+python --version
+```
+
+Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+```
+
+Linux and macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+If you see an error like `running scripts is disabled on this system`, either:
+
+- run the activation script from **Command Prompt (cmd.exe)** instead:
+
+  ```cmd
+  .venv\Scripts\activate.bat
+  ```
+
+- or relax the execution policy for your current user in **PowerShell** (recommended only on machines you control):
+
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+
+## 2. Install (30 seconds)
+
+Install from PyPI:
+
+```bash
+pip install contextweaver
+```
+
+If you are working from a repository checkout instead, install the package in editable mode:
+
+```bash
+pip install -e ".[dev]"
+```
+
+## 3. Your First Context Build (3 minutes)
+
+Scenario: an agent receives a question, decides to query a database, and builds
+an answer-phase prompt from the conversation history.
+
+Save this as `first_agent.py`:
+
+```python
+"""Your first contextweaver context build."""
+
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ContextItem, ItemKind, Phase
+
+mgr = ContextManager()
+mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="How many active users do we have?"))
+mgr.ingest(ContextItem(id="a1", kind=ItemKind.agent_msg, text="I'll check the database for you."))
+mgr.ingest(
+    ContextItem(
+        id="tc1",
+        kind=ItemKind.tool_call,
+        text='db_query(sql="SELECT COUNT(*) FROM users WHERE active=true")',
+        parent_id="u1",
+    )
+)
+mgr.ingest(ContextItem(id="tr1", kind=ItemKind.tool_result, text="count: 1042", parent_id="tc1"))
+
+pack = mgr.build_sync(phase=Phase.answer, query="active user count")
+
+print("=== Compiled Context ===")
+print(pack.prompt)
+print("\n=== Build Stats ===")
+print(f"Total candidates: {pack.stats.total_candidates}")
+print(f"Included in prompt: {pack.stats.included_count}")
+print(f"Dropped: {pack.stats.dropped_count}")
+print(f"Deduplicated: {pack.stats.dedup_removed}")
+```
+
+Run it:
+
+```bash
+python first_agent.py
+```
+
+Expected output excerpt:
+
+```text
+=== Compiled Context ===
+[TOOL RESULT [artifact:artifact:tr1]]
+count: 1042
+
+[TOOL CALL]
+db_query(sql="SELECT COUNT(*) FROM users WHERE active=true")
+
+[USER]
+How many active users do we have?
+
+[ASSISTANT]
+I'll check the database for you.
+
+=== Build Stats ===
+Total candidates: 4
+Included in prompt: 4
+Dropped: 0
+Deduplicated: 0
+```
+
+What just happened:
+
+- You ingested four events into the event log.
+- `build_sync()` ran the context pipeline for the `answer` phase.
+- The prompt was compiled from the most relevant items and returned with build stats.
+
+## 4. Try the Context Firewall (4 minutes)
+
+Problem: a large tool result can dominate the prompt if you include it verbatim.
+
+Save this as `firewall_demo.py`:
+
+```python
+"""Show how the context firewall keeps prompts compact."""
+
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ContextItem, ItemKind, Phase
+
+large_result = '{"users": [' + ', '.join(
+    [
+        f'{{"id": {i}, "name": "User{i}", "email": "user{i}@example.com"}}'
+        for i in range(1, 101)
+    ]
+) + ']}'
+
+mgr = ContextManager()
+mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="List all users"))
+mgr.ingest(ContextItem(id="tc1", kind=ItemKind.tool_call, text="list_users()", parent_id="u1"))
+mgr.ingest(ContextItem(id="tr1", kind=ItemKind.tool_result, text=large_result, parent_id="tc1"))
+
+pack = mgr.build_sync(phase=Phase.answer, query="user list")
+
+print(f"Raw tool result size: {len(large_result)} chars")
+print("\n=== Compiled Context ===")
+print(pack.prompt)
+print("\n=== Firewall Impact ===")
+print(f"Prompt size after firewall: {len(pack.prompt)} chars")
+print(f"Artifacts stored: {len(mgr.artifact_store.list_refs())}")
+```
+
+Run it:
+
+```bash
+python firewall_demo.py
+```
+
+Expected output excerpt:
+
+```text
+Raw tool result size: 6087 chars
+
+=== Compiled Context ===
+[USER]
+List all users
+
+[TOOL RESULT [artifact:artifact:tr1]]
+{"users": [{"id": 1, "name": "User1", "email": "user1@example.com"}, ...
+
+[TOOL CALL]
+list_users()
+
+=== Firewall Impact ===
+Prompt size after firewall: ... chars
+Artifacts stored: 1
+```
+
+What just happened:
+
+- The tool result was processed by the firewall during context build (all `tool_result` items go through it by default).
+- `contextweaver` stored the raw result in the artifact store.
+- The prompt kept only a compact summary plus an artifact reference instead of the full payload.
+
+## 5. Try Tool Routing (2 minutes)
+
+Problem: when a catalog grows, the model should only see the most relevant tools.
+
+Save this as `routing_demo.py`:
+
+```python
+"""Route a natural-language request to a focused tool shortlist."""
+
+from contextweaver.routing.catalog import Catalog
+from contextweaver.routing.router import Router
+from contextweaver.routing.tree import TreeBuilder
+from contextweaver.types import SelectableItem
+
+catalog = Catalog()
+catalog.register(SelectableItem(id="t1", kind="tool", name="send_email", description="Send email to a recipient", tags=["notify", "team", "message"]))
+catalog.register(SelectableItem(id="t2", kind="tool", name="db_query", description="Query the database", tags=["data"]))
+catalog.register(SelectableItem(id="t3", kind="tool", name="create_ticket", description="Create support ticket", tags=["support"]))
+catalog.register(SelectableItem(id="t4", kind="tool", name="send_sms", description="Send SMS message", tags=["notify", "team", "message"]))
+catalog.register(SelectableItem(id="t5", kind="tool", name="schedule_meeting", description="Schedule a calendar meeting", tags=["calendar"]))
+
+graph = TreeBuilder(max_children=3).build(catalog.all())
+router = Router(graph, items=catalog.all(), beam_width=2, top_k=2)
+result = router.route("notify the team about the deadline")
+
+print("=== Query ===")
+print("notify the team about the deadline")
+print("\n=== Top Tools ===")
+for item_id in result.candidate_ids:
+    item = catalog.get(item_id)
+    print(f"- {item.name}: {item.description}")
+```
+
+Run it:
+
+```bash
+python routing_demo.py
+```
+
+Expected output:
+
+```text
+=== Query ===
+notify the team about the deadline
+
+=== Top Tools ===
+- send_sms: Send SMS message
+- send_email: Send email to a recipient
+```
+
+What just happened:
+
+- `TreeBuilder` organized the catalog into a bounded routing graph.
+- `Router` scored the query against that graph and returned the top two candidates.
+- Your model would now see a focused shortlist instead of the full catalog.
+
+## 6. What to Try Next (1 minute)
+
+Available now:
+
+- [README](../README.md) for the top-level package overview
+- [Concepts](concepts.md) for phases, the context firewall, and routing terms
+- [Architecture](architecture.md) for the pipeline stages and module layout
+- [MCP Integration](integration_mcp.md) for MCP adapters and session ingestion
+- [A2A Integration](integration_a2a.md) for multi-agent adapter flows
+- [Examples directory](../examples/) for larger end-to-end demos
+
+Planned separately:
+
+- Framework-specific integration guides are tracked in separate issues and are not part of this quickstart.
+
+If you want a deeper local smoke test after this guide, run:
+
+```bash
+python -m contextweaver demo
+```
+
+---
+
+<!-- FILE: docs/integration_mcp.md -->
+
+# MCP Integration
+
+contextweaver provides an adapter for the
+[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) that
+converts MCP tool definitions and results into contextweaver's native
+types.
+
+## Adapter functions
+
+### `mcp_tool_to_selectable(tool_dict)`
+
+Converts an MCP tool definition dict into a `SelectableItem`:
+
+```python
+from contextweaver.adapters.mcp import mcp_tool_to_selectable
+
+mcp_tool = {
+    "name": "search_database",
+    "description": "Search records in the database",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "limit": {"type": "integer", "default": 10}
+        }
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "results": {"type": "array"},
+            "total": {"type": "integer"}
+        }
+    }
+}
+
+item = mcp_tool_to_selectable(mcp_tool)
+# item.id            == "mcp:search_database"
+# item.kind          == "tool"
+# item.name          == "search_database"
+# item.output_schema == {"type": "object", ...}
+```
+
+If the tool definition includes an `outputSchema`, it is preserved in
+`item.output_schema`.  When absent the field is `None`.
+
+The namespace is inferred automatically from the tool name prefix:
+
+| Tool name              | Inferred namespace |
+|------------------------|--------------------|
+| `github.create_issue`  | `github`           |
+| `filesystem/read`      | `filesystem`       |
+| `slack_send_message`   | `slack`            |
+| `search_database`      | `mcp` (fallback)   |
+
+Use `infer_namespace(tool_name)` directly if you need the logic outside of
+`mcp_tool_to_selectable()`.
+
+### `mcp_result_to_envelope(result_dict, tool_name)`
+
+Converts an MCP tool result dict into a `ResultEnvelope`:
+
+```python
+from contextweaver.adapters.mcp import mcp_result_to_envelope
+
+mcp_result = {
+    "content": [{"type": "text", "text": "Found 42 records matching query"}],
+    "isError": False
+}
+
+envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, "search_database")
+# envelope.summary contains truncated text (max 500 chars)
+# full_text contains the complete untruncated text
+# envelope.status  == "ok"
+# binaries maps handle → (raw_bytes, media_type, label)
+```
+
+#### Supported content types
+
+| Content type    | Handling                                                                                      |
+|-----------------|-----------------------------------------------------------------------------------------------|
+| `text`          | Concatenated into `full_text` and `summary`                                                   |
+| `image`         | Base64-decoded; stored as binary artifact                                                     |
+| `audio`         | Base64-decoded; stored as binary artifact (e.g. `audio/wav`)                                  |
+| `resource`      | Text extracted into `full_text`; raw bytes stored as artifact                                 |
+| `resource_link` | URI stored as `ArtifactRef`; URI string in `binaries` for caller resolution                |
+
+#### Structured content
+
+If the result contains a top-level `structuredContent` dict, it is
+serialized as a JSON artifact and its top-level keys are extracted as
+facts:
+
+```python
+mcp_result = {
+    "content": [{"type": "text", "text": "query done"}],
+    "structuredContent": {"count": 42, "status": "done"},
+}
+envelope, binaries, _ = mcp_result_to_envelope(mcp_result, "query")
+# binaries["mcp:query:structured_content"] → JSON bytes
+# envelope.facts includes "count: 42", "status: done"
+```
+
+#### Content-part annotations
+
+Per-part `annotations` (with `audience` and `priority` fields) are
+collected into `envelope.provenance["content_annotations"]`:
+
+```python
+mcp_result = {
+    "content": [
+        {"type": "text", "text": "...", "annotations": {"audience": ["human"], "priority": 0.9}},
+    ],
+}
+envelope, _, _ = mcp_result_to_envelope(mcp_result, "tool")
+# envelope.provenance["content_annotations"] == [{"part_index": 0, "audience": ["human"], ...}]
+```
+
+### `load_mcp_session_jsonl(path)`
+
+Loads a JSONL session file containing MCP-style events and returns a
+list of `ContextItem` objects:
+
+```python
+from contextweaver.adapters.mcp import load_mcp_session_jsonl
+
+items = load_mcp_session_jsonl("examples/data/mcp_session.jsonl")
+for item in items:
+    print(f"{item.kind.value}: {item.text[:60]}...")
+```
+
+## Session JSONL format
+
+Each line is a JSON object with at minimum `id`, `type`, and either
+`text` or `content`:
+
+```json
+{"id": "u1", "type": "user_turn", "text": "Search for open invoices"}
+{"id": "tc1", "type": "tool_call", "text": "invoices.search(status='open')", "parent_id": "u1"}
+{"id": "tr1", "type": "tool_result", "content": "...", "parent_id": "tc1"}
+```
+
+See `examples/data/mcp_session.jsonl` for a complete example.
+
+## End-to-end example
+
+```python
+from contextweaver.adapters.mcp import (
+    load_mcp_session_jsonl,
+    mcp_tool_to_selectable,
+)
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ItemKind, Phase
+
+# Load session events
+items = load_mcp_session_jsonl("examples/data/mcp_session.jsonl")
+
+# Build context with firewall
+mgr = ContextManager()
+for item in items:
+    if item.kind == ItemKind.tool_result and len(item.text) > 2000:
+        mgr.ingest_tool_result(
+            tool_call_id=item.parent_id or item.id,
+            raw_output=item.text,
+            tool_name="mcp_tool",
+        )
+    else:
+        mgr.ingest(item)
+
+pack = mgr.build_sync(phase=Phase.answer, query="invoice status")
+print(pack.prompt)
+```
+
+See `examples/mcp_adapter_demo.py` for the full runnable demo.
+
+---
+
+<!-- FILE: docs/integration_a2a.md -->
+
+# A2A Integration
+
+contextweaver provides an adapter for the
+[Agent-to-Agent (A2A) protocol](https://google.github.io/A2A/) that
+converts A2A agent cards and task results into contextweaver's native
+types.
+
+## Adapter functions
+
+### `a2a_agent_to_selectable(agent_card)`
+
+Converts an A2A agent card dict into a `SelectableItem`:
+
+```python
+from contextweaver.adapters.a2a import a2a_agent_to_selectable
+
+agent_card = {
+    "name": "DataAgent",
+    "description": "Retrieves and aggregates data from warehouses",
+    "url": "https://agents.example.com/data",
+    "skills": [
+        {"id": "sql_query", "name": "SQL Query", "description": "Run SQL queries"},
+        {"id": "aggregate", "name": "Aggregate", "description": "Aggregate results"},
+    ]
+}
+
+item = a2a_agent_to_selectable(agent_card)
+# item.id    == "a2a:DataAgent"
+# item.kind  == "agent"
+# item.name  == "DataAgent"
+# item.tags  includes skill names
+```
+
+### `a2a_result_to_envelope(task_result, agent_name)`
+
+Converts an A2A task result dict into a `ResultEnvelope`:
+
+```python
+from contextweaver.adapters.a2a import a2a_result_to_envelope
+
+task_result = {
+    "status": {"state": "completed"},
+    "artifacts": [
+        {"parts": [{"type": "text", "text": "Q4 revenue: $2.1M, +15% YoY"}]}
+    ]
+}
+
+envelope = a2a_result_to_envelope(task_result, "DataAgent")
+# envelope.summary contains the artifact text
+# envelope.status  == "ok"
+```
+
+### `load_a2a_session_jsonl(path)`
+
+Loads a JSONL session file containing A2A-style multi-agent events:
+
+```python
+from contextweaver.adapters.a2a import load_a2a_session_jsonl
+
+items = load_a2a_session_jsonl("examples/data/a2a_session.jsonl")
+```
+
+## Session JSONL format
+
+Each line is a JSON object. A2A sessions typically involve multi-agent
+handoffs where an orchestrator delegates to specialised agents:
+
+```json
+{"id": "u1", "type": "user_turn", "text": "Generate the Q4 report"}
+{"id": "tc1", "type": "tool_call", "text": "delegate_to(DataAgent, 'fetch Q4 data')", "parent_id": "u1"}
+{"id": "tr1", "type": "tool_result", "content": "...", "parent_id": "tc1"}
+```
+
+See `examples/data/a2a_session.jsonl` for a complete multi-agent
+session.
+
+## End-to-end example
+
+```python
+from contextweaver.adapters.a2a import (
+    a2a_agent_to_selectable,
+    a2a_result_to_envelope,
+    load_a2a_session_jsonl,
+)
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ItemKind, Phase
+
+# Load multi-agent session
+items = load_a2a_session_jsonl("examples/data/a2a_session.jsonl")
+
+# Build context
+mgr = ContextManager()
+for item in items:
+    if item.kind == ItemKind.tool_result and len(item.text) > 2000:
+        mgr.ingest_tool_result(
+            tool_call_id=item.parent_id or item.id,
+            raw_output=item.text,
+            tool_name="a2a_agent",
+        )
+    else:
+        mgr.ingest(item)
+
+pack = mgr.build_sync(phase=Phase.answer, query="Q4 report")
+print(pack.prompt)
+```
+
+See `examples/a2a_adapter_demo.py` for the full runnable demo.
+
+---
+
