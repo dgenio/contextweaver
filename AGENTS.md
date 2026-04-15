@@ -77,6 +77,8 @@ make test     # pytest -q
 make example  # run all example scripts
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo
+make docs     # mkdocs build --clean (docs site)
+make docs-serve  # mkdocs serve (live preview)
 ```
 
 Run `pre-commit install` once after cloning to activate git hooks
