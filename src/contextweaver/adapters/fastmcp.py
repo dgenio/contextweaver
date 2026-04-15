@@ -243,13 +243,12 @@ async def load_fastmcp_catalog(
             be reached.
     """
     try:
-        from fastmcp import Client  # type: ignore[import-not-found]
+        from fastmcp import Client
     except ImportError as exc:
         raise CatalogError(
             "FastMCP is not installed. Install with: pip install 'contextweaver[fastmcp]'"
         ) from exc
 
-    client: Client
     client = source if isinstance(source, Client) else Client(source)
 
     try:
@@ -257,7 +256,9 @@ async def load_fastmcp_catalog(
             raw_tools = await client.list_tools()
             tool_dicts: list[dict[str, Any]] = []
             for tool in raw_tools:
-                # FastMCP list_tools() returns typed Tool objects — convert to dicts.
+                # FastMCP 3.x Tool uses camelCase field names natively (inputSchema,
+                # outputSchema, meta). DO NOT add by_alias=True — it renames meta → _meta,
+                # breaking meta-tag extraction in fastmcp_tool_to_selectable().
                 if hasattr(tool, "model_dump"):
                     tool_dicts.append(tool.model_dump(exclude_none=True))
                 elif isinstance(tool, dict):

@@ -1002,6 +1002,117 @@ def test_fastmcp_tools_to_catalog_empty() -> None:
 
 
 # ---------------------------------------------------------------------------
+# FastMCP adapter — load_fastmcp_catalog
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_load_fastmcp_catalog_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """load_fastmcp_catalog converts discovered tools into a populated Catalog."""
+    import importlib
+    import sys
+
+    import contextweaver.adapters.fastmcp as fastmcp_mod
+
+    class FakeTool:
+        def model_dump(self, *, exclude_none: bool = False) -> dict:  # type: ignore[override]
+            return {"name": "github_search", "description": "Search GitHub"}
+
+    class FakeClient:
+        def __init__(self, source: object) -> None: ...
+
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(self, *_: object) -> None: ...
+
+        async def list_tools(self) -> list:
+            return [FakeTool()]
+
+    fake_fastmcp = type(sys)("fastmcp")
+    fake_fastmcp.Client = FakeClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fastmcp", fake_fastmcp)
+    importlib.reload(fastmcp_mod)
+
+    catalog = await fastmcp_mod.load_fastmcp_catalog("fake://server")
+    assert len(catalog.all()) == 1
+    item = catalog.all()[0]
+    assert item.id == "fastmcp:github_search"
+    assert item.namespace == "github"
+    assert item.name == "search"
+    assert "fastmcp" in item.tags
+
+    importlib.reload(fastmcp_mod)  # restore
+
+
+@pytest.mark.asyncio
+async def test_load_fastmcp_catalog_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Server-side errors are wrapped in CatalogError."""
+    import importlib
+    import sys
+
+    import contextweaver.adapters.fastmcp as fastmcp_mod
+
+    class BrokenClient:
+        def __init__(self, source: object) -> None: ...
+
+        async def __aenter__(self) -> BrokenClient:
+            return self
+
+        async def __aexit__(self, *_: object) -> None: ...
+
+        async def list_tools(self) -> list:
+            raise ConnectionRefusedError("offline")
+
+    fake_fastmcp = type(sys)("fastmcp")
+    fake_fastmcp.Client = BrokenClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fastmcp", fake_fastmcp)
+    importlib.reload(fastmcp_mod)
+
+    with pytest.raises(CatalogError, match="Failed to list tools"):
+        await fastmcp_mod.load_fastmcp_catalog("fake://server")
+
+    importlib.reload(fastmcp_mod)  # restore
+
+
+@pytest.mark.asyncio
+async def test_load_fastmcp_catalog_existing_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Passing an existing Client instance is used directly (no wrapping)."""
+    import importlib
+    import sys
+
+    import contextweaver.adapters.fastmcp as fastmcp_mod
+
+    class FakeTool:
+        def model_dump(self, *, exclude_none: bool = False) -> dict:  # type: ignore[override]
+            return {"name": "slack_notify", "description": "Send Slack notification"}
+
+    class FakeClient:
+        def __init__(self, source: object) -> None: ...
+
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(self, *_: object) -> None: ...
+
+        async def list_tools(self) -> list:
+            return [FakeTool()]
+
+    fake_fastmcp = type(sys)("fastmcp")
+    fake_fastmcp.Client = FakeClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fastmcp", fake_fastmcp)
+    importlib.reload(fastmcp_mod)
+
+    # Pass a pre-built client instance — should not be double-wrapped.
+    existing_client = FakeClient(None)
+    catalog = await fastmcp_mod.load_fastmcp_catalog(existing_client)
+    assert len(catalog.all()) == 1
+    assert catalog.all()[0].namespace == "slack"
+
+    importlib.reload(fastmcp_mod)  # restore
+
+
+# ---------------------------------------------------------------------------
 # FastMCP adapter — load_fastmcp_catalog (import guard)
 # ---------------------------------------------------------------------------
 
