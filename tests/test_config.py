@@ -73,12 +73,7 @@ def test_routing_config_roundtrip() -> None:
 
 
 def test_routing_config_from_dict_uses_defaults_for_missing_keys() -> None:
-    rc = RoutingConfig.from_dict({})
-    assert rc.beam_width == 2
-    assert rc.max_depth == 8
-    assert rc.top_k == 10
-    assert rc.confidence_gap == 0.15
-    assert rc.max_children == 20
+    assert RoutingConfig.from_dict({}) == RoutingConfig()
 
 
 # ---------------------------------------------------------------------------

@@ -181,12 +181,13 @@ class RoutingConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RoutingConfig:
         """Deserialise from a JSON-compatible dict."""
+        _d = cls()
         return cls(
-            beam_width=int(data.get("beam_width", 2)),
-            max_depth=int(data.get("max_depth", 8)),
-            top_k=int(data.get("top_k", 10)),
-            confidence_gap=float(data.get("confidence_gap", 0.15)),
-            max_children=int(data.get("max_children", 20)),
+            beam_width=int(data.get("beam_width", _d.beam_width)),
+            max_depth=int(data.get("max_depth", _d.max_depth)),
+            top_k=int(data.get("top_k", _d.top_k)),
+            confidence_gap=float(data.get("confidence_gap", _d.confidence_gap)),
+            max_children=int(data.get("max_children", _d.max_children)),
         )
 
 
