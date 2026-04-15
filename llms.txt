@@ -15,6 +15,14 @@ Python ≥ 3.10.
 - [MCP Integration](docs/integration_mcp.md): MCP adapter functions, JSONL format, end-to-end example
 - [A2A Integration](docs/integration_a2a.md): A2A adapter functions, multi-agent sessions
 
+## Agent Context
+
+- [Agent Architecture](docs/agent-context/architecture.md): Non-obvious architectural guidance, design tradeoffs, and async/sync boundaries
+- [Invariants](docs/agent-context/invariants.md): Hard constraints and forbidden shortcuts in the codebase
+- [Workflows](docs/agent-context/workflows.md): Authoritative commands, sequencing, and definition of done
+- [Lessons Learned](docs/agent-context/lessons-learned.md): Recurring failure patterns and how to avoid them
+- [Review Checklist](docs/agent-context/review-checklist.md): Self-check and review gates for contributors
+
 ## API
 
 - [Types](src/contextweaver/types.py): Core dataclasses and enums (SelectableItem, ContextItem, Phase, ItemKind, Sensitivity)
@@ -33,3 +41,4 @@ Python ≥ 3.10.
 - [Before/After](examples/before_after.py): Comparing raw vs. firewall-processed context
 - [MCP Adapter Demo](examples/mcp_adapter_demo.py): End-to-end MCP session ingestion and context build
 - [A2A Adapter Demo](examples/a2a_adapter_demo.py): End-to-end A2A multi-agent session demo
+- [Hydrate Call Demo](examples/hydrate_call_demo.py): Enrich a tool call with context-aware hydration

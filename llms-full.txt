@@ -4,6 +4,27 @@
 
 ---
 
+<!--
+  GENERATED FILE — do not edit by hand.
+
+  Source files (concatenated in order):
+    README.md
+    docs/architecture.md
+    docs/concepts.md
+    docs/quickstart.md
+    docs/integration_mcp.md
+    docs/integration_a2a.md
+    docs/agent-context/architecture.md
+    docs/agent-context/invariants.md
+    docs/agent-context/workflows.md
+    docs/agent-context/lessons-learned.md
+    docs/agent-context/review-checklist.md
+
+  To regenerate: concatenate each file above with a
+  <!-- FILE: <relative-path> --> section marker between them.
+  A `make llms` target is planned (see issue #103); until then regenerate manually.
+-->
+
 <!-- FILE: README.md -->
 
 # contextweaver
@@ -790,12 +811,12 @@ What just happened:
 
 Available now:
 
-- [README](../README.md) for the top-level package overview
-- [Concepts](concepts.md) for phases, the context firewall, and routing terms
-- [Architecture](architecture.md) for the pipeline stages and module layout
-- [MCP Integration](integration_mcp.md) for MCP adapters and session ingestion
-- [A2A Integration](integration_a2a.md) for multi-agent adapter flows
-- [Examples directory](../examples/) for larger end-to-end demos
+- [README](README.md) for the top-level package overview
+- [Concepts](docs/concepts.md) for phases, the context firewall, and routing terms
+- [Architecture](docs/architecture.md) for the pipeline stages and module layout
+- [MCP Integration](docs/integration_mcp.md) for MCP adapters and session ingestion
+- [A2A Integration](docs/integration_a2a.md) for multi-agent adapter flows
+- [Examples directory](examples/) for larger end-to-end demos
 
 Planned separately:
 
@@ -1099,3 +1120,493 @@ See `examples/a2a_adapter_demo.py` for the full runnable demo.
 
 ---
 
+---
+
+<!-- FILE: docs/agent-context/architecture.md -->
+
+# Architecture Guidance
+
+> Deeper architectural detail lives in [docs/architecture.md](../architecture.md).
+> This file covers non-obvious design decisions relevant to change-scoping.
+
+## Architectural Intent
+
+contextweaver separates **what to show the LLM** (Context Engine) from **which tools to offer** (Routing Engine). These engines share types and stores but have intentionally different execution models:
+
+- **Context Engine** — async-first. Deals with I/O-bound operations (event log queries, artifact storage).
+- **Routing Engine** — sync-only. Pure computation (DAG traversal, beam search). No I/O.
+
+This boundary is intentional. Do not propose making routing async "for consistency" — it adds complexity for zero benefit.
+
+## Non-Goals
+
+contextweaver is **not** an LLM inference layer and **not** a tool execution runtime. It prepares context and routes tools but never calls models or executes tools. Feature proposals that cross these boundaries are out of scope.
+
+## Major Boundaries
+
+### Context Pipeline (8 stages)
+
+The pipeline is a fixed sequence. Each stage has a single responsibility:
+
+1. **generate_candidates** — pulls events from stores into a candidate pool
+2. **dependency_closure** — ensures parent items (via `parent_id`) are included alongside their children
+3. **sensitivity_filter** — drops or redacts items above the sensitivity floor
+4. **apply_firewall** — summarises large outputs, stores raw data as artifacts
+5. **score_candidates** — ranks candidates by recency, tag match, kind priority, token cost
+6. **deduplicate_candidates** — removes near-duplicates via Jaccard similarity
+7. **select_and_pack** — greedily packs highest-scoring candidates into the phase token budget
+8. **render_context** — assembles the final prompt with BuildStats metadata
+
+**Why this order matters:**
+- Dependency closure must happen before scoring, otherwise parents could be discarded before their children pull them in.
+- Sensitivity filtering before the firewall prevents sensitive data from reaching the summarizer.
+- Scoring after the firewall ensures scores reflect the summarised (not raw) content.
+
+### Routing Pipeline (4 stages)
+
+1. **Catalog** — register and manage `SelectableItem` objects
+2. **TreeBuilder** — convert flat items into a bounded `ChoiceGraph` DAG
+3. **Router** — beam-search over the graph for top-k relevant items
+4. **ChoiceCards** — render compact LLM-friendly cards (never full schemas)
+
+### Store Layer
+
+All stores use `typing.Protocol` interfaces with in-memory defaults. This enables custom backends (database, Redis, etc.) without changing pipeline code.
+
+- **EventLog** — append-only. The audit trail.
+- **ArtifactStore** — raw tool outputs stored by the firewall. Supports drilldown via `ViewRegistry`.
+- **EpisodicStore** — short episodic memory entries.
+- **FactStore** — key-value facts persisted across turns.
+
+### Sensitivity Enforcement
+
+`context/sensitivity.py` is security-grade code. It enforces data classification (`public` → `restricted`) with two actions: drop or redact. The `MaskRedactionHook` is the built-in redactor. Changes to this module require extra review scrutiny — never weaken defaults.
+
+### Progressive Disclosure (ViewRegistry)
+
+`context/views.py` provides a `ViewRegistry` that maps content-type patterns to view generators. When the firewall stores a large tool output as an artifact, the view system generates alternative representations (JSON subset, CSV summary, etc.) the agent can drilldown into without retrieving the full blob. `drilldown_tool_spec()` exposes drilldown as an agent-callable tool.
+
+## Key Tradeoffs
+
+| Decision | Tradeoff | Consequence of reversing |
+|---|---|---|
+| Protocol-based stores | More files and indirection | Allows backend swaps without pipeline changes |
+| `to_dict()`/`from_dict()` + `serde.py` | Two serialization paths | Per-class methods handle class-specific logic; `serde.py` handles shared primitives. Consolidating loses encapsulation. |
+| Sync routing / async context | Two calling conventions | Routing has no I/O — async would add overhead for zero benefit |
+| 8-stage pipeline | Pipeline is long | Each stage has a single well-defined responsibility. Merging stages creates coupling. |
+| ChoiceCards never include schemas | Limits LLM tool-call generation | Keeps routing focused on *which* tool, not *how* — schema is provided at call-time via hydration |
+
+## Structural Mental Model
+
+Think of contextweaver as three layers:
+
+1. **Data layer** (`types.py`, `envelope.py`, `config.py`, `serde.py`, `exceptions.py`) — pure data, no I/O, no side effects.
+2. **Store layer** (`store/`, `protocols.py`) — stateful but simple append-only/read interfaces.
+3. **Pipeline layer** (`context/`, `routing/`, `summarize/`) — orchestration logic that reads from stores and produces output types.
+
+Adapters (`adapters/`) convert external formats (MCP, A2A) into contextweaver types at the boundary.
+
+Changes should flow within a layer. Cross-layer changes (e.g., adding I/O to the data layer) are red flags.
+---
+
+<!-- FILE: docs/agent-context/invariants.md -->
+
+# Invariants
+
+These are the constraints that must not be broken. Violations are review blockers.
+
+## Hard Rules (auto-reject)
+
+These cause automatic rejection in review. No engineering judgment — they are absolute.
+
+1. **No `print()` in library code.** Use hooks or logging. `__main__.py` (CLI) is exempt.
+2. **No business logic in `__init__.py`.** Only re-exports allowed.
+
+## Must-Preserve Constraints
+
+### Zero runtime dependencies
+
+Core `install_requires` must remain empty. The library is stdlib-only for Python ≥ 3.10. Optional dependency groups via extras (e.g., `[dev]`, future `[llm]`) are acceptable.
+
+### Async/sync boundary
+
+Context Engine (`context/`) is async-first with `_sync` wrappers. Routing Engine (`routing/`) is sync-only. This split is intentional — routing is pure computation with no I/O. Do not unify them.
+
+### 8-stage context pipeline
+
+The pipeline stages must remain in this exact order:
+
+1. `generate_candidates` → 2. `dependency_closure` → 3. `sensitivity_filter` →
+4. `apply_firewall` → 5. `score_candidates` → 6. `deduplicate_candidates` →
+7. `select_and_pack` → 8. `render_context`
+
+Stage reordering breaks correctness (see [architecture.md](architecture.md) for why-this-order).
+
+### Dependency closure
+
+If a selected `ContextItem` has a `parent_id`, the parent must be included in the final context even if it scored lower. Without this, tool results can appear without their tool calls, producing incoherent context. Do not remove or bypass.
+
+### Append-only event log
+
+The event log is append-only. Mutate only via `InMemoryEventLog.append()`. Direct mutation breaks the audit trail and consistency invariants.
+
+### Determinism
+
+All core pipelines must be deterministic. Tie-break by ID, sorted keys. No randomness in pipeline stages.
+
+## Forbidden Shortcuts
+
+### Do not collapse protocols into concrete classes
+
+Store protocols exist for backend extensibility. The protocol layer in `protocols.py` is separate from the `InMemory*` implementations in `store/` by design. Merging them locks the library to in-memory backends.
+
+### Do not consolidate serialization into `serde.py` alone
+
+<a name="serialization-design"></a>
+
+`serde.py` provides shared primitives (enum handling, optional-field handling). Per-class `to_dict()` / `from_dict()` methods handle class-specific serialization logic. They are complementary:
+
+- `serde.py` = shared helpers (used by multiple classes)
+- `to_dict()` / `from_dict()` = class-specific encapsulation
+
+Consolidating all serialization into `serde.py` removes encapsulation. Removing per-class methods and using `dataclasses.asdict()` loses custom serialization logic.
+
+### Do not weaken sensitivity defaults
+
+`context/sensitivity.py` is security-grade code. The default sensitivity floor (`confidential`) and default action (`drop`) are deliberately conservative. Never weaken these defaults without explicit security review.
+
+### Do not add I/O to the data layer
+
+`types.py`, `envelope.py`, `config.py`, `serde.py`, and `exceptions.py` are pure data — no I/O, no side effects. Adding I/O (file reads, network calls, logging) to these modules breaks the layered architecture.
+
+## Safe vs Unsafe Simplifications
+
+| Change | Safe? | Why |
+|---|---|---|
+| Add a field to an existing dataclass | Usually safe | Follow `to_dict`/`from_dict` pattern, add default value |
+| Add a new store protocol method | Safe | Existing backends won't break if the method has a default impl |
+| Merge two pipeline stages | **Unsafe** | Each stage has a single responsibility; merging creates coupling |
+| Replace protocols with ABCs | **Unsafe** | Breaks structural typing; forces inheritance on custom backends |
+| Inline `_utils.py` helpers into calling code | **Unsafe** | Creates duplicate similarity logic |
+| Move types from `envelope.py` to `types.py` | **Unsafe** | `envelope.py` exists to keep result types separate from input types |
+| Remove `ViewRegistry` | **Unsafe** | Breaks progressive disclosure for large artifacts |
+
+## Cross-Cutting Rules
+
+- **Module size ≤ 300 lines** — exempt: `types.py`, `envelope.py`, `__main__.py`.
+- **`from __future__ import annotations`** — every source file.
+- **Google-style docstrings** — every public class and function.
+- **Type hints** — every public function and method.
+- **Custom exceptions only** — from `contextweaver.exceptions`, not bare Python exceptions.
+
+## Update Triggers
+
+Update this file when:
+- A new hard constraint is established by the maintainer.
+- A forbidden shortcut is discovered through a bad change.
+- A safe/unsafe determination changes due to architectural evolution.
+- A cross-cutting rule is added or relaxed.
+---
+
+<!-- FILE: docs/agent-context/workflows.md -->
+
+# Workflows
+
+## Authoritative Commands
+
+```bash
+make fmt      # ruff format src/ tests/ examples/
+make lint     # ruff check src/ tests/ examples/
+make type     # mypy src/
+make test     # pytest -q
+make example  # run all example scripts
+make demo     # python -m contextweaver demo
+make ci       # fmt + lint + type + test + example + demo  (6 targets)
+```
+
+`make ci` runs all six targets in sequence. It is the single validation gate.
+
+## Command-Selection Rules
+
+| Goal | Command |
+|---|---|
+| Quick format check | `make fmt` |
+| Quick lint check | `make lint` |
+| Full validation | `make ci` (always — do not skip targets) |
+| Run a single test | `pytest tests/test_<module>.py` or `pytest -k "test_name"` |
+| Run all tests | `make test` |
+| Verify examples work | `make example` |
+| Interactive demo | `make demo` |
+
+**Do not** use `make test` alone as a validation gate. Always run `make ci` before declaring a change complete — it includes example and demo verification that catch integration issues `make test` misses.
+
+## Setup (one-time)
+
+```bash
+pip install -e ".[dev]"
+pre-commit install
+```
+
+Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks on every commit. Hooks may modify files — re-stage with `git add` if needed.
+
+## Adding a Feature
+
+1. Identify the relevant module (see module map in [AGENTS.md](../../AGENTS.md)).
+2. Modify only the targeted module.
+3. Update `protocols.py` if adding a new protocol.
+4. Add tests in `tests/test_<module>.py`.
+5. Run `make ci` — all six targets must pass.
+6. Update `CHANGELOG.md` under `## [Unreleased]`.
+7. Add Google-style docstrings to any new public APIs.
+8. Update examples/demos if the feature is user-facing.
+9. Update agent-facing docs if the pipeline or public API changed.
+
+## Definition of Done
+
+A change is complete when **all** of the following are true:
+
+- [ ] `make ci` passes (all 6 targets)
+- [ ] `CHANGELOG.md` updated
+- [ ] Google-style docstrings on all new public APIs
+- [ ] Type hints on all new public functions and methods
+- [ ] Tests added for new functionality
+- [ ] Examples/demos updated if the feature is user-facing
+- [ ] Agent-facing docs updated if pipeline, public API, or conventions changed
+
+## Fixing a Bug
+
+1. Write a failing test that reproduces the bug.
+2. Fix the bug.
+3. Run `make ci`.
+4. Update `CHANGELOG.md`.
+5. If the bug revealed a reusable lesson, record it per the process in [lessons-learned.md](lessons-learned.md).
+
+## Adding a Store Backend
+
+1. Implement the store class in `src/contextweaver/store/<name>.py`.
+2. The class must implement the relevant protocol from `protocols.py`.
+3. Export from `src/contextweaver/store/__init__.py`.
+4. Add tests in `tests/test_store_<name>.py`.
+5. Update `StoreBundle` if appropriate.
+
+## Adding an Adapter
+
+1. Create the adapter in `src/contextweaver/adapters/<protocol>.py`.
+2. Pure stateless converter — no state, no core-type leakage.
+3. External format dependencies stay at the adapter boundary.
+4. Add tests in `tests/test_adapters.py`.
+5. Add an example in `examples/`.
+
+## Documentation Governance
+
+### When docs must be updated
+
+- Any PR that changes the context pipeline stages, routing pipeline, or public API.
+- Any PR that adds, removes, or renames a module.
+- Any PR that changes project conventions, commands, or the definition of done.
+
+### Who triggers updates
+
+- The author of the PR is responsible for updating docs in the same PR.
+- Reviewers should check the [review checklist](review-checklist.md) for doc-update requirements.
+
+### Resolving contradictions
+
+If two docs disagree:
+1. `AGENTS.md` is authoritative for agent guidance and shared rules.
+2. `docs/architecture.md` is authoritative for architecture detail.
+3. `Makefile` is ground truth for command definitions.
+4. Source code is ground truth for implementation details.
+
+Fix the less-authoritative source to match.
+
+### Promoting lessons into canonical docs
+
+When a lesson from [lessons-learned.md](lessons-learned.md) represents a durable pattern:
+1. Add it to the appropriate canonical doc (`AGENTS.md`, `invariants.md`, or `workflows.md`).
+2. Keep the lesson entry but mark it as promoted with a cross-reference.
+
+### Avoiding duplicate authority
+
+Each piece of guidance should have exactly one canonical home. Use cross-references instead of copies. Exception: hard rules (the 2 auto-reject items) may be briefly restated in tool-specific override files for visibility, since those files may be the only context an agent loads.
+
+### Updating navigation tables
+
+When adding a new canonical doc under `docs/agent-context/`, update the navigation tables in all three routing files:
+- `AGENTS.md` (Documentation Map)
+- `.github/copilot-instructions.md` (Canonical References)
+- `.claude/CLAUDE.md` (Canonical References)
+---
+
+<!-- FILE: docs/agent-context/lessons-learned.md -->
+
+# Lessons Learned
+
+This is not an incident archive. It captures reusable patterns from past mistakes
+and defines the process for converting incidents into durable guidance.
+
+## Failure-Capture Workflow
+
+When a bad change is caught in review or causes a regression:
+
+1. **Identify the root cause** — was it a missing rule, a misunderstood boundary, or a documentation gap?
+2. **Determine if it's reusable** — would a different agent make the same mistake on a different change? If yes, it's a lesson. If no, it's a one-off incident — don't record it here.
+3. **Generalize the lesson** — write it as a pattern, not a narrative. "Don't do X because Y" is better than "on date Z, agent A did X to file B."
+4. **Choose the right home:**
+   - If it's a hard constraint → add to [invariants.md](invariants.md)
+   - If it's a workflow fix → add to [workflows.md](workflows.md)
+   - If it's an architectural insight → add to [architecture.md](architecture.md)
+   - If it's a recurring trap that doesn't fit elsewhere → add to this file
+5. **If promoted**, keep the entry here but mark it: "**Promoted →** [target file](link)."
+
+## What Belongs Here
+
+- Recurring mistakes that agents make across different changes
+- Generalized lessons with clear "do this instead" guidance
+- Patterns where the obvious approach is wrong
+
+## What Does Not Belong Here
+
+- One-off incidents tied to specific dates, PRs, or files
+- Narrative history of past bugs
+- Lessons that have been fully captured in invariants, workflows, or architecture docs (mark as promoted instead)
+
+## Durable Lessons
+
+### 1. Pipeline stage count drift
+
+**Mistake:** Docs described a 7-stage context pipeline; the actual implementation has 8 stages (missing `dependency_closure`).
+
+**Lesson:** When modifying pipeline documentation, always verify stage count and order against the source code (`context/manager.py`). Do not copy pipeline descriptions from other docs without verification.
+
+**Generalized rule:** Treat pipeline stage documentation like API documentation — verify against implementation, not against other docs.
+
+### 2. "Simplification" proposals that break design intent
+
+**Mistake:** Proposing to merge `serde.py` with per-class `to_dict()`/`from_dict()`, or to collapse store protocols into concrete classes, or to make routing async for "consistency."
+
+**Lesson:** Before proposing a simplification, check [invariants.md](invariants.md) for the "Things That Must Not Be Simplified" section. If the thing you want to simplify is listed, it exists for a reason. Read the rationale before proposing changes.
+
+**Generalized rule:** Things that look redundant in this codebase often exist for extensibility or correctness. Check invariants before proposing consolidation.
+
+### 3. Overstatement in documentation
+
+**Mistake:** "Zero-dependency is a hard constraint" (overstated — extras are acceptable). "Always use X" for things that are strong patterns, not hard rules.
+
+**Lesson:** Distinguish hard rules (auto-reject, 2 items) from strong patterns (recommended, judgment applies). Overstated rules cause agents to either (a) reject valid changes or (b) ignore all rules after discovering false mandates.
+
+**Generalized rule:** Use precise language in constraints. "Must" and "always" should be reserved for actual invariants. Use "prefer" or "strongly recommended" for patterns.
+
+### 4. Module map staleness
+
+**Mistake:** `envelope.py` added in an early version but never added to the module map in agent-facing docs. Agents couldn't find `ResultEnvelope`, `BuildStats`, etc.
+
+**Lesson:** When adding a new module, update the module map in `AGENTS.md` in the same PR.
+
+**Generalized rule:** Treat the module map as part of the public API surface. New modules require map updates just like new functions require docstrings.
+
+### 5. `make ci` composition drift
+
+**Mistake:** `AGENTS.md` described `make ci` as 4 targets when the Makefile runs 6.
+
+**Lesson:** Do not describe command composition from memory. Check the `Makefile` for ground truth.
+
+**Generalized rule:** For command documentation, the build system file (`Makefile`, `pyproject.toml`) is always ground truth.
+
+## Update Triggers
+
+Record a new lesson when:
+- A review catches a mistake that a well-documented rule would have prevented.
+- The same category of mistake recurs across multiple changes or agents.
+- A documentation gap directly causes a bad change.
+
+Do not record lessons for:
+- Typos, formatting issues, or trivial errors.
+- One-off issues that are unlikely to recur.
+---
+
+<!-- FILE: docs/agent-context/review-checklist.md -->
+
+# Review Checklist
+
+Use this checklist for both agent self-check (before proposing changes) and
+maintainer review (when reviewing PRs). Items are grouped by category.
+
+## Validation
+
+- [ ] `make ci` passes (all 6 targets: fmt, lint, type, test, example, demo)
+- [ ] No new warnings introduced
+
+## Hard Rules
+
+- [ ] No `print()` in library code (exempt: `__main__.py`)
+- [ ] No business logic in `__init__.py` (only re-exports)
+
+## Code Quality
+
+- [ ] Type hints on all new public functions and methods
+- [ ] Google-style docstrings on all new public classes and functions
+- [ ] `from __future__ import annotations` in any new or modified file
+- [ ] Exceptions use custom types from `contextweaver.exceptions`
+- [ ] New modules ≤ 300 lines (exempt: `types.py`, `envelope.py`, `__main__.py`)
+- [ ] 100-character line length respected
+
+## Testing
+
+- [ ] Tests added for new functionality in `tests/test_<module>.py`
+- [ ] Async tests use `pytest.mark.asyncio`
+- [ ] No mocking of internal modules — uses real in-memory implementations
+
+## Architectural Consistency
+
+- [ ] No runtime dependencies added to core (`install_requires` stays empty)
+- [ ] `context/` code is async-first with `_sync` wrappers
+- [ ] `routing/` code is sync-only
+- [ ] Store changes implement the relevant protocol from `protocols.py`
+- [ ] Adapter changes are pure stateless converters
+- [ ] No text similarity logic duplicated outside `_utils.py`
+- [ ] `to_dict()` / `from_dict()` added to any new dataclass
+- [ ] Event log mutations only via `append()`
+
+## Pipeline Integrity
+
+- [ ] Context pipeline stage order preserved (8 stages — see [invariants](invariants.md))
+- [ ] Dependency closure not bypassed or weakened
+- [ ] Sensitivity defaults not weakened
+- [ ] Changes to `context/sensitivity.py` received extra security scrutiny
+
+## Documentation
+
+- [ ] `CHANGELOG.md` updated under `## [Unreleased]`
+- [ ] Module map in `AGENTS.md` updated if modules were added/removed/renamed
+- [ ] Agent-facing docs updated if pipeline, API, or conventions changed
+- [ ] Examples/demos updated if feature is user-facing
+- [ ] No contradictions introduced between `AGENTS.md` and supporting docs
+
+## Cross-File Consistency
+
+- [ ] Pipeline stage count/order matches across all docs and code
+- [ ] Command descriptions match `Makefile`
+- [ ] Module map matches filesystem
+- [ ] Convention changes reflected in both `AGENTS.md` and `CONTRIBUTING.md`
+
+## Invariant Spot-Checks
+
+If the change touches any of these areas, verify the corresponding invariant:
+
+| Area touched | Verify |
+|---|---|
+| Pipeline stages | 8-stage order preserved, dependency closure intact |
+| `sensitivity.py` | Defaults not weakened, security review done |
+| Store protocols | Protocol interface unchanged or backward-compatible |
+| `serde.py` or `to_dict`/`from_dict` | Both mechanisms still in use, not consolidated |
+| `_utils.py` | No similarity logic duplicated elsewhere |
+| `__init__.py` files | Only re-exports, no logic |
+| `envelope.py` or `types.py` | No I/O added to data layer |
+
+## Update Triggers
+
+Update this checklist when:
+- New hard rules or invariants are established.
+- New review gates are identified from recurring review feedback.
+- Definition of done changes (sync with [workflows.md](workflows.md)).
