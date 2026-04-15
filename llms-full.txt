@@ -21,9 +21,7 @@
     docs/agent-context/review-checklist.md
     docs/guide_agent_loop.md
 
-  To regenerate: concatenate each file above with a
-  <!-- FILE: <relative-path> --> section marker between them.
-  A `make llms` target is planned (see issue #103); until then regenerate manually.
+  To regenerate: `make llms` (or `python scripts/gen_llms.py`).
 -->
 
 <!-- FILE: README.md -->
@@ -34,9 +32,14 @@
 
 **500+ tests passing · zero runtime dependencies · deterministic output · Python ≥ 3.10**
 
+[📖 Documentation](https://dgenio.github.io/contextweaver)
+
 ---
 
 ## The Problem
+
+Even with 200K-token context windows, dumping everything into the prompt is expensive,
+slow, and degrades output quality. More context ≠ better answers.
 
 Imagine a tool-using agent with a 100-tool catalog and a 50-turn conversation history.
 At each step the agent must answer four questions:
@@ -50,6 +53,8 @@ At each step the agent must answer four questions:
 
 ```
 100 tool schemas (≈50k tokens) + 50 turns (≈30k tokens) = 80k tokens
+Cost: $0.48/request at GPT-4o rates  ·  Latency: 3–5s TTFT
+Quality: LLM loses focus — needle-in-haystack accuracy drops with context size
 Token limit: 8k → 10× overflow
 ```
 
@@ -66,6 +71,7 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
+Cost:         70% lower  ·  Latency: sub-second  ·  Quality: relevant context only
 ```
 
 See [`examples/before_after.py`](examples/before_after.py) for a runnable side-by-side comparison.
@@ -168,6 +174,20 @@ result = router.route("send a reminder email about unpaid invoices")
 print(result.candidate_ids)
 ```
 
+## Runtime Loop (4 Phases)
+
+For a complete route -> call -> interpret -> answer reference flow, see:
+
+- `examples/full_agent_loop.py` for a runnable end-to-end script.
+- `docs/guide_agent_loop.md` for the flow diagram, pseudo-code, and module map.
+
+The runtime loop example demonstrates:
+
+1. Route-phase prompt assembly with ChoiceCards.
+2. Call-phase prompt assembly with selected tool schema hydration.
+3. Interpret-phase firewall behavior (large tool output summarized into context).
+4. Answer-phase context composition with accumulated history and result envelopes.
+
 ---
 
 ## Framework Integrations
@@ -231,11 +251,13 @@ contextweaver replay --session session.json --phase answer
 | Script | Description |
 |---|---|
 | `minimal_loop.py` | Basic event ingestion → context build |
+| `full_agent_loop.py` | End-to-end route → call → interpret → answer runtime loop |
 | `tool_wrapping.py` | Context firewall in action |
 | `routing_demo.py` | Build catalog → route queries → choice cards |
 | `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
 | `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
 | `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
+| `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 
 ```bash
 make example   # run all examples
@@ -812,12 +834,12 @@ What just happened:
 
 Available now:
 
-- [README](README.md) for the top-level package overview
-- [Concepts](docs/concepts.md) for phases, the context firewall, and routing terms
-- [Architecture](docs/architecture.md) for the pipeline stages and module layout
-- [MCP Integration](docs/integration_mcp.md) for MCP adapters and session ingestion
-- [A2A Integration](docs/integration_a2a.md) for multi-agent adapter flows
-- [Examples directory](examples/) for larger end-to-end demos
+- [README](../README.md) for the top-level package overview
+- [Concepts](concepts.md) for phases, the context firewall, and routing terms
+- [Architecture](architecture.md) for the pipeline stages and module layout
+- [MCP Integration](integration_mcp.md) for MCP adapters and session ingestion
+- [A2A Integration](integration_a2a.md) for multi-agent adapter flows
+- [Examples directory](../examples/) for larger end-to-end demos
 
 Planned separately:
 
@@ -1121,8 +1143,6 @@ See `examples/a2a_adapter_demo.py` for the full runnable demo.
 
 ---
 
----
-
 <!-- FILE: docs/agent-context/architecture.md -->
 
 # Architecture Guidance
@@ -1208,6 +1228,7 @@ Think of contextweaver as three layers:
 Adapters (`adapters/`) convert external formats (MCP, A2A) into contextweaver types at the boundary.
 
 Changes should flow within a layer. Cross-layer changes (e.g., adding I/O to the data layer) are red flags.
+
 ---
 
 <!-- FILE: docs/agent-context/invariants.md -->
@@ -1307,6 +1328,7 @@ Update this file when:
 - A forbidden shortcut is discovered through a bad change.
 - A safe/unsafe determination changes due to architectural evolution.
 - A cross-cutting rule is added or relaxed.
+
 ---
 
 <!-- FILE: docs/agent-context/workflows.md -->
@@ -1323,6 +1345,8 @@ make test     # pytest -q
 make example  # run all example scripts
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo  (6 targets)
+make docs     # mkdocs build --clean (docs site — not part of CI)
+make docs-serve  # mkdocs serve (live preview)
 ```
 
 `make ci` runs all six targets in sequence. It is the single validation gate.
@@ -1338,6 +1362,8 @@ make ci       # fmt + lint + type + test + example + demo  (6 targets)
 | Run all tests | `make test` |
 | Verify examples work | `make example` |
 | Interactive demo | `make demo` |
+| Build docs site | `make docs` |
+| Live docs preview | `make docs-serve` |
 
 **Do not** use `make test` alone as a validation gate. Always run `make ci` before declaring a change complete — it includes example and demo verification that catch integration issues `make test` misses.
 
@@ -1437,6 +1463,7 @@ When adding a new canonical doc under `docs/agent-context/`, update the navigati
 - `AGENTS.md` (Documentation Map)
 - `.github/copilot-instructions.md` (Canonical References)
 - `.claude/CLAUDE.md` (Canonical References)
+
 ---
 
 <!-- FILE: docs/agent-context/lessons-learned.md -->
@@ -1524,6 +1551,7 @@ Record a new lesson when:
 Do not record lessons for:
 - Typos, formatting issues, or trivial errors.
 - One-off issues that are unlikely to recur.
+
 ---
 
 <!-- FILE: docs/agent-context/review-checklist.md -->
@@ -1611,6 +1639,7 @@ Update this checklist when:
 - New hard rules or invariants are established.
 - New review gates are identified from recurring review feedback.
 - Definition of done changes (sync with [workflows.md](workflows.md)).
+
 ---
 
 <!-- FILE: docs/guide_agent_loop.md -->
