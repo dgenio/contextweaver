@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `make docs` builds the site; `make docs-serve` starts a local preview server
   - `.github/workflows/docs.yml` — publishes to GitHub Pages on every push to `main`
   - README now links to `https://dgenio.github.io/contextweaver`
+  - `AGENTS.md` and `docs/agent-context/workflows.md` updated to document `make docs` / `make docs-serve` targets (review: #172)
+
+### Fixed
+- `mkdocs.yml` `edit_uri` corrected from `edit/main/docs/` to `edit/main/` so that auto-generated API reference "Edit" buttons resolve to `src/contextweaver/*.py` rather than the nonexistent `docs/src/...` path (review: #172)
+- `docs/gen_ref_pages.py` module walk restricted to `src/contextweaver` (matches docstring; prevents accidental inclusion of future sibling packages under `src/`) (review: #172)
+- `docs/gen_ref_pages.py` private-module skip now uses `any(part.startswith("_") for part in parts)` to correctly exclude private package directories, not just private leaf modules (review: #172)
 - End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
 - Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
 - LangChain memory replacement example in `examples/langchain_memory_demo.py` (#170) — demonstrates replacing `InMemoryChatMessageHistory` with phase-specific budgets and the context firewall using a deterministic mock LLM and real `langchain-core` objects

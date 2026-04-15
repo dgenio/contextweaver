@@ -6,7 +6,7 @@ site_description: >-
 
 repo_url: https://github.com/dgenio/contextweaver
 repo_name: dgenio/contextweaver
-edit_uri: edit/main/docs/
+edit_uri: edit/main/
 
 theme:
   name: material

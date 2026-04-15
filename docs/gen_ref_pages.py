@@ -19,20 +19,21 @@ import mkdocs_gen_files
 nav = mkdocs_gen_files.Nav()
 
 src = Path("src")
+package_root = src / "contextweaver"
 
-for path in sorted(src.rglob("*.py")):
+for path in sorted(package_root.rglob("*.py")):
     module_path = path.relative_to(src).with_suffix("")
     doc_path = path.relative_to(src).with_suffix(".md")
     full_doc_path = Path("reference", doc_path)
 
     parts = tuple(module_path.parts)
 
-    # Skip private helpers and CLI entry-point
-    if parts[-1].startswith("_"):
+    # Skip private helpers/packages and CLI entry-point
+    if any(part.startswith("_") for part in parts):
         continue
 
-    if parts[-1] == "__main__":
-        continue  # pragma: no cover
+    if parts[-1] == "__main__":  # pragma: no cover
+        continue
 
     # Treat __init__ as the index page for the package directory
     if parts[-1] == "__init__":
