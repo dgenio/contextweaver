@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark
 
 fmt:
 	ruff format src/ tests/ examples/
@@ -31,5 +31,8 @@ docs:
 
 docs-serve:
 	mkdocs serve
+
+benchmark:
+	python benchmarks/benchmark.py
 
 ci: fmt lint type test example demo

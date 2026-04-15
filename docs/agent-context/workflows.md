@@ -12,6 +12,7 @@ make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo  (6 targets)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
+make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
 ```
 
 `make ci` runs all six targets in sequence. It is the single validation gate.
@@ -29,6 +30,7 @@ make docs-serve  # mkdocs serve (live preview)
 | Interactive demo | `make demo` |
 | Build docs site | `make docs` |
 | Live docs preview | `make docs-serve` |
+| Run benchmark harness | `make benchmark` (non-gating; writes `benchmarks/results/latest.json`) |
 
 **Do not** use `make test` alone as a validation gate. Always run `make ci` before declaring a change complete — it includes example and demo verification that catch integration issues `make test` misses.
 
