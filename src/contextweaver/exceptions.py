@@ -37,3 +37,7 @@ class RouteError(ContextWeaverError):
 
 class CatalogError(ContextWeaverError):
     """Raised for invalid catalog operations (duplicate IDs, schema violations, etc.)."""
+
+
+class ConfigError(ContextWeaverError):
+    """Raised when a configuration value or preset name is invalid."""
