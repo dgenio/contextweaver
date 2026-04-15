@@ -30,7 +30,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
-| `adapters/` | MCP and A2A protocol adapters |
+| `adapters/` | MCP, FastMCP, and A2A protocol adapters |
 | `__main__.py` | CLI: 7 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) |
 
 ## Pipelines (summary)
