@@ -32,7 +32,7 @@ expected tool IDs drawn from all 8 catalog namespaces.
 Benchmarked at three catalog sizes:
 
 - **50** — draw from `generate_sample_catalog(50)`
-- **83** — natural pool cap of `generate_sample_catalog()`
+- **83** — full natural pool of `generate_sample_catalog()`
 - **1000** — 83-item base extended with synthetic variants; tests latency at scale
 
 > Precision@k is naturally lower for single-expected-item queries (max = 1/k).

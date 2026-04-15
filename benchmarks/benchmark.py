@@ -70,8 +70,7 @@ def _make_catalog(n: int, seed: int = 42) -> list[SelectableItem]:
     preserving routing signal density; they will not match gold-dataset queries
     (different IDs) so precision/recall measurements remain valid.
     """
-    base_n = min(n, 83)
-    base_dicts = generate_sample_catalog(seed=seed, n=base_n)
+    base_dicts = generate_sample_catalog(n=n, seed=seed)
     base_items = load_catalog_dicts(base_dicts)
     if n <= len(base_items):
         return sorted(base_items, key=lambda i: i.id)[:n]
@@ -277,7 +276,7 @@ def _run_context_benchmark(scenario_paths: list[Path]) -> list[ContextStats]:
                 prompt_tokens=prompt_toks,
                 budget_tokens=budget_toks,
                 budget_utilization_pct=round(prompt_toks / budget_toks * 100, 1),
-                artifacts_created=len(pack.envelopes),
+                artifacts_created=len(mgr.artifact_store.list_refs()),
                 avg_compaction_ratio=round(statistics.mean(ratios), 2) if ratios else 0.0,
             )
         )
