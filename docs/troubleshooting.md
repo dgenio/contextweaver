@@ -37,6 +37,7 @@ context build: phase=answer, included=1, dropped=19, tokens=350/6000
 ```python
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
+from contextweaver.types import Phase
 
 # Defaults: route=2000, call=3000, interpret=4000, answer=6000
 # Increase any phase that is too tight for your model / use-case
@@ -67,8 +68,8 @@ entire token budget.
 
 **Solution — access the raw artifact:**
 ```python
-artifact = mgr.artifact_store.get("artifact:tr1")
-full_result = artifact.content.decode("utf-8")
+artifact_bytes = mgr.artifact_store.get("artifact:tr1")
+full_result = artifact_bytes.decode("utf-8")
 ```
 
 **Solution — plug in a custom summarizer:**
@@ -229,7 +230,7 @@ the current phase.
 **Solution:**
 ```python
 # Confirm items are in the event log
-print(len(mgr.event_log.list()))  # Should be > 0
+print(mgr.event_log.count())  # Should be > 0
 
 # Confirm the phase allows the item kind you ingested
 from contextweaver.types import Phase, ItemKind
@@ -246,25 +247,24 @@ print(allowed)  # e.g. [user_turn, plan_state, policy]
 ### Issue 8: Token Count Mismatch with External Framework
 
 **Symptom:**
-`pack.token_count` is much lower or higher than the token count reported by
-LlamaIndex, LangChain, or another framework.
+The total estimated tokens in `pack.stats` are much lower or higher than the
+token count reported by LlamaIndex, LangChain, or another framework.
 
 **Cause:** contextweaver uses a `CharDivFour` estimator by default (1 token ≈
 4 characters). External frameworks often use `tiktoken` or a model-specific
 tokeniser.
 
-**Solution — implement a custom `TokenEstimator`:**
+**Solution — compute totals from `pack.stats` and, if needed, use `TiktokenEstimator`:**
 ```python
-from contextweaver.protocols import TokenEstimator
+from contextweaver.protocols import TiktokenEstimator
 
-class TiktokenEstimator(TokenEstimator):
-    def __init__(self, model: str = "gpt-4"):
-        import tiktoken
-        self._enc = tiktoken.encoding_for_model(model)
+# Compute the total estimated tokens from a build
+total_estimated_tokens = (
+    sum(pack.stats.tokens_per_section.values())
+    + pack.stats.header_footer_tokens
+)
 
-    def estimate(self, text: str) -> int:
-        return len(self._enc.encode(text))
-
+# Plug in the built-in tiktoken-backed estimator (requires `tiktoken` package)
 mgr = ContextManager(token_estimator=TiktokenEstimator(model="gpt-4"))
 ```
 
@@ -319,8 +319,11 @@ print(f"Dedup removed: {pack.stats.dedup_removed}")
 ```
 
 Optimisation checklist:
-- Use tighter phase budgets → fewer candidates to score.
-- Use `build()` (async) in an async runtime to avoid blocking the event loop.
+- Use tighter phase budgets to reduce how much content is included in the final
+  pack; this does not reduce how many candidates are processed or scored.
+- In async runtimes, offload `build_sync()` to a worker thread with
+  `asyncio.to_thread()` or `loop.run_in_executor()` if you need to avoid blocking
+  the event loop; `await mgr.build()` alone still runs the synchronous pipeline.
 - Use the default `CharDivFour` estimator (faster than `tiktoken`).
 - Keep the event log shallow: archive old turns to `episodic_store` and
   remove them from the active log.
@@ -352,11 +355,11 @@ print(f"Tokens per section: {pack.stats.tokens_per_section}")
 from contextweaver.types import ItemKind
 
 # All events
-for event in mgr.event_log.list():
+for event in mgr.event_log.all():
     print(f"{event.id} ({event.kind.value}): {event.text[:60]}…")
 
 # Filter by kind
-tool_results = [e for e in mgr.event_log.list() if e.kind == ItemKind.tool_result]
+tool_results = mgr.event_log.filter_by_kind(ItemKind.tool_result)
 print(f"Tool results in log: {len(tool_results)}")
 ```
 
@@ -365,11 +368,11 @@ print(f"Tool results in log: {len(tool_results)}")
 ```python
 # List all stored artifacts
 for ref in mgr.artifact_store.list_refs():
-    print(f"  {ref.ref_id}  label={ref.label}")
+    print(f"  {ref.handle}  label={ref.label}")
 
 # Retrieve full raw content for a specific artifact
-artifact = mgr.artifact_store.get("artifact:tr1")
-print(artifact.content.decode("utf-8"))
+artifact_bytes = mgr.artifact_store.get("artifact:tr1")
+print(artifact_bytes.decode("utf-8"))
 ```
 
 ### Inspect Routing Decisions
@@ -390,12 +393,12 @@ for step in result.debug_trace:
 ```python
 # Facts stored by the summarization / extraction pipeline
 for key in mgr.fact_store.list_keys():
-    fact = mgr.fact_store.get(key)
-    print(f"{key}: {fact}")
+    for fact in mgr.fact_store.get_by_key(key):
+        print(f"{key}: {fact}")
 
 # Episodic summaries
-for episode in mgr.episodic_store.list():
-    print(f"{episode.id}: {episode.text[:80]}…")
+for episode in mgr.episodic_store.all():
+    print(f"{episode.episode_id}: {episode.summary[:80]}…")
 ```
 
 ### Enable Debug Logging
@@ -433,12 +436,14 @@ and beam-search expansions at every pipeline stage.
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
 
-# Tighter budgets → fewer candidates processed
+# Tighter budgets reduce how much context is retained in the final pack.
+# To reduce candidates processed earlier in the pipeline, keep the event log
+# short and rely on phase-kind / TTL / sensitivity filtering.
 budget = ContextBudget(route=500, call=800, interpret=800, answer=1500)
 mgr = ContextManager(budget=budget)
 
-# Use async build() in async runtimes (avoids blocking the event loop)
-pack = await mgr.build(phase=Phase.answer, query="...")
+# In async runtimes, offload to a thread to avoid blocking the event loop:
+# pack = await asyncio.to_thread(mgr.build_sync, Phase.answer, "...")
 
 # Keep the event log short — archive old turns to episodic_store
 ```
@@ -450,15 +455,10 @@ pack = await mgr.build(phase=Phase.answer, query="...")
 budget = ContextBudget(route=3000, call=5000, interpret=6000, answer=10000)
 mgr = ContextManager(budget=budget)
 
-# Use an accurate tokeniser matching your LLM
-class TiktokenEstimator(TokenEstimator):
-    def __init__(self, model: str = "gpt-4"):
-        import tiktoken
-        self._enc = tiktoken.encoding_for_model(model)
-    def estimate(self, text: str) -> int:
-        return len(self._enc.encode(text))
+# Use the built-in tiktoken-backed estimator matching your LLM
+from contextweaver.protocols import TiktokenEstimator
 
-mgr = ContextManager(budget=budget, token_estimator=TiktokenEstimator())
+mgr = ContextManager(budget=budget, token_estimator=TiktokenEstimator(model="gpt-4"))
 ```
 
 ### For Large Tool Catalogs (100+ tools)
@@ -470,7 +470,7 @@ shortlisted_ids = set(result.candidate_ids)
 
 # Optionally filter ingested tool results to shortlisted tools only
 relevant_events = [
-    e for e in mgr.event_log.list()
+    e for e in mgr.event_log.all()
     if e.parent_id in shortlisted_ids or e.id in shortlisted_ids
 ]
 ```

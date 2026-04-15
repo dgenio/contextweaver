@@ -1,0 +1,75 @@
+{
+  "benchmark_version": "1.0",
+  "k": 5,
+  "seed": 42,
+  "routing": [
+    {
+      "catalog_size": 50,
+      "queries_evaluated": 50,
+      "precision_at_k": 0.16,
+      "recall_at_k": 0.74,
+      "mrr": 0.71,
+      "latency_ms_p50": 0.124,
+      "latency_ms_p95": 0.272,
+      "latency_ms_p99": 0.452
+    },
+    {
+      "catalog_size": 83,
+      "queries_evaluated": 50,
+      "precision_at_k": 0.132,
+      "recall_at_k": 0.61,
+      "mrr": 0.6083,
+      "latency_ms_p50": 0.143,
+      "latency_ms_p95": 0.317,
+      "latency_ms_p99": 0.752
+    },
+    {
+      "catalog_size": 1000,
+      "queries_evaluated": 50,
+      "precision_at_k": 0.064,
+      "recall_at_k": 0.31,
+      "mrr": 0.32,
+      "latency_ms_p50": 0.353,
+      "latency_ms_p95": 0.742,
+      "latency_ms_p99": 1.057
+    }
+  ],
+  "context": [
+    {
+      "scenario": "large_catalog",
+      "event_count": 60,
+      "items_included": 60,
+      "items_dropped": 0,
+      "dedup_removed": 0,
+      "prompt_tokens": 1514,
+      "budget_tokens": 6000,
+      "budget_utilization_pct": 25.2,
+      "artifacts_created": 15,
+      "avg_compaction_ratio": 1.0
+    },
+    {
+      "scenario": "long_conversation",
+      "event_count": 82,
+      "items_included": 82,
+      "items_dropped": 0,
+      "dedup_removed": 0,
+      "prompt_tokens": 2548,
+      "budget_tokens": 6000,
+      "budget_utilization_pct": 42.5,
+      "artifacts_created": 21,
+      "avg_compaction_ratio": 1.41
+    },
+    {
+      "scenario": "short_conversation",
+      "event_count": 18,
+      "items_included": 18,
+      "items_dropped": 0,
+      "dedup_removed": 0,
+      "prompt_tokens": 496,
+      "budget_tokens": 6000,
+      "budget_utilization_pct": 8.3,
+      "artifacts_created": 4,
+      "avg_compaction_ratio": 1.0
+    }
+  ]
+}

@@ -238,7 +238,9 @@ SDK, and Google ADK guides are in progress.
 
 **Q: What's the performance overhead?**
 Typically 10–50 ms for a context build (depends on event log size and deduplication).
-Use `build()` (async) for real-time agents to avoid blocking the event loop.
+For real-time / async agents, run `build_sync()` in a worker thread (e.g.
+`await asyncio.to_thread(mgr.build_sync, phase, query)`) so the synchronous
+pipeline does not block the event loop.
 
 See [docs/troubleshooting.md](docs/troubleshooting.md) for the full troubleshooting
 guide, debugging techniques, optimisation tips, and 10+ common issues with solutions.

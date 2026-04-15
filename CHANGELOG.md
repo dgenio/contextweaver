@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `docs/troubleshooting.md` — new end-to-end troubleshooting guide with 10 common
+  issues, debugging techniques, performance optimisation table, and 12-entry FAQ (#82)
+- README FAQ section (5 entries) and link to troubleshooting guide
+
+### Fixed
+- Corrected all runnable snippets in `docs/troubleshooting.md` to match actual APIs:
+  - `ArtifactStore.get()` returns `bytes`, not an object with `.content`
+  - `ArtifactRef` field is `handle`, not `ref_id`
+  - `EventLog` exposes `all()` / `filter_by_kind()` / `count()`, not `list()`
+  - `FactStore.get_by_key(key)` is the correct API for key-based fact lookup
+  - `EpisodicStore` items use `episode_id` / `summary`, not `id` / `text`
+  - `ContextPack` has no `token_count`; totals computed from `pack.stats`
+  - `await mgr.build()` still runs the synchronous pipeline; recommend
+    `asyncio.to_thread(mgr.build_sync, ...)` for true non-blocking async
+
 ## [0.1.7] - 2026-03-21
 
 ### Added
