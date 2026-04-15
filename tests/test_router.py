@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import RouteError
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.router import Router, RouteResult
@@ -245,3 +246,31 @@ def test_backtrack_fills_up_to_top_k() -> None:
     # With 50 items and top_k=15, backtracking should fill well past beam_width=2
     assert len(result.candidate_ids) >= top_k // 2
     assert len(result.candidate_ids) <= top_k
+
+
+# ------------------------------------------------------------------
+# routing_config override
+# ------------------------------------------------------------------
+
+
+def test_routing_config_overrides_defaults() -> None:
+    """routing_config sets all four beam-search params when supplied."""
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    rc = RoutingConfig(beam_width=3, max_depth=6, top_k=7, confidence_gap=0.12)
+    router = Router(graph, routing_config=rc)
+    assert router._beam_width == 3
+    assert router._max_depth == 6
+    assert router._top_k == 7
+    assert router._confidence_gap == 0.12
+
+
+def test_routing_config_overrides_explicit_kwargs() -> None:
+    """routing_config takes priority over individually supplied positional kwargs."""
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    rc = RoutingConfig(beam_width=3, max_depth=6, top_k=7, confidence_gap=0.12)
+    # beam_width=99 and top_k=50 are overridden by routing_config
+    router = Router(graph, beam_width=99, top_k=50, routing_config=rc)
+    assert router._beam_width == 3
+    assert router._top_k == 7

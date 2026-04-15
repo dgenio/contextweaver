@@ -11,6 +11,7 @@ from contextweaver.config import (
     RoutingConfig,
     ScoringConfig,
 )
+from contextweaver.exceptions import ConfigError
 from contextweaver.types import ItemKind, Phase
 
 
@@ -116,7 +117,7 @@ def test_profile_accurate_preset() -> None:
 
 
 def test_profile_unknown_preset_raises() -> None:
-    with pytest.raises(ValueError, match="Unknown preset"):
+    with pytest.raises(ConfigError, match="Unknown preset"):
         ProfileConfig.from_preset("turbo")
 
 

@@ -62,15 +62,15 @@ class Router:
             Equivalent to calling :meth:`set_items` after construction.
         scorer: Optional pre-fitted :class:`TfIdfScorer`.  If ``None``,
             one is auto-fitted on the graph's item text representations.
-        routing_config: Optional :class:`~contextweaver.config.RoutingConfig` that
-            sets all routing parameters at once.  When provided, individual keyword
-            arguments (*beam_width*, *max_depth*, *top_k*, *confidence_gap*) are
-            ignored.
         beam_width: Number of beams to keep at each level (default 2).
         max_depth: Maximum tree depth to traverse (default 8).
         top_k: Maximum number of results to return (default 10).
         confidence_gap: Minimum score gap between rank-1 and rank-2 to
             consider the top pick confident.  Must be in ``[0.0, 1.0]``.
+        routing_config: Keyword-only.  Optional :class:`~contextweaver.config.RoutingConfig`
+            that sets all routing parameters at once.  When provided, *beam_width*,
+            *max_depth*, *top_k*, and *confidence_gap* are replaced by the values
+            from this config object.
 
     Raises:
         ValueError: If *confidence_gap* is outside ``[0.0, 1.0]``.
@@ -81,11 +81,12 @@ class Router:
         graph: ChoiceGraph,
         items: list[SelectableItem] | None = None,
         scorer: TfIdfScorer | None = None,
-        routing_config: RoutingConfig | None = None,
         beam_width: int = 2,
         max_depth: int = 8,
         top_k: int = 10,
         confidence_gap: float = 0.15,
+        *,
+        routing_config: RoutingConfig | None = None,
     ) -> None:
         if routing_config is not None:
             beam_width = routing_config.beam_width

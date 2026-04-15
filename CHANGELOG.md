@@ -12,12 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `RoutingConfig` dataclass bundling `beam_width`, `max_depth`, `top_k`, `confidence_gap`, `max_children`; includes `routing_kwargs()`, `to_dict()`, `from_dict()`
   - `ProfileConfig` dataclass bundling `budget`, `policy`, `scoring`, `routing`; includes `from_preset()`, `to_dict()`, `from_dict()`
   - Three named presets: `"fast"` (low-latency), `"balanced"` (general-purpose), `"accurate"` (high-recall)
-  - `Router` now accepts an optional `routing_config: RoutingConfig` first-class parameter
-
-### Changed
-- `Router` default `top_k` changed from 20 → 10 to align with the `"balanced"` preset (#133)
-
-### Added
+  - `Router` now accepts a keyword-only `routing_config: RoutingConfig` parameter that overrides individual beam-search kwargs
+  - `ConfigError` exception added to `contextweaver.exceptions` for invalid config/preset names
 - FastMCP Catalog bridge adapter in `adapters/fastmcp.py` (#114)
   - `fastmcp_tool_to_selectable()` — convert FastMCP tool definitions to `SelectableItem`
   - `fastmcp_tools_to_catalog()` — batch-convert tool definitions into a populated `Catalog`
@@ -25,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `infer_fastmcp_namespace()` — 2-segment namespace inference matching FastMCP composition convention
   - `contextweaver[fastmcp]` optional extra (`fastmcp>=2.0`)
   - Example recipe in `examples/fastmcp_adapter_demo.py`
+
+### Changed
+- `Router` default `top_k` changed from 20 → 10 to align with the `"balanced"` preset (#133)
 
 ### Fixed
 - `_strip_namespace_prefix()` now also strips `{namespace}.` and `{namespace}/` prefixes,

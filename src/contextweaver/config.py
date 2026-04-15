@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from contextweaver.exceptions import ConfigError
 from contextweaver.types import ItemKind, Phase, Sensitivity
 
 # ---------------------------------------------------------------------------
@@ -127,11 +128,11 @@ class ContextPolicy:
 # Routing configuration
 # ---------------------------------------------------------------------------
 
-# Named-preset definitions: (beam_width, max_depth, top_k, confidence_gap, max_children)
-_ROUTING_PRESETS: dict[str, tuple[int, int, int, float, int]] = {
-    "fast": (1, 4, 5, 0.20, 15),
-    "balanced": (2, 8, 10, 0.15, 20),
-    "accurate": (4, 12, 20, 0.10, 30),
+# Named-preset definitions: (beam_width, max_depth, top_k, confidence_gap, max_children, answer)
+_ROUTING_PRESETS: dict[str, tuple[int, int, int, float, int, int]] = {
+    "fast": (1, 4, 5, 0.20, 15, 3000),
+    "balanced": (2, 8, 10, 0.15, 20, 6000),
+    "accurate": (4, 12, 20, 0.10, 30, 8000),
 }
 
 
@@ -236,17 +237,16 @@ class ProfileConfig:
             A fully populated :class:`ProfileConfig`.
 
         Raises:
-            ValueError: If *name* is not a recognised preset.
+            ConfigError: If *name* is not a recognised preset.
         """
         if name not in _ROUTING_PRESETS:
             valid = ", ".join(f'"{k}"' for k in sorted(_ROUTING_PRESETS))
-            raise ValueError(f"Unknown preset {name!r}. Valid presets: {valid}.")
+            raise ConfigError(f"Unknown preset {name!r}. Valid presets: {valid}.")
 
-        beam_width, max_depth, top_k, confidence_gap, max_children = _ROUTING_PRESETS[name]
-        answer_budgets = {"fast": 3000, "balanced": 6000, "accurate": 8000}
+        beam_width, max_depth, top_k, confidence_gap, max_children, answer = _ROUTING_PRESETS[name]
 
         return cls(
-            budget=ContextBudget(answer=answer_budgets[name]),
+            budget=ContextBudget(answer=answer),
             routing=RoutingConfig(
                 beam_width=beam_width,
                 max_depth=max_depth,
@@ -257,7 +257,15 @@ class ProfileConfig:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialise to a JSON-compatible dict."""
+        """Serialise to a JSON-compatible dict.
+
+        Note:
+            The ``policy`` field is intentionally excluded because
+            :class:`ContextPolicy` contains enum-keyed dicts that are not
+            trivially JSON-serialisable.  Callers round-tripping via
+            :meth:`from_dict` will receive a fresh :class:`ContextPolicy`
+            with default values.
+        """
         return {
             "budget": {
                 "route": self.budget.route,
@@ -276,20 +284,27 @@ class ProfileConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProfileConfig:
-        """Deserialise from a JSON-compatible dict."""
+        """Deserialise from a JSON-compatible dict.
+
+        Note:
+            The ``policy`` field is not serialised by :meth:`to_dict` and will
+            be reset to :class:`ContextPolicy` defaults on round-trip.
+        """
         b = data.get("budget", {})
         s = data.get("scoring", {})
+        _b = ContextBudget()
+        _s = ScoringConfig()
         budget = ContextBudget(
-            route=int(b.get("route", 2000)),
-            call=int(b.get("call", 3000)),
-            interpret=int(b.get("interpret", 4000)),
-            answer=int(b.get("answer", 6000)),
+            route=int(b.get("route", _b.route)),
+            call=int(b.get("call", _b.call)),
+            interpret=int(b.get("interpret", _b.interpret)),
+            answer=int(b.get("answer", _b.answer)),
         )
         scoring = ScoringConfig(
-            recency_weight=float(s.get("recency_weight", 0.3)),
-            tag_match_weight=float(s.get("tag_match_weight", 0.25)),
-            kind_priority_weight=float(s.get("kind_priority_weight", 0.35)),
-            token_cost_penalty=float(s.get("token_cost_penalty", 0.1)),
+            recency_weight=float(s.get("recency_weight", _s.recency_weight)),
+            tag_match_weight=float(s.get("tag_match_weight", _s.tag_match_weight)),
+            kind_priority_weight=float(s.get("kind_priority_weight", _s.kind_priority_weight)),
+            token_cost_penalty=float(s.get("token_cost_penalty", _s.token_cost_penalty)),
         )
         routing = RoutingConfig.from_dict(data.get("routing", {}))
         return cls(budget=budget, scoring=scoring, routing=routing)
