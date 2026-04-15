@@ -14,6 +14,7 @@ Python ≥ 3.10.
 - [Quickstart](docs/quickstart.md): 10-minute guide to context builds, firewall, and routing
 - [MCP Integration](docs/integration_mcp.md): MCP adapter functions, JSONL format, end-to-end example
 - [A2A Integration](docs/integration_a2a.md): A2A adapter functions, multi-agent sessions
+- [Agent Loop Guide](docs/guide_agent_loop.md): Flow diagram and phase guidance for building a complete agent loop
 
 ## Agent Context
 
@@ -42,3 +43,5 @@ Python ≥ 3.10.
 - [MCP Adapter Demo](examples/mcp_adapter_demo.py): End-to-end MCP session ingestion and context build
 - [A2A Adapter Demo](examples/a2a_adapter_demo.py): End-to-end A2A multi-agent session demo
 - [Hydrate Call Demo](examples/hydrate_call_demo.py): Enrich a tool call with context-aware hydration
+- [Full Agent Loop](examples/full_agent_loop.py): End-to-end 4-phase runtime loop (route → call → interpret → answer)
+- [LangChain Memory Demo](examples/langchain_memory_demo.py): Replacing LangChain InMemoryChatMessageHistory with contextweaver budgets
