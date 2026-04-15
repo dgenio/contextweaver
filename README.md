@@ -271,6 +271,7 @@ contextweaver works with any LLM provider and any agent framework:
   Pipecat, custom loops
 - **No vendor lock-in**: stdlib-only core; no cloud dependencies; runs anywhere Python 3.10+ runs
 
+<!-- mirrors the Framework Integrations table above; keep in sync -->
 | Framework | Guide | Use Case |
 |---|---|---|
 | MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
