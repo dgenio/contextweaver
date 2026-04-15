@@ -3,8 +3,8 @@
 
 Run via `make llms`. Both output files are deterministic and should
 match the committed copies byte-for-byte after each documentation
-change. CI calls this same script with `--check` to fail builds when
-drift is introduced.
+change. Intended for CI to run with `--check` to fail builds when
+drift is introduced; CI integration is deferred to a follow-up.
 
 Layout of each output:
 

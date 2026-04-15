@@ -80,6 +80,8 @@ make ci       # fmt + lint + type + test + example + demo
 make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make llms        # regenerate llms.txt and llms-full.txt from canonical docs
+make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 ```
 
 Run `pre-commit install` once after cloning to activate git hooks
