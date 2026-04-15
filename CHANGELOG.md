@@ -17,14 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `.github/workflows/docs.yml` — publishes to GitHub Pages on every push to `main`; CI workflow permissions are scoped per-job (build: `contents: read`, deploy: `pages: write` + `id-token: write`)
   - README now links to `https://dgenio.github.io/contextweaver`
   - `AGENTS.md` and `docs/agent-context/workflows.md` updated to document `make docs` / `make docs-serve` targets
+- End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
+- Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
+- LangChain memory replacement example in `examples/langchain_memory_demo.py` (#170) — demonstrates replacing `InMemoryChatMessageHistory` with phase-specific budgets and the context firewall using a deterministic mock LLM and real `langchain-core` objects
+- `llms.txt` — structured documentation index for AI tools (llmstxt.org convention) with Docs,
+  Agent Context, API, and Examples sections; includes `docs/agent-context/` as a dedicated
+  section for AI contributor guidance
+- `llms-full.txt` — single-file concatenation of all documentation (README + docs/* +
+  docs/agent-context/*) with `<!-- FILE: ... -->` section markers and a generated-file header
+  documenting regeneration instructions; relative links in the embedded quickstart section
+  rewritten to root-relative paths
 
 ### Fixed
 - `mkdocs.yml` `edit_uri` corrected from `edit/main/docs/` to `edit/main/` so that auto-generated API reference "Edit" buttons resolve to `src/contextweaver/*.py` rather than the nonexistent `docs/src/...` path
 - `docs/gen_ref_pages.py` dunder-module handling (`__init__`, `__main__`) now runs before the private-name filter so package `__init__.py` docstrings are rendered as package index pages in the API reference; the private filter now correctly excludes only non-dunder private modules and package directories
 - `docs/gen_ref_pages.py` module walk restricted to `src/contextweaver` (matches docstring; prevents accidental inclusion of future sibling packages under `src/`)
-- End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
-- Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
-- LangChain memory replacement example in `examples/langchain_memory_demo.py` (#170) — demonstrates replacing `InMemoryChatMessageHistory` with phase-specific budgets and the context firewall using a deterministic mock LLM and real `langchain-core` objects
 
 ### Changed
 - README now includes a "Runtime Loop (4 Phases)" section and references the new example/guide
