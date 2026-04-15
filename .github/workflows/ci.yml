@@ -43,3 +43,7 @@ jobs:
 
       - name: Demo
         run: make demo
+
+      - name: Benchmark (informational, non-gating)
+        continue-on-error: true
+        run: python benchmarks/benchmark.py

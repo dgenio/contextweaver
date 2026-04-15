@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Benchmark harness for routing and context pipeline (#119)
+  - `benchmarks/routing_gold.json` — 50 queries mapped to expected tool IDs across all 8 catalog namespaces
+  - `benchmarks/benchmark.py` — standalone script computing routing metrics (precision@k, recall@k, MRR, p50/p95/p99 latency) and context pipeline metrics (prompt_tokens, budget_utilization_pct, included/dropped/dedup counts, artifacts_created, avg_compaction_ratio)
+  - Tests 3 catalog sizes: 50, 83 (natural pool cap), and 1000 (synthetic extension)
+  - 3 scenario JSONL files in `benchmarks/scenarios/` (short_conversation, long_conversation, large_catalog)
+  - `make benchmark` target; CI runs benchmark as a non-gating informational step
+  - JSON results written to `benchmarks/results/latest.json`; path git-ignored
+  - Stdlib-only, deterministic (seeded), no new runtime dependencies
 - Named configuration presets in `config.py` (#133)
   - `RoutingConfig` dataclass bundling `beam_width`, `max_depth`, `top_k`, `confidence_gap`, `max_children`; includes `routing_kwargs()`, `to_dict()`, `from_dict()`
   - `ProfileConfig` dataclass bundling `budget`, `policy`, `scoring`, `routing`; includes `from_preset()`, `to_dict()`, `from_dict()`
