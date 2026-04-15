@@ -58,7 +58,7 @@ and calling `ContextManager.build_sync(phase=Phase.answer)`.
 
 | File | Turns | Tools | Notes |
 |------|-------|-------|-------|
-| `short_conversation.jsonl` | 5 | 3 (notifications.send, email.draft, email.send, deployments.status) | Infra freeze-prep workflow |
+| `short_conversation.jsonl` | 5 | 4 (notifications.send, email.draft, email.send, deployments.status) | Infra freeze-prep workflow |
 | `long_conversation.jsonl` | 20 | 10+ | Complex CRM/billing/infra workflow; includes large invoice search result |
 | `large_catalog.jsonl` | 15 | 10+ (all 8 namespaces) | Research catalog workflow; exercises routing breadth |
 
@@ -70,14 +70,14 @@ Run on 2026-04-15 with contextweaver v0.1.7, Python 3.12.
 
 | catalog_size | queries | prec@5 | recall@5 |   mrr | p50_ms | p95_ms | p99_ms |
 |-------------:|--------:|-------:|---------:|------:|-------:|-------:|-------:|
-|           50 |      34 | 0.1588 |   0.7353 | 0.7353 |  0.102 |  0.173 |  0.408 |
-|           83 |      50 | 0.1360 |   0.6300 | 0.6283 |  0.124 |  0.233 |  0.401 |
-|         1000 |      50 | 0.0640 |   0.3100 | 0.3200 |  0.291 |  0.607 |  1.448 |
+|           50 |      50 | 0.1600 |   0.7400 | 0.7100 |  0.124 |  0.272 |  0.452 |
+|           83 |      50 | 0.1320 |   0.6100 | 0.6083 |  0.143 |  0.317 |  0.752 |
+|         1000 |      50 | 0.0640 |   0.3100 | 0.3200 |  0.353 |  0.742 |  1.057 |
 
 Notes:
-- 34/50 queries evaluated at catalog_size=50 (16 gold IDs not present in the 50-item draw)
+- All 50 gold queries evaluated at every catalog size (catalog generated with matching `n` so all gold IDs are present)
 - Recall degrades predictably as catalog grows (noise items compete with true matches)
-- p99 latency stays under 1.5ms even at 1000 items
+- p99 latency stays under 1.1ms even at 1000 items
 
 ### Context pipeline
 

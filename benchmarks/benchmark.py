@@ -70,7 +70,8 @@ def _make_catalog(n: int, seed: int = 42) -> list[SelectableItem]:
     preserving routing signal density; they will not match gold-dataset queries
     (different IDs) so precision/recall measurements remain valid.
     """
-    base_dicts = generate_sample_catalog(seed=seed)
+    base_n = min(n, 83)
+    base_dicts = generate_sample_catalog(seed=seed, n=base_n)
     base_items = load_catalog_dicts(base_dicts)
     if n <= len(base_items):
         return sorted(base_items, key=lambda i: i.id)[:n]
