@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `infer_fastmcp_namespace()` — 2-segment namespace inference matching FastMCP composition convention
   - `contextweaver[fastmcp]` optional extra (`fastmcp>=2.0`)
   - Example recipe in `examples/fastmcp_adapter_demo.py`
+
+### Fixed
+- `_strip_namespace_prefix()` now also strips `{namespace}.` and `{namespace}/` prefixes,
+  preventing the namespace from appearing verbatim in the tool's display name for
+  dot- and slash-delimited FastMCP names (e.g. `"github.create_issue"` → `name="create_issue"`) (#177, review)
+- `fastmcp_tool_to_selectable()` now normalizes `meta` values before merging into
+  `SelectableItem.metadata`: `set`/`frozenset` are coerced to sorted lists and `tuple` to
+  lists, ensuring `to_dict()` / JSON serialization never fails on FastMCP metadata (#177, review)
 - Auto-generated API reference documentation site using MkDocs + Material + mkdocstrings (#110)
   - `mkdocs.yml` — site configuration with Material theme, auto-nav, and mkdocstrings
   - `docs/gen_ref_pages.py` — build-time script that walks `src/contextweaver` and emits one reference page per public module; new modules are picked up automatically

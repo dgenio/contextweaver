@@ -922,6 +922,41 @@ def test_fastmcp_tool_meta_merged() -> None:
     assert item.metadata["author"] == "team"
 
 
+def test_fastmcp_tool_meta_set_normalized_to_list() -> None:
+    """meta containing a set must be normalized so to_dict() / JSON serialization works."""
+    import json
+
+    tool_def = {
+        "name": "api_status",
+        "description": "Check status",
+        "meta": {"tags": {"prod", "admin"}, "owners": ("alice", "bob")},
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    # Coerced to list — no set or tuple in metadata
+    assert isinstance(item.metadata["tags"], list)
+    assert isinstance(item.metadata["owners"], list)
+    # to_dict() must not raise (JSON-serializable)
+    assert json.dumps(item.to_dict())
+
+
+def test_fastmcp_tool_dot_namespace_stripping() -> None:
+    """Dot-delimited names: name field must not repeat the namespace prefix."""
+    tool_def = {"name": "github.create_issue", "description": "Create an issue"}
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.namespace == "github"
+    assert item.name == "create_issue"
+    assert item.id == "fastmcp:github.create_issue"
+
+
+def test_fastmcp_tool_slash_namespace_stripping() -> None:
+    """Slash-delimited names: name field must not repeat the namespace prefix."""
+    tool_def = {"name": "filesystem/read", "description": "Read a file"}
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.namespace == "filesystem"
+    assert item.name == "read"
+    assert item.id == "fastmcp:filesystem/read"
+
+
 # ---------------------------------------------------------------------------
 # FastMCP adapter — fastmcp_tools_to_catalog
 # ---------------------------------------------------------------------------

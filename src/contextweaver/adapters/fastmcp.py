@@ -37,8 +37,10 @@ def infer_fastmcp_namespace(tool_name: str) -> str:
 
     FastMCP's composition layer joins ``{namespace}_{toolname}`` with a single
     underscore separator (see https://gofastmcp.com/servers/composition).
-    This function first delegates to :func:`~contextweaver.adapters.mcp.infer_namespace`
-    for dot- and slash-delimited names.  For underscore-delimited names it
+    For dot- and slash-delimited names this function mirrors the prefix-extraction
+    logic of :func:`~contextweaver.adapters.mcp.infer_namespace` (kept inline to
+    avoid coupling on that function's fallback sentinel).  For underscore-delimited
+    names it
     accepts **2+** segments (unlike the generic MCP heuristic which requires 3+),
     since 2-segment names like ``github_search`` are normal FastMCP output.
 
@@ -74,12 +76,13 @@ def infer_fastmcp_namespace(tool_name: str) -> str:
 def _strip_namespace_prefix(tool_name: str, namespace: str) -> str:
     """Return the short tool name with the namespace prefix removed.
 
-    If the tool name starts with ``{namespace}_``, the prefix is stripped.
-    Otherwise the full name is returned unchanged.
+    If the tool name starts with ``{namespace}_``, ``{namespace}.``, or
+    ``{namespace}/``, that prefix is stripped. Otherwise the full name is
+    returned unchanged.
     """
-    prefix = f"{namespace}_"
-    if tool_name.startswith(prefix) and len(tool_name) > len(prefix):
-        return tool_name[len(prefix) :]
+    for prefix in (f"{namespace}_", f"{namespace}.", f"{namespace}/"):
+        if tool_name.startswith(prefix) and len(tool_name) > len(prefix):
+            return tool_name[len(prefix) :]
     return tool_name
 
 
@@ -144,6 +147,13 @@ def fastmcp_tool_to_selectable(
             if isinstance(t, str) and t:
                 tags.add(t)
 
+    # Normalize meta for JSON-serialization safety: coerce set/frozenset → sorted
+    # list, tuple → list.  Keeps all keys — only the value types are changed.
+    normalized_meta: dict[str, Any] = {
+        k: sorted(v) if isinstance(v, (set, frozenset)) else list(v) if isinstance(v, tuple) else v
+        for k, v in meta.items()
+    }
+
     logger.debug(
         "fastmcp_tool_to_selectable: name=%s, ns=%s, tags=%s",
         full_name,
@@ -161,7 +171,7 @@ def fastmcp_tool_to_selectable(
         output_schema=item.output_schema,
         side_effects=item.side_effects,
         cost_hint=item.cost_hint,
-        metadata={**item.metadata, **meta},
+        metadata={**item.metadata, **normalized_meta},
     )
 
 
