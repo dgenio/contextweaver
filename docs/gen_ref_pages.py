@@ -28,20 +28,22 @@ for path in sorted(package_root.rglob("*.py")):
 
     parts = tuple(module_path.parts)
 
-    # Skip private helpers/packages and CLI entry-point
-    if any(part.startswith("_") for part in parts):
+    # Skip the CLI entry-point unconditionally.
+    if parts[-1] == "__main__":
         continue
 
-    if parts[-1] == "__main__":  # pragma: no cover
-        continue
-
-    # Treat __init__ as the index page for the package directory
+    # Treat __init__ as the index page for the package directory.
     if parts[-1] == "__init__":
         parts = parts[:-1]
         doc_path = doc_path.with_name("index.md")
         full_doc_path = full_doc_path.with_name("index.md")
 
     if not parts:
+        continue
+
+    # Skip private helpers and private package directories (non-dunder names only;
+    # __init__ is handled above, __main__ is handled above).
+    if any(p.startswith("_") for p in parts):
         continue
 
     nav[parts] = doc_path.as_posix()
