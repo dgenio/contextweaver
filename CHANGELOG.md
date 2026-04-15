@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- FastMCP Catalog bridge adapter in `adapters/fastmcp.py` (#114)
+  - `fastmcp_tool_to_selectable()` — convert FastMCP tool definitions to `SelectableItem`
+  - `fastmcp_tools_to_catalog()` — batch-convert tool definitions into a populated `Catalog`
+  - `load_fastmcp_catalog()` — async live discovery from any FastMCP server source
+  - `infer_fastmcp_namespace()` — 2-segment namespace inference matching FastMCP composition convention
+  - `contextweaver[fastmcp]` optional extra (`fastmcp>=2.0`)
+  - Example recipe in `examples/fastmcp_adapter_demo.py`
 - Auto-generated API reference documentation site using MkDocs + Material + mkdocstrings (#110)
   - `mkdocs.yml` — site configuration with Material theme, auto-nav, and mkdocstrings
   - `docs/gen_ref_pages.py` — build-time script that walks `src/contextweaver` and emits one reference page per public module; new modules are picked up automatically

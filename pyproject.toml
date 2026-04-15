@@ -37,6 +37,9 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
 ]
+fastmcp = [
+    "fastmcp>=2.0",
+]
 langchain = [
     "langchain-core>=0.3",
 ]
