@@ -168,10 +168,10 @@ The runtime loop example demonstrates:
 |---|---|---|
 | MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| LlamaIndex | Guide (coming soon) | RAG + tools with budget control |
-| OpenAI Agents SDK | Guide (coming soon) | Function-calling agents with routing |
-| Google ADK | Guide (coming soon) | Gemini tool-use with context budgets |
-| LangChain / LangGraph | Guide (coming soon) | Chain + graph agents with firewall |
+| LlamaIndex | Guide (v0.2) | RAG + tools with budget control |
+| OpenAI Agents SDK | Guide (v0.2) | Function-calling agents with routing |
+| Google ADK | Guide (v0.2) | Gemini tool-use with context budgets |
+| LangChain / LangGraph | Guide (v0.2) | Chain + graph agents with firewall |
 
 ---
 
@@ -201,7 +201,7 @@ contextweaver is built for production use with comprehensive quality gates:
   adapters, stores, CLI, sensitivity enforcement
 - **mypy strict** type checking — zero errors across all source files
 - **ruff clean** linting — zero warnings
-- **CI pipeline** on every push and pull request ([see workflows](.github/workflows/))
+- **CI pipeline** on every pull request and on pushes to `main` ([see workflows](.github/workflows/))
 - **Deterministic output** — tie-break by ID, sorted keys; identical inputs always produce
   identical outputs
 
@@ -226,7 +226,7 @@ Every architectural choice was made for a reason:
 |---|---|
 | **Zero runtime dependencies** | No version conflicts, no supply-chain risks, no bloat. Works in any Python 3.10+ environment. |
 | **Protocol-based interfaces** | `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` are `typing.Protocol` — swap backends without forking. |
-| **Async-first context engine** | Non-blocking compilation for real-time agents; `build_sync()` wrappers for synchronous callers. |
+| **Async-first context engine** | Async-compatible compilation API for real-time integrations; `build_sync()` wrappers for synchronous callers, with room for future non-blocking execution. |
 | **Phase-specific token budgets** | Route / call / interpret / answer phases each get their own budget — no one-size-fits-all truncation. |
 | **Context firewall** | Large tool outputs stored out-of-band; only compact summaries reach the prompt. |
 | **Dependency closure** | `parent_id` chains keep tool results coherent — tool calls are never separated from their results. |
@@ -287,8 +287,8 @@ contextweaver works with any LLM provider and any agent framework:
 
 contextweaver follows [Semantic Versioning](https://semver.org/):
 
-- **Breaking changes** only in major versions (`0.x → 1.0`)
-- **Deprecation policy**: deprecated features warned for one minor version before removal
+- **Breaking changes** to public APIs only in major versions
+- **Deprecation policy**: deprecated public APIs are warned for at least one minor version and removed only in a later major release
 - **API stability**: public APIs in `contextweaver.*` are stable; internal `_*` modules may change
 - **Python support**: 3.10+ (aligned with Python's active security support lifecycle)
 
