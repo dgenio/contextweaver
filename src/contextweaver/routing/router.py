@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
+from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import RouteError
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.types import SelectableItem
@@ -61,9 +62,13 @@ class Router:
             Equivalent to calling :meth:`set_items` after construction.
         scorer: Optional pre-fitted :class:`TfIdfScorer`.  If ``None``,
             one is auto-fitted on the graph's item text representations.
+        routing_config: Optional :class:`~contextweaver.config.RoutingConfig` that
+            sets all routing parameters at once.  When provided, individual keyword
+            arguments (*beam_width*, *max_depth*, *top_k*, *confidence_gap*) are
+            ignored.
         beam_width: Number of beams to keep at each level (default 2).
         max_depth: Maximum tree depth to traverse (default 8).
-        top_k: Maximum number of results to return (default 20).
+        top_k: Maximum number of results to return (default 10).
         confidence_gap: Minimum score gap between rank-1 and rank-2 to
             consider the top pick confident.  Must be in ``[0.0, 1.0]``.
 
@@ -76,11 +81,17 @@ class Router:
         graph: ChoiceGraph,
         items: list[SelectableItem] | None = None,
         scorer: TfIdfScorer | None = None,
+        routing_config: RoutingConfig | None = None,
         beam_width: int = 2,
         max_depth: int = 8,
-        top_k: int = 20,
+        top_k: int = 10,
         confidence_gap: float = 0.15,
     ) -> None:
+        if routing_config is not None:
+            beam_width = routing_config.beam_width
+            max_depth = routing_config.max_depth
+            top_k = routing_config.top_k
+            confidence_gap = routing_config.confidence_gap
         if not 0.0 <= confidence_gap <= 1.0:
             raise ValueError(f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}")
         self._graph = graph
