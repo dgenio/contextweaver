@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ### Added
 - Benchmark harness for routing and context pipeline (#119)
   - `benchmarks/routing_gold.json` — 50 queries mapped to expected tool IDs across all 8 catalog namespaces
@@ -70,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make example` now runs `examples/full_agent_loop.py` and `examples/langchain_memory_demo.py`
 - `pyproject.toml` now includes a `[langchain]` extras group (`langchain-core>=0.3`) for LangChain integration examples
 - CI now installs `.[dev,langchain]` so `make example` runs the LangChain demo end-to-end
+- README: corrected CI trigger wording from "on every push" to "on every pull request and on pushes to `main`" (#158)
+- README: fixed "Async-first context engine" rationale — wording now accurately reflects the async-compatible (not non-blocking) API (#158)
+- README: aligned framework guide status labels — both "Framework Integrations" and "Framework Agnostic" tables now use `"Guide (v0.2)"` consistently (#158)
+- README: resolved internal inconsistency in versioning policy — deprecation contract now explicitly states removals happen in a later major release, not after a minor-version warning alone (#158)
 
 ## [0.1.7] - 2026-03-21
 
