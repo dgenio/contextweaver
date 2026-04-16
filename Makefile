@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark llms llms-check
 
 fmt:
 	ruff format src/ tests/ examples/
@@ -36,3 +36,9 @@ benchmark:
 	python benchmarks/benchmark.py
 
 ci: fmt lint type test example demo
+
+llms:
+	python scripts/gen_llms.py
+
+llms-check:
+	python scripts/gen_llms.py --check
