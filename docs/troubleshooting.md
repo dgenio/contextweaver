@@ -137,17 +137,38 @@ pack.stats.included_count    # 0
 pack.stats.dropped_count     # 20
 ```
 
-**Cause:** One of three things:
-1. Token budget too small (even the smallest item doesn't fit).
-2. All items are filtered by sensitivity policy.
-3. No items match the phase's allowed `ItemKind` list.
+**Cause:** Two distinct failure modes — check `total_candidates` first:
+
+- `total_candidates == 0` — items were excluded **before** the pipeline started.
+  Phase-kind filtering happens in `generate_candidates()` (stage 1): items whose
+  `ItemKind` is not in `policy.allowed_kinds_per_phase[phase]` are never added as
+  candidates and never appear in `dropped_reasons`.
+- `total_candidates > 0` and `dropped_count == total_candidates` — items entered the
+  pipeline but were ejected. Check `dropped_reasons` for the cause.
+
+Valid keys in `dropped_reasons`:
+
+| Key | Meaning |
+|-----|---------|
+| `"budget"` | Item doesn't fit in the remaining token budget |
+| `"kind_limit"` | `max_items_per_kind` cap reached for this `ItemKind` |
+| `"sensitivity"` | Dropped by sensitivity policy |
 
 **Diagnosis:**
 ```python
 pack = mgr.build_sync(phase=Phase.answer, query="...")
+print(pack.stats.total_candidates)  # 0 → items never generated; >0 → items dropped
 print(pack.stats.dropped_reasons)
 # {"budget": 18, "sensitivity": 2}  → budget is the main cause
-# {"phase_filter": 20}              → wrong phase or item kinds
+# {"kind_limit": 20}               → max_items_per_kind cap reached
+
+# If total_candidates == 0, check the phase-kind policy:
+from contextweaver.config import ContextPolicy
+from contextweaver.types import Phase, ItemKind
+
+policy = ContextPolicy()
+print(policy.allowed_kinds_per_phase[Phase.answer])
+# Items whose kind is NOT in this list are silently excluded before scoring
 ```
 
 **Solution — increase budget or adjust phase policy:**
@@ -177,14 +198,24 @@ Important items that should be distinct are treated as duplicates.
 **Cause:** Default Jaccard similarity threshold is **0.85**. Items with ≥ 85 %
 token overlap are collapsed.
 
-**Solution — raise the threshold (more conservative deduplication):**
-```python
-from contextweaver.context.dedup import deduplicate_candidates
+> **Note:** Deduplication threshold configuration is tracked in
+> [#182](https://github.com/dgenio/contextweaver/issues/182).
+> Until that ships, the only workaround is to subclass `ContextManager`
+> and override `_build()` to pass a custom `similarity_threshold` to
+> `deduplicate_candidates()`.
 
-# Pass a higher threshold directly when calling the pipeline function
-# or wrap ContextManager with a custom build_sync override.
-# The threshold is currently set in the pipeline at 0.85.
-# A threshold of 1.0 means only exact duplicates are removed.
+Once [#182](https://github.com/dgenio/contextweaver/issues/182) ships, the fix will be:
+```python
+from contextweaver.config import ScoringConfig
+from contextweaver.context.manager import ContextManager
+
+# More conservative: only collapse near-exact duplicates
+scoring = ScoringConfig(dedup_threshold=0.95)
+mgr = ContextManager(scoring_config=scoring)
+
+# Effectively disable deduplication
+scoring = ScoringConfig(dedup_threshold=1.0)
+mgr = ContextManager(scoring_config=scoring)
 ```
 
 See [`docs/architecture.md`](architecture.md#deduplication) for algorithm details.
