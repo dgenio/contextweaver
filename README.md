@@ -186,8 +186,10 @@ The runtime loop example demonstrates:
 | `ResultEnvelope` | Structured tool output: summary + extracted facts + artifact handles + views. |
 | `BuildStats` | Per-build diagnostics: candidate count, included/dropped counts, token usage, drop reasons. |
 
-See [`docs/concepts.md`](docs/concepts.md) for the full glossary and
-[`docs/architecture.md`](docs/architecture.md) for pipeline detail and design rationale.
+See [`docs/concepts.md`](docs/concepts.md) for the full glossary,
+[`docs/architecture.md`](docs/architecture.md) for pipeline detail and design rationale,
+and [`docs/troubleshooting.md`](docs/troubleshooting.md) for common issues, debugging
+techniques, and performance optimisation tips.
 
 ---
 
@@ -386,6 +388,38 @@ contextweaver replay --session session.json --phase answer
 ```bash
 make example   # run all examples
 ```
+
+---
+
+## FAQ
+
+**Q: What token budgets should I use?**
+Start with the defaults (`route=2000`, `call=3000`, `interpret=4000`, `answer=6000`).
+Inspect `pack.stats` after each build and increase any phase that drops too many items.
+
+**Q: My tool result was summarized. Why?**
+The context firewall intercepts *every* `tool_result` item (not just large ones).
+Raw data is stored out-of-band; access it via `mgr.artifact_store.get("artifact:<item_id>")`.
+Provide a custom `Summarizer` to control how the summary is generated.
+
+**Q: How do I debug what was kept or dropped?**
+Inspect `pack.stats` (a `BuildStats` object) after every `build_sync()` / `build()` call:
+`included_count`, `dropped_count`, `dropped_reasons`, `dedup_removed`.
+
+**Q: Does this work with [framework X]?**
+Yes, contextweaver is framework-agnostic — it compiles context; you send `pack.prompt`
+to any LLM or framework.
+See [integration guides](docs/) for MCP and A2A; LlamaIndex, LangChain, OpenAI Agents
+SDK, and Google ADK guides are in progress.
+
+**Q: What's the performance overhead?**
+Typically 10–50 ms for a context build (depends on event log size and deduplication).
+For real-time / async agents, run `build_sync()` in a worker thread (e.g.
+`await asyncio.to_thread(mgr.build_sync, phase, query)`) so the synchronous
+pipeline does not block the event loop.
+
+See [docs/troubleshooting.md](docs/troubleshooting.md) for the full troubleshooting
+guide, debugging techniques, optimisation tips, and 10+ common issues with solutions.
 
 ---
 

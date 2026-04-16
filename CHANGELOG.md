@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 ### Added
+- `docs/troubleshooting.md` — new end-to-end troubleshooting guide with 10 common
+  issues, debugging techniques, performance optimisation table, and 12-entry FAQ (#82)
+- README FAQ section (5 entries) and link to troubleshooting guide
 - Benchmark harness for routing and context pipeline (#119)
   - `benchmarks/routing_gold.json` — 50 queries mapped to expected tool IDs across all 8 catalog namespaces
   - `benchmarks/benchmark.py` — standalone script computing routing metrics (precision@k, recall@k, MRR, p50/p95/p99 latency) and context pipeline metrics (prompt_tokens, budget_utilization_pct, included/dropped/dedup counts, artifacts_created, avg_compaction_ratio)
@@ -75,6 +77,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: fixed "Async-first context engine" rationale — wording now accurately reflects the async-compatible (not non-blocking) API (#158)
 - README: aligned framework guide status labels — both "Framework Integrations" and "Framework Agnostic" tables now use `"Guide (v0.2)"` consistently (#158)
 - README: resolved internal inconsistency in versioning policy — deprecation contract now explicitly states removals happen in a later major release, not after a minor-version warning alone (#158)
+
+### Fixed
+- Corrected all runnable snippets in `docs/troubleshooting.md` to match actual APIs:
+  - `ArtifactStore.get()` returns `bytes`, not an object with `.content`
+  - `ArtifactRef` field is `handle`, not `ref_id`
+  - `EventLog` exposes `all()` / `filter_by_kind()` / `count()`, not `list()`
+  - `FactStore.get_by_key(key)` is the correct API for key-based fact lookup
+  - `EpisodicStore` items use `episode_id` / `summary`, not `id` / `text`
+  - `ContextPack` has no `token_count`; totals computed from `pack.stats`
+  - `await mgr.build()` still runs the synchronous pipeline; recommend
+    `asyncio.to_thread(mgr.build_sync, ...)` for true non-blocking async
+  - Issue 4 diagnosis: removed non-existent `"phase_filter"` key; documented
+    valid `dropped_reasons` keys (`budget`, `kind_limit`, `sensitivity`) and
+    the `total_candidates == 0` vs `dropped_count > 0` distinction
 
 ## [0.1.7] - 2026-03-21
 
