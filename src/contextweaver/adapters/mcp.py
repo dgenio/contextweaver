@@ -67,13 +67,14 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     - ``annotations`` (optional dict with ``title``, ``readOnlyHint``,
       ``destructiveHint``, ``costHint``, etc.)
 
-    .. warning::
+    Warning:
         MCP annotations (``readOnlyHint``, ``destructiveHint``, ``costHint``)
-        are **server-declared hints**, not verified security properties.  Do not
+        are **server-declared hints**, not verified security properties. Do not
         make access-control or safety-critical decisions based solely on these
-        values.  The MCP specification explicitly states that clients should not
-        make security-critical decisions based on annotations.  Use
-        :class:`CapabilityToken` for authorization.
+        values. The MCP specification explicitly states that clients should not
+        make security-critical decisions based on annotations. Use a separate
+        capability- or policy-based authorization mechanism rather than relying
+        on these hints (see issue #20 for the planned authorization mechanism).
 
     Args:
         tool_def: Raw MCP tool definition as returned by ``tools/list``.

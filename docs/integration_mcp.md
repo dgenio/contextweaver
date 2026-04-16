@@ -202,9 +202,14 @@ faithfully tag it `"read-only"` with `side_effects=False`.
 
 **Do not build access-control or safety-gate logic on these fields.**
 
-### Recommended: use CapabilityToken for authorization
+### Authorization status
 
-For actual access control, use `CapabilityToken` (see
-[issue #20](https://github.com/dgenio/contextweaver/issues/20)) rather than
-relying on server-declared annotation hints.  CapabilityTokens are verified
-by your own policy layer, not by the remote MCP server.
+contextweaver does **not currently provide an authorization mechanism** for
+MCP tools. Do not rely on server-declared annotation hints for access
+control.
+
+`CapabilityToken` (see
+[issue #20](https://github.com/dgenio/contextweaver/issues/20)) is a
+proposed/future feature, not a type that is implemented in the library
+today. For actual access control, enforce authorization in your own
+application or policy layer.
