@@ -12,6 +12,7 @@ Follow these steps in order. Each step has a clear success criterion.
 - `.github/instructions/context.instructions.md` — context engine invariants
 - `.github/instructions/routing.instructions.md` — routing engine invariants
 - `.github/instructions/sensitivity.instructions.md` — security-grade sensitivity code
+- `docs/agent-context/architecture.md` — architectural boundaries and tradeoffs
 - `docs/agent-context/invariants.md` — hard constraints and forbidden shortcuts
 
 ## Steps

@@ -20,8 +20,9 @@ Follow these steps in order. Each step has a clear success criterion.
    module fits, propose a new one that satisfies the ≤300-line guideline.
    _Success: module path is known._
 
-2. **Check current module size.** Run `wc -l src/contextweaver/<module>.py`. If already
-   ≥300 lines, stop and open a refactor issue first. _Success: target module is <300 lines._
+2. **Check current module size.** Run `wc -l src/contextweaver/<module>.py`. If the
+   feature would push a non-exempt module over 300 lines, stop and open a refactor issue
+   first. _Success: target module will remain ≤300 lines after the change._
 
 3. **Add the feature code.** Apply coding-style rules from `AGENTS.md`:
    `from __future__ import annotations`, type hints, Google-style docstrings, no `print()`

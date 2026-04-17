@@ -17,7 +17,7 @@ Follow these steps in order. **No behavior changes allowed** — structural clea
 ## Steps
 
 1. **Confirm the module exceeds the size guideline.** Run `wc -l src/contextweaver/<module>.py`.
-   Exempt modules: `types.py`, `envelope.py`, `__main__.py`. _Success: non-exempt file ≥300 lines._
+   Exempt modules: `types.py`, `envelope.py`, `__main__.py`. _Success: non-exempt file >300 lines._
 
 2. **Identify a cohesive unit to extract.** Group related functions or classes with no
    circular dependencies on the remainder. Consult `docs/agent-context/invariants.md` —
