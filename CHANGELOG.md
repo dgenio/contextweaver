@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `SECURITY.md` — vulnerability disclosure policy covering supported versions, GitHub Security Advisories channel, response timeline, and security scope (context firewall, prompt injection, adapter input validation, deserialization)
+
 ### Changed
 - `make test` now runs `pytest --cov=contextweaver --cov-report=term-missing -q` (non-gating coverage report); updated `AGENTS.md`, `docs/agent-context/workflows.md`, and `.claude/CLAUDE.md` to match (#165)
 - Coverage config: removed redundant `omit` pattern (already excluded by `source` scope), added `branch = true` for branch coverage visibility, tightened `"if __name__"` exclusion regex to `"if __name__ == ['"]__main__['"]"` (#165)
