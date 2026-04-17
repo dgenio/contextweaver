@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from contextweaver.exceptions import ArtifactNotFoundError
+from contextweaver.exceptions import ArtifactNotFoundError, ContextWeaverError
 from contextweaver.store.artifacts import InMemoryArtifactStore
 
 
@@ -136,7 +136,7 @@ def test_drilldown_rows() -> None:
 def test_drilldown_unknown_type_raises() -> None:
     store = InMemoryArtifactStore()
     store.put("h1", b"data")
-    with pytest.raises(ValueError, match="Unknown drilldown"):
+    with pytest.raises(ContextWeaverError, match="Unknown drilldown"):
         store.drilldown("h1", {"type": "unknown"})
 
 

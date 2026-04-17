@@ -1,4 +1,4 @@
-"""Tests for contextweaver adapters (MCP and A2A)."""
+"""Tests for contextweaver adapters (MCP, A2A, and FastMCP)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,11 @@ from contextweaver.adapters.a2a import (
     a2a_agent_to_selectable,
     a2a_result_to_envelope,
     load_a2a_session_jsonl,
+)
+from contextweaver.adapters.fastmcp import (
+    fastmcp_tool_to_selectable,
+    fastmcp_tools_to_catalog,
+    infer_fastmcp_namespace,
 )
 from contextweaver.adapters.mcp import (
     infer_namespace,
@@ -767,3 +772,372 @@ def test_load_a2a_session_jsonl_bad_token_estimate() -> None:
             load_a2a_session_jsonl(path)
     finally:
         os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# FastMCP adapter — infer_fastmcp_namespace
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "expected"),
+    [
+        ("github.create_issue", "github"),
+        ("filesystem/read", "filesystem"),
+        ("github_search_repos", "github"),
+        ("slack_send_message", "slack"),
+        ("github_search", "github"),  # 2-segment → accepted by FastMCP heuristic
+        ("read_file", "read"),  # 2-segment → first segment is namespace
+        ("search", "fastmcp"),  # single word → fallback
+        ("", "fastmcp"),
+        (".hidden", "fastmcp"),
+        ("/path", "fastmcp"),
+    ],
+)
+def test_infer_fastmcp_namespace(tool_name: str, expected: str) -> None:
+    assert infer_fastmcp_namespace(tool_name) == expected
+
+
+# ---------------------------------------------------------------------------
+# FastMCP adapter — fastmcp_tool_to_selectable
+# ---------------------------------------------------------------------------
+
+
+def test_fastmcp_tool_basic() -> None:
+    tool_def = {
+        "name": "github_search_repos",
+        "description": "Search GitHub repositories",
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.id == "fastmcp:github_search_repos"
+    assert item.kind == "tool"
+    assert item.name == "search_repos"  # namespace prefix stripped
+    assert item.namespace == "github"
+    assert item.description == "Search GitHub repositories"
+    assert "fastmcp" in item.tags
+    assert "mcp" not in item.tags  # replaced by "fastmcp"
+
+
+def test_fastmcp_tool_two_segment_namespace() -> None:
+    tool_def = {
+        "name": "weather_forecast",
+        "description": "Get weather forecast",
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.namespace == "weather"
+    assert item.name == "forecast"
+    assert item.id == "fastmcp:weather_forecast"
+
+
+def test_fastmcp_tool_single_word_fallback() -> None:
+    tool_def = {"name": "search", "description": "Global search"}
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.namespace == "fastmcp"
+    assert item.name == "search"  # no prefix to strip
+
+
+def test_fastmcp_tool_explicit_namespace() -> None:
+    tool_def = {"name": "query", "description": "Run a query"}
+    item = fastmcp_tool_to_selectable(tool_def, namespace="db")
+    assert item.namespace == "db"
+    assert item.name == "query"
+
+
+def test_fastmcp_tool_tag_mapping() -> None:
+    tool_def = {
+        "name": "api_list_users",
+        "description": "List users",
+        "meta": {"tags": ["production", "admin"]},
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert "fastmcp" in item.tags
+    assert "production" in item.tags
+    assert "admin" in item.tags
+    assert "mcp" not in item.tags
+
+
+def test_fastmcp_tool_schema_preserved() -> None:
+    schema = {"type": "object", "properties": {"q": {"type": "string"}}}
+    tool_def = {
+        "name": "db_query",
+        "description": "Query data",
+        "inputSchema": schema,
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.args_schema == schema
+
+
+def test_fastmcp_tool_output_schema_preserved() -> None:
+    out_schema = {"type": "object", "properties": {"result": {"type": "string"}}}
+    tool_def = {
+        "name": "db_query",
+        "description": "Query data",
+        "outputSchema": out_schema,
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.output_schema == out_schema
+
+
+def test_fastmcp_tool_annotations() -> None:
+    tool_def = {
+        "name": "fs_read_file",
+        "description": "Read a file",
+        "annotations": {"readOnlyHint": True, "costHint": 0.05},
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.side_effects is False
+    assert item.cost_hint == 0.05
+    assert "read-only" in item.tags
+
+
+def test_fastmcp_tool_destructive_hint() -> None:
+    tool_def = {
+        "name": "fs_delete_file",
+        "description": "Delete a file",
+        "annotations": {"destructiveHint": True},
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert "destructive" in item.tags
+    assert item.side_effects is True
+
+
+def test_fastmcp_tool_missing_name() -> None:
+    with pytest.raises(CatalogError, match="missing required fields"):
+        fastmcp_tool_to_selectable({"description": "no name"})
+
+
+def test_fastmcp_tool_missing_description() -> None:
+    with pytest.raises(CatalogError, match="missing required fields"):
+        fastmcp_tool_to_selectable({"name": "tool"})
+
+
+def test_fastmcp_tool_meta_merged() -> None:
+    tool_def = {
+        "name": "api_status",
+        "description": "Check status",
+        "meta": {"version": "1.2", "author": "team"},
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.metadata["version"] == "1.2"
+    assert item.metadata["author"] == "team"
+
+
+def test_fastmcp_tool_meta_set_normalized_to_list() -> None:
+    """meta containing a set must be normalized so to_dict() / JSON serialization works."""
+    import json
+
+    tool_def = {
+        "name": "api_status",
+        "description": "Check status",
+        "meta": {"tags": {"prod", "admin"}, "owners": ("alice", "bob")},
+    }
+    item = fastmcp_tool_to_selectable(tool_def)
+    # Coerced to list — no set or tuple in metadata
+    assert isinstance(item.metadata["tags"], list)
+    assert isinstance(item.metadata["owners"], list)
+    # to_dict() must not raise (JSON-serializable)
+    assert json.dumps(item.to_dict())
+
+
+def test_fastmcp_tool_dot_namespace_stripping() -> None:
+    """Dot-delimited names: name field must not repeat the namespace prefix."""
+    tool_def = {"name": "github.create_issue", "description": "Create an issue"}
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.namespace == "github"
+    assert item.name == "create_issue"
+    assert item.id == "fastmcp:github.create_issue"
+
+
+def test_fastmcp_tool_slash_namespace_stripping() -> None:
+    """Slash-delimited names: name field must not repeat the namespace prefix."""
+    tool_def = {"name": "filesystem/read", "description": "Read a file"}
+    item = fastmcp_tool_to_selectable(tool_def)
+    assert item.namespace == "filesystem"
+    assert item.name == "read"
+    assert item.id == "fastmcp:filesystem/read"
+
+
+# ---------------------------------------------------------------------------
+# FastMCP adapter — fastmcp_tools_to_catalog
+# ---------------------------------------------------------------------------
+
+
+def test_fastmcp_tools_to_catalog() -> None:
+    tools = [
+        {"name": "github_search_repos", "description": "Search repos"},
+        {"name": "github_create_issue", "description": "Create issue"},
+        {"name": "slack_send_message", "description": "Send message"},
+    ]
+    catalog = fastmcp_tools_to_catalog(tools)
+    assert len(catalog.all()) == 3
+
+    github_items = catalog.filter_by_namespace("github")
+    assert len(github_items) == 2
+
+    slack_items = catalog.filter_by_namespace("slack")
+    assert len(slack_items) == 1
+
+
+def test_fastmcp_tools_to_catalog_with_namespace_override() -> None:
+    tools = [
+        {"name": "search", "description": "Search"},
+        {"name": "list", "description": "List"},
+    ]
+    catalog = fastmcp_tools_to_catalog(tools, namespace="myserver")
+    assert all(item.namespace == "myserver" for item in catalog.all())
+
+
+def test_fastmcp_tools_to_catalog_duplicate() -> None:
+    tools = [
+        {"name": "github_search", "description": "Search"},
+        {"name": "github_search", "description": "Search again"},
+    ]
+    with pytest.raises(CatalogError, match="Duplicate item id"):
+        fastmcp_tools_to_catalog(tools)
+
+
+def test_fastmcp_tools_to_catalog_empty() -> None:
+    catalog = fastmcp_tools_to_catalog([])
+    assert len(catalog.all()) == 0
+
+
+# ---------------------------------------------------------------------------
+# FastMCP adapter — load_fastmcp_catalog
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_load_fastmcp_catalog_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """load_fastmcp_catalog converts discovered tools into a populated Catalog."""
+    import importlib
+    import sys
+
+    import contextweaver.adapters.fastmcp as fastmcp_mod
+
+    class FakeTool:
+        def model_dump(self, *, exclude_none: bool = False) -> dict:  # type: ignore[override]
+            return {"name": "github_search", "description": "Search GitHub"}
+
+    class FakeClient:
+        def __init__(self, source: object) -> None: ...
+
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(self, *_: object) -> None: ...
+
+        async def list_tools(self) -> list:
+            return [FakeTool()]
+
+    fake_fastmcp = type(sys)("fastmcp")
+    fake_fastmcp.Client = FakeClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fastmcp", fake_fastmcp)
+    importlib.reload(fastmcp_mod)
+
+    catalog = await fastmcp_mod.load_fastmcp_catalog("fake://server")
+    assert len(catalog.all()) == 1
+    item = catalog.all()[0]
+    assert item.id == "fastmcp:github_search"
+    assert item.namespace == "github"
+    assert item.name == "search"
+    assert "fastmcp" in item.tags
+
+    importlib.reload(fastmcp_mod)  # restore
+
+
+@pytest.mark.asyncio
+async def test_load_fastmcp_catalog_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Server-side errors are wrapped in CatalogError."""
+    import importlib
+    import sys
+
+    import contextweaver.adapters.fastmcp as fastmcp_mod
+
+    class BrokenClient:
+        def __init__(self, source: object) -> None: ...
+
+        async def __aenter__(self) -> BrokenClient:
+            return self
+
+        async def __aexit__(self, *_: object) -> None: ...
+
+        async def list_tools(self) -> list:
+            raise ConnectionRefusedError("offline")
+
+    fake_fastmcp = type(sys)("fastmcp")
+    fake_fastmcp.Client = BrokenClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fastmcp", fake_fastmcp)
+    importlib.reload(fastmcp_mod)
+
+    with pytest.raises(CatalogError, match="Failed to list tools"):
+        await fastmcp_mod.load_fastmcp_catalog("fake://server")
+
+    importlib.reload(fastmcp_mod)  # restore
+
+
+@pytest.mark.asyncio
+async def test_load_fastmcp_catalog_existing_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Passing an existing Client instance is used directly (no wrapping)."""
+    import importlib
+    import sys
+
+    import contextweaver.adapters.fastmcp as fastmcp_mod
+
+    class FakeTool:
+        def model_dump(self, *, exclude_none: bool = False) -> dict:  # type: ignore[override]
+            return {"name": "slack_notify", "description": "Send Slack notification"}
+
+    class FakeClient:
+        def __init__(self, source: object) -> None: ...
+
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(self, *_: object) -> None: ...
+
+        async def list_tools(self) -> list:
+            return [FakeTool()]
+
+    fake_fastmcp = type(sys)("fastmcp")
+    fake_fastmcp.Client = FakeClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fastmcp", fake_fastmcp)
+    importlib.reload(fastmcp_mod)
+
+    # Pass a pre-built client instance — should not be double-wrapped.
+    existing_client = FakeClient(None)
+    catalog = await fastmcp_mod.load_fastmcp_catalog(existing_client)
+    assert len(catalog.all()) == 1
+    assert catalog.all()[0].namespace == "slack"
+
+    importlib.reload(fastmcp_mod)  # restore
+
+
+# ---------------------------------------------------------------------------
+# FastMCP adapter — load_fastmcp_catalog (import guard)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_load_fastmcp_catalog_requires_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify load_fastmcp_catalog raises CatalogError when fastmcp is missing."""
+    import importlib
+    import sys
+
+    import contextweaver.adapters.fastmcp as fastmcp_mod
+
+    # Hide the fastmcp package from import machinery.
+    saved = sys.modules.get("fastmcp")
+    monkeypatch.setitem(sys.modules, "fastmcp", None)  # type: ignore[arg-type]
+
+    # Reload so the lazy import sees the blocked module.
+    importlib.reload(fastmcp_mod)
+
+    with pytest.raises(CatalogError, match="FastMCP is not installed"):
+        await fastmcp_mod.load_fastmcp_catalog("http://localhost:9999/mcp")
+
+    # Restore.
+    if saved is not None:
+        monkeypatch.setitem(sys.modules, "fastmcp", saved)
+    else:
+        monkeypatch.delitem(sys.modules, "fastmcp", raising=False)
+    importlib.reload(fastmcp_mod)

@@ -449,7 +449,7 @@ class ContextManager:
 
         Raises:
             ArtifactNotFoundError: If *handle* is not in the store.
-            ValueError: If the selector type is unknown.
+            ContextWeaverError: If the selector type is unknown.
         """
         result = self._artifact_store.drilldown(handle, selector)
 
