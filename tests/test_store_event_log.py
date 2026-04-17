@@ -23,7 +23,7 @@ def test_append_and_get() -> None:
 def test_duplicate_raises() -> None:
     log = InMemoryEventLog()
     log.append(_make_item("i1"))
-    with pytest.raises(DuplicateItemError):
+    with pytest.raises(DuplicateItemError, match="Duplicate item id"):
         log.append(_make_item("i1"))
 
 
