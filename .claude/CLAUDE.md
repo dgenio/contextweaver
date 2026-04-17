@@ -87,7 +87,7 @@
 
 ```bash
 pip install -e ".[dev]"     # one-time setup
-pytest -q                    # all tests
+pytest --cov=contextweaver --cov-report=term-missing -q  # all tests
 pytest tests/test_<mod>.py   # single module
 pytest -k "test_name"        # single test
 ```

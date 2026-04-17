@@ -73,7 +73,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 make fmt      # ruff format src/ tests/ examples/
 make lint     # ruff check src/ tests/ examples/
 make type     # mypy src/
-make test     # pytest -q
+make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo
