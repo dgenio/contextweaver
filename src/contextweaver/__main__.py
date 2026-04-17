@@ -263,7 +263,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
             "kind_priority_weight": 0.35,
             "token_cost_penalty": 0.1,
         },
-        "policy": {"ttl_behavior": "drop", "sensitivity_floor": "confidential"},
+        "policy": {"sensitivity_floor": "confidential"},
         "routing": {"max_children": 20, "beam_width": 2, "top_k": 20, "confidence_gap": 0.15},
     }
     config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")

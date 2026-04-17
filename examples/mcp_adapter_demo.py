@@ -25,6 +25,9 @@ MCP_TOOL_DEF = {
         "properties": {"query": {"type": "string"}},
         "required": ["query"],
     },
+    # NOTE: readOnlyHint and costHint are server-declared hints only.
+    # Do not use them for access-control or safety decisions — see the
+    # Security Considerations section in docs/integration_mcp.md.
     "annotations": {"readOnlyHint": True, "costHint": 0.1},
 }
 
