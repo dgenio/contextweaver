@@ -166,7 +166,7 @@ The runtime loop example demonstrates:
 
 | Framework | Guide | Use Case |
 |---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
+| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security note](docs/integration_mcp.md#security-considerations) |
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
 | LlamaIndex | Guide (v0.2) | RAG + tools with budget control |
 | OpenAI Agents SDK | Guide (v0.2) | Function-calling agents with routing |

@@ -62,6 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docs/agent-context/*) with `<!-- FILE: ... -->` section markers and a generated-file header
   documenting regeneration instructions; relative links in the embedded quickstart section
   rewritten to root-relative paths
+- MCP annotation security documentation (#21): `mcp_tool_to_selectable()` docstring now
+  includes a Google-style `Warning:` section noting that annotations are untrusted hints;
+  `docs/integration_mcp.md` gains a "Security Considerations" section with annotation mapping
+  table and an "Authorization status" subsection clarifying contextweaver has no current
+  authorization mechanism (`CapabilityToken` is planned, see issue #20)
 
 ### Fixed
 - `mkdocs.yml` `edit_uri` corrected from `edit/main/docs/` to `edit/main/` so that auto-generated API reference "Edit" buttons resolve to `src/contextweaver/*.py` rather than the nonexistent `docs/src/...` path
