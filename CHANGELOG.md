@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **[breaking]** `ContextPolicy.ttl_behavior` field removed from `config.py` (#65).
+  The field was declared but never read by any pipeline stage — `ContextItem` has no TTL
+  field and no pipeline stage acted on it, so silently ignored config eroded trust.
+  TTL/eviction support is tracked separately in #67.
+
+  **Migration:** remove `ttl_behavior` from any `ContextPolicy(ttl_behavior=...)` calls
+  or `"policy": {"ttl_behavior": "drop"}` entries in `contextweaver.json`.
+  No behaviour changes — the field had no effect in any prior release.
+  If you need to forward-compat a shared config dict, use the existing `extra` catch-all:
+  `ContextPolicy(extra={"ttl_behavior": "drop"})`.
+
 ### Added
 - `DuplicateItemError(ContextWeaverError)` — new public exception raised when an item
   with a duplicate ID is appended to an append-only store (e.g. `InMemoryEventLog`); exported
