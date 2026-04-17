@@ -116,7 +116,7 @@ def main() -> None:
     # WITHOUT
     without_tokens = without_contextweaver()
     print(f"\n{'WITHOUT contextweaver':>30}")
-    print(f"{'─' * 40}")
+    print(f"{'-' * 40}")
     print(f"{'Raw prompt tokens:':>30} {without_tokens:,}")
     print(f"{'Strategy:':>30} concatenate everything")
     print(f"{'Budget enforcement:':>30} none")
@@ -125,7 +125,7 @@ def main() -> None:
     # WITH
     with_tokens, included, dropped = with_contextweaver()
     print(f"\n{'WITH contextweaver':>30}")
-    print(f"{'─' * 40}")
+    print(f"{'-' * 40}")
     print(f"{'Final prompt tokens:':>30} {with_tokens:,}")
     print(f"{'Items included:':>30} {included}")
     print(f"{'Items dropped:':>30} {dropped}")
@@ -136,7 +136,7 @@ def main() -> None:
     # Comparison
     reduction = ((without_tokens - with_tokens) / without_tokens * 100) if without_tokens else 0
     print(f"\n{'RESULT':>30}")
-    print(f"{'─' * 40}")
+    print(f"{'-' * 40}")
     print(f"{'Token reduction:':>30} {reduction:.0f}%")
     print(f"{'Tokens saved:':>30} {without_tokens - with_tokens:,}")
     print(f"{'Budget compliance:':>30} {'Yes' if with_tokens <= 1500 else 'No'}")

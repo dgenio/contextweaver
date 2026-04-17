@@ -189,7 +189,7 @@ def format_card_for_prompt(card: ChoiceCard) -> str:
     if card.tags:
         lines.append(f"  tags: {', '.join(sorted(card.tags))}")
     if card.side_effects:
-        lines.append("  \u26a0 has side effects")
+        lines.append("  ! has side effects")
     if card.cost_hint:
         lines.append(f"  cost: {card.cost_hint:.2f}")
     return "\n".join(lines)

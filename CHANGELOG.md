@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- CI: added pip dependency caching (`actions/cache@v4`) to speed up the Python matrix build (#94)
+
+### Fixed
+- Normalize example output markers to ASCII so `make example` works on Windows consoles using cp1252 encoding
+
 ## [0.1.7] - 2026-03-21
 
 ### Added
