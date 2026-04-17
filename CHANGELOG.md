@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `DuplicateItemError(ContextWeaverError)` — new public exception raised when an item
+  with a duplicate ID is appended to an append-only store (e.g. `InMemoryEventLog`); exported
+  from the top-level `contextweaver` package (#64)
 - `docs/troubleshooting.md` — new end-to-end troubleshooting guide with 10 common
   issues, debugging techniques, performance optimisation table, and 12-entry FAQ (#82)
 - README FAQ section (5 entries) and link to troubleshooting guide
@@ -32,9 +35,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `infer_fastmcp_namespace()` — 2-segment namespace inference matching FastMCP composition convention
   - `contextweaver[fastmcp]` optional extra (`fastmcp>=2.0`)
   - Example recipe in `examples/fastmcp_adapter_demo.py`
+- End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
+- Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
+- LangChain memory replacement example in `examples/langchain_memory_demo.py` (#170) — demonstrates replacing `InMemoryChatMessageHistory` with phase-specific budgets and the context firewall using a deterministic mock LLM and real `langchain-core` objects
+- `llms.txt` — structured documentation index for AI tools (llmstxt.org convention) with Docs,
+  Agent Context, API, and Examples sections; includes `docs/agent-context/` as a dedicated
+  section for AI contributor guidance
+- `llms-full.txt` — single-file concatenation of all documentation (README + docs/* +
+  docs/agent-context/*) with `<!-- FILE: ... -->` section markers and a generated-file header
+  documenting regeneration instructions; relative links in the embedded quickstart section
+  rewritten to root-relative paths
+- MCP annotation security documentation (#21): `mcp_tool_to_selectable()` docstring now
+  includes a Google-style `Warning:` section noting that annotations are untrusted hints;
+  `docs/integration_mcp.md` gains a "Security Considerations" section with annotation mapping
+  table and an "Authorization status" subsection clarifying contextweaver has no current
+  authorization mechanism (`CapabilityToken` is planned, see issue #20)
 
 ### Changed
+- `InMemoryEventLog.append()` now raises `DuplicateItemError` instead of bare `ValueError`
+  on duplicate item ID — callers catching `ValueError` must migrate to `DuplicateItemError`
+  or the `ContextWeaverError` base class (#64)
+- `InMemoryArtifactStore.drilldown()` now raises `ContextWeaverError` instead of bare
+  `ValueError` for unknown selector types — callers catching `ValueError` must migrate to
+  `ContextWeaverError` (#64)
 - `Router` default `top_k` changed from 20 → 10 to align with the `"balanced"` preset (#133)
+- README now includes a "Runtime Loop (4 Phases)" section and references the new example/guide
+- `make example` now runs `examples/full_agent_loop.py` and `examples/langchain_memory_demo.py`
+- `pyproject.toml` now includes a `[langchain]` extras group (`langchain-core>=0.3`) for LangChain integration examples
+- CI now installs `.[dev,langchain]` so `make example` runs the LangChain demo end-to-end
+- README: corrected CI trigger wording from "on every push" to "on every pull request and on pushes to `main`" (#158)
+- README: fixed "Async-first context engine" rationale — wording now accurately reflects the async-compatible (not non-blocking) API (#158)
+- README: aligned framework guide status labels — both "Framework Integrations" and "Framework Agnostic" tables now use `"Guide (v0.2)"` consistently (#158)
+- README: resolved internal inconsistency in versioning policy — deprecation contract now explicitly states removals happen in a later major release, not after a minor-version warning alone (#158)
 
 ### Fixed
 - `_strip_namespace_prefix()` now also strips `{namespace}.` and `{namespace}/` prefixes,
@@ -52,38 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `.github/workflows/docs.yml` — publishes to GitHub Pages on every push to `main`; CI workflow permissions are scoped per-job (build: `contents: read`, deploy: `pages: write` + `id-token: write`)
   - README now links to `https://dgenio.github.io/contextweaver`
   - `AGENTS.md` and `docs/agent-context/workflows.md` updated to document `make docs` / `make docs-serve` targets
-- End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
-- Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
-- LangChain memory replacement example in `examples/langchain_memory_demo.py` (#170) — demonstrates replacing `InMemoryChatMessageHistory` with phase-specific budgets and the context firewall using a deterministic mock LLM and real `langchain-core` objects
-- `llms.txt` — structured documentation index for AI tools (llmstxt.org convention) with Docs,
-  Agent Context, API, and Examples sections; includes `docs/agent-context/` as a dedicated
-  section for AI contributor guidance
-- `llms-full.txt` — single-file concatenation of all documentation (README + docs/* +
-  docs/agent-context/*) with `<!-- FILE: ... -->` section markers and a generated-file header
-  documenting regeneration instructions; relative links in the embedded quickstart section
-  rewritten to root-relative paths
-- MCP annotation security documentation (#21): `mcp_tool_to_selectable()` docstring now
-  includes a Google-style `Warning:` section noting that annotations are untrusted hints;
-  `docs/integration_mcp.md` gains a "Security Considerations" section with annotation mapping
-  table and an "Authorization status" subsection clarifying contextweaver has no current
-  authorization mechanism (`CapabilityToken` is planned, see issue #20)
-
-### Fixed
 - `mkdocs.yml` `edit_uri` corrected from `edit/main/docs/` to `edit/main/` so that auto-generated API reference "Edit" buttons resolve to `src/contextweaver/*.py` rather than the nonexistent `docs/src/...` path
 - `docs/gen_ref_pages.py` dunder-module handling (`__init__`, `__main__`) now runs before the private-name filter so package `__init__.py` docstrings are rendered as package index pages in the API reference; the private filter now correctly excludes only non-dunder private modules and package directories
 - `docs/gen_ref_pages.py` module walk restricted to `src/contextweaver` (matches docstring; prevents accidental inclusion of future sibling packages under `src/`)
-
-### Changed
-- README now includes a "Runtime Loop (4 Phases)" section and references the new example/guide
-- `make example` now runs `examples/full_agent_loop.py` and `examples/langchain_memory_demo.py`
-- `pyproject.toml` now includes a `[langchain]` extras group (`langchain-core>=0.3`) for LangChain integration examples
-- CI now installs `.[dev,langchain]` so `make example` runs the LangChain demo end-to-end
-- README: corrected CI trigger wording from "on every push" to "on every pull request and on pushes to `main`" (#158)
-- README: fixed "Async-first context engine" rationale — wording now accurately reflects the async-compatible (not non-blocking) API (#158)
-- README: aligned framework guide status labels — both "Framework Integrations" and "Framework Agnostic" tables now use `"Guide (v0.2)"` consistently (#158)
-- README: resolved internal inconsistency in versioning policy — deprecation contract now explicitly states removals happen in a later major release, not after a minor-version warning alone (#158)
-
-### Fixed
 - Corrected all runnable snippets in `docs/troubleshooting.md` to match actual APIs:
   - `ArtifactStore.get()` returns `bytes`, not an object with `.content`
   - `ArtifactRef` field is `handle`, not `ref_id`

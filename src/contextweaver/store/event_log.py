@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.exceptions import DuplicateItemError, ItemNotFoundError
 from contextweaver.types import ContextItem, ItemKind
 
 logger = logging.getLogger("contextweaver.store")
@@ -34,10 +34,10 @@ class InMemoryEventLog:
             item: The :class:`~contextweaver.types.ContextItem` to append.
 
         Raises:
-            ValueError: If an item with the same ``id`` already exists.
+            DuplicateItemError: If an item with the same ``id`` already exists.
         """
         if item.id in self._index:
-            raise ValueError(f"Duplicate item id: {item.id!r}")
+            raise DuplicateItemError(f"Duplicate item id: {item.id!r}")
         self._index[item.id] = len(self._items)
         self._items.append(item)
         logger.debug("event_log.append: id=%s, kind=%s", item.id, item.kind.value)

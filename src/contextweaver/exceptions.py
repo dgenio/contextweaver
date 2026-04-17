@@ -39,5 +39,9 @@ class CatalogError(ContextWeaverError):
     """Raised for invalid catalog operations (duplicate IDs, schema violations, etc.)."""
 
 
+class DuplicateItemError(ContextWeaverError):
+    """Raised when an item with a duplicate ID is appended to an append-only store."""
+
+
 class ConfigError(ContextWeaverError):
     """Raised when a configuration value or preset name is invalid."""
