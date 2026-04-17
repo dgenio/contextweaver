@@ -22,7 +22,13 @@ from __future__ import annotations
 
 from contextweaver import config, envelope, exceptions, protocols, types
 from contextweaver._utils import TfIdfScorer, jaccard
-from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+from contextweaver.config import (
+    ContextBudget,
+    ContextPolicy,
+    ProfileConfig,
+    RoutingConfig,
+    ScoringConfig,
+)
 from contextweaver.context.manager import ContextManager
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
@@ -37,6 +43,7 @@ from contextweaver.exceptions import (
     ArtifactNotFoundError,
     BudgetExceededError,
     CatalogError,
+    ConfigError,
     ContextWeaverError,
     DuplicateItemError,
     GraphBuildError,
@@ -112,6 +119,8 @@ __all__ = [
     # config
     "ContextBudget",
     "ContextPolicy",
+    "ProfileConfig",
+    "RoutingConfig",
     "ScoringConfig",
     # protocols
     "EventHook",
@@ -124,6 +133,7 @@ __all__ = [
     "ArtifactNotFoundError",
     "BudgetExceededError",
     "CatalogError",
+    "ConfigError",
     "ContextWeaverError",
     "DuplicateItemError",
     "GraphBuildError",
