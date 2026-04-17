@@ -52,7 +52,7 @@ The following areas are **in scope** for security reports:
 The following are **not** in scope:
 
 - **LLM behavior** — how a language model interprets or acts on the context
-  contextweaver assembles is outside our control and not our responsibility
+  that contextweaver assembles is outside our control and not our responsibility
 - **Tool execution** — contextweaver prepares context and routes tools; it never
   executes tools or makes model calls. Runtime security is the host application's
   responsibility

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `SECURITY.md` — vulnerability disclosure policy covering supported versions, GitHub Security Advisories channel, response timeline, and security scope (context firewall, prompt injection, adapter input validation, deserialization)
+
 ## [0.1.7] - 2026-03-21
 
 ### Added
