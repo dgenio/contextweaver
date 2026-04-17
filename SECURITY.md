@@ -41,7 +41,8 @@ The following areas are **in scope** for security reports:
 - **Context firewall bypasses** — raw tool output leaking into the prompt
   (`src/contextweaver/context/firewall.py`)
 - **Prompt injection via tool output processing** — crafted tool results that
-  manipulate the assembled context or bypass sensitivity filters
+  manipulate the assembled context, bypass sensitivity filters, or defeat
+  sensitivity enforcement (`src/contextweaver/context/sensitivity.py`)
 - **Adapter input validation** — malformed or malicious data accepted by the
   MCP or A2A adapters (`src/contextweaver/adapters/`)
 - **Deserialization vulnerabilities** — unsafe behavior in `to_dict` / `from_dict`
@@ -57,6 +58,6 @@ The following are **not** in scope:
   executes tools or makes model calls. Runtime security is the host application's
   responsibility
 - **Denial-of-service via large inputs** — unless exploitable beyond resource
-  exhaustion (e.g. leads to data leakage)
+  exhaustion (i.e. leads to data leakage)
 - **Issues in dependencies** — report these to the upstream project directly;
   we will update affected dependencies promptly when notified
