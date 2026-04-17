@@ -27,7 +27,11 @@ class EventLog(Protocol):
     """
 
     def append(self, item: ContextItem) -> None:
-        """Append *item* to the log."""
+        """Append *item* to the log.
+
+        Raises:
+            DuplicateItemError: If an item with the same ``id`` already exists.
+        """
         ...
 
     def get(self, item_id: str) -> ContextItem:

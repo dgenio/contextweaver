@@ -33,9 +33,24 @@ Changelog = "https://github.com/dgenio/contextweaver/blob/main/CHANGELOG.md"
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.10",
     "pre-commit>=3.7",
+]
+fastmcp = [
+    "fastmcp>=2.0",
+]
+langchain = [
+    "langchain-core>=0.3",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
+    "mkdocs-section-index>=0.3",
 ]
 
 [project.scripts]
@@ -65,3 +80,19 @@ mypy_path = "src"
 [[tool.mypy.overrides]]
 module = "tiktoken"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fastmcp"
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["contextweaver"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == ['\"]__main__['\"]",
+]

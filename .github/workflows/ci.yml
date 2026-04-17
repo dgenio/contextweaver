@@ -33,7 +33,7 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,langchain]"
 
       - name: Format check
         run: ruff format --check src/ tests/ examples/
@@ -45,10 +45,14 @@ jobs:
         run: mypy src/
 
       - name: Test
-        run: pytest -q
+        run: pytest --cov=contextweaver --cov-report=term-missing -q
 
       - name: Examples
         run: make example
 
       - name: Demo
         run: make demo
+
+      - name: Benchmark (informational, non-gating)
+        continue-on-error: true
+        run: python benchmarks/benchmark.py

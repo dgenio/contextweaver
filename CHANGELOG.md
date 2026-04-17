@@ -7,11 +7,124 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `.github/prompts/add-feature.prompt.md`, `.github/prompts/fix-bug.prompt.md`, and `.github/prompts/refactor-module.prompt.md` — reusable step-by-step agent workflows for common tasks (feature addition, bug fixing, module refactoring), each with explicit `_Success:` criteria and `make ci` as the final gate (#96)
+- `SECURITY.md` — vulnerability disclosure policy covering supported versions, GitHub Security Advisories channel, response timeline, and security scope (context firewall, prompt injection, adapter input validation, deserialization)
+- `StoreBundle.from_dict()` — symmetric counterpart to `to_dict()`, enabling full round-trip serialization of store bundles (#66)
+- `InMemoryArtifactStore.from_dict()` — restores the metadata index (refs) from a serialized dict; raw artifact bytes are intentionally excluded from serialization and must be repopulated via `put()` after loading (#66)
+- `DuplicateItemError(ContextWeaverError)` — new public exception raised when an item
+  with a duplicate ID is appended to an append-only store (e.g. `InMemoryEventLog`); exported
+  from the top-level `contextweaver` package (#64)
+- `docs/troubleshooting.md` — new end-to-end troubleshooting guide with 10 common
+  issues, debugging techniques, performance optimisation table, and 12-entry FAQ (#82)
+- README FAQ section (5 entries) and link to troubleshooting guide
+- Benchmark harness for routing and context pipeline (#119)
+  - `benchmarks/routing_gold.json` — 50 queries mapped to expected tool IDs across all 8 catalog namespaces
+  - `benchmarks/benchmark.py` — standalone script computing routing metrics (precision@k, recall@k, MRR, p50/p95/p99 latency) and context pipeline metrics (prompt_tokens, budget_utilization_pct, included/dropped/dedup counts, artifacts_created, avg_compaction_ratio)
+  - Tests 3 catalog sizes: 50, 83 (full natural pool), and 1000 (synthetic extension); catalog sizes now generated with explicit `n` so each size reflects the intended sampling without synthetic contamination
+  - 3 scenario JSONL files in `benchmarks/scenarios/` (short_conversation, long_conversation, large_catalog)
+  - `make benchmark` target; CI runs benchmark as a non-gating informational step
+  - JSON results written to `benchmarks/results/latest.json`; path git-ignored
+  - Stdlib-only, deterministic (seeded), no new runtime dependencies
+
 ### Changed
+- `make test` now runs `pytest --cov=contextweaver --cov-report=term-missing -q` (non-gating coverage report); updated `AGENTS.md`, `docs/agent-context/workflows.md`, and `.claude/CLAUDE.md` to match (#165)
+- Coverage config: removed redundant `omit` pattern (already excluded by `source` scope), added `branch = true` for branch coverage visibility, tightened `"if __name__"` exclusion regex to `"if __name__ == ['"]__main__['"]"` (#165)
 - CI: added pip dependency caching (`actions/cache@v4`) to speed up the Python matrix build (#94)
 
 ### Fixed
 - Normalize example output markers to ASCII so `make example` works on Windows consoles using cp1252 encoding
+
+### Removed
+
+- **[breaking]** `ContextPolicy.ttl_behavior` field removed from `config.py` (#65).
+  The field was declared but never read by any pipeline stage — `ContextItem` has no TTL
+  field and no pipeline stage acted on it, so silently ignored config eroded trust.
+  TTL/eviction support is tracked separately in #67.
+
+  **Migration:** remove `ttl_behavior` from any `ContextPolicy(ttl_behavior=...)` calls
+  or `"policy": {"ttl_behavior": "drop"}` entries in `contextweaver.json`.
+  No behaviour changes — the field had no effect in any prior release.
+  If you need to forward-compat a shared config dict, use the existing `extra` catch-all:
+  `ContextPolicy(extra={"ttl_behavior": "drop"})`.
+- Named configuration presets in `config.py` (#133)
+  - `RoutingConfig` dataclass bundling `beam_width`, `max_depth`, `top_k`, `confidence_gap`, `max_children`; includes `routing_kwargs()`, `to_dict()`, `from_dict()`
+  - `ProfileConfig` dataclass bundling `budget`, `policy`, `scoring`, `routing`; includes `from_preset()`, `to_dict()`, `from_dict()`
+  - Three named presets: `"fast"` (low-latency), `"balanced"` (general-purpose), `"accurate"` (high-recall)
+  - `Router` now accepts a keyword-only `routing_config: RoutingConfig` parameter that overrides individual beam-search kwargs
+  - `ConfigError` exception added to `contextweaver.exceptions` for invalid config/preset names
+- FastMCP Catalog bridge adapter in `adapters/fastmcp.py` (#114)
+  - `fastmcp_tool_to_selectable()` — convert FastMCP tool definitions to `SelectableItem`
+  - `fastmcp_tools_to_catalog()` — batch-convert tool definitions into a populated `Catalog`
+  - `load_fastmcp_catalog()` — async live discovery from any FastMCP server source
+  - `infer_fastmcp_namespace()` — 2-segment namespace inference matching FastMCP composition convention
+  - `contextweaver[fastmcp]` optional extra (`fastmcp>=2.0`)
+  - Example recipe in `examples/fastmcp_adapter_demo.py`
+- End-to-end four-phase runtime loop example in `examples/full_agent_loop.py` (#24)
+- Runtime loop guide with flow diagram and phase guidance in `docs/guide_agent_loop.md` (#24)
+- LangChain memory replacement example in `examples/langchain_memory_demo.py` (#170) — demonstrates replacing `InMemoryChatMessageHistory` with phase-specific budgets and the context firewall using a deterministic mock LLM and real `langchain-core` objects
+- `llms.txt` — structured documentation index for AI tools (llmstxt.org convention) with Docs,
+  Agent Context, API, and Examples sections; includes `docs/agent-context/` as a dedicated
+  section for AI contributor guidance
+- `llms-full.txt` — single-file concatenation of all documentation (README + docs/* +
+  docs/agent-context/*) with `<!-- FILE: ... -->` section markers and a generated-file header
+  documenting regeneration instructions; relative links in the embedded quickstart section
+  rewritten to root-relative paths
+- MCP annotation security documentation (#21): `mcp_tool_to_selectable()` docstring now
+  includes a Google-style `Warning:` section noting that annotations are untrusted hints;
+  `docs/integration_mcp.md` gains a "Security Considerations" section with annotation mapping
+  table and an "Authorization status" subsection clarifying contextweaver has no current
+  authorization mechanism (`CapabilityToken` is planned, see issue #20)
+
+### Changed
+- `StoreBundle` moved from `store/__init__.py` to `store/bundle.py`; re-exported transparently — public API unchanged (#66)
+- `InMemoryEventLog.append()` now raises `DuplicateItemError` instead of bare `ValueError`
+  on duplicate item ID — callers catching `ValueError` must migrate to `DuplicateItemError`
+  or the `ContextWeaverError` base class (#64)
+- `InMemoryArtifactStore.drilldown()` now raises `ContextWeaverError` instead of bare
+  `ValueError` for unknown selector types — callers catching `ValueError` must migrate to
+  `ContextWeaverError` (#64)
+- `Router` default `top_k` changed from 20 → 10 to align with the `"balanced"` preset (#133)
+- README now includes a "Runtime Loop (4 Phases)" section and references the new example/guide
+- `make example` now runs `examples/full_agent_loop.py` and `examples/langchain_memory_demo.py`
+- `pyproject.toml` now includes a `[langchain]` extras group (`langchain-core>=0.3`) for LangChain integration examples
+- CI now installs `.[dev,langchain]` so `make example` runs the LangChain demo end-to-end
+- README: corrected CI trigger wording from "on every push" to "on every pull request and on pushes to `main`" (#158)
+- README: fixed "Async-first context engine" rationale — wording now accurately reflects the async-compatible (not non-blocking) API (#158)
+- README: aligned framework guide status labels — both "Framework Integrations" and "Framework Agnostic" tables now use `"Guide (v0.2)"` consistently (#158)
+- README: resolved internal inconsistency in versioning policy — deprecation contract now explicitly states removals happen in a later major release, not after a minor-version warning alone (#158)
+
+### Fixed
+- `_strip_namespace_prefix()` now also strips `{namespace}.` and `{namespace}/` prefixes,
+  preventing the namespace from appearing verbatim in the tool's display name for
+  dot- and slash-delimited FastMCP names (e.g. `"github.create_issue"` → `name="create_issue"`) (#177, review)
+- `fastmcp_tool_to_selectable()` now normalizes `meta` values before merging into
+  `SelectableItem.metadata`: `set`/`frozenset` are coerced to sorted lists and `tuple` to
+  lists, ensuring `to_dict()` / JSON serialization never fails on FastMCP metadata (#177, review)
+- Auto-generated API reference documentation site using MkDocs + Material + mkdocstrings (#110)
+  - `mkdocs.yml` — site configuration with Material theme, auto-nav, and mkdocstrings
+  - `docs/gen_ref_pages.py` — build-time script that walks `src/contextweaver` and emits one reference page per public module; new modules are picked up automatically
+  - `docs/index.md` — public landing page for the docs site
+  - `[docs]` extras group in `pyproject.toml` (`mkdocs`, `mkdocs-material`, `mkdocstrings[python]`, `mkdocs-gen-files`, `mkdocs-literate-nav`, `mkdocs-section-index`)
+  - `make docs` builds the site; `make docs-serve` starts a local preview server
+  - `.github/workflows/docs.yml` — publishes to GitHub Pages on every push to `main`; CI workflow permissions are scoped per-job (build: `contents: read`, deploy: `pages: write` + `id-token: write`)
+  - README now links to `https://dgenio.github.io/contextweaver`
+  - `AGENTS.md` and `docs/agent-context/workflows.md` updated to document `make docs` / `make docs-serve` targets
+- `mkdocs.yml` `edit_uri` corrected from `edit/main/docs/` to `edit/main/` so that auto-generated API reference "Edit" buttons resolve to `src/contextweaver/*.py` rather than the nonexistent `docs/src/...` path
+- `docs/gen_ref_pages.py` dunder-module handling (`__init__`, `__main__`) now runs before the private-name filter so package `__init__.py` docstrings are rendered as package index pages in the API reference; the private filter now correctly excludes only non-dunder private modules and package directories
+- `docs/gen_ref_pages.py` module walk restricted to `src/contextweaver` (matches docstring; prevents accidental inclusion of future sibling packages under `src/`)
+- Corrected all runnable snippets in `docs/troubleshooting.md` to match actual APIs:
+  - `ArtifactStore.get()` returns `bytes`, not an object with `.content`
+  - `ArtifactRef` field is `handle`, not `ref_id`
+  - `EventLog` exposes `all()` / `filter_by_kind()` / `count()`, not `list()`
+  - `FactStore.get_by_key(key)` is the correct API for key-based fact lookup
+  - `EpisodicStore` items use `episode_id` / `summary`, not `id` / `text`
+  - `ContextPack` has no `token_count`; totals computed from `pack.stats`
+  - `await mgr.build()` still runs the synchronous pipeline; recommend
+    `asyncio.to_thread(mgr.build_sync, ...)` for true non-blocking async
+  - Issue 4 diagnosis: removed non-existent `"phase_filter"` key; documented
+    valid `dropped_reasons` keys (`budget`, `kind_limit`, `sensitivity`) and
+    the `total_candidates == 0` vs `dropped_count > 0` distinction
 
 ## [0.1.7] - 2026-03-21
 
