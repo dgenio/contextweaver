@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `StoreBundle.from_dict()` — symmetric counterpart to `to_dict()`, enabling full round-trip serialization of store bundles (#66)
+- `InMemoryArtifactStore.from_dict()` — restores the metadata index (refs) from a serialized dict; raw artifact bytes are intentionally excluded from serialization and must be repopulated via `put()` after loading (#66)
+
+### Changed
+- `StoreBundle` moved from `store/__init__.py` to `store/bundle.py`; re-exported transparently — public API unchanged
+
 ## [0.1.7] - 2026-03-21
 
 ### Added
