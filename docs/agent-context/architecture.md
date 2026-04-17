@@ -78,6 +78,6 @@ Think of contextweaver as three layers:
 2. **Store layer** (`store/`, `protocols.py`) — stateful but simple append-only/read interfaces.
 3. **Pipeline layer** (`context/`, `routing/`, `summarize/`) — orchestration logic that reads from stores and produces output types.
 
-Adapters (`adapters/`) convert external formats (MCP, A2A) into contextweaver types at the boundary.
+Adapters (`adapters/`) convert external formats (MCP, FastMCP, A2A) into contextweaver types at the boundary.
 
 Changes should flow within a layer. Cross-layer changes (e.g., adding I/O to the data layer) are red flags.
