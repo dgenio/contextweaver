@@ -834,7 +834,7 @@ def test_drilldown_missing_handle_raises() -> None:
 
 
 def test_drilldown_unknown_selector_raises() -> None:
-    """drilldown() raises ValueError for unknown selector types."""
+    """drilldown() raises ContextWeaverError for unknown selector types."""
     mgr = ContextManager()
     _item, env = mgr.ingest_tool_result(
         tool_call_id="tc-dd6",

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `DuplicateItemError(ContextWeaverError)` — new public exception raised when an item
+  with a duplicate ID is appended to an append-only store (e.g. `InMemoryEventLog`); exported
+  from the top-level `contextweaver` package (#64)
+
+### Changed
+- `InMemoryEventLog.append()` now raises `DuplicateItemError` instead of bare `ValueError`
+  on duplicate item ID — callers catching `ValueError` must migrate to `DuplicateItemError`
+  or the `ContextWeaverError` base class (#64)
+- `InMemoryArtifactStore.drilldown()` now raises `ContextWeaverError` instead of bare
+  `ValueError` for unknown selector types — callers catching `ValueError` must migrate to
+  `ContextWeaverError` (#64)
+
 ## [0.1.7] - 2026-03-21
 
 ### Added
