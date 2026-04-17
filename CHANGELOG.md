@@ -10,26 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `.github/prompts/add-feature.prompt.md`, `.github/prompts/fix-bug.prompt.md`, and `.github/prompts/refactor-module.prompt.md` — reusable step-by-step agent workflows for common tasks (feature addition, bug fixing, module refactoring), each with explicit `_Success:` criteria and `make ci` as the final gate (#96)
 - `SECURITY.md` — vulnerability disclosure policy covering supported versions, GitHub Security Advisories channel, response timeline, and security scope (context firewall, prompt injection, adapter input validation, deserialization)
-
-### Changed
-- `make test` now runs `pytest --cov=contextweaver --cov-report=term-missing -q` (non-gating coverage report); updated `AGENTS.md`, `docs/agent-context/workflows.md`, and `.claude/CLAUDE.md` to match (#165)
-- Coverage config: removed redundant `omit` pattern (already excluded by `source` scope), added `branch = true` for branch coverage visibility, tightened `"if __name__"` exclusion regex to `"if __name__ == ['"]__main__['"]"` (#165)
-
-
-### Removed
-
-- **[breaking]** `ContextPolicy.ttl_behavior` field removed from `config.py` (#65).
-  The field was declared but never read by any pipeline stage — `ContextItem` has no TTL
-  field and no pipeline stage acted on it, so silently ignored config eroded trust.
-  TTL/eviction support is tracked separately in #67.
-
-  **Migration:** remove `ttl_behavior` from any `ContextPolicy(ttl_behavior=...)` calls
-  or `"policy": {"ttl_behavior": "drop"}` entries in `contextweaver.json`.
-  No behaviour changes — the field had no effect in any prior release.
-  If you need to forward-compat a shared config dict, use the existing `extra` catch-all:
-  `ContextPolicy(extra={"ttl_behavior": "drop"})`.
-
-### Added
 - `StoreBundle.from_dict()` — symmetric counterpart to `to_dict()`, enabling full round-trip serialization of store bundles (#66)
 - `InMemoryArtifactStore.from_dict()` — restores the metadata index (refs) from a serialized dict; raw artifact bytes are intentionally excluded from serialization and must be repopulated via `put()` after loading (#66)
 - `DuplicateItemError(ContextWeaverError)` — new public exception raised when an item
@@ -46,6 +26,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `make benchmark` target; CI runs benchmark as a non-gating informational step
   - JSON results written to `benchmarks/results/latest.json`; path git-ignored
   - Stdlib-only, deterministic (seeded), no new runtime dependencies
+
+### Changed
+- `make test` now runs `pytest --cov=contextweaver --cov-report=term-missing -q` (non-gating coverage report); updated `AGENTS.md`, `docs/agent-context/workflows.md`, and `.claude/CLAUDE.md` to match (#165)
+- Coverage config: removed redundant `omit` pattern (already excluded by `source` scope), added `branch = true` for branch coverage visibility, tightened `"if __name__"` exclusion regex to `"if __name__ == ['"]__main__['"]"` (#165)
+- CI: added pip dependency caching (`actions/cache@v4`) to speed up the Python matrix build (#94)
+
+### Fixed
+- Normalize example output markers to ASCII so `make example` works on Windows consoles using cp1252 encoding
+
+### Removed
+
+- **[breaking]** `ContextPolicy.ttl_behavior` field removed from `config.py` (#65).
+  The field was declared but never read by any pipeline stage — `ContextItem` has no TTL
+  field and no pipeline stage acted on it, so silently ignored config eroded trust.
+  TTL/eviction support is tracked separately in #67.
+
+  **Migration:** remove `ttl_behavior` from any `ContextPolicy(ttl_behavior=...)` calls
+  or `"policy": {"ttl_behavior": "drop"}` entries in `contextweaver.json`.
+  No behaviour changes — the field had no effect in any prior release.
+  If you need to forward-compat a shared config dict, use the existing `extra` catch-all:
+  `ContextPolicy(extra={"ttl_behavior": "drop"})`.
 - Named configuration presets in `config.py` (#133)
   - `RoutingConfig` dataclass bundling `beam_width`, `max_depth`, `top_k`, `confidence_gap`, `max_children`; includes `routing_kwargs()`, `to_dict()`, `from_dict()`
   - `ProfileConfig` dataclass bundling `budget`, `policy`, `scoring`, `routing`; includes `from_preset()`, `to_dict()`, `from_dict()`
