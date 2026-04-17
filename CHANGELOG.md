@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ContextPolicy(extra={"ttl_behavior": "drop"})`.
 
 ### Added
+- `StoreBundle.from_dict()` — symmetric counterpart to `to_dict()`, enabling full round-trip serialization of store bundles (#66)
+- `InMemoryArtifactStore.from_dict()` — restores the metadata index (refs) from a serialized dict; raw artifact bytes are intentionally excluded from serialization and must be repopulated via `put()` after loading (#66)
 - `DuplicateItemError(ContextWeaverError)` — new public exception raised when an item
   with a duplicate ID is appended to an append-only store (e.g. `InMemoryEventLog`); exported
   from the top-level `contextweaver` package (#64)
@@ -65,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authorization mechanism (`CapabilityToken` is planned, see issue #20)
 
 ### Changed
+- `StoreBundle` moved from `store/__init__.py` to `store/bundle.py`; re-exported transparently — public API unchanged (#66)
 - `InMemoryEventLog.append()` now raises `DuplicateItemError` instead of bare `ValueError`
   on duplicate item ID — callers catching `ValueError` must migrate to `DuplicateItemError`
   or the `ContextWeaverError` base class (#64)
