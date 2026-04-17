@@ -110,6 +110,7 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     # use these values for access-control or safety-critical decisions — a
     # malicious or misconfigured server can declare any hint value.  See the MCP
     # specification: https://modelcontextprotocol.io/legacy/concepts/tools
+    #
     # Derive tags from annotation hints
     tags: list[str] = ["mcp"]
     if annotations.get("readOnlyHint", False):
