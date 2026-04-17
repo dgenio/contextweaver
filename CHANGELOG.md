@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- `.github/prompts/add-feature.prompt.md`, `.github/prompts/fix-bug.prompt.md`, and `.github/prompts/refactor-module.prompt.md` now align their module-size and architecture-reference guidance with the canonical rules in `AGENTS.md` and `docs/agent-context/architecture.md` (#167, review)
+### Added
+- `.github/prompts/add-feature.prompt.md`, `.github/prompts/fix-bug.prompt.md`, and `.github/prompts/refactor-module.prompt.md` — reusable step-by-step agent workflows for common tasks (feature addition, bug fixing, module refactoring), each with explicit `_Success:` criteria and `make ci` as the final gate (#96)
 
 ## [0.1.7] - 2026-03-21
 
