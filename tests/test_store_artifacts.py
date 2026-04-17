@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from contextweaver.exceptions import ArtifactNotFoundError
+from contextweaver.exceptions import ArtifactNotFoundError, ContextWeaverError
 from contextweaver.store.artifacts import InMemoryArtifactStore
 
 
@@ -64,6 +64,31 @@ def test_to_dict() -> None:
     store.put("h1", b"data")
     d = store.to_dict()
     assert len(d["refs"]) == 1
+
+
+def test_from_dict_restores_metadata() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"hello", media_type="text/plain", label="greeting")
+    store.put("h2", b"world", media_type="application/json")
+    restored = InMemoryArtifactStore.from_dict(store.to_dict())
+    refs = {r.handle: r for r in restored.list_refs()}
+    assert "h1" in refs
+    assert refs["h1"].media_type == "text/plain"
+    assert refs["h1"].label == "greeting"
+    assert refs["h1"].size_bytes == 5
+    assert "h2" in refs
+
+
+def test_from_dict_empty() -> None:
+    restored = InMemoryArtifactStore.from_dict({"refs": []})
+    assert restored.list_refs() == []
+
+
+def test_from_dict_no_raw_bytes() -> None:
+    store = InMemoryArtifactStore()
+    store.put("h1", b"data")
+    restored = InMemoryArtifactStore.from_dict(store.to_dict())
+    assert not restored.exists("h1")
 
 
 def test_exists_true() -> None:
@@ -136,7 +161,7 @@ def test_drilldown_rows() -> None:
 def test_drilldown_unknown_type_raises() -> None:
     store = InMemoryArtifactStore()
     store.put("h1", b"data")
-    with pytest.raises(ValueError, match="Unknown drilldown"):
+    with pytest.raises(ContextWeaverError, match="Unknown drilldown"):
         store.drilldown("h1", {"type": "unknown"})
 
 

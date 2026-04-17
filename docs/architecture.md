@@ -36,7 +36,7 @@ the "context window problem" for tool-using AI agents.
 | `summarize/` | Rule engine and structured fact extraction |
 | `context/` | Full context compilation pipeline |
 | `routing/` | Catalog, DAG builder, beam-search router, card renderer |
-| `adapters/` | MCP and A2A protocol adapters |
+| `adapters/` | MCP, FastMCP, and A2A protocol adapters |
 | `__main__.py` | CLI entry point (7 subcommands) |
 
 ## Context Engine pipeline

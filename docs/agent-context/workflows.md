@@ -10,6 +10,11 @@ make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo  (6 targets)
+make docs     # mkdocs build --clean (docs site — not part of CI)
+make docs-serve  # mkdocs serve (live preview)
+make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make llms        # regenerate llms.txt and llms-full.txt from canonical docs
+make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 ```
 
 `make ci` runs all six targets in sequence. It is the single validation gate.
@@ -25,6 +30,11 @@ make ci       # fmt + lint + type + test + example + demo  (6 targets)
 | Run all tests | `make test` |
 | Verify examples work | `make example` |
 | Interactive demo | `make demo` |
+| Build docs site | `make docs` |
+| Live docs preview | `make docs-serve` |
+| Run benchmark harness | `make benchmark` (non-gating; writes `benchmarks/results/latest.json`) |
+| Regenerate llms.txt / llms-full.txt | `make llms` (after editing canonical docs) |
+| Check llms.txt / llms-full.txt for drift | `make llms-check` (exits non-zero if regeneration needed) |
 
 **Do not** use `make test` alone as a validation gate. Always run `make ci` before declaring a change complete — it includes example and demo verification that catch integration issues `make test` misses.
 

@@ -9,6 +9,7 @@ from contextweaver.exceptions import (
     BudgetExceededError,
     CatalogError,
     ContextWeaverError,
+    DuplicateItemError,
     GraphBuildError,
     ItemNotFoundError,
     PolicyViolationError,
@@ -26,6 +27,7 @@ from contextweaver.exceptions import (
         GraphBuildError,
         RouteError,
         CatalogError,
+        DuplicateItemError,
     ],
 )
 def test_all_exceptions_inherit_from_base(exc_cls: type[ContextWeaverError]) -> None:

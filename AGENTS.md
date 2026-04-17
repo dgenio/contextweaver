@@ -30,7 +30,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
-| `adapters/` | MCP and A2A protocol adapters |
+| `adapters/` | MCP, FastMCP, and A2A protocol adapters |
 | `__main__.py` | CLI: 7 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) |
 
 ## Pipelines (summary)
@@ -77,6 +77,11 @@ make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo
+make docs     # mkdocs build --clean (docs site)
+make docs-serve  # mkdocs serve (live preview)
+make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make llms        # regenerate llms.txt and llms-full.txt from canonical docs
+make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 ```
 
 Run `pre-commit install` once after cloning to activate git hooks

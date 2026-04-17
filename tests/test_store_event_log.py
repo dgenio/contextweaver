@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.exceptions import DuplicateItemError, ItemNotFoundError
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import ContextItem, ItemKind
 
@@ -23,7 +23,7 @@ def test_append_and_get() -> None:
 def test_duplicate_raises() -> None:
     log = InMemoryEventLog()
     log.append(_make_item("i1"))
-    with pytest.raises(ValueError):
+    with pytest.raises(DuplicateItemError, match="Duplicate item id"):
         log.append(_make_item("i1"))
 
 
