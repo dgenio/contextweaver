@@ -228,12 +228,12 @@ def main() -> None:
     """Print a side-by-side comparison of naive LangChain memory vs contextweaver."""
     if not _LANGCHAIN_AVAILABLE:  # pragma: no cover
         print(
-            "langchain-core is not installed — skipping demo.\n"
+            "langchain-core is not installed -- skipping demo.\n"
             "Install with:  pip install -e '.[langchain]'"
         )
         return
     print("=" * 70)
-    print("contextweaver — LangChain Memory Replacement Demo")
+    print("contextweaver -- LangChain Memory Replacement Demo")
     print("Replacing InMemoryChatMessageHistory with phase-specific budgets")
     print("=" * 70)
 
@@ -242,10 +242,10 @@ def main() -> None:
 
     # WITHOUT
     print("\nWITHOUT contextweaver  (LangChain InMemoryChatMessageHistory)")
-    print("─" * 60)
+    print("-" * 60)
     verbatim_phases = {"interpret", "answer"}
     for phase_name, tok in without_tokens.items():
-        note = "  ← large result included verbatim" if phase_name in verbatim_phases else ""
+        note = "  <- large result included verbatim" if phase_name in verbatim_phases else ""
         print(f"  {phase_name:<12} {tok:>6,} tokens{note}")
 
     # WITH
@@ -255,20 +255,20 @@ def main() -> None:
     # result dominates — that is the intended headline.
     phase_budgets = {"route": 300, "call": 600, "interpret": 500, "answer": 1500}
     print("\nWITH contextweaver  (phase-specific budgets + context firewall)")
-    print("─" * 60)
+    print("-" * 60)
     for phase_name, tok in with_tokens.items():
         cap = phase_budgets[phase_name]
         status = "within budget" if tok <= cap else "over budget"
         naive = without_tokens[phase_name]
-        note = "  ← richer prompt (tool schema + context items)" if tok > naive else ""
+        note = "  <- richer prompt (tool schema + context items)" if tok > naive else ""
         print(f"  {phase_name:<12} {tok:>6,} tokens  (limit: {cap:,})  [{status}]{note}")
 
     # BuildStats (answer phase)
     # dep. closures = 0 is expected here: all parent items are naturally in the
     # candidate pool for Phase.answer (all kinds allowed), so the closure pass
     # preserves pairs without needing to add extra items.
-    print("\nBuildStats — answer phase")
-    print("─" * 40)
+    print("\nBuildStats -- answer phase")
+    print("-" * 40)
     print(f"  {'items included:':22} {included}")
     print(f"  {'items dropped:':22} {dropped}")
     print(f"  {'dep. closures:':22} {closures}  (0 = all parent links already intact)")
@@ -277,7 +277,7 @@ def main() -> None:
     ans_without = without_tokens["answer"]
     ans_with = with_tokens["answer"]
     reduction = (ans_without - ans_with) / ans_without * 100 if ans_without else 0.0
-    print("\n" + "─" * 60)
+    print("\n" + "-" * 60)
     print(f"{'Answer-phase (LangChain):':>42} {ans_without:,} tokens")
     print(f"{'Answer-phase (contextweaver):':>42} {ans_with:,} tokens")
     print(f"{'Reduction:':>42} {reduction:.0f}%")

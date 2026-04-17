@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-17
+
 ### Added
 - `.github/prompts/add-feature.prompt.md`, `.github/prompts/fix-bug.prompt.md`, and `.github/prompts/refactor-module.prompt.md` — reusable step-by-step agent workflows for common tasks (feature addition, bug fixing, module refactoring), each with explicit `_Success:` criteria and `make ci` as the final gate (#96)
 - `SECURITY.md` — vulnerability disclosure policy covering supported versions, GitHub Security Advisories channel, response timeline, and security scope (context firewall, prompt injection, adapter input validation, deserialization)
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Normalize example output markers to ASCII so `make example` works on Windows consoles using cp1252 encoding
+- `examples/langchain_memory_demo.py` — replaced all non-ASCII output characters (`─`, `—`, `←`) with ASCII equivalents (`-`, `--`, `<-`) to prevent `UnicodeEncodeError` on Windows cp1252 consoles
 
 ### Removed
 
