@@ -15,17 +15,18 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+from contextweaver.context import ingest as _ingest
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
-from contextweaver.context.firewall import apply_firewall, apply_firewall_to_batch
+from contextweaver.context.firewall import apply_firewall_to_batch
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
-from contextweaver.context.views import ViewRegistry, generate_views
+from contextweaver.context.views import ViewRegistry
 from contextweaver.envelope import ContextPack, ResultEnvelope
 from contextweaver.protocols import (
     ArtifactStore,
@@ -42,7 +43,7 @@ from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import Episode, InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import Fact, InMemoryFactStore
-from contextweaver.types import ArtifactRef, ContextItem, ItemKind, Phase
+from contextweaver.types import ContextItem, ItemKind, Phase
 
 # Maximum facts injected into the prompt header to prevent unbounded growth.
 _MAX_FACT_LINES: int = 64
@@ -148,8 +149,7 @@ class ContextManager:
         Args:
             item: The context item to ingest.
         """
-        self._event_log.append(item)
-        logger.debug("ingest: item_id=%s, kind=%s", item.id, item.kind.value)
+        _ingest.ingest_item(self._event_log, item)
 
     def ingest_sync(self, item: ContextItem) -> None:
         """Synchronous alias for :meth:`ingest`."""
@@ -187,82 +187,20 @@ class ContextManager:
             A ``(ContextItem, ResultEnvelope)`` tuple.  The item always has a
             non-``None`` ``artifact_ref``.
         """
-        item = ContextItem(
-            id=f"result:{tool_call_id}",
-            kind=ItemKind.tool_result,
-            text=raw_output,
-            token_estimate=self._estimator.estimate(raw_output),
-            metadata={"tool_name": tool_name, "media_type": media_type},
-            parent_id=tool_call_id,
-        )
-
-        if len(raw_output) > firewall_threshold:
-            processed, envelope = apply_firewall(
-                item,
-                self._artifact_store,
-                hook=self._hook,
-                view_registry=self._view_registry,
-                summarizer=self._summarizer,
-                extractor=self._extractor,
-            )
-            if envelope is None:
-                # Shouldn't happen for tool_result items, but be safe
-                envelope = ResultEnvelope(status="ok", summary=raw_output[:500])
-            self._event_log.append(processed)
-            logger.debug(
-                "ingest_tool_result: item_id=%s, firewall=True, output_len=%d",
-                processed.id,
-                len(raw_output),
-            )
-            return processed, envelope
-
-        # Small output: extract facts and store in artifact store to enable drilldown
-        from contextweaver.summarize.extract import extract_facts
-
-        status: Literal["ok", "partial"] = "ok"
-        try:
-            facts = (
-                self._extractor.extract(raw_output, item.metadata)
-                if self._extractor is not None
-                else extract_facts(raw_output, item.metadata)
-            )
-        except Exception:  # noqa: BLE001
-            facts = []
-            status = "partial"
-        # For small outputs, store in artifact store to enable drilldown
-        raw_bytes = raw_output.encode("utf-8")
-        handle = f"artifact:{item.id}"
-        ref = self._artifact_store.put(
-            handle=handle,
-            content=raw_bytes,
+        return _ingest.ingest_tool_result(
+            event_log=self._event_log,
+            artifact_store=self._artifact_store,
+            hook=self._hook,
+            view_registry=self._view_registry,
+            summarizer=self._summarizer,
+            extractor=self._extractor,
+            estimator=self._estimator,
+            tool_call_id=tool_call_id,
+            raw_output=raw_output,
+            tool_name=tool_name,
             media_type=media_type,
-            label=f"raw tool result for {item.id}",
+            firewall_threshold=firewall_threshold,
         )
-        views = generate_views(ref, raw_bytes, registry=self._view_registry)
-        envelope = ResultEnvelope(
-            status=status,
-            summary=raw_output,
-            facts=facts,
-            artifacts=[ref],
-            views=views,
-            provenance={"source_item_id": item.id, "tool_name": tool_name},
-        )
-        item = ContextItem(
-            id=item.id,
-            kind=item.kind,
-            text=item.text,
-            token_estimate=item.token_estimate,
-            metadata=dict(item.metadata),
-            parent_id=item.parent_id,
-            artifact_ref=ref,
-        )
-        self._event_log.append(item)
-        logger.debug(
-            "ingest_tool_result: item_id=%s, firewall=False, output_len=%d",
-            item.id,
-            len(raw_output),
-        )
-        return item, envelope
 
     def ingest_tool_result_sync(
         self,
@@ -304,56 +242,18 @@ class ContextManager:
             A ``(ContextItem, ResultEnvelope)`` tuple with all artifacts
             persisted in the artifact store.
         """
-        from contextweaver.adapters.mcp import mcp_result_to_envelope
-
-        envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, tool_name)
-
-        # Persist binary artifacts (images, resources) and refresh envelope metadata
-        stored_refs: dict[str, ArtifactRef] = {}
-        for handle, (raw_bytes, media_type, label) in sorted(binaries.items()):
-            stored_refs[handle] = self._artifact_store.put(handle, raw_bytes, media_type, label)
-
-        if stored_refs:
-            # NOTE: intentional post-construction mutation — refresh refs with
-            # store-canonical metadata (size_bytes, etc.).  Must be revisited
-            # if ResultEnvelope is ever made frozen.
-            envelope.artifacts = [stored_refs.get(a.handle, a) for a in envelope.artifacts]
-
-        # Build the context item from the full raw text so the firewall
-        # can offload the complete output, not the truncated summary.
-        item = ContextItem(
-            id=f"result:{tool_call_id}",
-            kind=ItemKind.tool_result,
-            text=full_text,
-            token_estimate=self._estimator.estimate(full_text),
-            metadata={"tool_name": tool_name, "protocol": "mcp"},
-            parent_id=tool_call_id,
+        return _ingest.ingest_mcp_result(
+            event_log=self._event_log,
+            artifact_store=self._artifact_store,
+            hook=self._hook,
+            summarizer=self._summarizer,
+            extractor=self._extractor,
+            estimator=self._estimator,
+            tool_call_id=tool_call_id,
+            mcp_result=mcp_result,
+            tool_name=tool_name,
+            firewall_threshold=firewall_threshold,
         )
-
-        # Apply firewall if full text is large
-        if len(full_text) > firewall_threshold:
-            processed, fw_envelope = apply_firewall(
-                item,
-                self._artifact_store,
-                hook=self._hook,
-                view_registry=None,
-                summarizer=self._summarizer,
-                extractor=self._extractor,
-            )
-            if fw_envelope is not None:
-                # Merge: keep MCP artifacts, use firewall summary/facts, preserve views
-                envelope = ResultEnvelope(
-                    status=envelope.status,
-                    summary=fw_envelope.summary,
-                    facts=list(fw_envelope.facts) + list(envelope.facts),
-                    artifacts=list(envelope.artifacts) + list(fw_envelope.artifacts),
-                    provenance=envelope.provenance,
-                    views=list(envelope.views) + list(fw_envelope.views),
-                )
-            item = processed
-
-        self._event_log.append(item)
-        return item, envelope
 
     def ingest_mcp_result_sync(
         self,
