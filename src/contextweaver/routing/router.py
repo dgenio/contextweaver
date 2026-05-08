@@ -73,7 +73,7 @@ class Router:
             from this config object.
 
     Raises:
-        ValueError: If *confidence_gap* is outside ``[0.0, 1.0]``.
+        ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]``.
     """
 
     def __init__(

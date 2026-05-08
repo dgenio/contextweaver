@@ -54,7 +54,7 @@ def register_redaction_hook(name: str, hook: RedactionHook) -> None:
         hook: An object implementing the :class:`RedactionHook` protocol.
 
     Raises:
-        ValueError: If *name* is already registered.
+        PolicyViolationError: If *name* is already registered.
     """
     if name in _HOOK_REGISTRY:
         msg = f"Redaction hook {name!r} is already registered"
@@ -99,7 +99,7 @@ def _resolve_hooks(names: list[str]) -> list[RedactionHook]:
         Resolved :class:`RedactionHook` instances.
 
     Raises:
-        ValueError: If a name cannot be resolved.
+        ConfigError: If a name cannot be resolved.
     """
     hooks: list[RedactionHook] = []
     for name in names:
