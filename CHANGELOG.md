@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ScoringConfig.dedup_threshold` field — exposes the Jaccard dedup threshold
+  (default 0.85) via configuration; `ContextManager` now passes it through to
+  `deduplicate_candidates()` (#182)
+- `to_dict()` / `from_dict()` on `ContextPolicy`, `ContextBudget`, and
+  `ScoringConfig` — completes the repo-standard serialisation methods on all
+  config dataclasses (#184)
+- `EpisodicStore` and `FactStore` protocols in `protocols.py` — formal
+  `@runtime_checkable` protocol interfaces matching the `InMemory*` method
+  signatures; `StoreBundle` type hints widened to protocol types (#40)
+- `profiles.py` module — `RoutingConfig` and `ProfileConfig` extracted from
+  `config.py` to stay within the ≤300-line guideline; re-exported from
+  `config.py` for backward compatibility (#179)
+
+### Changed
+- `ProfileConfig.to_dict()` / `from_dict()` now include `policy` (previously
+  excluded because `ContextPolicy` lacked serialisation) (#184)
+- `ContextManager.episodic_store` / `fact_store` properties now return protocol
+  types (`EpisodicStore` / `FactStore`) instead of concrete `InMemory*` types (#40)
+
+### Fixed
+- Replaced 3 bare `ValueError` raises in `context/sensitivity.py` with
+  `PolicyViolationError` / `ConfigError` (#183)
+- Replaced bare `ValueError` in `routing/router.py` (`confidence_gap` validation)
+  with `ConfigError` (#183)
+
 ## [0.2.0] - 2026-04-17
 
 ### Added

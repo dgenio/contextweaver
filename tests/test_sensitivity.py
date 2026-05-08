@@ -13,6 +13,7 @@ from contextweaver.context.sensitivity import (
     apply_sensitivity_filter,
     register_redaction_hook,
 )
+from contextweaver.exceptions import ConfigError, PolicyViolationError
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
 
@@ -208,7 +209,7 @@ def test_unknown_hook_name_raises() -> None:
         redaction_hooks=["nonexistent"],
     )
     item = _item("x", Sensitivity.confidential)
-    with pytest.raises(ValueError, match="Unknown redaction hook"):
+    with pytest.raises(ConfigError, match="Unknown redaction hook"):
         apply_sensitivity_filter([item], policy)
 
 
@@ -218,7 +219,7 @@ def test_unknown_sensitivity_action_raises() -> None:
         sensitivity_action="dorp",
     )
     item = _item("x", Sensitivity.confidential)
-    with pytest.raises(ValueError, match="Unknown sensitivity_action"):
+    with pytest.raises(ConfigError, match="Unknown sensitivity_action"):
         apply_sensitivity_filter([item], policy)
 
 
@@ -336,6 +337,6 @@ def test_register_custom_hook_and_use_in_redact_mode() -> None:
 
 
 def test_register_duplicate_hook_raises() -> None:
-    """Registering a hook with an existing name raises ValueError."""
-    with pytest.raises(ValueError, match="already registered"):
+    """Registering a hook with an existing name raises PolicyViolationError."""
+    with pytest.raises(PolicyViolationError, match="already registered"):
         register_redaction_hook("mask", MaskRedactionHook())

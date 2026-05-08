@@ -31,9 +31,11 @@ from contextweaver.envelope import ContextPack, ResultEnvelope
 from contextweaver.protocols import (
     ArtifactStore,
     CharDivFourEstimator,
+    EpisodicStore,
     EventHook,
     EventLog,
     Extractor,
+    FactStore,
     NoOpHook,
     Summarizer,
     TokenEstimator,
@@ -97,10 +99,8 @@ class ContextManager:
         self._artifact_store: ArtifactStore = (
             artifact_store or _stores.artifact_store or InMemoryArtifactStore()
         )
-        self._episodic_store: InMemoryEpisodicStore = (
-            _stores.episodic_store or InMemoryEpisodicStore()
-        )
-        self._fact_store: InMemoryFactStore = _stores.fact_store or InMemoryFactStore()
+        self._episodic_store: EpisodicStore = _stores.episodic_store or InMemoryEpisodicStore()
+        self._fact_store: FactStore = _stores.fact_store or InMemoryFactStore()
         self._budget = budget or ContextBudget()
         self._policy = policy or ContextPolicy()
         self._scoring = scoring_config or ScoringConfig()
@@ -125,12 +125,12 @@ class ContextManager:
         return self._artifact_store
 
     @property
-    def episodic_store(self) -> InMemoryEpisodicStore:
+    def episodic_store(self) -> EpisodicStore:
         """The underlying episodic store."""
         return self._episodic_store
 
     @property
-    def fact_store(self) -> InMemoryFactStore:
+    def fact_store(self) -> FactStore:
         """The underlying fact store."""
         return self._fact_store
 
@@ -448,7 +448,9 @@ class ContextManager:
         scored = score_candidates(candidates, query, _tags, self._scoring)
 
         # 6. Dedup
-        scored, dedup_removed = deduplicate_candidates(scored)
+        scored, dedup_removed = deduplicate_candidates(
+            scored, similarity_threshold=self._scoring.dedup_threshold
+        )
 
         # Pre-build episodic + fact injection text so we can estimate its
         # token cost and subtract it from the budget *before* selection.

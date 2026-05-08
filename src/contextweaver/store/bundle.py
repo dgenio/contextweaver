@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
+
+if TYPE_CHECKING:
+    from contextweaver.protocols import ArtifactStore, EpisodicStore, EventLog, FactStore
 
 
 @dataclass
@@ -19,18 +22,28 @@ class StoreBundle:
     any store left as ``None`` at build time.
     """
 
-    artifact_store: InMemoryArtifactStore | None = field(default=None)
-    event_log: InMemoryEventLog | None = field(default=None)
-    episodic_store: InMemoryEpisodicStore | None = field(default=None)
-    fact_store: InMemoryFactStore | None = field(default=None)
+    artifact_store: ArtifactStore | None = field(default=None)
+    event_log: EventLog | None = field(default=None)
+    episodic_store: EpisodicStore | None = field(default=None)
+    fact_store: FactStore | None = field(default=None)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialise non-None stores to a JSON-compatible dict."""
+        """Serialise non-None stores to a JSON-compatible dict.
+
+        Only works with store implementations that provide a ``to_dict()``
+        method (e.g. the built-in InMemory stores).
+        """
+
+        def _ser(store: object) -> object:
+            if store is not None and hasattr(store, "to_dict"):
+                return store.to_dict()  # pyright: ignore[reportAttributeAccessIssue]
+            return None
+
         return {
-            "artifact_store": self.artifact_store.to_dict() if self.artifact_store else None,
-            "event_log": self.event_log.to_dict() if self.event_log else None,
-            "episodic_store": self.episodic_store.to_dict() if self.episodic_store else None,
-            "fact_store": self.fact_store.to_dict() if self.fact_store else None,
+            "artifact_store": _ser(self.artifact_store),
+            "event_log": _ser(self.event_log),
+            "episodic_store": _ser(self.episodic_store),
+            "fact_store": _ser(self.fact_store),
         }
 
     @classmethod

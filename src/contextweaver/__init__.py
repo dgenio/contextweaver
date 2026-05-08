@@ -52,8 +52,10 @@ from contextweaver.exceptions import (
     RouteError,
 )
 from contextweaver.protocols import (
+    EpisodicStore,
     EventHook,
     Extractor,
+    FactStore,
     Labeler,
     RedactionHook,
     Summarizer,
@@ -123,8 +125,10 @@ __all__ = [
     "RoutingConfig",
     "ScoringConfig",
     # protocols
+    "EpisodicStore",
     "EventHook",
     "Extractor",
+    "FactStore",
     "Labeler",
     "RedactionHook",
     "Summarizer",

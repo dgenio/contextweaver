@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from contextweaver.config import RoutingConfig
-from contextweaver.exceptions import RouteError
+from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tree import TreeBuilder
@@ -140,14 +140,14 @@ def test_confidence_gap_valid_range() -> None:
 def test_confidence_gap_below_zero_raises() -> None:
     items = _build_catalog_items()
     graph = TreeBuilder().build(items)
-    with pytest.raises(ValueError, match="confidence_gap"):
+    with pytest.raises(ConfigError, match="confidence_gap"):
         Router(graph, confidence_gap=-0.1)
 
 
 def test_confidence_gap_above_one_raises() -> None:
     items = _build_catalog_items()
     graph = TreeBuilder().build(items)
-    with pytest.raises(ValueError, match="confidence_gap"):
+    with pytest.raises(ConfigError, match="confidence_gap"):
         Router(graph, confidence_gap=1.5)
 
 

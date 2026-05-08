@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ContextPack
+    from contextweaver.store.episodic import Episode
+    from contextweaver.store.facts import Fact
     from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
 
 
@@ -134,9 +136,96 @@ class ArtifactStore(Protocol):
         ...
 
 
-# FUTURE: EpisodicStore and FactStore protocols — the concrete InMemory*
-# classes currently define latest/delete/list_keys without protocol
-# declarations.  Add formal protocols once the API surface stabilises.
+# ---------------------------------------------------------------------------
+# EpisodicStore
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class EpisodicStore(Protocol):
+    """Read/write interface to the episodic memory store.
+
+    The episodic store holds compressed summaries of past agent episodes
+    (conversations / task runs).
+    """
+
+    def add(self, episode: Episode) -> None:
+        """Append *episode* to the store."""
+        ...
+
+    def get(self, episode_id: str) -> Episode | None:
+        """Return the episode with *episode_id*, or ``None`` if not found."""
+        ...
+
+    def search(self, query: str, top_k: int = 5) -> list[Episode]:
+        """Return the *top_k* most relevant episodes for *query*."""
+        ...
+
+    def all(self) -> list[Episode]:
+        """Return all episodes in insertion order."""
+        ...
+
+    def latest(self, n: int = 3) -> list[tuple[str, str, dict[str, Any]]]:
+        """Return the *n* most recently added episodes.
+
+        Returns:
+            A list of ``(episode_id, summary, metadata)`` tuples, most-recent first.
+        """
+        ...
+
+    def delete(self, episode_id: str) -> None:
+        """Remove the episode with *episode_id*.
+
+        Raises:
+            ItemNotFoundError: If no episode with *episode_id* exists.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# FactStore
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class FactStore(Protocol):
+    """Read/write interface to the fact memory store.
+
+    The fact store holds short, structured memory facts (key/value assertions)
+    that can be injected into context as ``memory_fact`` items.
+    """
+
+    def put(self, fact: Fact) -> None:
+        """Insert or replace the fact identified by ``fact.fact_id``."""
+        ...
+
+    def get(self, fact_id: str) -> Fact:
+        """Return the fact with *fact_id*.
+
+        Raises:
+            ItemNotFoundError: If no fact with *fact_id* exists.
+        """
+        ...
+
+    def get_by_key(self, key: str) -> list[Fact]:
+        """Return all facts whose ``key`` matches *key*."""
+        ...
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        """Return all distinct fact keys, optionally filtered by *prefix*."""
+        ...
+
+    def delete(self, fact_id: str) -> None:
+        """Remove the fact identified by *fact_id*.
+
+        Raises:
+            ItemNotFoundError: If no fact with *fact_id* exists.
+        """
+        ...
+
+    def all(self) -> list[Fact]:
+        """Return all facts sorted by ``fact_id``."""
+        ...
 
 
 # ---------------------------------------------------------------------------

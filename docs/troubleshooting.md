@@ -198,13 +198,7 @@ Important items that should be distinct are treated as duplicates.
 **Cause:** Default Jaccard similarity threshold is **0.85**. Items with ≥ 85 %
 token overlap are collapsed.
 
-> **Note:** Deduplication threshold configuration is tracked in
-> [#182](https://github.com/dgenio/contextweaver/issues/182).
-> Until that ships, the only workaround is to subclass `ContextManager`
-> and override `_build()` to pass a custom `similarity_threshold` to
-> `deduplicate_candidates()`.
-
-Once [#182](https://github.com/dgenio/contextweaver/issues/182) ships, the fix will be:
+**Fix:** Configure `dedup_threshold` on `ScoringConfig`:
 ```python
 from contextweaver.config import ScoringConfig
 from contextweaver.context.manager import ContextManager
