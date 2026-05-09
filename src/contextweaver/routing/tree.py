@@ -20,9 +20,11 @@ import math
 from collections import defaultdict
 
 from contextweaver._utils import jaccard, tokenize
+from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import GraphBuildError
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.labeler import KeywordLabeler
+from contextweaver.routing.manifest import GraphManifest
 from contextweaver.types import SelectableItem
 
 
@@ -42,6 +44,13 @@ class TreeBuilder:
         max_children: Maximum children per node (default 20).
         labeler: Optional :class:`KeywordLabeler` instance.
         target_group_size: Hint for cluster sizes; defaults to *max_children*.
+        routing_config: Keyword-only.  Optional :class:`~contextweaver.config.RoutingConfig`
+            that sets *max_children* (and is recorded on the graph manifest).
+            When provided, *max_children* is replaced by the value from
+            this config object.
+
+    Raises:
+        GraphBuildError: If *max_children* < 1 or *target_group_size* < 1.
     """
 
     def __init__(
@@ -49,7 +58,11 @@ class TreeBuilder:
         max_children: int = 20,
         labeler: KeywordLabeler | None = None,
         target_group_size: int | None = None,
+        *,
+        routing_config: RoutingConfig | None = None,
     ) -> None:
+        if routing_config is not None:
+            max_children = routing_config.max_children
         if max_children < 1:
             raise GraphBuildError(f"max_children must be >= 1, got {max_children!r}")
         if target_group_size is not None and target_group_size < 1:
@@ -57,8 +70,16 @@ class TreeBuilder:
         self._max_children = max_children
         self._labeler = labeler or KeywordLabeler()
         self._target_group_size = target_group_size or max_children
+        self._routing_config = routing_config
+        # Cache: (catalog_hash) -> ChoiceGraph (issue #15).
+        self._cache: dict[str, ChoiceGraph] = {}
 
-    def build(self, items: list[SelectableItem]) -> ChoiceGraph:
+    def build(
+        self,
+        items: list[SelectableItem],
+        *,
+        use_cache: bool = True,
+    ) -> ChoiceGraph:
         """Build a :class:`ChoiceGraph` from *items*.
 
         Strategies are tried in priority order:
@@ -66,8 +87,17 @@ class TreeBuilder:
         2. Clustering (Jaccard-based k-means variant).
         3. Alphabetical fallback.
 
+        Caching (issue #15): when *use_cache* is ``True`` (default), a
+        SHA-256 hash of the input catalog is computed via
+        :func:`~contextweaver.routing.manifest.compute_catalog_hash` and
+        used to look up a previously built graph.  Cached graphs are
+        returned unchanged.  Use *use_cache=False* to force a rebuild
+        without consulting or polluting the cache.
+
         Args:
             items: The items to organise.
+            use_cache: When ``True``, consult and update the per-builder
+                build cache keyed by catalog hash.  Default ``True``.
 
         Returns:
             A bounded DAG rooted at ``"root"``.
@@ -77,6 +107,15 @@ class TreeBuilder:
         """
         if not items:
             raise GraphBuildError("Cannot build tree from empty item list.")
+
+        catalog_hash = ""
+        if use_cache:
+            from contextweaver.routing.manifest import compute_catalog_hash
+
+            catalog_hash = compute_catalog_hash(items)
+            cached = self._cache.get(catalog_hash)
+            if cached is not None:
+                return cached
 
         graph = ChoiceGraph(max_children=self._max_children)
         graph.add_node("root", label="root", routing_hint="All available tools")
@@ -90,14 +129,40 @@ class TreeBuilder:
 
         self._build_subtree(graph, "root", sorted_items, depth=0)
 
+        max_depth = graph.stats()["max_depth"]
+        # Use timestamp=0.0 for determinism: AGENTS.md requires that
+        # TreeBuilder.build() produce identical output for identical
+        # input.  Callers wanting a wall-clock timestamp can replace the
+        # manifest after build via ``graph.manifest = GraphManifest.for_build(items)``.
+        manifest = GraphManifest.for_build(
+            items,
+            strategy="auto",
+            max_depth=max_depth,
+            seed=None,
+            engine_versions={"tree_builder": "1.0", "labeler": "keyword-1.0"},
+            timestamp=0.0,
+        )
         graph.build_meta = {
             "version": "1.0",
             "strategy": "auto",
             "item_count": len(items),
-            "max_depth": graph.stats()["max_depth"],
+            "max_depth": max_depth,
+            "manifest": manifest.to_dict(),
         }
 
+        if use_cache and catalog_hash:
+            self._cache[catalog_hash] = graph
+
         return graph
+
+    def clear_cache(self) -> None:
+        """Drop all cached graphs.
+
+        Subsequent :meth:`build` calls will rebuild from scratch.  Useful
+        when item metadata has changed in ways the catalog hash does not
+        reflect (e.g. tweaking labeler configuration between builds).
+        """
+        self._cache.clear()
 
     def _build_subtree(
         self,

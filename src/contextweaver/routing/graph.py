@@ -16,6 +16,7 @@ from typing import Any
 
 from contextweaver.exceptions import GraphBuildError
 from contextweaver.routing.graph_node import ChoiceNode
+from contextweaver.routing.manifest import GraphManifest
 
 # ---------------------------------------------------------------------------
 # ChoiceGraph
@@ -56,13 +57,32 @@ class ChoiceGraph:
 
     @property
     def build_meta(self) -> dict[str, Any]:
-        """Return build metadata."""
+        """Return build metadata as a raw dict (legacy accessor)."""
         return self._build_meta
 
     @build_meta.setter
     def build_meta(self, value: dict[str, Any]) -> None:
         """Set build metadata."""
         self._build_meta = value
+
+    @property
+    def manifest(self) -> GraphManifest | None:
+        """Return the structured :class:`GraphManifest` if present.
+
+        The manifest is deserialised from :attr:`build_meta` on each access
+        so that mutations to the dict remain authoritative.  Returns
+        ``None`` when no manifest has been recorded (e.g. legacy graphs
+        loaded from older serialisations).
+        """
+        manifest_data = self._build_meta.get("manifest")
+        if not isinstance(manifest_data, dict):
+            return None
+        return GraphManifest.from_dict(manifest_data)
+
+    @manifest.setter
+    def manifest(self, value: GraphManifest) -> None:
+        """Attach *value* as the structured manifest for this graph."""
+        self._build_meta["manifest"] = value.to_dict()
 
     # ------------------------------------------------------------------
     # Mutation

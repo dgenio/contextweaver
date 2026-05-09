@@ -2,6 +2,16 @@
 
 Performs a bounded beam search over a :class:`~contextweaver.routing.graph.ChoiceGraph`
 to find the top-k items that best satisfy a user query.
+
+This module also implements the routing API surface added by the v0.3
+issue cluster:
+
+* Negative routing (issue #112) — ``exclude_ids`` / ``exclude_tags``
+* Conversation hints (issue #116) — ``context_hints``
+* Toolset gating (issue #22) — ``allowed_namespaces`` / ``allowed_tags``
+* Uncertainty signals (issue #14) — ``RouteResult.is_ambiguous`` and
+  ``RouteResult.clarifying_question``
+* Structured trace (issue #51) — ``RouteResult.trace``
 """
 
 from __future__ import annotations
@@ -12,8 +22,14 @@ from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
 from contextweaver.config import RoutingConfig
-from contextweaver.exceptions import RouteError
+from contextweaver.exceptions import ConfigError, RouteError
+from contextweaver.routing.filters import (
+    augment_query,
+    filter_items,
+    suggest_clarifying_question,
+)
 from contextweaver.routing.graph import ChoiceGraph
+from contextweaver.routing.trace import RouteTrace, TraceStep
 from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
@@ -32,14 +48,34 @@ class RouteResult:
         candidate_ids: Corresponding item IDs in ranked order.
         paths: The full beam-search paths taken to reach each candidate.
         scores: Score for each candidate (same order).
-        debug_trace: Step-by-step trace; only populated when ``debug=True``.
+        is_ambiguous: ``True`` when the gap between rank-1 and rank-2
+            scores is below the router's *confidence_gap* threshold
+            (issue #14).
+        clarifying_question: Optional disambiguation prompt suggested
+            when *is_ambiguous* is ``True`` (issue #14).
+        excluded_count: Items filtered by ``exclude_ids`` / ``exclude_tags``
+            before scoring (issue #112).
+        gated_count: Items filtered by ``allowed_namespaces`` /
+            ``allowed_tags`` toolset gating before scoring (issue #22).
+        trace: Structured audit record of the routing call (issue #51).
+            Always populated; ``trace.steps`` is non-empty only when
+            ``debug=True``.
     """
 
     candidate_items: list[SelectableItem] = field(default_factory=list)
     candidate_ids: list[str] = field(default_factory=list)
     paths: list[list[str]] = field(default_factory=list)
     scores: list[float] = field(default_factory=list)
-    debug_trace: list[dict[str, Any]] = field(default_factory=list)
+    is_ambiguous: bool = False
+    clarifying_question: str | None = None
+    excluded_count: int = 0
+    gated_count: int = 0
+    trace: RouteTrace = field(default_factory=RouteTrace)
+
+    @property
+    def debug_trace(self) -> list[dict[str, Any]]:
+        """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape."""
+        return self.trace.to_legacy_dicts()
 
 
 # ---------------------------------------------------------------------------
@@ -59,21 +95,17 @@ class Router:
     Args:
         graph: The choice graph to route over.
         items: Optional list of catalog items to register immediately.
-            Equivalent to calling :meth:`set_items` after construction.
-        scorer: Optional pre-fitted :class:`TfIdfScorer`.  If ``None``,
-            one is auto-fitted on the graph's item text representations.
+        scorer: Optional pre-fitted :class:`TfIdfScorer`.
         beam_width: Number of beams to keep at each level (default 2).
         max_depth: Maximum tree depth to traverse (default 8).
         top_k: Maximum number of results to return (default 10).
         confidence_gap: Minimum score gap between rank-1 and rank-2 to
             consider the top pick confident.  Must be in ``[0.0, 1.0]``.
-        routing_config: Keyword-only.  Optional :class:`~contextweaver.config.RoutingConfig`
-            that sets all routing parameters at once.  When provided, *beam_width*,
-            *max_depth*, *top_k*, and *confidence_gap* are replaced by the values
-            from this config object.
+        routing_config: Keyword-only.  Optional :class:`RoutingConfig`
+            that sets all routing parameters at once.
 
     Raises:
-        ValueError: If *confidence_gap* is outside ``[0.0, 1.0]``.
+        ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]``.
     """
 
     def __init__(
@@ -94,7 +126,7 @@ class Router:
             top_k = routing_config.top_k
             confidence_gap = routing_config.confidence_gap
         if not 0.0 <= confidence_gap <= 1.0:
-            raise ValueError(f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}")
+            raise ConfigError(f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}")
         self._graph = graph
         self._beam_width = beam_width
         self._max_depth = max_depth
@@ -103,15 +135,12 @@ class Router:
         self._items: dict[str, SelectableItem] = {}
         self._scorer = scorer
         self._indexed = False
+        self._doc_id_to_idx: dict[str, int] = {}
         if items is not None:
             self.set_items(items)
 
     def set_items(self, items: list[SelectableItem]) -> None:
-        """Register the catalog items for TF-IDF indexing and result lookup.
-
-        Args:
-            items: All items in the catalog.
-        """
+        """Register the catalog items for TF-IDF indexing and result lookup."""
         self._items = {it.id: it for it in items}
         self._indexed = False
 
@@ -122,7 +151,6 @@ class Router:
         if self._scorer is None:
             self._scorer = TfIdfScorer()
 
-        # Build document corpus: items first (by sorted id), then non-leaf nodes
         docs: list[str] = []
         doc_ids: list[str] = []
 
@@ -139,7 +167,7 @@ class Router:
                 doc_ids.append(node_id)
 
         self._scorer.fit(docs)
-        self._doc_id_to_idx: dict[str, int] = {did: i for i, did in enumerate(doc_ids)}
+        self._doc_id_to_idx = {did: i for i, did in enumerate(doc_ids)}
         self._indexed = True
 
     def _score_node(self, query: str, node_id: str) -> float:
@@ -152,37 +180,52 @@ class Router:
         if idx is not None:
             return self._scorer.score(query, idx)
 
-        # Fallback to Jaccard for nodes not in the index
         q_tokens = tokenize(query)
         n_tokens = tokenize(node_id.replace(":", " ").replace("_", " ").replace("/", " "))
         return jaccard(q_tokens, n_tokens)
 
-    def route(self, query: str, *, debug: bool = False) -> RouteResult:
-        """Route *query* through the graph and return ranked results.
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
-        Algorithm:
-        1. Start at root.
-        2. At each node: TF-IDF score children.  Sort descending (ties:
-           alphabetical by id).  Keep top *beam_width*.
-        3. If >= 2 candidates scored and gap between rank-1 and rank-2 is
-           less than *confidence_gap*: keep *beam_width* + 1.
-        4. Recurse into node-type children (up to *max_depth*).  Collect
-           leaf items.
-        5. Backtrack if candidates < beam_width: expand next-best unexplored
-           branch.
-        6. Deduplicate, sort by score desc (ties: alphabetical), return
-           top *top_k*.
+    def route(  # noqa: PLR0913 — multiple optional filters are intentional public API
+        self,
+        query: str,
+        *,
+        debug: bool = False,
+        exclude_ids: set[str] | None = None,
+        exclude_tags: set[str] | None = None,
+        allowed_namespaces: set[str] | None = None,
+        allowed_tags: set[str] | None = None,
+        context_hints: list[str] | None = None,
+    ) -> RouteResult:
+        """Route *query* through the graph and return ranked results.
 
         Args:
             query: The user query string.
-            debug: If True, populate ``RouteResult.debug_trace``.
+            debug: When ``True``, populate the per-step beam expansions
+                in :attr:`RouteResult.trace`.  The trace itself is always
+                populated regardless of *debug*.
+            exclude_ids: Optional set of item IDs to drop before scoring
+                (issue #112 — negative routing).
+            exclude_tags: Optional set of tags; items carrying any of
+                these tags are dropped (issue #112 — negative routing).
+            allowed_namespaces: Optional whitelist of namespaces.  When
+                provided, only items whose ``namespace`` is in the set
+                participate in routing (issue #22 — toolset gating).
+            allowed_tags: Optional whitelist of tags.  When provided,
+                items must share at least one tag with the set
+                (issue #22 — toolset gating).
+            context_hints: Optional list of conversation context hints.
+                Hints are appended to the query for scoring purposes
+                (issue #116).  Hints do not change the catalog or graph.
 
         Returns:
-            A :class:`RouteResult` with ranked items.
+            A :class:`RouteResult` with ranked items and a populated
+            :class:`~contextweaver.routing.trace.RouteTrace`.
 
         Raises:
-            RouteError: If the graph is empty or invalid, or if no items
-                have been registered via *items* or :meth:`set_items`.
+            RouteError: If the graph is empty or no items are registered.
         """
         if not self._items:
             raise RouteError(
@@ -193,132 +236,171 @@ class Router:
             raise RouteError(f"Root node {root!r} not in graph.")
 
         self._ensure_index()
-        trace: list[dict[str, Any]] = []
+        active_items, excluded_count, gated_count = filter_items(
+            self._items,
+            exclude_ids=exclude_ids,
+            exclude_tags=exclude_tags,
+            allowed_namespaces=allowed_namespaces,
+            allowed_tags=allowed_tags,
+        )
+        if not active_items:
+            raise RouteError(
+                "All items were filtered out by exclude_ids / exclude_tags / "
+                "allowed_namespaces / allowed_tags."
+            )
+        scoring_query = augment_query(query, context_hints)
+        steps_data = self._beam_search(scoring_query, active_items, debug)
+        steps, collected = steps_data
+        ranked = self._collect_results(collected, active_items)
 
-        # Beam entry: (score, path)
+        trace = RouteTrace(
+            query=query,
+            confidence_gap=self._confidence_gap,
+            top_score=ranked[0][1][0] if ranked else 0.0,
+            runner_up_score=ranked[1][1][0] if len(ranked) >= 2 else None,
+            excluded_count=excluded_count,
+            gated_count=gated_count,
+            retriever_engine="tfidf",
+            steps=steps if debug else [],
+        )
+        is_ambiguous = (
+            len(ranked) >= 2 and (ranked[0][1][0] - ranked[1][1][0]) < self._confidence_gap
+        )
+        trace.is_ambiguous = is_ambiguous
+        top_items = [active_items[iid] for iid, _ in ranked if iid in active_items]
+        clarifying = suggest_clarifying_question(query, top_items[:3]) if is_ambiguous else None
+        trace.clarifying_question = clarifying
+
+        result = RouteResult(
+            candidate_items=top_items,
+            candidate_ids=[iid for iid, _ in ranked],
+            paths=[path for _, (_, path) in ranked],
+            scores=[score for _, (score, _) in ranked],
+            is_ambiguous=is_ambiguous,
+            clarifying_question=clarifying,
+            excluded_count=excluded_count,
+            gated_count=gated_count,
+            trace=trace,
+        )
+
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "route: query_len=%d, top_k=%d, candidates=%d, scores=%s, "
+                "ambiguous=%s, excluded=%d, gated=%d",
+                len(query),
+                self._top_k,
+                len(result.candidate_ids),
+                [round(s, 4) for s in result.scores[:5]],
+                is_ambiguous,
+                excluded_count,
+                gated_count,
+            )
+        return result
+
+    # ------------------------------------------------------------------
+    # Beam search internals
+    # ------------------------------------------------------------------
+
+    def _beam_search(
+        self,
+        query: str,
+        active_items: dict[str, SelectableItem],
+        debug: bool,
+    ) -> tuple[list[TraceStep], dict[str, tuple[float, list[str]]]]:
+        """Run the beam search and return ``(trace_steps, collected)``.
+
+        *active_items* is the post-filter catalog; only IDs in this dict
+        are eligible for collection.
+        """
+        root = self._graph.root_id
         beam: list[tuple[float, list[str]]] = [(0.0, [root])]
         collected: dict[str, tuple[float, list[str]]] = {}
-        # Track unexplored branches for backtracking
         unexplored: list[tuple[float, str, list[str]]] = []
+        steps: list[TraceStep] = []
 
         for depth in range(self._max_depth):
             if not beam:
                 break
-
             next_beam: list[tuple[float, list[str]]] = []
-            step_trace: dict[str, Any] = {"depth": depth, "expansions": []}
-
             for score, path in beam:
                 node_id = path[-1]
                 children = self._graph.successors(node_id)
-
                 if not children:
-                    # Leaf node — collect if it's an item
-                    if node_id in self._items and node_id not in collected:
+                    if node_id in active_items and node_id not in collected:
                         collected[node_id] = (score, path[1:])
                     continue
 
-                # Score all children
                 scored: list[tuple[float, str]] = []
                 for child in children:
                     s = self._score_node(query, child)
                     scored.append((s, child))
-
-                # Sort: descending score, alphabetical id for ties
                 scored.sort(key=lambda x: (-x[0], x[1]))
 
-                if debug:
-                    step_trace["expansions"].append(
-                        {
-                            "node": node_id,
-                            "scored_children": [
-                                {"id": cid, "score": round(cs, 4)} for cs, cid in scored
-                            ],
-                        }
-                    )
-
-                # Determine beam width for this expansion
                 keep = self._beam_width
                 if len(scored) >= 2 and scored[0][0] - scored[1][0] < self._confidence_gap:
                     keep = self._beam_width + 1
 
-                # Keep top-k, stash rest for backtracking
+                kept_ids: list[str] = []
                 for i, (s, child) in enumerate(scored):
                     new_path = path + [child]
                     if i < keep:
-                        # Check if child is an item (leaf)
+                        kept_ids.append(child)
                         if child in self._items:
-                            if child not in collected:
+                            if child in active_items and child not in collected:
                                 collected[child] = (score + s, new_path[1:])
                         else:
                             next_beam.append((score + s, new_path))
                     else:
                         unexplored.append((score + s, child, new_path))
 
-            # Sort next beam deterministically: score desc, node ID alpha
+                if debug:
+                    steps.append(
+                        TraceStep(
+                            depth=depth,
+                            node=node_id,
+                            scored_children=[(cid, cs) for cs, cid in scored],
+                            kept=kept_ids,
+                        )
+                    )
+
             next_beam.sort(key=lambda x: (-x[0], x[1][-1]))
             beam = next_beam[: self._beam_width]
 
-            if debug:
-                trace.append(step_trace)
-
-        # Collect any remaining beam items
+        # Collect any remaining beam items.
         for score, path in beam:
             node_id = path[-1]
-            if node_id in self._items and node_id not in collected:
+            if node_id in active_items and node_id not in collected:
                 collected[node_id] = (score, path[1:])
 
-        # Backtrack: if we have fewer candidates than top_k,
-        # expand next-best unexplored branches
+        # Backtrack into unexplored branches if under-filled.
         unexplored.sort(key=lambda x: (-x[0], x[1]))
         while len(collected) < self._top_k and unexplored:
             u_score, u_node, u_path = unexplored.pop(0)
             if u_node in collected:
                 continue
-            if u_node in self._items:
+            if u_node in active_items:
                 collected[u_node] = (u_score, u_path[1:])
             else:
-                # Expand this node's subtree, respecting remaining depth
-                current_depth = len(u_path) - 1  # exclude root prefix
+                current_depth = len(u_path) - 1
                 remaining = max(0, self._max_depth - current_depth)
-                sub_items = self._expand_subtree(
-                    query,
-                    u_node,
-                    u_score,
-                    u_path,
-                    max_depth=remaining,
-                )
-                for sid, (ss, sp) in sub_items.items():
-                    if sid not in collected:
+                sub = self._expand_subtree(query, u_node, u_score, u_path, max_depth=remaining)
+                for sid, (ss, sp) in sub.items():
+                    if sid in active_items and sid not in collected:
                         collected[sid] = (ss, sp)
 
-        # Build result: sort by score desc, then alphabetical id
+        return steps, collected
+
+    def _collect_results(
+        self,
+        collected: dict[str, tuple[float, list[str]]],
+        active_items: dict[str, SelectableItem],
+    ) -> list[tuple[str, tuple[float, list[str]]]]:
+        """Sort and trim *collected* into the final ranked tuple list."""
         ranked = sorted(
-            collected.items(),
+            (entry for entry in collected.items() if entry[0] in active_items),
             key=lambda x: (-x[1][0], x[0]),
         )
-        ranked = ranked[: self._top_k]
-
-        result = RouteResult(
-            candidate_items=[
-                self._items[item_id] for item_id, _ in ranked if item_id in self._items
-            ],
-            candidate_ids=[item_id for item_id, _ in ranked],
-            paths=[path for _, (_, path) in ranked],
-            scores=[score for _, (score, _) in ranked],
-        )
-        if debug:
-            result.debug_trace = trace
-
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(
-                "route: query_len=%d, top_k=%d, candidates=%d, scores=%s",
-                len(query),
-                self._top_k,
-                len(result.candidate_ids),
-                [round(s, 4) for s in result.scores[:5]],
-            )
-        return result
+        return ranked[: self._top_k]
 
     def _expand_subtree(
         self,
@@ -329,19 +411,9 @@ class Router:
         *,
         max_depth: int | None = None,
     ) -> dict[str, tuple[float, list[str]]]:
-        """Expand children of *node_id* recursively, collecting items.
-
-        Args:
-            query: The user query string.
-            node_id: The node to expand.
-            base_score: Accumulated score so far.
-            base_path: Path from root to *node_id*.
-            max_depth: Maximum additional levels to traverse.  ``None``
-                means use ``self._max_depth``.
-        """
+        """Expand children of *node_id* recursively, collecting items."""
         depth_limit = max_depth if max_depth is not None else self._max_depth
         result: dict[str, tuple[float, list[str]]] = {}
-        # Stack entries: (score, node_id, path, depth)
         stack: list[tuple[float, str, list[str], int]] = [(base_score, node_id, base_path, 0)]
         while stack:
             score, nid, path, depth = stack.pop()

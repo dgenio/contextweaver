@@ -7,6 +7,7 @@ import pytest
 from contextweaver.config import (
     ContextBudget,
     ContextPolicy,
+    Mode,
     ProfileConfig,
     RoutingConfig,
     ScoringConfig,
@@ -209,3 +210,62 @@ def test_profile_routing_kwargs_keys() -> None:
     p = ProfileConfig.from_preset("accurate")
     kwargs = p.routing.routing_kwargs()
     assert set(kwargs.keys()) == {"beam_width", "max_depth", "top_k", "confidence_gap"}
+
+
+# ---------------------------------------------------------------------------
+# Mode enum (issue #45)
+# ---------------------------------------------------------------------------
+
+
+def test_mode_values() -> None:
+    assert Mode.strict.value == "strict"
+    assert Mode.seeded.value == "seeded"
+    assert Mode.adaptive.value == "adaptive"
+
+
+def test_mode_string_compatibility() -> None:
+    """Mode is a str-Enum so str comparisons remain valid."""
+    assert Mode.strict == "strict"
+    assert Mode.strict.value == "strict"
+
+
+def test_profile_default_mode_is_strict() -> None:
+    assert ProfileConfig().mode == Mode.strict
+
+
+def test_profile_explicit_mode() -> None:
+    p = ProfileConfig(mode=Mode.seeded, seed=42)
+    assert p.mode == Mode.seeded
+    assert p.seed == 42
+
+
+def test_profile_round_trip_preserves_mode() -> None:
+    p = ProfileConfig(mode=Mode.seeded, seed=7)
+    restored = ProfileConfig.from_dict(p.to_dict())
+    assert restored.mode == Mode.seeded
+    assert restored.seed == 7
+
+
+def test_profile_round_trip_preserves_strict_default() -> None:
+    p = ProfileConfig()
+    restored = ProfileConfig.from_dict(p.to_dict())
+    assert restored.mode == Mode.strict
+    assert restored.seed is None
+
+
+def test_profile_from_dict_unknown_mode_raises() -> None:
+    with pytest.raises(ConfigError, match="Unknown mode"):
+        ProfileConfig.from_dict({"mode": "wild"})
+
+
+def test_profile_from_dict_missing_mode_defaults_strict() -> None:
+    p = ProfileConfig.from_dict({})
+    assert p.mode == Mode.strict
+
+
+def test_from_profile_alias() -> None:
+    """ProfileConfig.from_profile is an alias of from_preset."""
+    a = ProfileConfig.from_profile("fast")
+    b = ProfileConfig.from_preset("fast")
+    assert a.routing.beam_width == b.routing.beam_width
+    assert a.budget.answer == b.budget.answer

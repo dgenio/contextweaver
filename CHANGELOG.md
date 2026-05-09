@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Routing — negative routing (#112).** `Router.route()` accepts new
+  keyword-only `exclude_ids: set[str] | None` and `exclude_tags: set[str] | None`
+  parameters that drop matching items before beam search.
+  `RouteResult.excluded_count` reports how many items were filtered.
+- **Routing — context-aware shortlisting (#116).** `Router.route()` accepts
+  a new keyword-only `context_hints: list[str] | None` parameter; hints
+  are appended to the scoring query without altering the catalog or graph.
+- **Routing — toolset gating (#22).** `Router.route()` accepts new
+  keyword-only `allowed_namespaces: set[str] | None` and
+  `allowed_tags: set[str] | None` whitelists.  `RouteResult.gated_count`
+  reports how many items were filtered.
+- **Routing — `CatalogNormalizer` (#44).** New
+  `contextweaver.routing.normalizer.CatalogNormalizer` and
+  `NormalizationReport` apply deterministic metadata hygiene
+  (case-insensitive tag dedupe, whitespace collapsing, namespace
+  trimming, description fallback) to raw catalog imports.
+- **Routing — `GraphManifest` (#48).** New
+  `contextweaver.routing.manifest.GraphManifest` records build hash,
+  seed, engine versions, timestamp, item count, strategy, and depth on
+  every graph built by `TreeBuilder.build()`.  Survives
+  `ChoiceGraph.to_dict()` / `from_dict()` round-trips.  Helper
+  `compute_catalog_hash()` is exported from the top-level package.
+- **Routing — incremental graph cache (#15).** `TreeBuilder.build()`
+  caches built graphs by catalog hash.  Subsequent calls with an
+  unchanged catalog return the cached graph in O(n) rather than
+  rebuilding.  Use `use_cache=False` to force a rebuild;
+  `clear_cache()` drops all cached graphs.
+- **Routing — `RouteTrace` (#51).** New
+  `contextweaver.routing.trace.RouteTrace` and `TraceStep` dataclasses.
+  Always populated on `RouteResult.trace`; per-step beam expansions
+  remain opt-in via `debug=True`.  The legacy
+  `RouteResult.debug_trace` shape is preserved as a `@property` that
+  delegates to `RouteTrace.to_legacy_dicts()` for backward compatibility.
+- **Routing — uncertainty signals (#14).** `RouteResult` gains
+  `is_ambiguous: bool` and `clarifying_question: str | None`.  Set when
+  the rank-1/rank-2 gap is below the router's `confidence_gap`
+  threshold; the question is rendered from the most distinguishing
+  dimension (namespace or name) of the top candidates.
+- **Routing — `EngineRegistry` (#47).** New
+  `contextweaver.routing.registry.EngineRegistry` with `Retriever`,
+  `Reranker`, and `ClusteringEngine` protocols on `protocols.py`.
+  Bundled defaults: `TfIdfRetriever` (wraps `TfIdfScorer`),
+  `NoOpReranker`, and `JaccardClusteringEngine`.  Module-level
+  `default_registry` is pre-populated with the in-tree defaults;
+  callers may register alternative engines under the `"retriever"`,
+  `"reranker"`, and `"clustering"` slots.
+- **Config — `Mode` enum and `ProfileConfig.mode` (#45).** New
+  `contextweaver.config.Mode` enum with values `strict` (default),
+  `seeded`, and `adaptive` (FUTURE placeholder).  `ProfileConfig`
+  gains a `mode: Mode` field and an optional `seed: int | None` field;
+  both round-trip through `to_dict()` / `from_dict()`.  Unknown mode
+  strings on `from_dict()` raise `ConfigError`.
+  `ProfileConfig.from_profile()` added as a backwards-compatible alias
+  for `from_preset()`.
+- **Config — `ContextManager.profile` (#45).** `ContextManager.__init__`
+  accepts a keyword-only `profile: ProfileConfig | None` parameter that
+  fills `budget`, `policy`, and `scoring_config` from the profile when
+  per-arg overrides are not supplied.  New `ContextManager.profile` and
+  `ContextManager.mode` properties expose the active profile and mode.
+- **Routing — `TreeBuilder.routing_config` (#45).** `TreeBuilder.__init__`
+  accepts a keyword-only `routing_config: RoutingConfig | None` parameter
+  that populates `max_children`.  `Router` already accepted this
+  parameter in v0.2.0.
+
+### Changed
+
+- `Router.__init__` now raises `ConfigError` (a `ContextWeaverError`
+  subclass) instead of bare `ValueError` when `confidence_gap` is
+  outside `[0.0, 1.0]`.
+- `RouteResult.trace` is the new authoritative trace surface;
+  `RouteResult.debug_trace` is preserved as a backwards-compatible
+  property delegating to `trace.to_legacy_dicts()`.
+
+### Notes
+
+- `Mode.adaptive` is currently a forward-compatible placeholder — no
+  pipeline stage is conditioned on the mode value yet.  Selecting
+  `Mode.adaptive` is accepted but has no behavioural effect.
+- `TreeBuilder.build()` writes a deterministic `timestamp=0.0` to its
+  manifest so that two builds of identical inputs produce identical
+  graphs (per the AGENTS.md "Deterministic by default" invariant).
+  Callers wanting a wall-clock timestamp can replace the manifest via
+  `graph.manifest = GraphManifest.for_build(items)` after build.
+- `RouteResult.trace.steps` is empty unless `debug=True`; the rest of
+  the trace (top scores, ambiguity, exclusion / gating counts) is
+  always populated.
+
 ## [0.2.0] - 2026-04-17
 
 ### Added

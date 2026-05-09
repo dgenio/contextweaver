@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from contextweaver.config import RoutingConfig
-from contextweaver.exceptions import RouteError
+from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tree import TreeBuilder
@@ -140,14 +140,14 @@ def test_confidence_gap_valid_range() -> None:
 def test_confidence_gap_below_zero_raises() -> None:
     items = _build_catalog_items()
     graph = TreeBuilder().build(items)
-    with pytest.raises(ValueError, match="confidence_gap"):
+    with pytest.raises(ConfigError, match="confidence_gap"):
         Router(graph, confidence_gap=-0.1)
 
 
 def test_confidence_gap_above_one_raises() -> None:
     items = _build_catalog_items()
     graph = TreeBuilder().build(items)
-    with pytest.raises(ValueError, match="confidence_gap"):
+    with pytest.raises(ConfigError, match="confidence_gap"):
         Router(graph, confidence_gap=1.5)
 
 
@@ -274,3 +274,208 @@ def test_routing_config_overrides_explicit_kwargs() -> None:
     router = Router(graph, beam_width=99, top_k=50, routing_config=rc)
     assert router._beam_width == 3
     assert router._top_k == 7
+
+
+# ------------------------------------------------------------------
+# Issue #112 — Negative routing (exclude_ids / exclude_tags)
+# ------------------------------------------------------------------
+
+
+def test_exclude_ids_drops_listed_items() -> None:
+    router = _setup_router()
+    full = router.route("database read")
+    assert "db_read" in full.candidate_ids
+    filtered = router.route("database read", exclude_ids={"db_read"})
+    assert "db_read" not in filtered.candidate_ids
+    assert filtered.excluded_count >= 1
+
+
+def test_exclude_tags_drops_tagged_items() -> None:
+    router = _setup_router()
+    full = router.route("database")
+    assert any(cid.startswith("db_") for cid in full.candidate_ids)
+    filtered = router.route("database", exclude_tags={"data"})
+    assert all(not cid.startswith("db_") for cid in filtered.candidate_ids)
+    assert filtered.excluded_count >= 2
+
+
+def test_exclude_all_raises_route_error() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items)
+    all_ids = {it.id for it in items}
+    with pytest.raises(RouteError, match="filtered out"):
+        router.route("anything", exclude_ids=all_ids)
+
+
+def test_exclude_count_reported_in_trace() -> None:
+    router = _setup_router()
+    result = router.route("database", exclude_ids={"db_read"})
+    assert result.trace.excluded_count == result.excluded_count
+    assert result.trace.excluded_count >= 1
+
+
+# ------------------------------------------------------------------
+# Issue #116 — Context-aware shortlisting (context_hints)
+# ------------------------------------------------------------------
+
+
+def test_context_hints_change_ranking() -> None:
+    items = [
+        _item("send_email", "send_email", "Send notification", tags=["comm"]),
+        _item("send_sms", "send_sms", "Send notification", tags=["comm"]),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=2)
+    # Without hints, the names match symmetrically; hints break the tie.
+    result = router.route("send notification", context_hints=["email"])
+    assert result.candidate_ids[0] == "send_email"
+
+
+def test_context_hints_none_is_noop() -> None:
+    router = _setup_router()
+    r1 = router.route("database read")
+    r2 = router.route("database read", context_hints=None)
+    r3 = router.route("database read", context_hints=[])
+    assert r1.candidate_ids == r2.candidate_ids == r3.candidate_ids
+
+
+def test_context_hints_strip_whitespace() -> None:
+    """Whitespace-only hints must not change scoring."""
+    router = _setup_router()
+    r1 = router.route("database read")
+    r2 = router.route("database read", context_hints=["   ", "\t"])
+    assert r1.candidate_ids == r2.candidate_ids
+
+
+# ------------------------------------------------------------------
+# Issue #22 — Toolset gating (allowed_namespaces / allowed_tags)
+# ------------------------------------------------------------------
+
+
+def test_allowed_namespaces_whitelists_namespace() -> None:
+    items = [
+        _item("billing.invoice", namespace="billing", description="invoice tool"),
+        _item("comms.email", namespace="comms", description="email tool"),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items)
+    result = router.route("tool", allowed_namespaces={"billing"})
+    assert result.candidate_ids == ["billing.invoice"]
+    assert result.gated_count == 1
+
+
+def test_allowed_tags_whitelists_tags() -> None:
+    items = [
+        _item("a", tags=["read"], description="alpha"),
+        _item("b", tags=["write"], description="beta"),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items)
+    result = router.route("anything", allowed_tags={"read"})
+    assert result.candidate_ids == ["a"]
+    assert result.gated_count == 1
+
+
+def test_gating_combined_with_exclusion() -> None:
+    items = [
+        _item("billing.a", namespace="billing", tags=["read"]),
+        _item("billing.b", namespace="billing", tags=["write"]),
+        _item("comms.x", namespace="comms", tags=["read"]),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items)
+    # Allow billing namespace, exclude write tag → only billing.a remains.
+    result = router.route(
+        "anything",
+        allowed_namespaces={"billing"},
+        exclude_tags={"write"},
+    )
+    assert result.candidate_ids == ["billing.a"]
+    assert result.gated_count == 1
+    assert result.excluded_count == 1
+
+
+# ------------------------------------------------------------------
+# Issue #14 — Uncertainty & clarifying questions
+# ------------------------------------------------------------------
+
+
+def test_unambiguous_route_marks_not_ambiguous() -> None:
+    items = [
+        _item("billing.invoice", "invoice", "invoice billing tool", tags=["billing"]),
+        _item("storage.archive", "archive", "archive storage", tags=["archive"]),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, confidence_gap=0.05)
+    result = router.route("invoice billing")
+    assert result.is_ambiguous is False
+    assert result.clarifying_question is None
+
+
+def test_ambiguous_route_emits_clarifying_question() -> None:
+    items = [
+        _item("ns_a.tool", "tool", "shared tool description", namespace="ns_a"),
+        _item("ns_b.tool", "tool", "shared tool description", namespace="ns_b"),
+    ]
+    graph = TreeBuilder().build(items)
+    # Wide gap so equal-scoring candidates trigger ambiguity.
+    router = Router(graph, items=items, confidence_gap=0.5)
+    result = router.route("tool")
+    assert result.is_ambiguous is True
+    assert result.clarifying_question is not None
+    assert "ns_a" in result.clarifying_question or "ns_b" in result.clarifying_question
+
+
+def test_trace_records_top_and_runner_up_scores() -> None:
+    router = _setup_router()
+    result = router.route("database read")
+    assert result.trace.top_score == result.scores[0]
+    if len(result.scores) >= 2:
+        assert result.trace.runner_up_score == result.scores[1]
+    else:
+        assert result.trace.runner_up_score is None
+
+
+# ------------------------------------------------------------------
+# Issue #51 — Structured RouteTrace
+# ------------------------------------------------------------------
+
+
+def test_trace_always_present() -> None:
+    router = _setup_router()
+    result = router.route("database")
+    # Trace is non-None regardless of debug flag.
+    assert result.trace is not None
+    assert result.trace.query == "database"
+    assert result.trace.confidence_gap == router._confidence_gap
+
+
+def test_trace_steps_only_with_debug() -> None:
+    router = _setup_router()
+    no_debug = router.route("database", debug=False)
+    debug = router.route("database", debug=True)
+    assert no_debug.trace.steps == []
+    assert len(debug.trace.steps) >= 1
+
+
+def test_legacy_debug_trace_preserved() -> None:
+    """The legacy ``debug_trace`` list-of-dicts shape still works."""
+    router = _setup_router()
+    result = router.route("database", debug=True)
+    assert result.debug_trace
+    first = result.debug_trace[0]
+    assert "depth" in first
+    assert "expansions" in first
+
+
+def test_trace_round_trip_serialisation() -> None:
+    from contextweaver import RouteTrace
+
+    router = _setup_router()
+    original = router.route("database", debug=True).trace
+    restored = RouteTrace.from_dict(original.to_dict())
+    assert restored.query == original.query
+    assert restored.confidence_gap == original.confidence_gap
+    assert restored.is_ambiguous == original.is_ambiguous
+    assert len(restored.steps) == len(original.steps)
