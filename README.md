@@ -2,7 +2,7 @@
 
 > Phase-specific, budget-aware context compilation for tool-using AI agents.
 
-**500+ tests passing · zero runtime dependencies · deterministic output · Python ≥ 3.10**
+**600+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 
 [📖 Documentation](https://dgenio.github.io/contextweaver)
 
@@ -97,6 +97,23 @@ contextweaver provides two cooperating engines:
 ```bash
 pip install contextweaver
 ```
+
+`contextweaver` ships with a minimal, opinionated core: `tiktoken`,
+`PyYAML`, and `rank-bm25`. These power accurate token budgeting, YAML
+catalog/config files, and the default lexical retrieval backend.
+
+Optional capabilities are gated behind extras so the core install stays small:
+
+| Extra | What it adds |
+|---|---|
+| `contextweaver[cli]` | Rich-formatted CLI (typer + rich) |
+| `contextweaver[retrieval]` | Fuzzy lexical matching backend (rapidfuzz) |
+| `contextweaver[otel]` | OpenTelemetry tracing + metrics export |
+| `contextweaver[ann]` | Approximate-nearest-neighbour backend (reserved) |
+| `contextweaver[graph]` | NetworkX-backed graph ops (reserved) |
+| `contextweaver[fastmcp]` | FastMCP catalog adapter |
+| `contextweaver[langchain]` | LangChain integration helpers |
+| `contextweaver[all]` | All optional capabilities |
 
 Or from source:
 
@@ -199,13 +216,14 @@ techniques, and performance optimisation tips.
 
 contextweaver is built for production use with comprehensive quality gates:
 
-- **500+ passing tests** across all modules — context pipeline, routing engine, firewall,
+- **600+ passing tests** across all modules — context pipeline, routing engine, firewall,
   adapters, stores, CLI, sensitivity enforcement
 - **mypy strict** type checking — zero errors across all source files
 - **ruff clean** linting — zero warnings
 - **CI pipeline** on every pull request and on pushes to `main` ([see workflows](.github/workflows/))
-- **Deterministic output** — tie-break by ID, sorted keys; identical inputs always produce
-  identical outputs
+- **Deterministic by default** — tie-break by ID, sorted keys; identical inputs always
+  produce identical outputs. Configurable retrieval backends (TF-IDF, BM25, fuzzy)
+  preserve determinism within each mode.
 
 Run the full suite yourself:
 
@@ -313,7 +331,7 @@ contextweaver follows [Semantic Versioning](https://semver.org/):
 - Routing Engine: Catalog, DAG builder, beam-search router, choice cards
 - Protocol adapters: MCP (full content types, structured content, output schemas) and A2A
 - Stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` with protocol-based interfaces
-- 500+ passing tests, mypy strict, ruff clean, zero runtime dependencies
+- 600+ passing tests, mypy strict, ruff clean, minimal core dependencies
 
 **v0.2 (🚧 In Progress — Q2 2026)**
 

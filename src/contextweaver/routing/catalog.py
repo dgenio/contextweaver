@@ -172,6 +172,57 @@ def load_catalog_json(path: str | Path) -> list[SelectableItem]:
     return load_catalog_dicts(data)
 
 
+def load_catalog_yaml(path: str | Path) -> list[SelectableItem]:
+    """Load :class:`SelectableItem` objects from a YAML file.
+
+    The file must contain a YAML sequence of item mappings, each with at
+    least ``id``, ``kind``, ``name``, and ``description`` keys. Equivalent
+    to :func:`load_catalog_json` but using YAML syntax for human-friendly
+    catalog authoring.
+
+    Args:
+        path: Filesystem path to a YAML file.
+
+    Returns:
+        A list of :class:`SelectableItem` objects.
+
+    Raises:
+        CatalogError: If the file cannot be read or parsed, or if any item
+            mapping is missing required fields.
+    """
+    import yaml  # core dep — see pyproject.toml
+
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise CatalogError(f"Cannot read catalog file: {exc}") from exc
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise CatalogError(f"Invalid YAML in catalog file: {exc}") from exc
+    if not isinstance(data, list):
+        raise CatalogError("Catalog YAML must be a sequence of item mappings.")
+    return load_catalog_dicts(data)
+
+
+def load_catalog(path: str | Path) -> list[SelectableItem]:
+    """Load a catalog file, auto-detecting format from the file extension.
+
+    ``.yaml`` / ``.yml`` extensions dispatch to :func:`load_catalog_yaml`;
+    everything else is treated as JSON via :func:`load_catalog_json`.
+
+    Args:
+        path: Filesystem path to a catalog file.
+
+    Returns:
+        A list of :class:`SelectableItem` objects.
+    """
+    suffix = Path(path).suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        return load_catalog_yaml(path)
+    return load_catalog_json(path)
+
+
 def load_catalog_dicts(data: list[dict[str, Any]]) -> list[SelectableItem]:
     """Convert a list of raw dicts into :class:`SelectableItem` objects.
 

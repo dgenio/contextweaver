@@ -6,11 +6,17 @@ so that stores, hooks, and summarisers remain swappable.
 
 from __future__ import annotations
 
+import logging as _logging
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+import tiktoken as _tiktoken
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ContextPack
     from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
+
+
+_tiktoken_logger = _logging.getLogger("contextweaver.protocols")
 
 
 # ---------------------------------------------------------------------------
@@ -161,44 +167,53 @@ class CharDivFourEstimator:
         return len(text) // 4
 
 
-try:
-    import tiktoken as _tiktoken
+class TiktokenEstimator:
+    """Token estimator backed by OpenAI's ``tiktoken`` library.
 
-    class TiktokenEstimator:
-        """Token estimator backed by OpenAI's ``tiktoken`` library.
+    *model* may be a model name (e.g. ``"gpt-4"``) or a raw encoding name
+    (e.g. ``"cl100k_base"``). Model names are resolved via
+    ``tiktoken.encoding_for_model``; if that fails the value is treated as
+    an encoding name.
 
-        Falls back to :class:`CharDivFourEstimator` if ``tiktoken`` is not
-        installed.  *model* may be a model name (e.g. ``"gpt-4"``) or a raw
-        encoding name (e.g. ``"cl100k_base"``).  Model names are resolved via
-        ``tiktoken.encoding_for_model``; if that fails the value is treated as
-        an encoding name.
-        """
+    ``tiktoken`` is a core runtime dependency, so the import always succeeds.
+    However, tiktoken downloads BPE encoding files on first use; in offline /
+    air-gapped environments this download fails. When that happens the
+    estimator transparently falls back to :class:`CharDivFourEstimator` and
+    logs a warning so the operator can pre-cache encodings (set
+    ``TIKTOKEN_CACHE_DIR``) or use the heuristic estimator directly.
+    """
 
-        def __init__(self, model: str = "cl100k_base") -> None:
+    def __init__(self, model: str = "cl100k_base") -> None:
+        self._fallback: CharDivFourEstimator | None = None
+        try:
+            self._enc = _tiktoken.encoding_for_model(model)
+        except KeyError:
             try:
-                self._enc = _tiktoken.encoding_for_model(model)
-            except KeyError:
                 self._enc = _tiktoken.get_encoding(model)
-
-        def estimate(self, text: str) -> int:
-            """Return the exact token count using tiktoken."""
-            return len(self._enc.encode(text))
-
-except ImportError:  # pragma: no cover
-
-    class TiktokenEstimator:  # type: ignore[no-redef]
-        """Stub when ``tiktoken`` is not installed — delegates to :class:`CharDivFourEstimator`.
-
-        *model* is accepted for API compatibility but ignored.
-        """
-
-        def __init__(self, model: str = "cl100k_base") -> None:
-            _ = model
+            except Exception as exc:  # pragma: no cover - exercised in offline tests
+                self._fallback = CharDivFourEstimator()
+                _tiktoken_logger.warning(
+                    "tiktoken encoding %r unavailable (%s); falling back to "
+                    "CharDivFourEstimator. Pre-cache encodings via TIKTOKEN_CACHE_DIR "
+                    "for exact token counts.",
+                    model,
+                    exc,
+                )
+        except Exception as exc:  # pragma: no cover - exercised in offline tests
             self._fallback = CharDivFourEstimator()
+            _tiktoken_logger.warning(
+                "tiktoken encoding %r unavailable (%s); falling back to "
+                "CharDivFourEstimator. Pre-cache encodings via TIKTOKEN_CACHE_DIR "
+                "for exact token counts.",
+                model,
+                exc,
+            )
 
-        def estimate(self, text: str) -> int:
-            """Return ``len(text) // 4`` (tiktoken not available)."""
+    def estimate(self, text: str) -> int:
+        """Return the exact token count using tiktoken (or fallback estimate)."""
+        if self._fallback is not None:
             return self._fallback.estimate(text)
+        return len(self._enc.encode(text))
 
 
 # ---------------------------------------------------------------------------

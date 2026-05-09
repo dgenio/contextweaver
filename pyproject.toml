@@ -22,7 +22,15 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
 ]
-dependencies = []
+# Minimal core runtime dependencies. Each entry is broadly used in GenAI stacks
+# (often already pulled in transitively) and unblocks default behaviour the
+# library would otherwise have to approximate. Heavy or runtime-specific
+# packages live under [project.optional-dependencies] below.
+dependencies = [
+    "tiktoken>=0.5",
+    "PyYAML>=6.0",
+    "rank-bm25>=0.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/dgenio/contextweaver"
@@ -30,6 +38,7 @@ Repository = "https://github.com/dgenio/contextweaver"
 Changelog = "https://github.com/dgenio/contextweaver/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+# Dev / test toolchain.
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -38,12 +47,15 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
 ]
+# FastMCP adapter integration.
 fastmcp = [
     "fastmcp>=2.0",
 ]
+# LangChain integration examples.
 langchain = [
     "langchain-core>=0.3",
 ]
+# Docs site (mkdocs).
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
@@ -51,6 +63,38 @@ docs = [
     "mkdocs-gen-files>=0.5",
     "mkdocs-literate-nav>=0.6",
     "mkdocs-section-index>=0.3",
+]
+# Enhanced CLI: typer-based commands with rich-formatted output (tree, tables).
+cli = [
+    "typer>=0.9",
+    "rich>=13.0",
+]
+# Fuzzy lexical retrieval backend (rapidfuzz) — supplements the default BM25
+# scorer for typo / abbreviation tolerance.
+retrieval = [
+    "rapidfuzz>=3.0",
+]
+# Approximate-nearest-neighbour backends. Reserved for future embedding-based
+# routing (#8). No functional code references these yet.
+ann = [
+    "hnswlib>=0.8",
+]
+# OpenTelemetry tracing + metrics export.
+otel = [
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+]
+# NetworkX-backed graph ops. Reserved; no functional code references these yet.
+graph = [
+    "networkx>=3.0",
+]
+# Convenience: install every optional capability at once.
+all = [
+    "contextweaver[cli]",
+    "contextweaver[retrieval]",
+    "contextweaver[ann]",
+    "contextweaver[otel]",
+    "contextweaver[graph]",
 ]
 
 [project.scripts]
@@ -83,6 +127,30 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "fastmcp"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rank_bm25"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "yaml"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rapidfuzz.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "opentelemetry.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rich.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "typer.*"
 ignore_missing_imports = true
 
 [tool.coverage.run]

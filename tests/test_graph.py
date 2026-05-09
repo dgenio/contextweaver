@@ -261,6 +261,38 @@ def test_save_and_load() -> None:
         Path(path).unlink()
 
 
+def test_save_and_load_yaml() -> None:
+    g = ChoiceGraph()
+    g.add_item("tool-a")
+    g.add_node("root")
+    g.add_edge("root", "tool-a")
+    g.root_id = "root"
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as f:
+        path = f.name
+    try:
+        save_graph(g, path)
+        loaded = load_graph(path)
+        assert "tool-a" in loaded.items()
+        assert loaded.root_id == "root"
+        # File should not contain JSON brackets — confirms YAML format selected by extension
+        text = Path(path).read_text(encoding="utf-8")
+        assert not text.lstrip().startswith("{")
+    finally:
+        Path(path).unlink()
+
+
+def test_load_bad_yaml_raises() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as f:
+        f.write("- id: t1\n  : bad mapping\n  bad indent\n")
+        path = f.name
+    try:
+        with pytest.raises(GraphBuildError, match="Invalid YAML"):
+            load_graph(path)
+    finally:
+        Path(path).unlink()
+
+
 def test_load_bad_file_raises() -> None:
     with pytest.raises(GraphBuildError, match="Cannot read"):
         load_graph("/nonexistent/graph.json")

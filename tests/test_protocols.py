@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from contextweaver.envelope import ContextPack
 from contextweaver.protocols import (
     ArtifactStore,
@@ -42,13 +44,12 @@ def test_char_div_four_satisfies_protocol() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TiktokenEstimator (stub fallback)
+# TiktokenEstimator (tiktoken is a core dep)
 # ---------------------------------------------------------------------------
 
 
-def test_tiktoken_estimator_fallback() -> None:
+def test_tiktoken_estimator_basic() -> None:
     est = TiktokenEstimator()
-    # Should work regardless of whether tiktoken is installed
     result = est.estimate("hello world")
     assert isinstance(result, int)
     assert result > 0
@@ -62,11 +63,48 @@ def test_tiktoken_estimator_custom_model() -> None:
 
 def test_tiktoken_estimator_accepts_model_name() -> None:
     """model param should accept a model name like 'gpt-4', not just encoding names."""
-    # Whether tiktoken is installed or not, this must not raise.
     est = TiktokenEstimator(model="gpt-4")
     result = est.estimate("hello")
     assert isinstance(result, int)
     assert result > 0
+
+
+def test_tiktoken_more_accurate_than_chardiv() -> None:
+    """tiktoken should produce different counts than the char/4 heuristic on real text.
+
+    Only meaningful when tiktoken's BPE encoding is actually available
+    (i.e., not falling back to the heuristic due to offline / cache miss).
+    Skipped in offline environments where tiktoken cannot download encodings.
+    """
+    est = TiktokenEstimator()
+    if est._fallback is not None:
+        pytest.skip("tiktoken encoding not available offline; fallback active")
+    text = "The quick brown fox jumps over the lazy dog." * 10
+    tt = est.estimate(text)
+    cd = CharDivFourEstimator().estimate(text)
+    assert tt > 0
+    assert cd > 0
+    # Real tokenization differs from chars // 4 for non-trivial text.
+    assert tt != cd
+
+
+def test_tiktoken_fallback_when_encoding_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When tiktoken can't load an encoding, estimator falls back transparently."""
+    import contextweaver.protocols as protocols_mod
+
+    def _raise(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("simulated download failure")
+
+    monkeypatch.setattr(protocols_mod._tiktoken, "encoding_for_model", _raise)
+    monkeypatch.setattr(protocols_mod._tiktoken, "get_encoding", _raise)
+
+    est = TiktokenEstimator()
+    assert est._fallback is not None
+    # Falls back to char/4 estimate without raising.
+    text = "abcd" * 10  # 40 chars -> 10 tokens via char/4
+    assert est.estimate(text) == 10
 
 
 # ---------------------------------------------------------------------------

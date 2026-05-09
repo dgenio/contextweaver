@@ -1,0 +1,63 @@
+- args_schema: {}
+  cost_hint: 0.29
+  description: Export audit log entries
+  id: admin.audit.export
+  kind: tool
+  metadata: {}
+  name: audit_export
+  namespace: admin
+  side_effects: true
+  tags:
+  - admin
+  - audit
+- args_schema: {}
+  cost_hint: 0.27
+  description: Query the audit log
+  id: admin.audit.query
+  kind: tool
+  metadata: {}
+  name: audit_query
+  namespace: admin
+  side_effects: false
+  tags:
+  - admin
+  - audit
+  - search
+- args_schema: {}
+  cost_hint: 0.0
+  description: Configure audit log retention
+  id: admin.audit.retention
+  kind: tool
+  metadata: {}
+  name: audit_retention
+  namespace: admin
+  side_effects: false
+  tags:
+  - admin
+  - audit
+- args_schema: {}
+  cost_hint: 0.25
+  description: Assign a role to a user
+  id: admin.roles.assign
+  kind: tool
+  metadata: {}
+  name: roles_assign
+  namespace: admin
+  side_effects: true
+  tags:
+  - admin
+  - roles
+  - write
+- args_schema: {}
+  cost_hint: 0.01
+  description: Create a custom role
+  id: admin.roles.create
+  kind: tool
+  metadata: {}
+  name: roles_create
+  namespace: admin
+  side_effects: false
+  tags:
+  - admin
+  - create
+  - roles

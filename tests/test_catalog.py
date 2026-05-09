@@ -13,8 +13,10 @@ from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.routing.catalog import (
     Catalog,
     generate_sample_catalog,
+    load_catalog,
     load_catalog_dicts,
     load_catalog_json,
+    load_catalog_yaml,
 )
 from contextweaver.types import SelectableItem
 
@@ -120,6 +122,68 @@ def test_load_catalog_json_invalid_json() -> None:
     try:
         with pytest.raises(CatalogError, match="Invalid JSON"):
             load_catalog_json(path)
+    finally:
+        Path(path).unlink()
+
+
+def test_load_catalog_yaml() -> None:
+    yaml_text = (
+        "- id: t1\n  kind: tool\n  name: t1\n  description: desc\n"
+        "- id: t2\n  kind: tool\n  name: t2\n  description: desc\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as f:
+        f.write(yaml_text)
+        path = f.name
+    try:
+        items = load_catalog_yaml(path)
+        assert len(items) == 2
+        assert items[0].id == "t1"
+        assert items[1].id == "t2"
+    finally:
+        Path(path).unlink()
+
+
+def test_load_catalog_yaml_invalid() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as f:
+        f.write("- id: t1\n  : invalid\n  bad indent\n")
+        path = f.name
+    try:
+        with pytest.raises(CatalogError, match="Invalid YAML"):
+            load_catalog_yaml(path)
+    finally:
+        Path(path).unlink()
+
+
+def test_load_catalog_yaml_not_sequence() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as f:
+        f.write("items: []\n")
+        path = f.name
+    try:
+        with pytest.raises(CatalogError, match="must be a sequence"):
+            load_catalog_yaml(path)
+    finally:
+        Path(path).unlink()
+
+
+def test_load_catalog_auto_detects_yaml() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False, encoding="utf-8") as f:
+        f.write("- id: t1\n  kind: tool\n  name: t1\n  description: desc\n")
+        path = f.name
+    try:
+        items = load_catalog(path)
+        assert len(items) == 1
+        assert items[0].id == "t1"
+    finally:
+        Path(path).unlink()
+
+
+def test_load_catalog_auto_detects_json() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+        json.dump([{"id": "t1", "kind": "tool", "name": "t1", "description": "desc"}], f)
+        path = f.name
+    try:
+        items = load_catalog(path)
+        assert items[0].id == "t1"
     finally:
         Path(path).unlink()
 
