@@ -4,14 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from contextweaver.config import (
-    ContextBudget,
-    ContextPolicy,
-    ProfileConfig,
-    RoutingConfig,
-    ScoringConfig,
-)
+from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.exceptions import ConfigError
+from contextweaver.profiles import ProfileConfig, RoutingConfig
 from contextweaver.types import ItemKind, Phase, Sensitivity
 
 

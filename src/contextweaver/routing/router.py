@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
-from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import ConfigError, RouteError
+from contextweaver.profiles import RoutingConfig
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.types import SelectableItem
 

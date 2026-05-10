@@ -20,15 +20,9 @@ Quick start::
 
 from __future__ import annotations
 
-from contextweaver import config, envelope, exceptions, protocols, types
+from contextweaver import config, envelope, exceptions, profiles, protocols, types
 from contextweaver._utils import TfIdfScorer, jaccard
-from contextweaver.config import (
-    ContextBudget,
-    ContextPolicy,
-    ProfileConfig,
-    RoutingConfig,
-    ScoringConfig,
-)
+from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.manager import ContextManager
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
@@ -51,6 +45,7 @@ from contextweaver.exceptions import (
     PolicyViolationError,
     RouteError,
 )
+from contextweaver.profiles import ProfileConfig, RoutingConfig
 from contextweaver.protocols import (
     EpisodicStore,
     EventHook,
@@ -99,6 +94,7 @@ __all__ = [
     "config",
     "envelope",
     "exceptions",
+    "profiles",
     "protocols",
     "types",
     # utilities

@@ -205,16 +205,8 @@ class ContextPolicy:
         )
 
 
-# ---------------------------------------------------------------------------
-# Re-exports from profiles.py (public API compatibility)
-# ---------------------------------------------------------------------------
-
-from contextweaver.profiles import ProfileConfig, RoutingConfig  # noqa: E402
-
 __all__ = [
     "ContextBudget",
     "ContextPolicy",
-    "ProfileConfig",
-    "RoutingConfig",
     "ScoringConfig",
 ]

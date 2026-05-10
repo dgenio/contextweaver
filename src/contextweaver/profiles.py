@@ -137,7 +137,14 @@ class ProfileConfig:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialise to a JSON-compatible dict."""
+        """Serialise to a JSON-compatible dict.
+
+        All four sub-configs are included: ``budget``, ``policy``, ``scoring``,
+        and ``routing``. ``policy`` is now serialised in full (it was
+        intentionally excluded in earlier versions because :class:`ContextPolicy`
+        lacked ``to_dict``); the round-trip through :meth:`from_dict` is
+        lossless for default and custom values alike.
+        """
         return {
             "budget": self.budget.to_dict(),
             "policy": self.policy.to_dict(),

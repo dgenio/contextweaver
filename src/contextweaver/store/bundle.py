@@ -30,8 +30,13 @@ class StoreBundle:
     def to_dict(self) -> dict[str, Any]:
         """Serialise non-None stores to a JSON-compatible dict.
 
-        Only works with store implementations that provide a ``to_dict()``
-        method (e.g. the built-in InMemory stores).
+        Only the built-in ``InMemory*`` backends (and any custom backend that
+        provides a ``to_dict()`` method) are serialised. Custom backends
+        without ``to_dict()`` are silently emitted as ``None`` — round-tripping
+        a :class:`StoreBundle` containing such backends through
+        :meth:`from_dict` will lose their state and reconstruct empty
+        ``InMemory*`` defaults instead. If your custom backend needs to
+        persist state, give it a ``to_dict()``/``from_dict()`` pair.
         """
 
         def _ser(store: object) -> object:
@@ -48,7 +53,14 @@ class StoreBundle:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StoreBundle:
-        """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`."""
+        """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`.
+
+        Reconstructs the built-in ``InMemory*`` backends from non-``None``
+        payloads. ``None`` entries (which include custom backends that lacked
+        ``to_dict()`` at serialisation time — see :meth:`to_dict`) yield
+        ``None`` fields; the engine then creates fresh in-memory defaults at
+        build time, so any state held in the original custom backend is lost.
+        """
         raw_artifact = data.get("artifact_store")
         raw_event_log = data.get("event_log")
         raw_episodic = data.get("episodic_store")
