@@ -479,3 +479,81 @@ def test_trace_round_trip_serialisation() -> None:
     assert restored.confidence_gap == original.confidence_gap
     assert restored.is_ambiguous == original.is_ambiguous
     assert len(restored.steps) == len(original.steps)
+
+
+# ------------------------------------------------------------------
+# Pre-scoring filter regressions
+# ------------------------------------------------------------------
+
+
+def test_excluded_leaves_do_not_consume_beam_slots() -> None:
+    """Excluded leaves must not displace eligible siblings in the beam.
+
+    Regression for the pre-scoring exclusion contract: with a tight
+    beam, an excluded item that scores highest on the query should
+    not crowd out a lower-scoring eligible sibling.
+    """
+    items = [
+        _item("db_read", "read database", "Read database rows", tags=["data"]),
+        _item("db_write", "write database", "Write database rows", tags=["data"]),
+        _item("send_email", "send email", "Send email", tags=["comm"]),
+    ]
+    graph = TreeBuilder(max_children=20).build(items)
+    # beam_width=1 forces displacement: only one leaf survives the beam
+    # at the depth where leaves are the children of root.
+    router = Router(graph, items=items, beam_width=1, top_k=3)
+    full = router.route("database")
+    assert "db_read" in full.candidate_ids
+    excluded = router.route("database", exclude_ids={"db_read"})
+    assert "db_read" not in excluded.candidate_ids
+    # The eligible sibling must surface even though the excluded item
+    # would have outscored it in the unfiltered beam.
+    assert "db_write" in excluded.candidate_ids
+    assert excluded.excluded_count == 1
+
+
+def test_internal_subtree_pruned_when_all_descendants_excluded() -> None:
+    """Internal nodes with no eligible descendants are skipped pre-scoring.
+
+    Regression: with a graph that buckets items by namespace, excluding
+    every item under one namespace must not let that empty subtree
+    consume beam slots.
+    """
+    items = [
+        _item("billing.invoice", namespace="billing", tags=["finance"]),
+        _item("billing.refund", namespace="billing", tags=["finance"]),
+        _item("comms.email", namespace="comms", tags=["comm"]),
+    ]
+    graph = TreeBuilder(max_children=2).build(items)
+    router = Router(graph, items=items, beam_width=1, top_k=3)
+    # Exclude every item under "billing" so the entire billing subtree
+    # is ineligible. The single remaining leaf (comms.email) must still
+    # be reachable through the surviving beam.
+    result = router.route("billing invoice", exclude_ids={"billing.invoice", "billing.refund"})
+    assert result.candidate_ids == ["comms.email"]
+    assert result.excluded_count == 2
+
+
+# ------------------------------------------------------------------
+# Issue #14 regression — top_k=1 must still detect ambiguity
+# ------------------------------------------------------------------
+
+
+def test_top_k_one_still_detects_ambiguity() -> None:
+    """``top_k=1`` callers must still see ``is_ambiguous`` and a runner-up score.
+
+    Regression: ambiguity is computed from the untrimmed sorted view,
+    so trimming candidates to one entry does not silence the signal.
+    """
+    items = [
+        _item("ns_a.tool", "tool", "shared tool description", namespace="ns_a"),
+        _item("ns_b.tool", "tool", "shared tool description", namespace="ns_b"),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=1, confidence_gap=0.5)
+    result = router.route("tool")
+    assert len(result.candidate_ids) == 1
+    assert result.is_ambiguous is True
+    assert result.clarifying_question is not None
+    assert result.trace.runner_up_score is not None
+    assert result.trace.runner_up_score <= result.trace.top_score

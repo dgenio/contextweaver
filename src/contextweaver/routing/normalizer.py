@@ -22,10 +22,20 @@ Normalization rules (issue #44):
   control.
 * **Namespaces**: stripped of trailing ``.`` and whitespace.
 
-The normalizer is purely additive: it does not drop items, does not
-mutate input objects, and produces a fresh list of cloned items.
-:class:`NormalizationReport` summarises what was changed for telemetry
-and CI use.
+The normalizer never mutates input objects and always produces a fresh
+list of cloned items.  Item drops are bounded and deterministic:
+
+* In default lenient mode (``strict=False``), items with blank or
+  duplicate IDs are dropped from the output and recorded on
+  :attr:`NormalizationReport.invalid_ids` so callers can audit the
+  loss without parsing exceptions.
+* In strict mode (``strict=True``), the same conditions raise
+  :class:`~contextweaver.exceptions.CatalogError`.
+
+All other normalization steps (tag dedupe, whitespace collapse,
+description fallback) are purely additive and never remove items.
+:class:`NormalizationReport` summarises what was changed (and what was
+dropped, in lenient mode) for telemetry and CI use.
 """
 
 from __future__ import annotations

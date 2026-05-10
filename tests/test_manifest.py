@@ -171,3 +171,23 @@ def test_manifest_attribute_setter() -> None:
     graph.manifest = real
     assert graph.manifest is not None
     assert graph.manifest.timestamp > 0.0
+
+
+def test_manifest_records_max_children_in_extra() -> None:
+    """The effective ``max_children`` is persisted under ``manifest.extra``.
+
+    The :class:`TreeBuilder` docstring promises that the
+    ``max_children`` setting (whether default, explicit, or sourced
+    from a :class:`RoutingConfig`) is recorded on the manifest.  This
+    test pins that contract for both the default constructor and the
+    explicit value.
+    """
+    items = [_item(f"i{i}", namespace="ns") for i in range(3)]
+
+    default_graph = TreeBuilder().build(items)
+    assert default_graph.manifest is not None
+    assert default_graph.manifest.extra.get("max_children") == 20
+
+    custom_graph = TreeBuilder(max_children=4).build(items)
+    assert custom_graph.manifest is not None
+    assert custom_graph.manifest.extra.get("max_children") == 4

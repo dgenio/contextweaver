@@ -248,34 +248,44 @@ class Router:
                 "All items were filtered out by exclude_ids / exclude_tags / "
                 "allowed_namespaces / allowed_tags."
             )
+        eligible_internals = self._eligible_internals(active_items)
         scoring_query = augment_query(query, context_hints)
-        steps_data = self._beam_search(scoring_query, active_items, debug)
-        steps, collected = steps_data
-        ranked = self._collect_results(collected, active_items)
+        steps, collected = self._beam_search(scoring_query, active_items, eligible_internals, debug)
+        all_sorted = self._rank_collected(collected, active_items)
+        top = all_sorted[: self._top_k]
+
+        # Ambiguity reads from the untrimmed sorted view so that callers
+        # using top_k=1 still see the runner-up signal (issue #14).
+        top_score = all_sorted[0][1][0] if all_sorted else 0.0
+        runner_up_score = all_sorted[1][1][0] if len(all_sorted) >= 2 else None
+        is_ambiguous = (
+            len(all_sorted) >= 2
+            and (all_sorted[0][1][0] - all_sorted[1][1][0]) < self._confidence_gap
+        )
 
         trace = RouteTrace(
             query=query,
             confidence_gap=self._confidence_gap,
-            top_score=ranked[0][1][0] if ranked else 0.0,
-            runner_up_score=ranked[1][1][0] if len(ranked) >= 2 else None,
+            top_score=top_score,
+            runner_up_score=runner_up_score,
             excluded_count=excluded_count,
             gated_count=gated_count,
             retriever_engine="tfidf",
             steps=steps if debug else [],
         )
-        is_ambiguous = (
-            len(ranked) >= 2 and (ranked[0][1][0] - ranked[1][1][0]) < self._confidence_gap
-        )
         trace.is_ambiguous = is_ambiguous
-        top_items = [active_items[iid] for iid, _ in ranked if iid in active_items]
-        clarifying = suggest_clarifying_question(query, top_items[:3]) if is_ambiguous else None
+        top_items = [active_items[iid] for iid, _ in top if iid in active_items]
+        # Clarifying question is rendered from the top of the untrimmed
+        # sort so it stays useful when top_k=1.
+        clarifying_pool = [active_items[iid] for iid, _ in all_sorted[:3] if iid in active_items]
+        clarifying = suggest_clarifying_question(query, clarifying_pool) if is_ambiguous else None
         trace.clarifying_question = clarifying
 
         result = RouteResult(
             candidate_items=top_items,
-            candidate_ids=[iid for iid, _ in ranked],
-            paths=[path for _, (_, path) in ranked],
-            scores=[score for _, (score, _) in ranked],
+            candidate_ids=[iid for iid, _ in top],
+            paths=[path for _, (_, path) in top],
+            scores=[score for _, (score, _) in top],
             is_ambiguous=is_ambiguous,
             clarifying_question=clarifying,
             excluded_count=excluded_count,
@@ -301,16 +311,56 @@ class Router:
     # Beam search internals
     # ------------------------------------------------------------------
 
+    def _eligible_internals(self, active_items: dict[str, SelectableItem]) -> set[str]:
+        """Return internal nodes that have at least one descendant in *active_items*.
+
+        Computed via reverse BFS from each active item.  Used by
+        :meth:`_beam_search` and :meth:`_expand_subtree` to skip
+        children whose entire subtree was filtered out before scoring,
+        so exclusions and toolset gating happen pre-search rather than
+        only at collection time (issue #112 / #22).
+        """
+        eligible: set[str] = set()
+        queue: list[str] = list(active_items)
+        while queue:
+            node = queue.pop()
+            for parent in self._graph.predecessors(node):
+                if parent in eligible:
+                    continue
+                eligible.add(parent)
+                queue.append(parent)
+        return eligible
+
+    def _is_eligible_child(
+        self,
+        child: str,
+        active_items: dict[str, SelectableItem],
+        eligible_internals: set[str],
+    ) -> bool:
+        """Return ``True`` if *child* may participate in beam search.
+
+        Leaves must be in *active_items*; internals must reach an
+        active descendant.  Children that fail this gate are skipped
+        before scoring so they cannot consume beam slots.
+        """
+        if child in self._items:
+            return child in active_items
+        return child in eligible_internals
+
     def _beam_search(
         self,
         query: str,
         active_items: dict[str, SelectableItem],
+        eligible_internals: set[str],
         debug: bool,
     ) -> tuple[list[TraceStep], dict[str, tuple[float, list[str]]]]:
         """Run the beam search and return ``(trace_steps, collected)``.
 
         *active_items* is the post-filter catalog; only IDs in this dict
-        are eligible for collection.
+        are eligible for collection.  *eligible_internals* is the set of
+        internal nodes with at least one active descendant — children
+        outside this set (and outside *active_items*) are skipped before
+        scoring (issue #112 / #22).
         """
         root = self._graph.root_id
         beam: list[tuple[float, list[str]]] = [(0.0, [root])]
@@ -332,6 +382,8 @@ class Router:
 
                 scored: list[tuple[float, str]] = []
                 for child in children:
+                    if not self._is_eligible_child(child, active_items, eligible_internals):
+                        continue
                     s = self._score_node(query, child)
                     scored.append((s, child))
                 scored.sort(key=lambda x: (-x[0], x[1]))
@@ -383,24 +435,36 @@ class Router:
             else:
                 current_depth = len(u_path) - 1
                 remaining = max(0, self._max_depth - current_depth)
-                sub = self._expand_subtree(query, u_node, u_score, u_path, max_depth=remaining)
+                sub = self._expand_subtree(
+                    query,
+                    u_node,
+                    u_score,
+                    u_path,
+                    active_items,
+                    eligible_internals,
+                    max_depth=remaining,
+                )
                 for sid, (ss, sp) in sub.items():
                     if sid in active_items and sid not in collected:
                         collected[sid] = (ss, sp)
 
         return steps, collected
 
-    def _collect_results(
+    def _rank_collected(
         self,
         collected: dict[str, tuple[float, list[str]]],
         active_items: dict[str, SelectableItem],
     ) -> list[tuple[str, tuple[float, list[str]]]]:
-        """Sort and trim *collected* into the final ranked tuple list."""
-        ranked = sorted(
+        """Return *collected* sorted by ``(-score, id)``, untrimmed.
+
+        Truncation to ``self._top_k`` is the caller's responsibility so
+        ambiguity / runner-up reads can use the full ranking even when
+        ``top_k=1`` (issue #14).
+        """
+        return sorted(
             (entry for entry in collected.items() if entry[0] in active_items),
             key=lambda x: (-x[1][0], x[0]),
         )
-        return ranked[: self._top_k]
 
     def _expand_subtree(
         self,
@@ -408,10 +472,17 @@ class Router:
         node_id: str,
         base_score: float,
         base_path: list[str],
+        active_items: dict[str, SelectableItem],
+        eligible_internals: set[str],
         *,
         max_depth: int | None = None,
     ) -> dict[str, tuple[float, list[str]]]:
-        """Expand children of *node_id* recursively, collecting items."""
+        """Expand children of *node_id* recursively, collecting items.
+
+        Children outside *active_items* (leaves) or *eligible_internals*
+        (internals) are skipped before scoring so excluded subtrees do
+        not consume backtracking work (issue #112 / #22).
+        """
         depth_limit = max_depth if max_depth is not None else self._max_depth
         result: dict[str, tuple[float, list[str]]] = {}
         stack: list[tuple[float, str, list[str], int]] = [(base_score, node_id, base_path, 0)]
@@ -419,10 +490,12 @@ class Router:
             score, nid, path, depth = stack.pop()
             children = self._graph.successors(nid)
             if not children or depth >= depth_limit:
-                if nid in self._items:
+                if nid in active_items:
                     result[nid] = (score, path[1:])
                 continue
             for child in sorted(children):
+                if not self._is_eligible_child(child, active_items, eligible_internals):
+                    continue
                 s = self._score_node(query, child)
                 new_path = path + [child]
                 if child in self._items:

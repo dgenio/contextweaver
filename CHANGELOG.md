@@ -81,6 +81,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RouteResult.trace` is the new authoritative trace surface;
   `RouteResult.debug_trace` is preserved as a backwards-compatible
   property delegating to `trace.to_legacy_dicts()`.
+- `TreeBuilder.build()` now records the effective `max_children` under
+  `manifest.extra["max_children"]`, honouring the docstring contract
+  that the value is persisted on the graph manifest.
+
+### Fixed
+
+- Routing exclusions (`exclude_ids` / `exclude_tags`) and toolset
+  gating (`allowed_namespaces` / `allowed_tags`) now happen
+  pre-scoring rather than only at result collection time.  Previously
+  excluded leaf nodes could consume beam slots and prevent eligible
+  siblings from being explored under tight `beam_width`.  The router
+  now skips ineligible children (and internal nodes whose entire
+  subtree was filtered out) before scoring.
+- `RouteResult.is_ambiguous` and `RouteTrace.runner_up_score` are now
+  computed from the untrimmed sorted view of beam-search results, so
+  callers using `top_k=1` still see the uncertainty signal introduced
+  by issue #14.
+- `routing.normalizer` module docstring now accurately describes
+  lenient-mode item drops (blank or duplicate IDs are dropped to
+  `report.invalid_ids`) instead of claiming the normalizer never
+  drops items.
 
 ### Notes
 

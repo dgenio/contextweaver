@@ -45,9 +45,10 @@ class TreeBuilder:
         labeler: Optional :class:`KeywordLabeler` instance.
         target_group_size: Hint for cluster sizes; defaults to *max_children*.
         routing_config: Keyword-only.  Optional :class:`~contextweaver.config.RoutingConfig`
-            that sets *max_children* (and is recorded on the graph manifest).
-            When provided, *max_children* is replaced by the value from
-            this config object.
+            that sets *max_children*.  When provided, *max_children* is
+            replaced by the value from this config object.  In every
+            build, the effective *max_children* is recorded under
+            ``manifest.extra["max_children"]``.
 
     Raises:
         GraphBuildError: If *max_children* < 1 or *target_group_size* < 1.
@@ -140,6 +141,7 @@ class TreeBuilder:
             max_depth=max_depth,
             seed=None,
             engine_versions={"tree_builder": "1.0", "labeler": "keyword-1.0"},
+            extra={"max_children": self._max_children},
             timestamp=0.0,
         )
         graph.build_meta = {
