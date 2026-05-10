@@ -20,6 +20,7 @@ import logging
 from dataclasses import replace
 
 from contextweaver.config import ContextPolicy
+from contextweaver.exceptions import ConfigError, PolicyViolationError
 from contextweaver.protocols import RedactionHook
 from contextweaver.types import ContextItem, Sensitivity
 
@@ -53,11 +54,11 @@ def register_redaction_hook(name: str, hook: RedactionHook) -> None:
         hook: An object implementing the :class:`RedactionHook` protocol.
 
     Raises:
-        ValueError: If *name* is already registered.
+        PolicyViolationError: If *name* is already registered.
     """
     if name in _HOOK_REGISTRY:
         msg = f"Redaction hook {name!r} is already registered"
-        raise ValueError(msg)
+        raise PolicyViolationError(msg)
     _HOOK_REGISTRY[name] = hook
 
 
@@ -98,14 +99,14 @@ def _resolve_hooks(names: list[str]) -> list[RedactionHook]:
         Resolved :class:`RedactionHook` instances.
 
     Raises:
-        ValueError: If a name cannot be resolved.
+        ConfigError: If a name cannot be resolved.
     """
     hooks: list[RedactionHook] = []
     for name in names:
         hook = _HOOK_REGISTRY.get(name)
         if hook is None:
             msg = f"Unknown redaction hook {name!r}. Available: {sorted(_HOOK_REGISTRY)}"
-            raise ValueError(msg)
+            raise ConfigError(msg)
         hooks.append(hook)
     return hooks
 
@@ -131,7 +132,7 @@ def apply_sensitivity_filter(
 
     if action not in _VALID_ACTIONS:
         msg = f"Unknown sensitivity_action {action!r}. Valid: {sorted(_VALID_ACTIONS)}"
-        raise ValueError(msg)
+        raise ConfigError(msg)
 
     # Resolve redaction hooks once (only needed in redact mode).
     hooks: list[RedactionHook] = []

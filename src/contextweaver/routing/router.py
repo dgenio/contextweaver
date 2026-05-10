@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
-from contextweaver.config import RoutingConfig
-from contextweaver.exceptions import RouteError
+from contextweaver.exceptions import ConfigError, RouteError
+from contextweaver.profiles import RoutingConfig
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.types import SelectableItem
 
@@ -73,7 +73,7 @@ class Router:
             from this config object.
 
     Raises:
-        ValueError: If *confidence_gap* is outside ``[0.0, 1.0]``.
+        ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]``.
     """
 
     def __init__(
@@ -94,7 +94,7 @@ class Router:
             top_k = routing_config.top_k
             confidence_gap = routing_config.confidence_gap
         if not 0.0 <= confidence_gap <= 1.0:
-            raise ValueError(f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}")
+            raise ConfigError(f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}")
         self._graph = graph
         self._beam_width = beam_width
         self._max_depth = max_depth
