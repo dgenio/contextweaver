@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ruff check *)",
+      "Bash(ruff format --check *)",
+      "Bash(mypy src/)",
+      "Bash(mypy src/*)",
+      "Bash(pytest -q)",
+      "Bash(pytest --cov=contextweaver*)",
+      "Bash(pytest tests/*)",
+      "Bash(pytest -k *)",
+      "Bash(python -m contextweaver demo)",
+      "Bash(python examples/*.py)",
+      "Bash(make ci)",
+      "Bash(make fmt)",
+      "Bash(make lint)",
+      "Bash(make type)",
+      "Bash(make test)",
+      "Bash(make example)",
+      "Bash(make demo)",
+      "mcp__63e02cb5-b565-47a9-9bd1-9f82fbda35e4__searchJiraIssuesUsingJql",
+      "mcp__63e02cb5-b565-47a9-9bd1-9f82fbda35e4__getAccessibleAtlassianResources",
+      "mcp__mcp-registry__list_connectors",
+      "mcp__mcp-registry__search_mcp_registry"
+    ]
+  }
+}
