@@ -1,0 +1,3 @@
+# Per-user local settings, accumulated via "always allow" prompts.
+# Anything intended to be shared belongs in settings.json.
+settings.local.json

@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
-from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import ConfigError, RouteError
+from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import Retriever
 from contextweaver.routing.filters import (
     augment_query,

@@ -920,7 +920,7 @@ def test_view_registry_accessible() -> None:
 
 
 def test_default_mode_is_strict() -> None:
-    from contextweaver.config import Mode
+    from contextweaver.profiles import Mode
 
     mgr = ContextManager()
     assert mgr.mode == Mode.strict
@@ -928,7 +928,7 @@ def test_default_mode_is_strict() -> None:
 
 
 def test_profile_seeds_budget_policy_scoring() -> None:
-    from contextweaver.config import Mode, ProfileConfig
+    from contextweaver.profiles import Mode, ProfileConfig
 
     profile = ProfileConfig.from_preset("fast")
     mgr = ContextManager(profile=profile)
@@ -939,7 +939,8 @@ def test_profile_seeds_budget_policy_scoring() -> None:
 
 
 def test_profile_explicit_kwargs_take_priority() -> None:
-    from contextweaver.config import ContextBudget, ProfileConfig
+    from contextweaver.config import ContextBudget
+    from contextweaver.profiles import ProfileConfig
 
     profile = ProfileConfig.from_preset("accurate")  # answer=8000
     custom_budget = ContextBudget(answer=1234)
@@ -948,7 +949,7 @@ def test_profile_explicit_kwargs_take_priority() -> None:
 
 
 def test_profile_with_seeded_mode() -> None:
-    from contextweaver.config import Mode, ProfileConfig
+    from contextweaver.profiles import Mode, ProfileConfig
 
     profile = ProfileConfig(mode=Mode.seeded, seed=42)
     mgr = ContextManager(profile=profile)

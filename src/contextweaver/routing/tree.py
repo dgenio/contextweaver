@@ -19,8 +19,8 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 
-from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import GraphBuildError
+from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import ClusteringEngine
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.labeler import KeywordLabeler

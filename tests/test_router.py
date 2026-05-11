@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import ConfigError, RouteError
+from contextweaver.profiles import RoutingConfig
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tree import TreeBuilder

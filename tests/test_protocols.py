@@ -164,3 +164,19 @@ def test_artifact_store_is_runtime_checkable() -> None:
 
     store = InMemoryArtifactStore()
     assert isinstance(store, ArtifactStore)
+
+
+def test_episodic_store_is_runtime_checkable() -> None:
+    from contextweaver.protocols import EpisodicStore
+    from contextweaver.store.episodic import InMemoryEpisodicStore
+
+    store = InMemoryEpisodicStore()
+    assert isinstance(store, EpisodicStore)
+
+
+def test_fact_store_is_runtime_checkable() -> None:
+    from contextweaver.protocols import FactStore
+    from contextweaver.store.facts import InMemoryFactStore
+
+    store = InMemoryFactStore()
+    assert isinstance(store, FactStore)

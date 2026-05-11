@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callers may register alternative engines under the `"retriever"`,
   `"reranker"`, and `"clustering"` slots.
 - **Config — `Mode` enum and `ProfileConfig.mode` (#45).** New
-  `contextweaver.config.Mode` enum with values `strict` (default),
+  `contextweaver.profiles.Mode` enum with values `strict` (default),
   `seeded`, and `adaptive` (FUTURE placeholder).  `ProfileConfig`
   gains a `mode: Mode` field and an optional `seed: int | None` field;
   both round-trip through `to_dict()` / `from_dict()`.  Unknown mode
@@ -72,6 +72,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accepts a keyword-only `routing_config: RoutingConfig | None` parameter
   that populates `max_children`.  `Router` already accepted this
   parameter in v0.2.0.
+- `ScoringConfig.dedup_threshold` field — exposes the Jaccard dedup threshold
+  (default 0.85) via configuration; `ContextManager` now passes it through to
+  `deduplicate_candidates()` (#182)
+- `to_dict()` / `from_dict()` on `ContextPolicy`, `ContextBudget`, and
+  `ScoringConfig` — completes the repo-standard serialisation methods on all
+  config dataclasses (#184)
+- `EpisodicStore` and `FactStore` protocols — formal `@runtime_checkable`
+  protocol interfaces matching the `InMemory*` method signatures; `StoreBundle`
+  type hints widened to protocol types (#40)
+- `store/protocols.py` module — store-layer protocols (`EventLog`,
+  `ArtifactStore`, `EpisodicStore`, `FactStore`) extracted from `protocols.py`
+  to stay within the ≤300-line guideline; still importable from
+  `contextweaver.protocols` and `contextweaver` for backward compatibility
+- `profiles.py` module — `Mode`, `RoutingConfig`, and `ProfileConfig` live in
+  `contextweaver.profiles` to stay within the ≤300-line guideline; importable
+  from `contextweaver.profiles` and `contextweaver` (#179)
 
 ### Changed
 
@@ -106,6 +122,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RouteTrace.extra["context_hints"]` / `extra["context_boost_applied"]`.
 - `RouteTrace.retriever_engine` is now populated from the resolved
   engine name instead of being hard-coded to `"tfidf"`.
+- `ProfileConfig.to_dict()` / `from_dict()` now include `policy` (previously
+  excluded because `ContextPolicy` lacked serialisation); docstring expanded
+  to make the round-trip contract explicit (#184)
+- `ContextManager.episodic_store` / `fact_store` properties now return protocol
+  types (`EpisodicStore` / `FactStore`) instead of concrete `InMemory*` types (#40)
+- `StoreBundle.to_dict()` / `from_dict()` docstrings now spell out the
+  silent-`None` round-trip behaviour for custom backends that lack a
+  `to_dict()` method
+- `Mode`, `RoutingConfig`, and `ProfileConfig` are not re-exported from
+  `contextweaver.config`; import them from `contextweaver.profiles` or the
+  top-level `contextweaver` package. Dropping the re-export resolves a
+  circular-import smell between `config.py` and `profiles.py`
 
 ### Fixed
 
@@ -124,6 +152,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lenient-mode item drops (blank or duplicate IDs are dropped to
   `report.invalid_ids`) instead of claiming the normalizer never
   drops items.
+- Replaced 3 bare `ValueError` raises in `context/sensitivity.py` with
+  `PolicyViolationError` / `ConfigError` (#183)
+- Replaced bare `ValueError` in `routing/router.py` (`confidence_gap` validation)
+  with `ConfigError` (#183)
 
 ### Notes
 

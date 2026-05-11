@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from contextweaver.config import ContextBudget, ContextPolicy, Mode, ProfileConfig, ScoringConfig
+from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context import ingest as _ingest
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
@@ -28,12 +28,15 @@ from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.context.views import ViewRegistry
 from contextweaver.envelope import ContextPack, ResultEnvelope
+from contextweaver.profiles import Mode, ProfileConfig
 from contextweaver.protocols import (
     ArtifactStore,
     CharDivFourEstimator,
+    EpisodicStore,
     EventHook,
     EventLog,
     Extractor,
+    FactStore,
     NoOpHook,
     Summarizer,
     TokenEstimator,
@@ -107,10 +110,8 @@ class ContextManager:
         self._artifact_store: ArtifactStore = (
             artifact_store or _stores.artifact_store or InMemoryArtifactStore()
         )
-        self._episodic_store: InMemoryEpisodicStore = (
-            _stores.episodic_store or InMemoryEpisodicStore()
-        )
-        self._fact_store: InMemoryFactStore = _stores.fact_store or InMemoryFactStore()
+        self._episodic_store: EpisodicStore = _stores.episodic_store or InMemoryEpisodicStore()
+        self._fact_store: FactStore = _stores.fact_store or InMemoryFactStore()
         # Profile fills any unset config; per-arg overrides win.
         if profile is not None:
             budget = budget if budget is not None else profile.budget
@@ -142,12 +143,12 @@ class ContextManager:
         return self._artifact_store
 
     @property
-    def episodic_store(self) -> InMemoryEpisodicStore:
+    def episodic_store(self) -> EpisodicStore:
         """The underlying episodic store."""
         return self._episodic_store
 
     @property
-    def fact_store(self) -> InMemoryFactStore:
+    def fact_store(self) -> FactStore:
         """The underlying fact store."""
         return self._fact_store
 
@@ -475,7 +476,9 @@ class ContextManager:
         scored = score_candidates(candidates, query, _tags, self._scoring)
 
         # 6. Dedup
-        scored, dedup_removed = deduplicate_candidates(scored)
+        scored, dedup_removed = deduplicate_candidates(
+            scored, similarity_threshold=self._scoring.dedup_threshold
+        )
 
         # Pre-build episodic + fact injection text so we can estimate its
         # token cost and subtract it from the budget *before* selection.

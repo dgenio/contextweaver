@@ -2,141 +2,26 @@
 
 Downstream code should depend on the protocols, not the concrete defaults,
 so that stores, hooks, and summarisers remain swappable.
+
+Store-layer protocols (:class:`EventLog`, :class:`ArtifactStore`,
+:class:`EpisodicStore`, :class:`FactStore`) live in
+:mod:`contextweaver.store.protocols` and are re-exported here for backward
+compatibility — keep using ``from contextweaver.protocols import …`` if you
+prefer the historical path.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from contextweaver.store.protocols import ArtifactStore as ArtifactStore
+from contextweaver.store.protocols import EpisodicStore as EpisodicStore
+from contextweaver.store.protocols import EventLog as EventLog
+from contextweaver.store.protocols import FactStore as FactStore
+
 if TYPE_CHECKING:
     from contextweaver.envelope import ContextPack
-    from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
-
-
-# ---------------------------------------------------------------------------
-# EventLog
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class EventLog(Protocol):
-    """Read/write interface to the ordered event log.
-
-    The event log is the ordered sequence of :class:`~contextweaver.types.ContextItem`
-    objects that makes up a conversation / agent session.
-    """
-
-    def append(self, item: ContextItem) -> None:
-        """Append *item* to the log.
-
-        Raises:
-            DuplicateItemError: If an item with the same ``id`` already exists.
-        """
-        ...
-
-    def get(self, item_id: str) -> ContextItem:
-        """Return the item with *item_id*.
-
-        Raises:
-            ItemNotFoundError: If no item with *item_id* exists.
-        """
-        ...
-
-    def all(self) -> list[ContextItem]:
-        """Return all items in insertion order."""
-        ...
-
-    def filter_by_kind(self, *kinds: ItemKind) -> list[ContextItem]:
-        """Return all items whose ``kind`` is in *kinds*."""
-        ...
-
-    def tail(self, n: int) -> list[ContextItem]:
-        """Return the last *n* items."""
-        ...
-
-    def children(self, parent_id: str) -> list[ContextItem]:
-        """Return all items whose ``parent_id`` equals *parent_id*."""
-        ...
-
-    def parent(self, item_id: str) -> ContextItem | None:
-        """Return the parent of *item_id*, or ``None``."""
-        ...
-
-    def query(
-        self,
-        kinds: list[ItemKind] | None = None,
-        since: int | None = None,
-        limit: int | None = None,
-    ) -> list[ContextItem]:
-        """Flexible query over the event log."""
-        ...
-
-    def count(self) -> int:
-        """Return the number of items in the log."""
-        ...
-
-    def __len__(self) -> int: ...
-
-
-# ---------------------------------------------------------------------------
-# ArtifactStore
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class ArtifactStore(Protocol):
-    """Read/write interface to the out-of-band artifact store.
-
-    Raw tool outputs are stored here; the LLM context pipeline receives only
-    :class:`~contextweaver.types.ArtifactRef` handles and summaries.
-    """
-
-    def put(
-        self,
-        handle: str,
-        content: bytes,
-        media_type: str = "application/octet-stream",
-        label: str = "",
-    ) -> ArtifactRef:
-        """Store *content* and return an :class:`~contextweaver.types.ArtifactRef`."""
-        ...
-
-    def get(self, handle: str) -> bytes:
-        """Retrieve the raw bytes for *handle*.
-
-        Raises:
-            ArtifactNotFoundError: If *handle* is not in the store.
-        """
-        ...
-
-    def ref(self, handle: str) -> ArtifactRef:
-        """Return the :class:`~contextweaver.types.ArtifactRef` metadata for *handle*."""
-        ...
-
-    def list_refs(self) -> list[ArtifactRef]:
-        """Return all stored :class:`~contextweaver.types.ArtifactRef` objects."""
-        ...
-
-    def delete(self, handle: str) -> None:
-        """Remove the artifact identified by *handle*."""
-        ...
-
-    def exists(self, handle: str) -> bool:
-        """Return ``True`` if *handle* is in the store."""
-        ...
-
-    def metadata(self, handle: str) -> ArtifactRef:
-        """Return the :class:`~contextweaver.types.ArtifactRef` for *handle*."""
-        ...
-
-    def drilldown(self, handle: str, selector: dict[str, Any]) -> str:
-        """Return a subset of the artifact's content according to *selector*."""
-        ...
-
-
-# FUTURE: EpisodicStore and FactStore protocols — the concrete InMemory*
-# classes currently define latest/delete/list_keys without protocol
-# declarations.  Add formal protocols once the API surface stabilises.
+    from contextweaver.types import ContextItem, SelectableItem
 
 
 # ---------------------------------------------------------------------------
