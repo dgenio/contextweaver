@@ -101,6 +101,35 @@ def test_record_route_single_candidate_zero_gap() -> None:
     assert c.summary()["avg_confidence_gap"] == 0.0
 
 
+def test_record_route_uses_running_sums_and_maxima() -> None:
+    """Per-route stats track running sums + maxima, not unbounded lists.
+
+    Regression for PR #188 review — the earlier implementation stored
+    every route's candidate count, top score, and confidence gap in
+    `list[...]` fields, leaking memory in long-running processes. The
+    collector now keeps O(1) state per route; this test confirms that
+    averages still match and that the new max_* fields surface correctly.
+    """
+    c = MetricsCollector()
+    c.record_route(RouteResult(candidate_ids=["a", "b", "c"], scores=[0.9, 0.5, 0.3]))
+    c.record_route(RouteResult(candidate_ids=["a", "b"], scores=[0.7, 0.65]))
+    c.record_route(
+        RouteResult(
+            candidate_ids=["a", "b", "c", "d", "e"],
+            scores=[0.95, 0.4, 0.3, 0.2, 0.1],
+        )
+    )
+    s = c.summary()
+    # Running maxima (new fields)
+    assert s["max_candidates_per_route"] == 5
+    assert s["max_top_score"] == 0.95
+    # Confidence gaps per call: 0.4, 0.05, 0.55 → max = 0.55
+    assert s["max_confidence_gap"] == 0.55
+    # Averages still computed from running sums
+    assert s["avg_candidates_per_route"] == round((3 + 2 + 5) / 3, 4)
+    assert s["total_routes"] == 3
+
+
 def test_firewall_and_excluded_counters() -> None:
     c = MetricsCollector()
     c.record_firewall()

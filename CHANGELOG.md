@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pyproject.toml` `dependencies = ["tiktoken>=0.5", "PyYAML>=6.0", "rank-bm25>=0.2"]`
     — three small, broadly-used packages that unblock default behaviour the library
     would otherwise have to approximate (exact token counts, YAML configs, BM25 retrieval).
-  - New optional extras: `[cli]` (typer + rich), `[retrieval]` (rapidfuzz),
+  - New optional extras: `[cli]` (rich), `[retrieval]` (rapidfuzz),
     `[ann]` (hnswlib, reserved), `[otel]` (opentelemetry), `[graph]` (networkx, reserved),
     `[all]` (union convenience).
   - mypy overrides for every new optional package so missing extras don't break type checks.
@@ -49,14 +49,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `contextweaver.extras.otel.OTelEventHook` — `EventHook` implementation
     that emits OTel spans (`contextweaver.context.build`, `contextweaver.context.firewall`,
     `contextweaver.context.exclude`, `contextweaver.routing.route`) and metrics
-    (`contextweaver.tokens.used` gauge, `contextweaver.firewall.interceptions` counter,
+    (`contextweaver.tokens.used` histogram, `contextweaver.firewall.interceptions` counter,
     `contextweaver.items.excluded` counter, `contextweaver.budget.exceeded` counter,
     `contextweaver.routing.candidates` histogram).
   - Available via `pip install 'contextweaver[otel]'`. Importing the module
     without the extra raises an `ImportError` carrying the exact install hint.
 - **Enhanced CLI rendering via `[cli]` extra** (#52)
   - `__main__.py` `print-tree` subcommand uses `rich.tree` for coloured output
-    when typer + rich are installed (`pip install 'contextweaver[cli]'`);
+    when rich is installed (`pip install 'contextweaver[cli]'`);
     stdlib argparse + plain ASCII path remains byte-identical when the extra
     is absent.
 - **Public API exports**
@@ -223,6 +223,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PolicyViolationError` / `ConfigError` (#183)
 - Replaced bare `ValueError` in `routing/router.py` (`confidence_gap` validation)
   with `ConfigError` (#183)
+- `BM25Scorer.fit()` now feeds `BM25Okapi` a per-document token list that
+  preserves term frequency. The previous implementation called
+  `sorted(tokenize(doc))` on a `set`, which collapsed duplicates and degraded
+  BM25 to a binary-match scorer. A new `contextweaver._utils.tokenize_list()`
+  helper applies the same normalisation pipeline as `tokenize()` but returns
+  a `list[str]`; `tokenize()` now delegates to it for the unique-set view.
+  (review #188)
+- `MetricsCollector` no longer accumulates per-route values in unbounded
+  lists. Route-level statistics are tracked as running sums + maxima so
+  memory stays O(1) in long-running processes. `summary()` keys are
+  preserved and gain three new entries (`max_candidates_per_route`,
+  `max_top_score`, `max_confidence_gap`). (review #188)
+- `OTelEventHook` now records `contextweaver.tokens.used` as a histogram
+  instead of a gauge. The synchronous `create_gauge` instrument only
+  landed in `opentelemetry-api>=1.27`, but the `[otel]` extra pins
+  `>=1.20`. Histograms are portable across the entire supported range and
+  give callers per-build token distributions instead of a latest-value
+  cache. (review #188)
 
 ### Notes
 

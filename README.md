@@ -106,7 +106,7 @@ Optional capabilities are gated behind extras so the core install stays small:
 
 | Extra | What it adds |
 |---|---|
-| `contextweaver[cli]` | Rich-formatted CLI (typer + rich) |
+| `contextweaver[cli]` | Rich-formatted CLI rendering (rich) |
 | `contextweaver[retrieval]` | Fuzzy lexical matching backend (rapidfuzz) |
 | `contextweaver[otel]` | OpenTelemetry tracing + metrics export |
 | `contextweaver[ann]` | Approximate-nearest-neighbour backend (reserved) |

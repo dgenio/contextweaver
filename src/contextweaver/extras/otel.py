@@ -48,7 +48,7 @@ class OTelEventHook:
 
     Metrics emitted:
 
-    - ``contextweaver.tokens.used`` (gauge) — prompt tokens for the build
+    - ``contextweaver.tokens.used`` (histogram) — prompt tokens per build
     - ``contextweaver.firewall.interceptions`` (counter) — total intercepts
     - ``contextweaver.items.excluded`` (counter) — total items dropped
     - ``contextweaver.budget.exceeded`` (counter) — over-budget events
@@ -56,10 +56,18 @@ class OTelEventHook:
     """
 
     def __init__(self, service_name: str = "contextweaver") -> None:
-        """Initialise tracer + meter for the given service name."""
+        """Initialise tracer + meter for the given service name.
+
+        ``contextweaver.tokens.used`` is recorded as a histogram so it stays
+        portable across all ``opentelemetry-api>=1.20`` releases — the
+        synchronous ``create_gauge`` instrument only landed in 1.27, and an
+        observable gauge would force callers to keep a global "latest
+        value" cache. Histograms record per-build distributions which is
+        usually the more useful surface for dashboards anyway.
+        """
         self._tracer = _otel_trace.get_tracer(service_name)
         self._meter = _otel_metrics.get_meter(service_name)
-        self._tokens_gauge: Any = self._meter.create_gauge("contextweaver.tokens.used")
+        self._tokens_hist: Any = self._meter.create_histogram("contextweaver.tokens.used")
         self._firewall_counter: Any = self._meter.create_counter(
             "contextweaver.firewall.interceptions"
         )
@@ -70,7 +78,7 @@ class OTelEventHook:
         )
 
     def on_context_built(self, pack: ContextPack) -> None:
-        """Record a span + tokens-used gauge for one build."""
+        """Record a span + tokens-used histogram observation for one build."""
         stats = pack.stats
         prompt_tokens = sum(stats.tokens_per_section.values()) + stats.header_footer_tokens
         attrs: dict[str, Any] = {
@@ -83,7 +91,7 @@ class OTelEventHook:
         }
         with self._tracer.start_as_current_span("contextweaver.context.build", attributes=attrs):
             pass
-        self._tokens_gauge.set(prompt_tokens, attributes={"phase": pack.phase.value})
+        self._tokens_hist.record(prompt_tokens, attributes={"phase": pack.phase.value})
 
     def on_firewall_triggered(self, item: ContextItem, reason: str) -> None:
         """Record a span + counter increment for one firewall interception."""

@@ -64,9 +64,10 @@ docs = [
     "mkdocs-literate-nav>=0.6",
     "mkdocs-section-index>=0.3",
 ]
-# Enhanced CLI: typer-based commands with rich-formatted output (tree, tables).
+# Enhanced CLI: rich-formatted output (tree, tables) for the existing argparse CLI.
+# A typer-based rewrite of __main__.py is tracked separately under the v0.6 milestone;
+# do not add typer here until that work lands so the extra reflects what users actually get.
 cli = [
-    "typer>=0.9",
     "rich>=13.0",
 ]
 # Fuzzy lexical retrieval backend (rapidfuzz) — supplements the default BM25

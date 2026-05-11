@@ -135,6 +135,41 @@ def test_bm25_deterministic() -> None:
     assert s1.score_all("alpha delta") == s2.score_all("alpha delta")
 
 
+def test_bm25_preserves_term_frequency() -> None:
+    """BM25 must count term frequency.
+
+    Regression for PR #188 review — `BM25Scorer.fit()` previously fed
+    `sorted(tokenize(doc))` to `BM25Okapi`, but `tokenize()` returned a
+    ``set[str]`` which discarded duplicates. With TF lost the scorer
+    degraded to binary matching: a doc mentioning the query term once
+    scored the same as one mentioning it many times.
+
+    With `tokenize_list()` in place, a doc that repeats the query term
+    multiple times must score strictly higher than one that mentions it
+    only once.
+    """
+    scorer = BM25Scorer()
+    # Doc 0 mentions "database" three times; doc 1 mentions it once.
+    # Three distractor docs that don't mention the query term keep the
+    # `database` IDF positive (otherwise a query term present in every
+    # doc would have a non-positive IDF and TF would lose its boost).
+    scorer.fit(
+        [
+            "database database database lookup tool",
+            "database lookup tool",
+            "unrelated alpha beta gamma",
+            "another bravo charlie delta",
+            "echo foxtrot golf hotel",
+        ]
+    )
+    scores = scorer.score_all("database")
+    assert scores[0] > scores[1], (
+        f"BM25 must reward higher term frequency; "
+        f"got scores[0]={scores[0]!r} <= scores[1]={scores[1]!r} — "
+        f"indicates tokenize_list() is not being used in BM25Scorer.fit()."
+    )
+
+
 # ---------------------------------------------------------------------------
 # FuzzyScorer (rapidfuzz; contextweaver[retrieval] extra)
 # ---------------------------------------------------------------------------

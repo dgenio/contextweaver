@@ -164,6 +164,31 @@ STOPWORDS: frozenset[str] = frozenset(
 _SPLIT_RE = re.compile(r"\W+")
 
 
+def tokenize_list(text: str) -> list[str]:
+    """Normalise *text* and return a list of meaningful tokens (preserves duplicates).
+
+    Same normalisation pipeline as :func:`tokenize`, but returns the tokens
+    in occurrence order with duplicates intact. Use this when downstream
+    code depends on term frequency (e.g. BM25 scoring). For set-style
+    operations (Jaccard, presence checks), use :func:`tokenize` instead.
+
+    Steps:
+    1. Lower-case the input.
+    2. Split on one or more non-word characters.
+    3. Discard tokens shorter than 2 characters.
+    4. Remove :data:`STOPWORDS`.
+
+    Args:
+        text: Raw input string.
+
+    Returns:
+        A ``list[str]`` of normalised, stop-word-filtered tokens in
+        occurrence order. Duplicate tokens are preserved.
+    """
+    tokens = _SPLIT_RE.split(text.lower())
+    return [t for t in tokens if len(t) >= 2 and t not in STOPWORDS]
+
+
 def tokenize(text: str) -> set[str]:
     """Normalise *text* and return a set of meaningful tokens.
 
@@ -177,10 +202,11 @@ def tokenize(text: str) -> set[str]:
         text: Raw input string.
 
     Returns:
-        A ``set[str]`` of normalised, stop-word-filtered tokens.
+        A ``set[str]`` of normalised, stop-word-filtered tokens. Duplicate
+        tokens are collapsed; use :func:`tokenize_list` when term frequency
+        matters (e.g. BM25 scoring).
     """
-    tokens = _SPLIT_RE.split(text.lower())
-    return {t for t in tokens if len(t) >= 2 and t not in STOPWORDS}
+    return set(tokenize_list(text))
 
 
 # ---------------------------------------------------------------------------
@@ -317,11 +343,15 @@ class BM25Scorer:
     def fit(self, documents: list[str]) -> None:
         """Index *documents* with BM25.
 
+        Uses :func:`tokenize_list` so duplicate terms are preserved — BM25
+        relies on per-document term frequency to compute saturation and
+        length-normalised scores.
+
         Args:
             documents: Raw text strings; index order is preserved as
                 ``doc_index`` in subsequent calls to :meth:`score`.
         """
-        corpus = [sorted(tokenize(doc)) for doc in documents]
+        corpus = [tokenize_list(doc) for doc in documents]
         self._n_docs = len(documents)
         # rank_bm25 raises on empty corpora; guard with a sentinel.
         self._bm25 = self._bm25_cls(corpus) if corpus else None
@@ -332,7 +362,7 @@ class BM25Scorer:
             return 0.0
         if doc_index < 0 or doc_index >= self._n_docs:
             raise IndexError(f"doc_index {doc_index} out of range ({self._n_docs} docs)")
-        q_tokens = sorted(tokenize(query))
+        q_tokens = tokenize_list(query)
         if not q_tokens:
             return 0.0
         scores = self._bm25.get_scores(q_tokens)
@@ -342,7 +372,7 @@ class BM25Scorer:
         """Score *query* against every document in the corpus."""
         if self._bm25 is None:
             return []
-        q_tokens = sorted(tokenize(query))
+        q_tokens = tokenize_list(query)
         if not q_tokens:
             return [0.0] * self._n_docs
         return [float(s) for s in self._bm25.get_scores(q_tokens)]

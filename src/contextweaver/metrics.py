@@ -41,7 +41,13 @@ logger = logging.getLogger("contextweaver.metrics")
 
 @dataclass
 class _Counters:
-    """Internal mutable counter state for :class:`MetricsCollector`."""
+    """Internal mutable counter state for :class:`MetricsCollector`.
+
+    Per-route statistics are stored as running sums rather than per-call
+    lists so memory stays O(1) in long-running processes. Averages are
+    derived from ``<sum> / total_routes`` at :meth:`summary` time; running
+    maxima are tracked separately for inspection.
+    """
 
     total_builds: int = 0
     total_routes: int = 0
@@ -52,9 +58,13 @@ class _Counters:
     items_excluded: int = 0
     budget_exceeded: int = 0
     drop_reasons: dict[str, int] = field(default_factory=dict)
-    route_candidate_counts: list[int] = field(default_factory=list)
-    route_top_scores: list[float] = field(default_factory=list)
-    route_confidence_gaps: list[float] = field(default_factory=list)
+    # Running sums + maxima for the route stream — O(1) memory.
+    route_candidate_count_sum: int = 0
+    route_candidate_count_max: int = 0
+    route_top_score_sum: float = 0.0
+    route_top_score_max: float = 0.0
+    route_confidence_gap_sum: float = 0.0
+    route_confidence_gap_max: float = 0.0
 
 
 class MetricsCollector:
@@ -119,16 +129,24 @@ class MetricsCollector:
         """Aggregate stats from one route call.
 
         Captures candidate count, top score, and the confidence gap between
-        rank-1 and rank-2 (zero when fewer than two candidates).
+        rank-1 and rank-2 (zero when fewer than two candidates). Stored as
+        running sums + maxima so memory stays O(1) regardless of how many
+        routes are recorded.
         """
         candidate_count = len(result.candidate_ids)
         top_score = result.scores[0] if result.scores else 0.0
         gap = (result.scores[0] - result.scores[1]) if len(result.scores) >= 2 else 0.0
         with self._lock:
             self._c.total_routes += 1
-            self._c.route_candidate_counts.append(candidate_count)
-            self._c.route_top_scores.append(top_score)
-            self._c.route_confidence_gaps.append(gap)
+            self._c.route_candidate_count_sum += candidate_count
+            self._c.route_top_score_sum += top_score
+            self._c.route_confidence_gap_sum += gap
+            if candidate_count > self._c.route_candidate_count_max:
+                self._c.route_candidate_count_max = candidate_count
+            if top_score > self._c.route_top_score_max:
+                self._c.route_top_score_max = top_score
+            if gap > self._c.route_confidence_gap_max:
+                self._c.route_confidence_gap_max = gap
         if self._log_each:
             logger.info(
                 "route: candidates=%d top_score=%.4f gap=%.4f",
@@ -165,18 +183,10 @@ class MetricsCollector:
         with self._lock:
             c = self._c
             avg_prompt_tokens = c.total_prompt_tokens / c.total_builds if c.total_builds else 0.0
-            avg_candidates = (
-                sum(c.route_candidate_counts) / len(c.route_candidate_counts)
-                if c.route_candidate_counts
-                else 0.0
-            )
-            avg_top_score = (
-                sum(c.route_top_scores) / len(c.route_top_scores) if c.route_top_scores else 0.0
-            )
+            avg_candidates = c.route_candidate_count_sum / c.total_routes if c.total_routes else 0.0
+            avg_top_score = c.route_top_score_sum / c.total_routes if c.total_routes else 0.0
             avg_confidence_gap = (
-                sum(c.route_confidence_gaps) / len(c.route_confidence_gaps)
-                if c.route_confidence_gaps
-                else 0.0
+                c.route_confidence_gap_sum / c.total_routes if c.total_routes else 0.0
             )
             return {
                 "avg_candidates_per_route": round(avg_candidates, 4),
@@ -187,6 +197,9 @@ class MetricsCollector:
                 "drop_reasons": dict(sorted(c.drop_reasons.items())),
                 "firewall_interceptions": c.firewall_interceptions,
                 "items_excluded": c.items_excluded,
+                "max_candidates_per_route": c.route_candidate_count_max,
+                "max_confidence_gap": round(c.route_confidence_gap_max, 4),
+                "max_top_score": round(c.route_top_score_max, 4),
                 "total_builds": c.total_builds,
                 "total_dedup_removed": c.total_dedup_removed,
                 "total_dropped": c.total_dropped,
