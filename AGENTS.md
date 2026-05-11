@@ -22,8 +22,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `types.py` | Core dataclasses and enums: `SelectableItem`, `ContextItem`, `Phase`, `ItemKind`, `Sensitivity` |
 | `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult` |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
-| `profiles.py` | Routing and profile config: `RoutingConfig`, `ProfileConfig`, named presets |
-| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `Labeler` (store protocols re-exported from `store/protocols.py`) |
+| `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
+| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine` (store protocols re-exported from `store/protocols.py`) |
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
 | `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
@@ -33,6 +33,11 @@ It prepares context and routes tools but never calls models or executes tools.
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
 | `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline) |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
+| `routing/filters.py` | Pre-scoring helpers: `filter_items()`, `augment_query()`, `suggest_clarifying_question()` (issues #14, #22, #112, #116) |
+| `routing/manifest.py` | `GraphManifest` + `compute_catalog_hash()` for graph metadata and cache invalidation (issue #48, #15) |
+| `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
+| `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
+| `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
 | `adapters/` | MCP, FastMCP, and A2A protocol adapters |
 | `__main__.py` | CLI: 7 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) |
 
@@ -61,6 +66,10 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `BuildStats` | What was kept, dropped, and why — diagnostic output of every build |
 | `ChoiceCard` | LLM-friendly compact card (never includes full schemas) |
 | `ChoiceGraph` | Bounded DAG for routing, serializable, validated on load |
+| `GraphManifest` | Build-time metadata attached to every routing graph (hash, seed, engine versions, timestamp) |
+| `RouteTrace` | Always-populated structured audit of a routing call; per-step expansions opt-in via `debug=True` |
+| `EngineRegistry` | Pluggable registry for `Retriever`, `Reranker`, `ClusteringEngine` slots |
+| `Mode` | Determinism mode (`strict` / `seeded` / `adaptive` placeholder) on `ProfileConfig` |
 | `MaskRedactionHook` | Built-in redaction hook for sensitivity enforcement |
 | `HydrationResult` | Result of hydrating a tool call with context |
 | `ViewRegistry` | Maps content-type patterns to view generators for progressive disclosure |

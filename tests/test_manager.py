@@ -912,3 +912,45 @@ def test_view_registry_accessible() -> None:
     from contextweaver.context.views import ViewRegistry
 
     assert isinstance(mgr.view_registry, ViewRegistry)
+
+
+# ---------------------------------------------------------------------------
+# Issue #45 — profile / mode wiring
+# ---------------------------------------------------------------------------
+
+
+def test_default_mode_is_strict() -> None:
+    from contextweaver.profiles import Mode
+
+    mgr = ContextManager()
+    assert mgr.mode == Mode.strict
+    assert mgr.profile is None
+
+
+def test_profile_seeds_budget_policy_scoring() -> None:
+    from contextweaver.profiles import Mode, ProfileConfig
+
+    profile = ProfileConfig.from_preset("fast")
+    mgr = ContextManager(profile=profile)
+    # ``fast`` preset sets answer budget to 3000.
+    assert mgr._budget.answer == 3000
+    assert mgr.profile is profile
+    assert mgr.mode == Mode.strict  # preset doesn't change mode
+
+
+def test_profile_explicit_kwargs_take_priority() -> None:
+    from contextweaver.config import ContextBudget
+    from contextweaver.profiles import ProfileConfig
+
+    profile = ProfileConfig.from_preset("accurate")  # answer=8000
+    custom_budget = ContextBudget(answer=1234)
+    mgr = ContextManager(budget=custom_budget, profile=profile)
+    assert mgr._budget.answer == 1234
+
+
+def test_profile_with_seeded_mode() -> None:
+    from contextweaver.profiles import Mode, ProfileConfig
+
+    profile = ProfileConfig(mode=Mode.seeded, seed=42)
+    mgr = ContextManager(profile=profile)
+    assert mgr.mode == Mode.seeded

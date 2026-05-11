@@ -190,3 +190,98 @@ class Labeler(Protocol):
     def label(self, item: SelectableItem) -> tuple[str, str]:
         """Return ``(category, confidence)`` for *item*."""
         ...
+
+
+# ---------------------------------------------------------------------------
+# Routing engines (Retriever / Reranker / ClusteringEngine)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class Retriever(Protocol):
+    """Pluggable first-stage retriever.
+
+    A retriever scores a fixed corpus of documents against a query and
+    returns the indices of the top-k most relevant documents.  It is the
+    routing engine's plug-point for swapping TF-IDF, BM25, embedding-based
+    ANN, or hybrid backends.
+
+    Implementations must be deterministic in
+    :class:`~contextweaver.config.Mode.strict`: identical (corpus, query,
+    top_k) inputs must produce identical outputs.
+    """
+
+    def fit(self, corpus: list[str]) -> None:
+        """Index *corpus* once before any :meth:`search` or :meth:`score_one` call.
+
+        May be called repeatedly with new corpora; the latest call wins.
+        """
+        ...
+
+    def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
+        """Return up to *top_k* ``(corpus_index, score)`` pairs.
+
+        Higher scores rank first.  Implementations should break score
+        ties by ascending corpus index for determinism.
+        """
+        ...
+
+    def score_one(self, query: str, index: int) -> float:
+        """Return the score for the corpus document at *index* against *query*.
+
+        Used by callers (e.g. :class:`~contextweaver.routing.router.Router`
+        beam search) that must score arbitrary corpus indices outside the
+        top-k window.  Implementations must agree with :meth:`search`:
+        the score returned here must match the score that document would
+        have received under :meth:`search` for the same *query*.
+
+        Implementations should return ``0.0`` for out-of-range indices
+        or when the index has not been fit.
+        """
+        ...
+
+
+@runtime_checkable
+class Reranker(Protocol):
+    """Optional second-stage reranker.
+
+    A reranker takes the retriever's shortlist and re-orders it using a
+    more expensive scoring function (e.g. a cross-encoder, an LLM, or a
+    rule-based heuristic).  Returning the input unchanged is valid and
+    is the default behaviour of :class:`NoOpReranker`.
+    """
+
+    def rerank(
+        self,
+        query: str,
+        candidates: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
+        """Re-score *candidates* and return them in new ranking order."""
+        ...
+
+
+@runtime_checkable
+class ClusteringEngine(Protocol):
+    """Pluggable clustering engine for :class:`TreeBuilder`.
+
+    A clustering engine groups items into roughly equal-sized clusters
+    based on a pairwise similarity / distance signal.  The default
+    implementation in ``TreeBuilder`` uses Jaccard farthest-first seeding;
+    swapping in :class:`Retriever`-derived embeddings is the canonical
+    use case for this protocol.
+    """
+
+    def cluster(
+        self,
+        items: list[SelectableItem],
+        *,
+        k: int,
+    ) -> dict[str, list[SelectableItem]]:
+        """Partition *items* into at most *k* clusters.
+
+        Returns a dict whose keys are cluster labels (e.g.
+        ``"cluster_000"``) and values are the items assigned to that
+        cluster.  Implementations may return fewer than *k* clusters
+        when the data is degenerate.
+        """
+        ...

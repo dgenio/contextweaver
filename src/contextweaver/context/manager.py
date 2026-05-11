@@ -28,6 +28,7 @@ from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.context.views import ViewRegistry
 from contextweaver.envelope import ContextPack, ResultEnvelope
+from contextweaver.profiles import Mode, ProfileConfig
 from contextweaver.protocols import (
     ArtifactStore,
     CharDivFourEstimator,
@@ -79,6 +80,14 @@ class ContextManager:
         extractor: Optional :class:`~contextweaver.protocols.Extractor`
             used by the context firewall.  Defaults to the built-in
             :func:`~contextweaver.summarize.extract.extract_facts`.
+        profile: Optional :class:`~contextweaver.config.ProfileConfig`.
+            When provided, fills ``budget``, ``policy``, and
+            ``scoring_config`` from the profile (per-arg overrides win).
+            The profile's :attr:`~contextweaver.config.ProfileConfig.routing`
+            field is *not* consumed here — pass it to the
+            :class:`~contextweaver.routing.router.Router` and
+            :class:`~contextweaver.routing.tree.TreeBuilder` directly via
+            their ``routing_config`` parameters.
     """
 
     def __init__(
@@ -93,6 +102,8 @@ class ContextManager:
         stores: StoreBundle | None = None,
         summarizer: Summarizer | None = None,
         extractor: Extractor | None = None,
+        *,
+        profile: ProfileConfig | None = None,
     ) -> None:
         _stores = stores or StoreBundle()
         self._event_log: EventLog = event_log or _stores.event_log or InMemoryEventLog()
@@ -101,6 +112,11 @@ class ContextManager:
         )
         self._episodic_store: EpisodicStore = _stores.episodic_store or InMemoryEpisodicStore()
         self._fact_store: FactStore = _stores.fact_store or InMemoryFactStore()
+        # Profile fills any unset config; per-arg overrides win.
+        if profile is not None:
+            budget = budget if budget is not None else profile.budget
+            policy = policy if policy is not None else profile.policy
+            scoring_config = scoring_config if scoring_config is not None else profile.scoring
         self._budget = budget or ContextBudget()
         self._policy = policy or ContextPolicy()
         self._scoring = scoring_config or ScoringConfig()
@@ -109,6 +125,8 @@ class ContextManager:
         self._view_registry: ViewRegistry = ViewRegistry()
         self._summarizer: Summarizer | None = summarizer
         self._extractor: Extractor | None = extractor
+        self._profile: ProfileConfig | None = profile
+        self._mode: Mode = profile.mode if profile is not None else Mode.strict
 
     # ------------------------------------------------------------------
     # Properties
@@ -138,6 +156,16 @@ class ContextManager:
     def view_registry(self) -> ViewRegistry:
         """The view registry for auto-generating drilldown views."""
         return self._view_registry
+
+    @property
+    def profile(self) -> ProfileConfig | None:
+        """The :class:`ProfileConfig` passed at construction, if any."""
+        return self._profile
+
+    @property
+    def mode(self) -> Mode:
+        """Active determinism :class:`Mode` (default :attr:`Mode.strict`)."""
+        return self._mode
 
     # ------------------------------------------------------------------
     # Ingestion helpers

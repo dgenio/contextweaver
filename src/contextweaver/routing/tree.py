@@ -19,16 +19,14 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 
-from contextweaver._utils import jaccard, tokenize
 from contextweaver.exceptions import GraphBuildError
+from contextweaver.profiles import RoutingConfig
+from contextweaver.protocols import ClusteringEngine
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.labeler import KeywordLabeler
+from contextweaver.routing.manifest import GraphManifest
+from contextweaver.routing.registry import EngineRegistry, default_registry
 from contextweaver.types import SelectableItem
-
-
-def _text_repr(item: SelectableItem) -> str:
-    """Build a text representation for similarity computation."""
-    return f"{item.name} {item.description} {' '.join(item.tags)}"
 
 
 class TreeBuilder:
@@ -42,6 +40,23 @@ class TreeBuilder:
         max_children: Maximum children per node (default 20).
         labeler: Optional :class:`KeywordLabeler` instance.
         target_group_size: Hint for cluster sizes; defaults to *max_children*.
+        routing_config: Keyword-only.  Optional :class:`~contextweaver.config.RoutingConfig`
+            that sets *max_children*.  When provided, *max_children* is
+            replaced by the value from this config object.  In every
+            build, the effective *max_children* is recorded under
+            ``manifest.extra["max_children"]``.
+        clustering: Keyword-only.  Optional
+            :class:`~contextweaver.protocols.ClusteringEngine` instance.
+            Used by the clustering grouping strategy.  Takes precedence
+            over *engine_registry*.
+        engine_registry: Keyword-only.  Optional
+            :class:`~contextweaver.routing.registry.EngineRegistry`
+            used to resolve the clustering engine when *clustering* is
+            ``None``.  Defaults to
+            :data:`~contextweaver.routing.registry.default_registry`.
+
+    Raises:
+        GraphBuildError: If *max_children* < 1 or *target_group_size* < 1.
     """
 
     def __init__(
@@ -49,7 +64,13 @@ class TreeBuilder:
         max_children: int = 20,
         labeler: KeywordLabeler | None = None,
         target_group_size: int | None = None,
+        *,
+        routing_config: RoutingConfig | None = None,
+        clustering: ClusteringEngine | None = None,
+        engine_registry: EngineRegistry | None = None,
     ) -> None:
+        if routing_config is not None:
+            max_children = routing_config.max_children
         if max_children < 1:
             raise GraphBuildError(f"max_children must be >= 1, got {max_children!r}")
         if target_group_size is not None and target_group_size < 1:
@@ -57,8 +78,20 @@ class TreeBuilder:
         self._max_children = max_children
         self._labeler = labeler or KeywordLabeler()
         self._target_group_size = target_group_size or max_children
+        self._routing_config = routing_config
+        self._engine_registry = engine_registry or default_registry
+        self._clustering: ClusteringEngine = (
+            clustering if clustering is not None else self._engine_registry.resolve("clustering")
+        )
+        # Cache: (catalog_hash) -> ChoiceGraph (issue #15).
+        self._cache: dict[str, ChoiceGraph] = {}
 
-    def build(self, items: list[SelectableItem]) -> ChoiceGraph:
+    def build(
+        self,
+        items: list[SelectableItem],
+        *,
+        use_cache: bool = True,
+    ) -> ChoiceGraph:
         """Build a :class:`ChoiceGraph` from *items*.
 
         Strategies are tried in priority order:
@@ -66,8 +99,17 @@ class TreeBuilder:
         2. Clustering (Jaccard-based k-means variant).
         3. Alphabetical fallback.
 
+        Caching (issue #15): when *use_cache* is ``True`` (default), a
+        SHA-256 hash of the input catalog is computed via
+        :func:`~contextweaver.routing.manifest.compute_catalog_hash` and
+        used to look up a previously built graph.  Cached graphs are
+        returned unchanged.  Use *use_cache=False* to force a rebuild
+        without consulting or polluting the cache.
+
         Args:
             items: The items to organise.
+            use_cache: When ``True``, consult and update the per-builder
+                build cache keyed by catalog hash.  Default ``True``.
 
         Returns:
             A bounded DAG rooted at ``"root"``.
@@ -77,6 +119,15 @@ class TreeBuilder:
         """
         if not items:
             raise GraphBuildError("Cannot build tree from empty item list.")
+
+        catalog_hash = ""
+        if use_cache:
+            from contextweaver.routing.manifest import compute_catalog_hash
+
+            catalog_hash = compute_catalog_hash(items)
+            cached = self._cache.get(catalog_hash)
+            if cached is not None:
+                return cached
 
         graph = ChoiceGraph(max_children=self._max_children)
         graph.add_node("root", label="root", routing_hint="All available tools")
@@ -90,14 +141,41 @@ class TreeBuilder:
 
         self._build_subtree(graph, "root", sorted_items, depth=0)
 
+        max_depth = graph.stats()["max_depth"]
+        # Use timestamp=0.0 for determinism: AGENTS.md requires that
+        # TreeBuilder.build() produce identical output for identical
+        # input.  Callers wanting a wall-clock timestamp can replace the
+        # manifest after build via ``graph.manifest = GraphManifest.for_build(items)``.
+        manifest = GraphManifest.for_build(
+            items,
+            strategy="auto",
+            max_depth=max_depth,
+            seed=None,
+            engine_versions={"tree_builder": "1.0", "labeler": "keyword-1.0"},
+            extra={"max_children": self._max_children},
+            timestamp=0.0,
+        )
         graph.build_meta = {
             "version": "1.0",
             "strategy": "auto",
             "item_count": len(items),
-            "max_depth": graph.stats()["max_depth"],
+            "max_depth": max_depth,
+            "manifest": manifest.to_dict(),
         }
 
+        if use_cache and catalog_hash:
+            self._cache[catalog_hash] = graph
+
         return graph
+
+    def clear_cache(self) -> None:
+        """Drop all cached graphs.
+
+        Subsequent :meth:`build` calls will rebuild from scratch.  Useful
+        when item metadata has changed in ways the catalog hash does not
+        reflect (e.g. tweaking labeler configuration between builds).
+        """
+        self._cache.clear()
 
     def _build_subtree(
         self,
@@ -200,54 +278,34 @@ class TreeBuilder:
     def _try_clustering(
         self, items: list[SelectableItem]
     ) -> dict[str, list[SelectableItem]] | None:
-        """Cluster items by text similarity using farthest-first seeding.
+        """Cluster items via the configured :class:`ClusteringEngine`.
 
-        Returns None if clustering produces degenerate results (all in one
-        cluster or too many clusters).
+        Delegates the seeding + assignment to ``self._clustering``
+        (default: farthest-first Jaccard from :data:`default_registry`)
+        and then re-splits any oversized clusters via alphabetical
+        chunking so every returned group fits within
+        ``self._max_children``.
+
+        Returns None if clustering produces degenerate results (fewer
+        than two non-empty groups after rebalancing).
         """
         k = max(2, math.ceil(len(items) / self._target_group_size))
         k = min(k, self._max_children)
 
-        sorted_items = sorted(items, key=lambda it: it.id)
-        token_sets = [tokenize(_text_repr(it)) for it in sorted_items]
+        raw_clusters = self._clustering.cluster(items, k=k)
+        if not raw_clusters:
+            return None
 
-        # Farthest-first seed selection
-        seeds = [0]
-        for _ in range(k - 1):
-            best_idx = -1
-            best_min_dist = -1.0
-            for i in range(len(sorted_items)):
-                if i in seeds:
-                    continue
-                min_dist = min(1.0 - jaccard(token_sets[i], token_sets[s]) for s in seeds)
-                if min_dist > best_min_dist:
-                    best_min_dist = min_dist
-                    best_idx = i
-            if best_idx >= 0:
-                seeds.append(best_idx)
-
-        # Assign each item to nearest seed
-        assignments: dict[int, list[int]] = {s: [] for s in seeds}
-        for i in range(len(sorted_items)):
-            best_seed = seeds[0]
-            best_sim = -1.0
-            for s in seeds:
-                sim = jaccard(token_sets[i], token_sets[s])
-                if sim > best_sim or (sim == best_sim and s < best_seed):
-                    best_sim = sim
-                    best_seed = s
-            assignments[best_seed].append(i)
-
-        # Rebalance: re-split oversized clusters
+        # Rebalance: re-split oversized clusters and renumber labels.
         groups: dict[str, list[SelectableItem]] = {}
         cluster_idx = 0
-        for seed_idx in sorted(assignments):
-            members = assignments[seed_idx]
+        for label in sorted(raw_clusters):
+            members = raw_clusters[label]
             if not members:
                 continue
-            cluster_items = [sorted_items[i] for i in members]
+            cluster_items = list(members)
             if len(cluster_items) > self._max_children:
-                # Sub-split using alphabetical
+                # Sub-split using alphabetical chunking.
                 chunks = self._chunk_list(cluster_items, self._max_children)
                 for chunk in chunks:
                     groups[f"cluster_{cluster_idx:03d}"] = chunk

@@ -8,6 +8,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **Routing — negative routing (#112).** `Router.route()` accepts new
+  keyword-only `exclude_ids: set[str] | None` and `exclude_tags: set[str] | None`
+  parameters that drop matching items before beam search.
+  `RouteResult.excluded_count` reports how many items were filtered.
+- **Routing — context-aware shortlisting (#116).** `Router.route()` accepts
+  a new keyword-only `context_hints: list[str] | None` parameter; hints
+  are appended to the scoring query without altering the catalog or graph.
+- **Routing — toolset gating (#22).** `Router.route()` accepts new
+  keyword-only `allowed_namespaces: set[str] | None` and
+  `allowed_tags: set[str] | None` whitelists.  `RouteResult.gated_count`
+  reports how many items were filtered.
+- **Routing — `CatalogNormalizer` (#44).** New
+  `contextweaver.routing.normalizer.CatalogNormalizer` and
+  `NormalizationReport` apply deterministic metadata hygiene
+  (case-insensitive tag dedupe, whitespace collapsing, namespace
+  trimming, description fallback) to raw catalog imports.
+- **Routing — `GraphManifest` (#48).** New
+  `contextweaver.routing.manifest.GraphManifest` records build hash,
+  seed, engine versions, timestamp, item count, strategy, and depth on
+  every graph built by `TreeBuilder.build()`.  Survives
+  `ChoiceGraph.to_dict()` / `from_dict()` round-trips.  Helper
+  `compute_catalog_hash()` is exported from the top-level package.
+- **Routing — incremental graph cache (#15).** `TreeBuilder.build()`
+  caches built graphs by catalog hash.  Subsequent calls with an
+  unchanged catalog return the cached graph in O(n) rather than
+  rebuilding.  Use `use_cache=False` to force a rebuild;
+  `clear_cache()` drops all cached graphs.
+- **Routing — `RouteTrace` (#51).** New
+  `contextweaver.routing.trace.RouteTrace` and `TraceStep` dataclasses.
+  Always populated on `RouteResult.trace`; per-step beam expansions
+  remain opt-in via `debug=True`.  The legacy
+  `RouteResult.debug_trace` shape is preserved as a `@property` that
+  delegates to `RouteTrace.to_legacy_dicts()` for backward compatibility.
+- **Routing — uncertainty signals (#14).** `RouteResult` gains
+  `is_ambiguous: bool` and `clarifying_question: str | None`.  Set when
+  the rank-1/rank-2 gap is below the router's `confidence_gap`
+  threshold; the question is rendered from the most distinguishing
+  dimension (namespace or name) of the top candidates.
+- **Routing — `EngineRegistry` (#47).** New
+  `contextweaver.routing.registry.EngineRegistry` with `Retriever`,
+  `Reranker`, and `ClusteringEngine` protocols on `protocols.py`.
+  Bundled defaults: `TfIdfRetriever` (wraps `TfIdfScorer`),
+  `NoOpReranker`, and `JaccardClusteringEngine`.  Module-level
+  `default_registry` is pre-populated with the in-tree defaults;
+  callers may register alternative engines under the `"retriever"`,
+  `"reranker"`, and `"clustering"` slots.
+- **Config — `Mode` enum and `ProfileConfig.mode` (#45).** New
+  `contextweaver.profiles.Mode` enum with values `strict` (default),
+  `seeded`, and `adaptive` (FUTURE placeholder).  `ProfileConfig`
+  gains a `mode: Mode` field and an optional `seed: int | None` field;
+  both round-trip through `to_dict()` / `from_dict()`.  Unknown mode
+  strings on `from_dict()` raise `ConfigError`.
+  `ProfileConfig.from_profile()` added as a backwards-compatible alias
+  for `from_preset()`.
+- **Config — `ContextManager.profile` (#45).** `ContextManager.__init__`
+  accepts a keyword-only `profile: ProfileConfig | None` parameter that
+  fills `budget`, `policy`, and `scoring_config` from the profile when
+  per-arg overrides are not supplied.  New `ContextManager.profile` and
+  `ContextManager.mode` properties expose the active profile and mode.
+- **Routing — `TreeBuilder.routing_config` (#45).** `TreeBuilder.__init__`
+  accepts a keyword-only `routing_config: RoutingConfig | None` parameter
+  that populates `max_children`.  `Router` already accepted this
+  parameter in v0.2.0.
 - `ScoringConfig.dedup_threshold` field — exposes the Jaccard dedup threshold
   (default 0.85) via configuration; `ContextManager` now passes it through to
   `deduplicate_candidates()` (#182)
@@ -21,11 +85,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ArtifactStore`, `EpisodicStore`, `FactStore`) extracted from `protocols.py`
   to stay within the ≤300-line guideline; still importable from
   `contextweaver.protocols` and `contextweaver` for backward compatibility
-- `profiles.py` module — `RoutingConfig` and `ProfileConfig` extracted from
-  `config.py` to stay within the ≤300-line guideline; importable from
-  `contextweaver.profiles` and `contextweaver` (#179)
+- `profiles.py` module — `Mode`, `RoutingConfig`, and `ProfileConfig` live in
+  `contextweaver.profiles` to stay within the ≤300-line guideline; importable
+  from `contextweaver.profiles` and `contextweaver` (#179)
 
 ### Changed
+
+- `Router.__init__` now raises `ConfigError` (a `ContextWeaverError`
+  subclass) instead of bare `ValueError` when `confidence_gap` is
+  outside `[0.0, 1.0]`.
+- `RouteResult.trace` is the new authoritative trace surface;
+  `RouteResult.debug_trace` is preserved as a backwards-compatible
+  property delegating to `trace.to_legacy_dicts()`.
+- `TreeBuilder.build()` now records the effective `max_children` under
+  `manifest.extra["max_children"]`, honouring the docstring contract
+  that the value is persisted on the graph manifest.
+- `Router.__init__` accepts new keyword-only `retriever: Retriever | None`
+  and `engine_registry: EngineRegistry | None` parameters so the
+  pluggable `EngineRegistry` from issue #47 is now wired end-to-end.
+  The legacy `scorer: TfIdfScorer | None` parameter is still accepted
+  and is transparently wrapped in an internal `Retriever` adapter.
+- `TreeBuilder.__init__` accepts new keyword-only
+  `clustering: ClusteringEngine | None` and
+  `engine_registry: EngineRegistry | None` parameters; the
+  cluster-grouping strategy now delegates to the configured engine
+  (default: `JaccardClusteringEngine` from `default_registry`) instead
+  of the previous inline algorithm.  Rebalancing of oversized clusters
+  remains the builder's responsibility.
+- `Retriever` protocol now exposes `score_one(query, index) -> float`
+  for per-document scoring at arbitrary corpus indices (used by the
+  Router beam search).  The bundled `TfIdfRetriever` implements it.
+- `RouteResult` exposes two new fields — `context_hints: list[str]`
+  and `context_boost_applied: bool` — so callers can introspect
+  whether the issue #116 context-hint augmentation actually altered
+  the scoring query.  The same values round-trip on
+  `RouteTrace.extra["context_hints"]` / `extra["context_boost_applied"]`.
+- `RouteTrace.retriever_engine` is now populated from the resolved
+  engine name instead of being hard-coded to `"tfidf"`.
 - `ProfileConfig.to_dict()` / `from_dict()` now include `policy` (previously
   excluded because `ContextPolicy` lacked serialisation); docstring expanded
   to make the round-trip contract explicit (#184)
@@ -34,16 +130,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `StoreBundle.to_dict()` / `from_dict()` docstrings now spell out the
   silent-`None` round-trip behaviour for custom backends that lack a
   `to_dict()` method
-- `RoutingConfig` / `ProfileConfig` are no longer re-exported from
-  `contextweaver.config`; import them from `contextweaver.profiles` or
-  `contextweaver`. Dropping the re-export resolves a circular-import smell
-  between `config.py` and `profiles.py`
+- `Mode`, `RoutingConfig`, and `ProfileConfig` are not re-exported from
+  `contextweaver.config`; import them from `contextweaver.profiles` or the
+  top-level `contextweaver` package. Dropping the re-export resolves a
+  circular-import smell between `config.py` and `profiles.py`
 
 ### Fixed
+
+- Routing exclusions (`exclude_ids` / `exclude_tags`) and toolset
+  gating (`allowed_namespaces` / `allowed_tags`) now happen
+  pre-scoring rather than only at result collection time.  Previously
+  excluded leaf nodes could consume beam slots and prevent eligible
+  siblings from being explored under tight `beam_width`.  The router
+  now skips ineligible children (and internal nodes whose entire
+  subtree was filtered out) before scoring.
+- `RouteResult.is_ambiguous` and `RouteTrace.runner_up_score` are now
+  computed from the untrimmed sorted view of beam-search results, so
+  callers using `top_k=1` still see the uncertainty signal introduced
+  by issue #14.
+- `routing.normalizer` module docstring now accurately describes
+  lenient-mode item drops (blank or duplicate IDs are dropped to
+  `report.invalid_ids`) instead of claiming the normalizer never
+  drops items.
 - Replaced 3 bare `ValueError` raises in `context/sensitivity.py` with
   `PolicyViolationError` / `ConfigError` (#183)
 - Replaced bare `ValueError` in `routing/router.py` (`confidence_gap` validation)
   with `ConfigError` (#183)
+
+### Notes
+
+- `Mode.adaptive` is currently a forward-compatible placeholder — no
+  pipeline stage is conditioned on the mode value yet.  Selecting
+  `Mode.adaptive` is accepted but has no behavioural effect.
+- `TreeBuilder.build()` writes a deterministic `timestamp=0.0` to its
+  manifest so that two builds of identical inputs produce identical
+  graphs (per the AGENTS.md "Deterministic by default" invariant).
+  Callers wanting a wall-clock timestamp can replace the manifest via
+  `graph.manifest = GraphManifest.for_build(items)` after build.
+- `RouteResult.trace.steps` is empty unless `debug=True`; the rest of
+  the trace (top scores, ambiguity, exclusion / gating counts) is
+  always populated.
 
 ## [0.2.0] - 2026-04-17
 
