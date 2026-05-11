@@ -2,6 +2,12 @@
 
 Downstream code should depend on the protocols, not the concrete defaults,
 so that stores, hooks, and summarisers remain swappable.
+
+Store-layer protocols (:class:`EventLog`, :class:`ArtifactStore`,
+:class:`EpisodicStore`, :class:`FactStore`) live in
+:mod:`contextweaver.store.protocols` and are re-exported here for backward
+compatibility — keep using ``from contextweaver.protocols import …`` if you
+prefer the historical path.
 """
 
 from __future__ import annotations
@@ -11,138 +17,17 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import tiktoken as _tiktoken
 
+from contextweaver.store.protocols import ArtifactStore as ArtifactStore
+from contextweaver.store.protocols import EpisodicStore as EpisodicStore
+from contextweaver.store.protocols import EventLog as EventLog
+from contextweaver.store.protocols import FactStore as FactStore
+
 if TYPE_CHECKING:
     from contextweaver.envelope import ContextPack
-    from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
+    from contextweaver.types import ContextItem, SelectableItem
 
 
 _tiktoken_logger = _logging.getLogger("contextweaver.protocols")
-
-
-# ---------------------------------------------------------------------------
-# EventLog
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class EventLog(Protocol):
-    """Read/write interface to the ordered event log.
-
-    The event log is the ordered sequence of :class:`~contextweaver.types.ContextItem`
-    objects that makes up a conversation / agent session.
-    """
-
-    def append(self, item: ContextItem) -> None:
-        """Append *item* to the log.
-
-        Raises:
-            DuplicateItemError: If an item with the same ``id`` already exists.
-        """
-        ...
-
-    def get(self, item_id: str) -> ContextItem:
-        """Return the item with *item_id*.
-
-        Raises:
-            ItemNotFoundError: If no item with *item_id* exists.
-        """
-        ...
-
-    def all(self) -> list[ContextItem]:
-        """Return all items in insertion order."""
-        ...
-
-    def filter_by_kind(self, *kinds: ItemKind) -> list[ContextItem]:
-        """Return all items whose ``kind`` is in *kinds*."""
-        ...
-
-    def tail(self, n: int) -> list[ContextItem]:
-        """Return the last *n* items."""
-        ...
-
-    def children(self, parent_id: str) -> list[ContextItem]:
-        """Return all items whose ``parent_id`` equals *parent_id*."""
-        ...
-
-    def parent(self, item_id: str) -> ContextItem | None:
-        """Return the parent of *item_id*, or ``None``."""
-        ...
-
-    def query(
-        self,
-        kinds: list[ItemKind] | None = None,
-        since: int | None = None,
-        limit: int | None = None,
-    ) -> list[ContextItem]:
-        """Flexible query over the event log."""
-        ...
-
-    def count(self) -> int:
-        """Return the number of items in the log."""
-        ...
-
-    def __len__(self) -> int: ...
-
-
-# ---------------------------------------------------------------------------
-# ArtifactStore
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class ArtifactStore(Protocol):
-    """Read/write interface to the out-of-band artifact store.
-
-    Raw tool outputs are stored here; the LLM context pipeline receives only
-    :class:`~contextweaver.types.ArtifactRef` handles and summaries.
-    """
-
-    def put(
-        self,
-        handle: str,
-        content: bytes,
-        media_type: str = "application/octet-stream",
-        label: str = "",
-    ) -> ArtifactRef:
-        """Store *content* and return an :class:`~contextweaver.types.ArtifactRef`."""
-        ...
-
-    def get(self, handle: str) -> bytes:
-        """Retrieve the raw bytes for *handle*.
-
-        Raises:
-            ArtifactNotFoundError: If *handle* is not in the store.
-        """
-        ...
-
-    def ref(self, handle: str) -> ArtifactRef:
-        """Return the :class:`~contextweaver.types.ArtifactRef` metadata for *handle*."""
-        ...
-
-    def list_refs(self) -> list[ArtifactRef]:
-        """Return all stored :class:`~contextweaver.types.ArtifactRef` objects."""
-        ...
-
-    def delete(self, handle: str) -> None:
-        """Remove the artifact identified by *handle*."""
-        ...
-
-    def exists(self, handle: str) -> bool:
-        """Return ``True`` if *handle* is in the store."""
-        ...
-
-    def metadata(self, handle: str) -> ArtifactRef:
-        """Return the :class:`~contextweaver.types.ArtifactRef` for *handle*."""
-        ...
-
-    def drilldown(self, handle: str, selector: dict[str, Any]) -> str:
-        """Return a subset of the artifact's content according to *selector*."""
-        ...
-
-
-# FUTURE: EpisodicStore and FactStore protocols — the concrete InMemory*
-# classes currently define latest/delete/list_keys without protocol
-# declarations.  Add formal protocols once the API surface stabilises.
 
 
 # ---------------------------------------------------------------------------
@@ -319,4 +204,99 @@ class Labeler(Protocol):
 
     def label(self, item: SelectableItem) -> tuple[str, str]:
         """Return ``(category, confidence)`` for *item*."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Routing engines (Retriever / Reranker / ClusteringEngine)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class Retriever(Protocol):
+    """Pluggable first-stage retriever.
+
+    A retriever scores a fixed corpus of documents against a query and
+    returns the indices of the top-k most relevant documents.  It is the
+    routing engine's plug-point for swapping TF-IDF, BM25, embedding-based
+    ANN, or hybrid backends.
+
+    Implementations must be deterministic in
+    :class:`~contextweaver.config.Mode.strict`: identical (corpus, query,
+    top_k) inputs must produce identical outputs.
+    """
+
+    def fit(self, corpus: list[str]) -> None:
+        """Index *corpus* once before any :meth:`search` or :meth:`score_one` call.
+
+        May be called repeatedly with new corpora; the latest call wins.
+        """
+        ...
+
+    def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
+        """Return up to *top_k* ``(corpus_index, score)`` pairs.
+
+        Higher scores rank first.  Implementations should break score
+        ties by ascending corpus index for determinism.
+        """
+        ...
+
+    def score_one(self, query: str, index: int) -> float:
+        """Return the score for the corpus document at *index* against *query*.
+
+        Used by callers (e.g. :class:`~contextweaver.routing.router.Router`
+        beam search) that must score arbitrary corpus indices outside the
+        top-k window.  Implementations must agree with :meth:`search`:
+        the score returned here must match the score that document would
+        have received under :meth:`search` for the same *query*.
+
+        Implementations should return ``0.0`` for out-of-range indices
+        or when the index has not been fit.
+        """
+        ...
+
+
+@runtime_checkable
+class Reranker(Protocol):
+    """Optional second-stage reranker.
+
+    A reranker takes the retriever's shortlist and re-orders it using a
+    more expensive scoring function (e.g. a cross-encoder, an LLM, or a
+    rule-based heuristic).  Returning the input unchanged is valid and
+    is the default behaviour of :class:`NoOpReranker`.
+    """
+
+    def rerank(
+        self,
+        query: str,
+        candidates: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
+        """Re-score *candidates* and return them in new ranking order."""
+        ...
+
+
+@runtime_checkable
+class ClusteringEngine(Protocol):
+    """Pluggable clustering engine for :class:`TreeBuilder`.
+
+    A clustering engine groups items into roughly equal-sized clusters
+    based on a pairwise similarity / distance signal.  The default
+    implementation in ``TreeBuilder`` uses Jaccard farthest-first seeding;
+    swapping in :class:`Retriever`-derived embeddings is the canonical
+    use case for this protocol.
+    """
+
+    def cluster(
+        self,
+        items: list[SelectableItem],
+        *,
+        k: int,
+    ) -> dict[str, list[SelectableItem]]:
+        """Partition *items* into at most *k* clusters.
+
+        Returns a dict whose keys are cluster labels (e.g.
+        ``"cluster_000"``) and values are the items assigned to that
+        cluster.  Implementations may return fewer than *k* clusters
+        when the data is degenerate.
+        """
         ...

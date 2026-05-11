@@ -20,15 +20,9 @@ Quick start::
 
 from __future__ import annotations
 
-from contextweaver import config, envelope, exceptions, protocols, types
+from contextweaver import config, envelope, exceptions, profiles, protocols, types
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
-from contextweaver.config import (
-    ContextBudget,
-    ContextPolicy,
-    ProfileConfig,
-    RoutingConfig,
-    ScoringConfig,
-)
+from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.manager import ContextManager
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
@@ -52,11 +46,17 @@ from contextweaver.exceptions import (
     RouteError,
 )
 from contextweaver.metrics import MetricsCollector, MetricsHook
+from contextweaver.profiles import Mode, ProfileConfig, RoutingConfig
 from contextweaver.protocols import (
+    ClusteringEngine,
+    EpisodicStore,
     EventHook,
     Extractor,
+    FactStore,
     Labeler,
     RedactionHook,
+    Reranker,
+    Retriever,
     Summarizer,
     TokenEstimator,
 )
@@ -72,7 +72,17 @@ from contextweaver.routing.catalog import (
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.graph_node import ChoiceNode
 from contextweaver.routing.labeler import KeywordLabeler
+from contextweaver.routing.manifest import GraphManifest, compute_catalog_hash
+from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
+from contextweaver.routing.registry import (
+    EngineRegistry,
+    JaccardClusteringEngine,
+    NoOpReranker,
+    TfIdfRetriever,
+    default_registry,
+)
 from contextweaver.routing.router import Router, RouteResult
+from contextweaver.routing.trace import RouteTrace, TraceStep
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.store import (
     InMemoryArtifactStore,
@@ -100,6 +110,7 @@ __all__ = [
     "config",
     "envelope",
     "exceptions",
+    "profiles",
     "protocols",
     "types",
     # utilities
@@ -124,14 +135,20 @@ __all__ = [
     # config
     "ContextBudget",
     "ContextPolicy",
+    "Mode",
     "ProfileConfig",
     "RoutingConfig",
     "ScoringConfig",
     # protocols
+    "ClusteringEngine",
+    "EpisodicStore",
     "EventHook",
     "Extractor",
+    "FactStore",
     "Labeler",
     "RedactionHook",
+    "Reranker",
+    "Retriever",
     "Summarizer",
     "TokenEstimator",
     # exceptions
@@ -163,12 +180,23 @@ __all__ = [
     "MetricsHook",
     # routing engine
     "Catalog",
+    "CatalogNormalizer",
     "ChoiceGraph",
     "ChoiceNode",
+    "EngineRegistry",
+    "GraphManifest",
+    "JaccardClusteringEngine",
     "KeywordLabeler",
+    "NoOpReranker",
+    "NormalizationReport",
     "RouteResult",
+    "RouteTrace",
     "Router",
+    "TfIdfRetriever",
+    "TraceStep",
     "TreeBuilder",
+    "compute_catalog_hash",
+    "default_registry",
     "generate_sample_catalog",
     "load_catalog",
     "load_catalog_dicts",
