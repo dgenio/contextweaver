@@ -249,7 +249,7 @@ async def load_fastmcp_catalog(
             "FastMCP is not installed. Install with: pip install 'contextweaver[fastmcp]'"
         ) from exc
 
-    client = source if isinstance(source, Client) else Client(source)
+    client = source if isinstance(source, Client) else Client(source)  # type: ignore[call-overload]
 
     try:
         async with client:
