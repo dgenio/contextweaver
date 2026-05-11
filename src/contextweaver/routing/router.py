@@ -20,7 +20,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from contextweaver._utils import TfIdfScorer, jaccard, tokenize
+from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard, tokenize
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import Retriever
@@ -35,6 +35,36 @@ from contextweaver.routing.trace import RouteTrace, TraceStep
 from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
+
+# Union of all scorer types Router accepts. ``FuzzyScorer`` is ``None`` when
+# the ``contextweaver[retrieval]`` extra is not installed; we widen with
+# ``Any`` rather than naming the runtime ``None`` sentinel here.
+_ScorerLike = TfIdfScorer | BM25Scorer | Any
+
+# Registry of named backends. ``Router(scorer_backend="bm25")`` constructs
+# the corresponding scorer when no explicit instance is provided.
+_SCORER_BACKENDS: dict[str, str] = {
+    "tfidf": "TfIdfScorer",
+    "bm25": "BM25Scorer",
+    "fuzzy": "FuzzyScorer",
+}
+
+
+def _build_scorer(backend: str) -> _ScorerLike:
+    """Construct a scorer instance from a backend name."""
+    if backend == "tfidf":
+        return TfIdfScorer()
+    if backend == "bm25":
+        return BM25Scorer()
+    if backend == "fuzzy":
+        if FuzzyScorer is None:
+            raise ConfigError(
+                "scorer_backend='fuzzy' requires the [retrieval] extra: "
+                "pip install 'contextweaver[retrieval]'"
+            )
+        return FuzzyScorer()
+    raise ConfigError(f"Unknown scorer_backend {backend!r}")
+
 
 # ---------------------------------------------------------------------------
 # RouteResult
@@ -95,12 +125,14 @@ class RouteResult:
 class _ScorerRetriever:
     """Internal :class:`Retriever` adapter for legacy ``scorer=`` callers.
 
-    Wraps a pre-existing :class:`TfIdfScorer` so the rest of
+    Wraps any pre-existing scorer that exposes the ``fit(corpus)`` /
+    ``score(query, index)`` shape (e.g. :class:`TfIdfScorer`,
+    :class:`BM25Scorer`, :class:`FuzzyScorer`) so the rest of
     :class:`Router` can talk to a single :class:`Retriever` surface
     regardless of how the engine was supplied.
     """
 
-    def __init__(self, scorer: TfIdfScorer) -> None:
+    def __init__(self, scorer: _ScorerLike) -> None:
         self._scorer = scorer
         self._corpus_size = 0
 
@@ -131,7 +163,8 @@ class Router:
     Args:
         graph: The choice graph to route over.
         items: Optional list of catalog items to register immediately.
-        scorer: Optional pre-existing :class:`TfIdfScorer`.  Legacy
+        scorer: Optional pre-existing scorer (:class:`TfIdfScorer`,
+            :class:`BM25Scorer`, or :class:`FuzzyScorer`).  Legacy
             shim — prefer *retriever* or *engine_registry*.  When
             supplied the router wraps the scorer in an internal
             :class:`Retriever` adapter so the engine surface stays
@@ -141,31 +174,40 @@ class Router:
         top_k: Maximum number of results to return (default 10).
         confidence_gap: Minimum score gap between rank-1 and rank-2 to
             consider the top pick confident.  Must be in ``[0.0, 1.0]``.
+        scorer_backend: Keyword-only.  Name of the scorer to construct
+            when neither *retriever* nor *scorer* is supplied: one of
+            ``"tfidf"`` (default), ``"bm25"``, or ``"fuzzy"``.  Selecting
+            ``"fuzzy"`` requires the ``[retrieval]`` extra; unknown
+            backends raise :class:`ConfigError`.
         routing_config: Keyword-only.  Optional :class:`RoutingConfig`
             that sets all routing parameters at once.
         retriever: Keyword-only.  Optional
             :class:`~contextweaver.protocols.Retriever` instance.  Takes
-            precedence over *scorer* and *engine_registry*.
+            precedence over *scorer*, *scorer_backend*, and
+            *engine_registry*.
         engine_registry: Keyword-only.  Optional
             :class:`~contextweaver.routing.registry.EngineRegistry`
             used to resolve the retriever when *retriever* and *scorer*
-            are both ``None``.  Defaults to
+            are both ``None`` and *scorer_backend* is the default
+            (``"tfidf"``).  Defaults to
             :data:`~contextweaver.routing.registry.default_registry`.
 
     Raises:
-        ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]``.
+        ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]`` or
+            if *scorer_backend* is not a recognised backend name.
     """
 
     def __init__(
         self,
         graph: ChoiceGraph,
         items: list[SelectableItem] | None = None,
-        scorer: TfIdfScorer | None = None,
+        scorer: _ScorerLike | None = None,
         beam_width: int = 2,
         max_depth: int = 8,
         top_k: int = 10,
         confidence_gap: float = 0.15,
         *,
+        scorer_backend: str = "tfidf",
         routing_config: RoutingConfig | None = None,
         retriever: Retriever | None = None,
         engine_registry: EngineRegistry | None = None,
@@ -177,27 +219,42 @@ class Router:
             confidence_gap = routing_config.confidence_gap
         if not 0.0 <= confidence_gap <= 1.0:
             raise ConfigError(f"confidence_gap must be in [0.0, 1.0], got {confidence_gap}")
+        if scorer_backend not in _SCORER_BACKENDS:
+            raise ConfigError(
+                f"Unknown scorer_backend {scorer_backend!r}; "
+                f"valid options: {sorted(_SCORER_BACKENDS)}"
+            )
         self._graph = graph
         self._beam_width = beam_width
         self._max_depth = max_depth
         self._top_k = top_k
         self._confidence_gap = confidence_gap
+        self._scorer_backend = scorer_backend
         self._items: dict[str, SelectableItem] = {}
         self._engine_registry = engine_registry or default_registry
         if retriever is not None:
             self._retriever: Retriever = retriever
+            self._retriever_engine_name = self._engine_registry.default_for("retriever") or "tfidf"
         elif scorer is not None:
             self._retriever = _ScorerRetriever(scorer)
+            self._retriever_engine_name = "tfidf"
+        elif scorer_backend != "tfidf":
+            self._retriever = _ScorerRetriever(_build_scorer(scorer_backend))
+            self._retriever_engine_name = scorer_backend
         else:
             self._retriever = self._engine_registry.resolve("retriever")
-        self._retriever_engine_name = self._engine_registry.default_for("retriever") or "tfidf"
+            self._retriever_engine_name = self._engine_registry.default_for("retriever") or "tfidf"
         self._indexed = False
         self._doc_id_to_idx: dict[str, int] = {}
         if items is not None:
             self.set_items(items)
 
     def set_items(self, items: list[SelectableItem]) -> None:
-        """Register the catalog items for retriever indexing and result lookup."""
+        """Register the catalog items for retriever indexing and result lookup.
+
+        Args:
+            items: All items in the catalog.
+        """
         self._items = {it.id: it for it in items}
         self._indexed = False
 

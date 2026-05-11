@@ -21,7 +21,7 @@ Quick start::
 from __future__ import annotations
 
 from contextweaver import config, envelope, exceptions, profiles, protocols, types
-from contextweaver._utils import TfIdfScorer, jaccard
+from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.manager import ContextManager
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
@@ -45,6 +45,7 @@ from contextweaver.exceptions import (
     PolicyViolationError,
     RouteError,
 )
+from contextweaver.metrics import MetricsCollector, MetricsHook
 from contextweaver.profiles import Mode, ProfileConfig, RoutingConfig
 from contextweaver.protocols import (
     ClusteringEngine,
@@ -63,8 +64,10 @@ from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import (
     Catalog,
     generate_sample_catalog,
+    load_catalog,
     load_catalog_dicts,
     load_catalog_json,
+    load_catalog_yaml,
 )
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.graph_node import ChoiceNode
@@ -111,6 +114,8 @@ __all__ = [
     "protocols",
     "types",
     # utilities
+    "BM25Scorer",
+    "FuzzyScorer",
     "TfIdfScorer",
     "jaccard",
     # types / enums
@@ -170,6 +175,9 @@ __all__ = [
     "drilldown_tool_spec",
     "generate_views",
     "register_redaction_hook",
+    # observability
+    "MetricsCollector",
+    "MetricsHook",
     # routing engine
     "Catalog",
     "CatalogNormalizer",
@@ -190,8 +198,10 @@ __all__ = [
     "compute_catalog_hash",
     "default_registry",
     "generate_sample_catalog",
+    "load_catalog",
     "load_catalog_dicts",
     "load_catalog_json",
+    "load_catalog_yaml",
     "make_choice_cards",
     "render_cards_text",
     # summarize

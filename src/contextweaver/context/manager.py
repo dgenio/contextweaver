@@ -28,6 +28,7 @@ from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.context.views import ViewRegistry
 from contextweaver.envelope import ContextPack, ResultEnvelope
+from contextweaver.metrics import MetricsCollector
 from contextweaver.profiles import Mode, ProfileConfig
 from contextweaver.protocols import (
     ArtifactStore,
@@ -80,10 +81,17 @@ class ContextManager:
         extractor: Optional :class:`~contextweaver.protocols.Extractor`
             used by the context firewall.  Defaults to the built-in
             :func:`~contextweaver.summarize.extract.extract_facts`.
-        profile: Optional :class:`~contextweaver.config.ProfileConfig`.
-            When provided, fills ``budget``, ``policy``, and
+        metrics: Keyword-only.  Optional
+            :class:`~contextweaver.metrics.MetricsCollector`.  When
+            supplied, full :class:`~contextweaver.routing.router.RouteResult`
+            metrics (candidate count, top score, confidence gap) are
+            recorded via :meth:`MetricsCollector.record_route` after
+            every routing call orchestrated through this manager.
+        profile: Keyword-only.  Optional
+            :class:`~contextweaver.profiles.ProfileConfig`.  When
+            provided, fills ``budget``, ``policy``, and
             ``scoring_config`` from the profile (per-arg overrides win).
-            The profile's :attr:`~contextweaver.config.ProfileConfig.routing`
+            The profile's :attr:`~contextweaver.profiles.ProfileConfig.routing`
             field is *not* consumed here — pass it to the
             :class:`~contextweaver.routing.router.Router` and
             :class:`~contextweaver.routing.tree.TreeBuilder` directly via
@@ -103,6 +111,7 @@ class ContextManager:
         summarizer: Summarizer | None = None,
         extractor: Extractor | None = None,
         *,
+        metrics: MetricsCollector | None = None,
         profile: ProfileConfig | None = None,
     ) -> None:
         _stores = stores or StoreBundle()
@@ -125,6 +134,7 @@ class ContextManager:
         self._view_registry: ViewRegistry = ViewRegistry()
         self._summarizer: Summarizer | None = summarizer
         self._extractor: Extractor | None = extractor
+        self._metrics: MetricsCollector | None = metrics
         self._profile: ProfileConfig | None = profile
         self._mode: Mode = profile.mode if profile is not None else Mode.strict
 
@@ -156,6 +166,16 @@ class ContextManager:
     def view_registry(self) -> ViewRegistry:
         """The view registry for auto-generating drilldown views."""
         return self._view_registry
+
+    @property
+    def metrics(self) -> MetricsCollector | None:
+        """The optional :class:`~contextweaver.metrics.MetricsCollector`.
+
+        ``None`` unless ``metrics=`` was passed to :meth:`__init__`. When
+        present, route-level metrics are recorded automatically via
+        :meth:`MetricsCollector.record_route` after every routing call.
+        """
+        return self._metrics
 
     @property
     def profile(self) -> ProfileConfig | None:
@@ -711,6 +731,8 @@ class ContextManager:
         )
 
         self._hook.on_route_completed(route_result.candidate_ids)
+        if self._metrics is not None:
+            self._metrics.record_route(route_result)
         return pack, cards, route_result
 
     def build_route_prompt_sync(

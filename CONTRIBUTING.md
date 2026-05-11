@@ -39,7 +39,12 @@ All CI checks must pass before a PR can be merged.
 ## Style guide
 
 - **Python ≥ 3.10** — use `X | Y` union syntax, `match` statements where appropriate.
-- **Zero runtime dependencies** — do not add any `install_requires` entries.
+- **Minimal core runtime dependencies** — the core ships with `tiktoken`, `PyYAML`, and
+  `rank-bm25`. Adding a new entry to `dependencies` in `pyproject.toml` requires broad
+  ecosystem use, a small wheel, and a default the library would otherwise approximate.
+  Heavy or runtime-specific packages go under `[project.optional-dependencies]` (e.g.
+  `cli`, `otel`, `retrieval`, `ann`, `graph`) and must be loaded via guarded imports
+  (`try: import x ... except ImportError: ...`).
 - **Type hints everywhere** — all public functions and methods must be fully annotated.
 - **Docstrings** — use Google-style docstrings on all public classes and functions.
 - **Line length** — 100 characters maximum (enforced by ruff).

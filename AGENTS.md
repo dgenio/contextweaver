@@ -127,7 +127,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 - **Google-style docstrings** on all public classes and functions.
 - **100-character line length** (enforced by ruff).
 - **≤ 300 lines per module** — exempt: `types.py`, `envelope.py`, `__main__.py`.
-- **Zero runtime dependencies** in core (`install_requires` is empty). Optional dependency groups via extras (e.g., `[dev]`) are acceptable.
+- **Minimal core runtime dependencies.** The core install pulls only `tiktoken`, `PyYAML`, and `rank-bm25` — each is broadly used in GenAI stacks and unblocks default behaviour. Adding a new core dependency requires explicit justification: broad ecosystem use, small wheel, and a default the library would otherwise have to approximate. Heavy or runtime-specific packages (CLI, OpenTelemetry, fuzzy retrieval, ANN, NetworkX, FastMCP, LangChain) live under `[project.optional-dependencies]` and are loaded via guarded imports.
 
 ## Testing
 

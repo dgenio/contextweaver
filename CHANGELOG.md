@@ -9,6 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Minimal core dependencies and extras infrastructure** (#49, #50, #54, #55)
+  - `pyproject.toml` `dependencies = ["tiktoken>=0.5", "PyYAML>=6.0", "rank-bm25>=0.2"]`
+    — three small, broadly-used packages that unblock default behaviour the library
+    would otherwise have to approximate (exact token counts, YAML configs, BM25 retrieval).
+  - New optional extras: `[cli]` (rich), `[retrieval]` (rapidfuzz),
+    `[ann]` (hnswlib, reserved), `[otel]` (opentelemetry), `[graph]` (networkx, reserved),
+    `[all]` (union convenience).
+  - mypy overrides for every new optional package so missing extras don't break type checks.
+- **YAML catalog and graph support** (#54)
+  - `contextweaver.routing.catalog.load_catalog_yaml()` — load a catalog from a YAML file.
+  - `contextweaver.routing.catalog.load_catalog()` — auto-detect JSON vs. YAML by file
+    extension (`.yaml` / `.yml` → YAML, anything else → JSON).
+  - `save_graph()` / `load_graph()` in `routing.graph_io` now auto-detect format from
+    the file extension and emit deterministic YAML (`sort_keys=True`).
+  - `examples/sample_catalog.yaml` — runnable YAML version of `sample_catalog.json`.
+- **BM25 and fuzzy retrieval backends** (#55)
+  - `contextweaver._utils.BM25Scorer` — BM25 scorer backed by `rank-bm25` (core dep);
+    same `fit` / `score` / `score_all` interface as `TfIdfScorer`.
+  - `contextweaver._utils.FuzzyScorer` — fuzzy string-similarity scorer backed by
+    `rapidfuzz`; available when `contextweaver[retrieval]` is installed,
+    `FuzzyScorer is None` otherwise.
+  - `Router(scorer_backend="bm25" | "tfidf" | "fuzzy")` — keyword-only parameter to
+    select a scorer by name; default remains `"tfidf"` for backward compatibility.
+    Unknown backend names raise `ConfigError`. Cooperates with the
+    `engine_registry` / `retriever` plumbing from issue #47.
+- **Production observability primitives** (#10)
+  - New `contextweaver.metrics` module with `MetricsCollector` (thread-safe
+    accumulator with `summary()` + `reset()`) and `MetricsHook` (concrete
+    `EventHook` implementation that feeds a collector).
+  - `ContextManager(metrics=...)` — optional `MetricsCollector` parameter; when
+    present, full `RouteResult` is recorded after every routing call (capturing
+    candidate count, top score, and confidence gap).
+  - `ContextManager.metrics` property exposes the configured collector (or `None`).
+  - Counters tracked: total builds, total routes, total prompt tokens, dedup
+    removals, firewall interceptions, items excluded, budget overruns, and a
+    merged `drop_reasons` map.
+- **OpenTelemetry integration** (#57)
+  - New `contextweaver.extras.otel.OTelEventHook` — `EventHook` implementation
+    that emits OTel spans (`contextweaver.context.build`, `contextweaver.context.firewall`,
+    `contextweaver.context.exclude`, `contextweaver.routing.route`) and metrics
+    (`contextweaver.tokens.used` histogram, `contextweaver.firewall.interceptions` counter,
+    `contextweaver.items.excluded` counter, `contextweaver.budget.exceeded` counter,
+    `contextweaver.routing.candidates` histogram).
+  - Available via `pip install 'contextweaver[otel]'`. Importing the module
+    without the extra raises an `ImportError` carrying the exact install hint.
+- **Enhanced CLI rendering via `[cli]` extra** (#52)
+  - `__main__.py` `print-tree` subcommand uses `rich.tree` for coloured output
+    when rich is installed (`pip install 'contextweaver[cli]'`);
+    stdlib argparse + plain ASCII path remains byte-identical when the extra
+    is absent.
+- **Public API exports**
+  - Top-level: `MetricsCollector`, `MetricsHook`, `BM25Scorer`, `FuzzyScorer`,
+    `load_catalog`, `load_catalog_yaml`.
 - **Routing — negative routing (#112).** `Router.route()` accepts new
   keyword-only `exclude_ids: set[str] | None` and `exclude_tags: set[str] | None`
   parameters that drop matching items before beam search.
@@ -91,6 +144,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Documentation: minimal-core-deps reframe** (#53)
+  - README front-matter: `"zero runtime dependencies"` → `"minimal core dependencies"`,
+    `"deterministic output"` → `"deterministic by default"`.
+  - README installation section gains an extras table covering every optional
+    capability shipped today.
+  - `AGENTS.md` style rule rewritten: zero core runtime deps + extras model;
+    new core deps require broad ecosystem use, small wheel, and unblocked
+    default behaviour.
+  - `CONTRIBUTING.md` and `.github/copilot-instructions.md` updated to match.
+- `TiktokenEstimator` simplified — `tiktoken` is now a core dep, so the
+  try/except-stub fallback is gone. The estimator still degrades gracefully
+  to `CharDivFourEstimator` when the tiktoken encoding download fails (offline
+  / air-gapped environments) and logs a warning naming `TIKTOKEN_CACHE_DIR`
+  as the workaround.
 - `Router.__init__` now raises `ConfigError` (a `ContextWeaverError`
   subclass) instead of bare `ValueError` when `confidence_gap` is
   outside `[0.0, 1.0]`.
@@ -156,9 +223,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PolicyViolationError` / `ConfigError` (#183)
 - Replaced bare `ValueError` in `routing/router.py` (`confidence_gap` validation)
   with `ConfigError` (#183)
+- `BM25Scorer.fit()` now feeds `BM25Okapi` a per-document token list that
+  preserves term frequency. The previous implementation called
+  `sorted(tokenize(doc))` on a `set`, which collapsed duplicates and degraded
+  BM25 to a binary-match scorer. A new `contextweaver._utils.tokenize_list()`
+  helper applies the same normalisation pipeline as `tokenize()` but returns
+  a `list[str]`; `tokenize()` now delegates to it for the unique-set view.
+  (review #188)
+- `MetricsCollector` no longer accumulates per-route values in unbounded
+  lists. Route-level statistics are tracked as running sums + maxima so
+  memory stays O(1) in long-running processes. `summary()` keys are
+  preserved and gain three new entries (`max_candidates_per_route`,
+  `max_top_score`, `max_confidence_gap`). (review #188)
+- `OTelEventHook` now records `contextweaver.tokens.used` as a histogram
+  instead of a gauge. The synchronous `create_gauge` instrument only
+  landed in `opentelemetry-api>=1.27`, but the `[otel]` extra pins
+  `>=1.20`. Histograms are portable across the entire supported range and
+  give callers per-build token distributions instead of a latest-value
+  cache. (review #188)
 
 ### Notes
 
+- `_utils.py` (392 lines), `routing/catalog.py` (~410 lines) and `routing/router.py`
+  (~400 lines) are over the 300-line module guideline. These files were already
+  approaching or over the limit before this PR; decomposition is tracked under
+  the routing-pipeline epic (#56).
+- `EventHook.on_route_completed` retains its `list[str]` (tool ids) signature for
+  backward compatibility. Full `RouteResult` metrics (top score, confidence gap)
+  flow through `ContextManager.metrics` instead of the hook.
 - `Mode.adaptive` is currently a forward-compatible placeholder — no
   pipeline stage is conditioned on the mode value yet.  Selecting
   `Mode.adaptive` is accepted but has no behavioural effect.

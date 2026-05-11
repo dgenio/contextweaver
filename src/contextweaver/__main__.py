@@ -17,6 +17,16 @@ Invocable as ``python -m contextweaver`` or ``contextweaver`` (via
 from __future__ import annotations
 
 import argparse
+
+# `[cli]` extra adds rich-formatted output. Guarded import keeps the CLI
+# fully functional with stdlib-only argparse when the extra is absent.
+try:
+    from rich.console import Console as _RichConsole
+    from rich.tree import Tree as _RichTree
+
+    _HAS_RICH = True
+except ImportError:  # pragma: no cover - exercised only when extra is missing
+    _HAS_RICH = False
 import json
 import sys
 from pathlib import Path
@@ -210,17 +220,51 @@ def _cmd_route(args: argparse.Namespace) -> int:
 
 
 def _cmd_print_tree(args: argparse.Namespace) -> int:
-    """Pretty-print the routing tree for a graph."""
+    """Pretty-print the routing tree for a graph.
+
+    Uses ``rich.tree`` for coloured output when the ``[cli]`` extra is
+    installed; falls back to plain ASCII otherwise.
+    """
     graph_path: str = args.graph
     max_depth: int = args.depth
 
     graph = load_graph(graph_path)
+    items_set = set(graph.items())
 
+    if _HAS_RICH:
+        console = _RichConsole()
+
+        def _build_rich(node_id: str, depth: int) -> _RichTree:
+            node = graph.get_node(node_id)
+            is_item = node_id in items_set
+            label = node.label or node_id
+            if is_item:
+                rendered = f"[bold green]* {label}[/bold green]"
+            else:
+                hint = f"  [dim]({node.routing_hint})[/dim]" if node.routing_hint else ""
+                rendered = f"[bold cyan]> {label}[/bold cyan]{hint}"
+            tree = _RichTree(rendered)
+            if depth < max_depth:
+                for child in graph.successors(node_id):
+                    tree.add(_build_rich(child, depth + 1))
+            return tree
+
+        console.print(f"[bold]Routing tree (depth={max_depth}):[/bold]")
+        console.print(_build_rich(graph.root_id, 0))
+        stats = graph.stats()
+        console.print(
+            f"\n[dim]Stats: {stats['total_nodes']} nodes,"
+            f" {stats['total_items']} items,"
+            f" depth={stats['max_depth']}[/dim]"
+        )
+        return 0
+
+    # Stdlib fallback (existing behaviour, byte-for-byte compatible).
     def _print_node(node_id: str, depth: int, prefix: str = "") -> None:
         if depth > max_depth:
             return
         node = graph.get_node(node_id)
-        is_item = node_id in set(graph.items())
+        is_item = node_id in items_set
         marker = "*" if is_item else ">"
         label = node.label or node_id
         hint = f" - {node.routing_hint}" if node.routing_hint and not is_item else ""

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from contextweaver._utils import STOPWORDS, TfIdfScorer, jaccard, tokenize
+from contextweaver._utils import (
+    STOPWORDS,
+    BM25Scorer,
+    FuzzyScorer,
+    TfIdfScorer,
+    jaccard,
+    tokenize,
+)
 
 
 def test_stopwords_nonempty() -> None:
@@ -83,3 +90,116 @@ def test_tfidf_deterministic() -> None:
     s2 = TfIdfScorer()
     s2.fit(docs)
     assert s1.score_all("alpha delta") == s2.score_all("alpha delta")
+
+
+# ---------------------------------------------------------------------------
+# BM25Scorer (rank-bm25 is a core dep)
+# ---------------------------------------------------------------------------
+
+
+def test_bm25_fit_and_score() -> None:
+    scorer = BM25Scorer()
+    docs = ["search database quickly", "fast database access", "unrelated content here"]
+    scorer.fit(docs)
+    scores = scorer.score_all("fast database")
+    assert len(scores) == 3
+    # Second doc should score highest for "fast database" (matches both terms)
+    assert scores[1] >= scores[2]
+
+
+def test_bm25_empty_corpus() -> None:
+    scorer = BM25Scorer()
+    scorer.fit([])
+    assert scorer.score_all("hello") == []
+
+
+def test_bm25_score_out_of_range() -> None:
+    scorer = BM25Scorer()
+    scorer.fit(["hello world"])
+    with pytest.raises(IndexError):
+        scorer.score("hello", 5)
+
+
+def test_bm25_empty_query_returns_zeros() -> None:
+    scorer = BM25Scorer()
+    scorer.fit(["hello world", "another doc"])
+    assert scorer.score_all("") == [0.0, 0.0]
+
+
+def test_bm25_deterministic() -> None:
+    docs = ["alpha beta gamma", "delta epsilon", "alpha delta"]
+    s1 = BM25Scorer()
+    s1.fit(docs)
+    s2 = BM25Scorer()
+    s2.fit(docs)
+    assert s1.score_all("alpha delta") == s2.score_all("alpha delta")
+
+
+def test_bm25_preserves_term_frequency() -> None:
+    """BM25 must count term frequency.
+
+    Regression for PR #188 review — `BM25Scorer.fit()` previously fed
+    `sorted(tokenize(doc))` to `BM25Okapi`, but `tokenize()` returned a
+    ``set[str]`` which discarded duplicates. With TF lost the scorer
+    degraded to binary matching: a doc mentioning the query term once
+    scored the same as one mentioning it many times.
+
+    With `tokenize_list()` in place, a doc that repeats the query term
+    multiple times must score strictly higher than one that mentions it
+    only once.
+    """
+    scorer = BM25Scorer()
+    # Doc 0 mentions "database" three times; doc 1 mentions it once.
+    # Three distractor docs that don't mention the query term keep the
+    # `database` IDF positive (otherwise a query term present in every
+    # doc would have a non-positive IDF and TF would lose its boost).
+    scorer.fit(
+        [
+            "database database database lookup tool",
+            "database lookup tool",
+            "unrelated alpha beta gamma",
+            "another bravo charlie delta",
+            "echo foxtrot golf hotel",
+        ]
+    )
+    scores = scorer.score_all("database")
+    assert scores[0] > scores[1], (
+        f"BM25 must reward higher term frequency; "
+        f"got scores[0]={scores[0]!r} <= scores[1]={scores[1]!r} — "
+        f"indicates tokenize_list() is not being used in BM25Scorer.fit()."
+    )
+
+
+# ---------------------------------------------------------------------------
+# FuzzyScorer (rapidfuzz; contextweaver[retrieval] extra)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(FuzzyScorer is None, reason="rapidfuzz not installed ([retrieval] extra)")
+def test_fuzzy_basic_match() -> None:
+    scorer = FuzzyScorer()  # type: ignore[misc]
+    docs = ["send email to user", "create database", "search documentation"]
+    scorer.fit(docs)
+    scores = scorer.score_all("emal")  # typo of "email"
+    assert scores[0] > scores[1]  # email match wins despite typo
+
+
+@pytest.mark.skipif(FuzzyScorer is None, reason="rapidfuzz not installed ([retrieval] extra)")
+def test_fuzzy_empty_query() -> None:
+    scorer = FuzzyScorer()  # type: ignore[misc]
+    scorer.fit(["hello world"])
+    assert scorer.score("", 0) == 0.0
+
+
+@pytest.mark.skipif(FuzzyScorer is None, reason="rapidfuzz not installed ([retrieval] extra)")
+def test_fuzzy_score_out_of_range() -> None:
+    scorer = FuzzyScorer()  # type: ignore[misc]
+    scorer.fit(["hello"])
+    with pytest.raises(IndexError):
+        scorer.score("hi", 5)
+
+
+def test_fuzzy_scorer_is_none_when_extra_missing() -> None:
+    """Document the public contract: FuzzyScorer is None unless [retrieval] extra installed."""
+    # Either the extra is installed (FuzzyScorer is a class) or it isn't (None).
+    assert FuzzyScorer is None or callable(FuzzyScorer)

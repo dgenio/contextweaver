@@ -46,7 +46,7 @@ violate these boundaries will be rejected. Before modifying code, check:
 - **Routing Engine** — sync-only, pure computation. Do not make async.
 - **Sensitivity enforcement** (`context/sensitivity.py`) — security-grade code.
   Never weaken defaults. See `.github/instructions/sensitivity.instructions.md`.
-- **Zero runtime deps** in core (`install_requires` is empty). Optional extras are acceptable.
+- **Minimal core runtime deps.** Core install: `tiktoken`, `PyYAML`, `rank-bm25`. Heavy or runtime-specific packages live under optional extras (`[cli]`, `[otel]`, `[retrieval]`, `[ann]`, `[graph]`, `[fastmcp]`, `[langchain]`) and use guarded imports. New core deps require broad ecosystem use + small wheel + a default the library would otherwise approximate.
 
 ## Canonical References
 

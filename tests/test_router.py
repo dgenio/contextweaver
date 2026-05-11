@@ -152,6 +152,38 @@ def test_confidence_gap_above_one_raises() -> None:
 
 
 # ------------------------------------------------------------------
+# Pluggable scorer backends
+# ------------------------------------------------------------------
+
+
+def test_router_bm25_backend_routes() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, scorer_backend="bm25", top_k=3)
+    result = router.route("send email to user")
+    assert len(result.candidate_ids) > 0
+    assert "send_email" in result.candidate_ids
+
+
+def test_router_tfidf_backend_default() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    # Default backend should still be tfidf for backward compatibility.
+    router = Router(graph, items=items, top_k=3)
+    result = router.route("read database")
+    assert len(result.candidate_ids) > 0
+
+
+def test_router_unknown_backend_raises() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    from contextweaver.exceptions import ConfigError
+
+    with pytest.raises(ConfigError, match="scorer_backend"):
+        Router(graph, items=items, scorer_backend="not-a-backend")
+
+
+# ------------------------------------------------------------------
 # Error handling
 # ------------------------------------------------------------------
 
