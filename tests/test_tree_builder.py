@@ -200,3 +200,44 @@ def test_single_item() -> None:
         visited.add(n)
         stack.extend(graph.successors(n))
     assert "only" in visited
+
+
+# ------------------------------------------------------------------
+# Pluggable clustering engine (issue #47 wiring)
+# ------------------------------------------------------------------
+
+
+def test_tree_builder_uses_supplied_clustering_engine() -> None:
+    """A custom :class:`ClusteringEngine` supplied via ``clustering=`` is invoked.
+
+    Confirms the registry wiring is end-to-end: TreeBuilder delegates
+    the cluster-grouping strategy to ``self._clustering`` rather than
+    using an inline algorithm.
+    """
+
+    class _StubClustering:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def cluster(
+            self,
+            items: list[SelectableItem],
+            *,
+            k: int,
+        ) -> dict[str, list[SelectableItem]]:
+            self.calls.append(k)
+            sorted_items = sorted(items, key=lambda it: it.id)
+            half = max(1, len(sorted_items) // 2)
+            return {
+                "cluster_000": sorted_items[:half],
+                "cluster_001": sorted_items[half:],
+            }
+
+    items = [_item(f"i{i:02d}", name=f"tool_{i}") for i in range(40)]
+    stub = _StubClustering()
+    # max_children=4 forces clustering to fire (root has > max_children).
+    graph = TreeBuilder(max_children=4, clustering=stub).build(items)
+    assert "root" in graph.nodes()
+    # The stub must have been consulted at least once.
+    assert len(stub.calls) >= 1
+    assert all(k >= 2 for k in stub.calls)

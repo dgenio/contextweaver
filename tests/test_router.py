@@ -557,3 +557,105 @@ def test_top_k_one_still_detects_ambiguity() -> None:
     assert result.clarifying_question is not None
     assert result.trace.runner_up_score is not None
     assert result.trace.runner_up_score <= result.trace.top_score
+
+
+# ------------------------------------------------------------------
+# EngineRegistry wiring (M-1) and context-boost metadata (M-3)
+# ------------------------------------------------------------------
+
+
+def test_router_uses_supplied_retriever() -> None:
+    """A custom :class:`Retriever` supplied via ``retriever=`` is invoked.
+
+    The stub returns descending scores keyed on corpus index so the
+    item registered last (highest index) wins.  Confirms the registry
+    wiring is end-to-end and not just a held-but-unused reference.
+    """
+
+    class _StubRetriever:
+        def __init__(self) -> None:
+            self.corpus_size = 0
+            self.fit_calls = 0
+            self.score_calls = 0
+
+        def fit(self, corpus: list[str]) -> None:
+            self.corpus_size = len(corpus)
+            self.fit_calls += 1
+
+        def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
+            _ = query
+            scored = [(i, float(i)) for i in range(self.corpus_size)]
+            scored.sort(key=lambda x: (-x[1], x[0]))
+            return scored[: max(0, top_k)]
+
+        def score_one(self, query: str, index: int) -> float:
+            _ = query
+            self.score_calls += 1
+            if not 0 <= index < self.corpus_size:
+                return 0.0
+            return float(index)
+
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    stub = _StubRetriever()
+    router = Router(graph, items=items, retriever=stub, top_k=3)
+    result = router.route("anything")
+    assert stub.fit_calls == 1
+    assert stub.score_calls > 0
+    # corpus is sorted by item id; the last item by id ("search_docs")
+    # has the highest stub score because its corpus index is largest.
+    assert result.candidate_ids[0] == "send_email"
+
+
+def test_router_resolves_retriever_from_engine_registry() -> None:
+    """When neither retriever nor scorer is supplied, the registry default is used."""
+    from contextweaver.routing.registry import EngineRegistry, TfIdfRetriever
+
+    registry = EngineRegistry()
+    registry.register("retriever", "tfidf", TfIdfRetriever, default=True)
+
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, engine_registry=registry, top_k=3)
+    result = router.route("database read")
+    # Behaviour matches the default registry path: TF-IDF still ranks
+    # db_read at the top for this query.
+    assert "db_read" in result.candidate_ids
+    assert result.trace.retriever_engine == "tfidf"
+
+
+def test_context_hints_surface_on_result_and_trace() -> None:
+    """``RouteResult.context_hints`` + ``context_boost_applied`` round-trip via the trace.
+
+    Regression for the issue #116 acceptance criterion: callers can
+    introspect whether hints were applied.
+    """
+    items = [
+        _item("send_email", "send_email", "Send notification", tags=["comm"]),
+        _item("send_sms", "send_sms", "Send notification", tags=["comm"]),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=2)
+
+    # No hints -> empty metadata, no boost.
+    no_hint = router.route("send notification")
+    assert no_hint.context_hints == []
+    assert no_hint.context_boost_applied is False
+    assert no_hint.trace.extra.get("context_hints") == []
+    assert no_hint.trace.extra.get("context_boost_applied") is False
+
+    # Whitespace-only hints are noop'd.
+    blank = router.route("send notification", context_hints=["   ", "\t"])
+    assert blank.context_hints == []
+    assert blank.context_boost_applied is False
+
+    # Real hints land on the result and round-trip through trace.extra.
+    with_hints = router.route("send notification", context_hints=["email"])
+    assert with_hints.context_hints == ["email"]
+    assert with_hints.context_boost_applied is True
+    assert with_hints.trace.extra["context_hints"] == ["email"]
+    assert with_hints.trace.extra["context_boost_applied"] is True
+    # Round-trip through to_dict / from_dict keeps the metadata.
+    restored = type(with_hints.trace).from_dict(with_hints.trace.to_dict())
+    assert restored.extra["context_hints"] == ["email"]
+    assert restored.extra["context_boost_applied"] is True

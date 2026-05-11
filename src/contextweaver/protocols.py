@@ -327,7 +327,7 @@ class Retriever(Protocol):
     """
 
     def fit(self, corpus: list[str]) -> None:
-        """Index *corpus* once before any :meth:`search` call.
+        """Index *corpus* once before any :meth:`search` or :meth:`score_one` call.
 
         May be called repeatedly with new corpora; the latest call wins.
         """
@@ -338,6 +338,20 @@ class Retriever(Protocol):
 
         Higher scores rank first.  Implementations should break score
         ties by ascending corpus index for determinism.
+        """
+        ...
+
+    def score_one(self, query: str, index: int) -> float:
+        """Return the score for the corpus document at *index* against *query*.
+
+        Used by callers (e.g. :class:`~contextweaver.routing.router.Router`
+        beam search) that must score arbitrary corpus indices outside the
+        top-k window.  Implementations must agree with :meth:`search`:
+        the score returned here must match the score that document would
+        have received under :meth:`search` for the same *query*.
+
+        Implementations should return ``0.0`` for out-of-range indices
+        or when the index has not been fit.
         """
         ...
 

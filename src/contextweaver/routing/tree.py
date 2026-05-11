@@ -19,18 +19,14 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 
-from contextweaver._utils import jaccard, tokenize
 from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import GraphBuildError
+from contextweaver.protocols import ClusteringEngine
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.labeler import KeywordLabeler
 from contextweaver.routing.manifest import GraphManifest
+from contextweaver.routing.registry import EngineRegistry, default_registry
 from contextweaver.types import SelectableItem
-
-
-def _text_repr(item: SelectableItem) -> str:
-    """Build a text representation for similarity computation."""
-    return f"{item.name} {item.description} {' '.join(item.tags)}"
 
 
 class TreeBuilder:
@@ -49,6 +45,15 @@ class TreeBuilder:
             replaced by the value from this config object.  In every
             build, the effective *max_children* is recorded under
             ``manifest.extra["max_children"]``.
+        clustering: Keyword-only.  Optional
+            :class:`~contextweaver.protocols.ClusteringEngine` instance.
+            Used by the clustering grouping strategy.  Takes precedence
+            over *engine_registry*.
+        engine_registry: Keyword-only.  Optional
+            :class:`~contextweaver.routing.registry.EngineRegistry`
+            used to resolve the clustering engine when *clustering* is
+            ``None``.  Defaults to
+            :data:`~contextweaver.routing.registry.default_registry`.
 
     Raises:
         GraphBuildError: If *max_children* < 1 or *target_group_size* < 1.
@@ -61,6 +66,8 @@ class TreeBuilder:
         target_group_size: int | None = None,
         *,
         routing_config: RoutingConfig | None = None,
+        clustering: ClusteringEngine | None = None,
+        engine_registry: EngineRegistry | None = None,
     ) -> None:
         if routing_config is not None:
             max_children = routing_config.max_children
@@ -72,6 +79,10 @@ class TreeBuilder:
         self._labeler = labeler or KeywordLabeler()
         self._target_group_size = target_group_size or max_children
         self._routing_config = routing_config
+        self._engine_registry = engine_registry or default_registry
+        self._clustering: ClusteringEngine = (
+            clustering if clustering is not None else self._engine_registry.resolve("clustering")
+        )
         # Cache: (catalog_hash) -> ChoiceGraph (issue #15).
         self._cache: dict[str, ChoiceGraph] = {}
 
@@ -267,54 +278,34 @@ class TreeBuilder:
     def _try_clustering(
         self, items: list[SelectableItem]
     ) -> dict[str, list[SelectableItem]] | None:
-        """Cluster items by text similarity using farthest-first seeding.
+        """Cluster items via the configured :class:`ClusteringEngine`.
 
-        Returns None if clustering produces degenerate results (all in one
-        cluster or too many clusters).
+        Delegates the seeding + assignment to ``self._clustering``
+        (default: farthest-first Jaccard from :data:`default_registry`)
+        and then re-splits any oversized clusters via alphabetical
+        chunking so every returned group fits within
+        ``self._max_children``.
+
+        Returns None if clustering produces degenerate results (fewer
+        than two non-empty groups after rebalancing).
         """
         k = max(2, math.ceil(len(items) / self._target_group_size))
         k = min(k, self._max_children)
 
-        sorted_items = sorted(items, key=lambda it: it.id)
-        token_sets = [tokenize(_text_repr(it)) for it in sorted_items]
+        raw_clusters = self._clustering.cluster(items, k=k)
+        if not raw_clusters:
+            return None
 
-        # Farthest-first seed selection
-        seeds = [0]
-        for _ in range(k - 1):
-            best_idx = -1
-            best_min_dist = -1.0
-            for i in range(len(sorted_items)):
-                if i in seeds:
-                    continue
-                min_dist = min(1.0 - jaccard(token_sets[i], token_sets[s]) for s in seeds)
-                if min_dist > best_min_dist:
-                    best_min_dist = min_dist
-                    best_idx = i
-            if best_idx >= 0:
-                seeds.append(best_idx)
-
-        # Assign each item to nearest seed
-        assignments: dict[int, list[int]] = {s: [] for s in seeds}
-        for i in range(len(sorted_items)):
-            best_seed = seeds[0]
-            best_sim = -1.0
-            for s in seeds:
-                sim = jaccard(token_sets[i], token_sets[s])
-                if sim > best_sim or (sim == best_sim and s < best_seed):
-                    best_sim = sim
-                    best_seed = s
-            assignments[best_seed].append(i)
-
-        # Rebalance: re-split oversized clusters
+        # Rebalance: re-split oversized clusters and renumber labels.
         groups: dict[str, list[SelectableItem]] = {}
         cluster_idx = 0
-        for seed_idx in sorted(assignments):
-            members = assignments[seed_idx]
+        for label in sorted(raw_clusters):
+            members = raw_clusters[label]
             if not members:
                 continue
-            cluster_items = [sorted_items[i] for i in members]
+            cluster_items = list(members)
             if len(cluster_items) > self._max_children:
-                # Sub-split using alphabetical
+                # Sub-split using alphabetical chunking.
                 chunks = self._chunk_list(cluster_items, self._max_children)
                 for chunk in chunks:
                     groups[f"cluster_{cluster_idx:03d}"] = chunk

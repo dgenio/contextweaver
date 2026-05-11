@@ -23,12 +23,14 @@ from typing import Any
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
 from contextweaver.config import RoutingConfig
 from contextweaver.exceptions import ConfigError, RouteError
+from contextweaver.protocols import Retriever
 from contextweaver.routing.filters import (
     augment_query,
     filter_items,
     suggest_clarifying_question,
 )
 from contextweaver.routing.graph import ChoiceGraph
+from contextweaver.routing.registry import EngineRegistry, default_registry
 from contextweaver.routing.trace import RouteTrace, TraceStep
 from contextweaver.types import SelectableItem
 
@@ -57,6 +59,11 @@ class RouteResult:
             before scoring (issue #112).
         gated_count: Items filtered by ``allowed_namespaces`` /
             ``allowed_tags`` toolset gating before scoring (issue #22).
+        context_hints: Conversation context hints applied to the scoring
+            query for this call (issue #116).  Empty list when no hints
+            were supplied.
+        context_boost_applied: ``True`` when *context_hints* contains at
+            least one non-blank hint that altered the scoring query.
         trace: Structured audit record of the routing call (issue #51).
             Always populated; ``trace.steps`` is non-empty only when
             ``debug=True``.
@@ -70,6 +77,8 @@ class RouteResult:
     clarifying_question: str | None = None
     excluded_count: int = 0
     gated_count: int = 0
+    context_hints: list[str] = field(default_factory=list)
+    context_boost_applied: bool = False
     trace: RouteTrace = field(default_factory=RouteTrace)
 
     @property
@@ -83,19 +92,50 @@ class RouteResult:
 # ---------------------------------------------------------------------------
 
 
+class _ScorerRetriever:
+    """Internal :class:`Retriever` adapter for legacy ``scorer=`` callers.
+
+    Wraps a pre-existing :class:`TfIdfScorer` so the rest of
+    :class:`Router` can talk to a single :class:`Retriever` surface
+    regardless of how the engine was supplied.
+    """
+
+    def __init__(self, scorer: TfIdfScorer) -> None:
+        self._scorer = scorer
+        self._corpus_size = 0
+
+    def fit(self, corpus: list[str]) -> None:
+        self._scorer.fit(corpus)
+        self._corpus_size = len(corpus)
+
+    def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
+        scored = [(i, self._scorer.score(query, i)) for i in range(self._corpus_size)]
+        scored.sort(key=lambda x: (-x[1], x[0]))
+        return scored[: max(0, top_k)]
+
+    def score_one(self, query: str, index: int) -> float:
+        if not 0 <= index < self._corpus_size:
+            return 0.0
+        return self._scorer.score(query, index)
+
+
 class Router:
     """Beam-search router over a :class:`ChoiceGraph`.
 
-    The router scores each candidate node using TF-IDF similarity between
-    the query and the text representation of graph nodes.  Nodes not in the
-    catalog are scored on their label + routing_hint.
+    The router scores each candidate node using a pluggable
+    :class:`~contextweaver.protocols.Retriever` (TF-IDF by default).
+    Nodes not in the catalog are scored on their label + routing_hint.
 
     Determinism guarantee: ties are broken by node ID (alphabetical).
 
     Args:
         graph: The choice graph to route over.
         items: Optional list of catalog items to register immediately.
-        scorer: Optional pre-fitted :class:`TfIdfScorer`.
+        scorer: Optional pre-existing :class:`TfIdfScorer`.  Legacy
+            shim — prefer *retriever* or *engine_registry*.  When
+            supplied the router wraps the scorer in an internal
+            :class:`Retriever` adapter so the engine surface stays
+            uniform.
         beam_width: Number of beams to keep at each level (default 2).
         max_depth: Maximum tree depth to traverse (default 8).
         top_k: Maximum number of results to return (default 10).
@@ -103,6 +143,14 @@ class Router:
             consider the top pick confident.  Must be in ``[0.0, 1.0]``.
         routing_config: Keyword-only.  Optional :class:`RoutingConfig`
             that sets all routing parameters at once.
+        retriever: Keyword-only.  Optional
+            :class:`~contextweaver.protocols.Retriever` instance.  Takes
+            precedence over *scorer* and *engine_registry*.
+        engine_registry: Keyword-only.  Optional
+            :class:`~contextweaver.routing.registry.EngineRegistry`
+            used to resolve the retriever when *retriever* and *scorer*
+            are both ``None``.  Defaults to
+            :data:`~contextweaver.routing.registry.default_registry`.
 
     Raises:
         ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]``.
@@ -119,6 +167,8 @@ class Router:
         confidence_gap: float = 0.15,
         *,
         routing_config: RoutingConfig | None = None,
+        retriever: Retriever | None = None,
+        engine_registry: EngineRegistry | None = None,
     ) -> None:
         if routing_config is not None:
             beam_width = routing_config.beam_width
@@ -133,23 +183,28 @@ class Router:
         self._top_k = top_k
         self._confidence_gap = confidence_gap
         self._items: dict[str, SelectableItem] = {}
-        self._scorer = scorer
+        self._engine_registry = engine_registry or default_registry
+        if retriever is not None:
+            self._retriever: Retriever = retriever
+        elif scorer is not None:
+            self._retriever = _ScorerRetriever(scorer)
+        else:
+            self._retriever = self._engine_registry.resolve("retriever")
+        self._retriever_engine_name = self._engine_registry.default_for("retriever") or "tfidf"
         self._indexed = False
         self._doc_id_to_idx: dict[str, int] = {}
         if items is not None:
             self.set_items(items)
 
     def set_items(self, items: list[SelectableItem]) -> None:
-        """Register the catalog items for TF-IDF indexing and result lookup."""
+        """Register the catalog items for retriever indexing and result lookup."""
         self._items = {it.id: it for it in items}
         self._indexed = False
 
     def _ensure_index(self) -> None:
-        """Lazily fit the TF-IDF scorer on item + node texts."""
-        if self._indexed and self._scorer is not None:
+        """Lazily fit the retriever on item + node texts."""
+        if self._indexed:
             return
-        if self._scorer is None:
-            self._scorer = TfIdfScorer()
 
         docs: list[str] = []
         doc_ids: list[str] = []
@@ -166,19 +221,16 @@ class Router:
                 docs.append(text)
                 doc_ids.append(node_id)
 
-        self._scorer.fit(docs)
+        self._retriever.fit(docs)
         self._doc_id_to_idx = {did: i for i, did in enumerate(doc_ids)}
         self._indexed = True
 
     def _score_node(self, query: str, node_id: str) -> float:
-        """Score a single graph node against *query*."""
+        """Score a single graph node against *query* via the configured retriever."""
         self._ensure_index()
-        if self._scorer is None:
-            raise RouteError("TF-IDF index was not built; call _ensure_index first.")
-
         idx = self._doc_id_to_idx.get(node_id)
         if idx is not None:
-            return self._scorer.score(query, idx)
+            return self._retriever.score_one(query, idx)
 
         q_tokens = tokenize(query)
         n_tokens = tokenize(node_id.replace(":", " ").replace("_", " ").replace("/", " "))
@@ -249,7 +301,9 @@ class Router:
                 "allowed_namespaces / allowed_tags."
             )
         eligible_internals = self._eligible_internals(active_items)
+        applied_hints = [h.strip() for h in (context_hints or []) if h and h.strip()]
         scoring_query = augment_query(query, context_hints)
+        boost_applied = scoring_query != query and bool(applied_hints)
         steps, collected = self._beam_search(scoring_query, active_items, eligible_internals, debug)
         all_sorted = self._rank_collected(collected, active_items)
         top = all_sorted[: self._top_k]
@@ -270,10 +324,12 @@ class Router:
             runner_up_score=runner_up_score,
             excluded_count=excluded_count,
             gated_count=gated_count,
-            retriever_engine="tfidf",
+            retriever_engine=self._retriever_engine_name,
             steps=steps if debug else [],
         )
         trace.is_ambiguous = is_ambiguous
+        trace.extra["context_hints"] = list(applied_hints)
+        trace.extra["context_boost_applied"] = boost_applied
         top_items = [active_items[iid] for iid, _ in top if iid in active_items]
         # Clarifying question is rendered from the top of the untrimmed
         # sort so it stays useful when top_k=1.
@@ -290,6 +346,8 @@ class Router:
             clarifying_question=clarifying,
             excluded_count=excluded_count,
             gated_count=gated_count,
+            context_hints=list(applied_hints),
+            context_boost_applied=boost_applied,
             trace=trace,
         )
 

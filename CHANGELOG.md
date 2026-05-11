@@ -84,6 +84,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TreeBuilder.build()` now records the effective `max_children` under
   `manifest.extra["max_children"]`, honouring the docstring contract
   that the value is persisted on the graph manifest.
+- `Router.__init__` accepts new keyword-only `retriever: Retriever | None`
+  and `engine_registry: EngineRegistry | None` parameters so the
+  pluggable `EngineRegistry` from issue #47 is now wired end-to-end.
+  The legacy `scorer: TfIdfScorer | None` parameter is still accepted
+  and is transparently wrapped in an internal `Retriever` adapter.
+- `TreeBuilder.__init__` accepts new keyword-only
+  `clustering: ClusteringEngine | None` and
+  `engine_registry: EngineRegistry | None` parameters; the
+  cluster-grouping strategy now delegates to the configured engine
+  (default: `JaccardClusteringEngine` from `default_registry`) instead
+  of the previous inline algorithm.  Rebalancing of oversized clusters
+  remains the builder's responsibility.
+- `Retriever` protocol now exposes `score_one(query, index) -> float`
+  for per-document scoring at arbitrary corpus indices (used by the
+  Router beam search).  The bundled `TfIdfRetriever` implements it.
+- `RouteResult` exposes two new fields — `context_hints: list[str]`
+  and `context_boost_applied: bool` — so callers can introspect
+  whether the issue #116 context-hint augmentation actually altered
+  the scoring query.  The same values round-trip on
+  `RouteTrace.extra["context_hints"]` / `extra["context_boost_applied"]`.
+- `RouteTrace.retriever_engine` is now populated from the resolved
+  engine name instead of being hard-coded to `"tfidf"`.
 
 ### Fixed
 

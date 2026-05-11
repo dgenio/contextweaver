@@ -70,6 +70,12 @@ class TfIdfRetriever:
         scored.sort(key=lambda x: (-x[1], x[0]))
         return scored[: max(0, top_k)]
 
+    def score_one(self, query: str, index: int) -> float:
+        """Return the TF-IDF score for *query* against corpus document at *index*."""
+        if self._scorer is None or not 0 <= index < self._corpus_size:
+            return 0.0
+        return self._scorer.score(query, index)
+
 
 class NoOpReranker:
     """Default :class:`Reranker` that returns its input unchanged."""
@@ -87,11 +93,11 @@ class NoOpReranker:
 class JaccardClusteringEngine:
     """Default :class:`ClusteringEngine` using farthest-first Jaccard seeding.
 
-    Mirrors the in-line clustering logic that lives in
-    :class:`~contextweaver.routing.tree.TreeBuilder` so that the same
-    algorithm is reachable via the registry.  Custom engines can be
-    swapped in by registering an alternative under the
-    ``"clustering"`` slot.
+    This is the single source of farthest-first / nearest-assignment
+    Jaccard clustering used by :class:`~contextweaver.routing.tree.TreeBuilder`
+    via the registry.  Custom engines can be swapped in by registering an
+    alternative under the ``"clustering"`` slot or by passing
+    ``clustering=`` directly to :class:`TreeBuilder`.
     """
 
     def cluster(
