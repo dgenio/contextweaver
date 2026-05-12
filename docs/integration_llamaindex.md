@@ -58,6 +58,7 @@ result.
 
 ```python
 from llama_index.core.agent import ReActAgent
+from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.openai import OpenAI
 
@@ -108,10 +109,15 @@ def respond(user_query: str, turn: int) -> str:
         for tid in routed.candidate_ids
     ]
 
-    # Hand the shortlist + budgeted prompt to LlamaIndex.
+    # Hand the shortlist + budgeted prompt to LlamaIndex.  pack.prompt is a
+    # plain string; LlamaIndex's chat_history expects a list[ChatMessage],
+    # so we wrap it as a single SYSTEM message that primes the agent.
     pack = ctx_mgr.build_sync(phase=Phase.answer, query=user_query)
     agent = ReActAgent.from_tools(selected, llm=OpenAI(model="gpt-4"))
-    response = agent.chat(user_query, chat_history=pack.prompt)
+    response = agent.chat(
+        user_query,
+        chat_history=[ChatMessage(role=MessageRole.SYSTEM, content=pack.prompt)],
+    )
     return str(response)
 ```
 
@@ -193,7 +199,9 @@ the typical pattern is:
 
 - **`agent.chat()` answers as if it has no memory.** You probably didn't
   pass `pack.prompt` into the call. LlamaIndex won't pick it up from
-  contextweaver implicitly — you compile the context, you inject it.
+  contextweaver implicitly — you compile the context, you inject it (as
+  `chat_history=[ChatMessage(role=MessageRole.SYSTEM, content=pack.prompt)]`,
+  not as a bare string).
 - **The firewall summary is too short.** Override `Summarizer` on
   `ContextManager(summarizer=...)`; the default is a 500-char truncation
   of the first paragraph, deliberately conservative.

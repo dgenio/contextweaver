@@ -207,6 +207,8 @@ agent asks for specifics.
 Recipe script: [`examples/cookbook/firewall_drilldown_recipe.py`](https://github.com/dgenio/contextweaver/blob/main/examples/cookbook/firewall_drilldown_recipe.py).
 
 ```python
+import json
+
 from contextweaver.context.manager import ContextManager
 from contextweaver.types import ContextItem, ItemKind, Phase
 

@@ -12,7 +12,7 @@ calls LLMs, and never carries transport or auth.
 
 **Runtimes are the execution layer.** [FastMCP](https://gofastmcp.com/),
 [LangChain](https://python.langchain.com/), [LangGraph](https://langchain-ai.github.io/langgraph/),
-[LlamaIndex](https://docs.llamaindex.ai/), the [OpenAI Agents SDK](https://platform.openai.com/docs/assistants/overview),
+[LlamaIndex](https://docs.llamaindex.ai/), the [OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents),
 [Google's ADK / Vertex AI Agent Builder](https://cloud.google.com/vertex-ai/docs/agent-builder),
 and [Pipecat](https://docs.pipecat.ai/) all sit on the outside, driving the
 agent loop, invoking tools, and talking to model providers. contextweaver
@@ -28,7 +28,8 @@ sits _inside_ that loop and is composed in, not composed over.
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │ contextweaver — policy layer                           │  │
 │  │                                                        │  │
-│  │   Router.route(query)            → ChoiceCards         │  │
+│  │   Router.route(query)            → RouteResult         │  │
+│  │     └─ ContextManager.build_route_prompt → ChoiceCards │  │
 │  │   ContextManager.build(phase, q) → ContextPack         │  │
 │  │   Firewall (in ingest_tool_result) → summarised events │  │
 │  │                                                        │  │
@@ -40,7 +41,10 @@ sits _inside_ that loop and is composed in, not composed over.
 ```
 
 The runtime hands events to contextweaver and receives back compact
-`ContextPack`s and `ChoiceCard`s. contextweaver never reaches outward.
+`RouteResult`s, `ContextPack`s, and (when assembled via
+`ContextManager.build_route_prompt()` /
+`contextweaver.routing.cards.make_choice_cards()`) `ChoiceCard`s.
+contextweaver never reaches outward.
 
 ## Interop matrix
 

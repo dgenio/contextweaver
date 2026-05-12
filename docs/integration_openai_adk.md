@@ -30,9 +30,9 @@ export OPENAI_API_KEY=sk-...
 
 The examples below use the Chat Completions API directly so they work
 against both the Agents SDK and a plain `openai` client; if you're using
-[`openai-agents`](https://github.com/openai/openai-python) the same
-patterns hold — replace `client.chat.completions.create(...)` with
-`Agent.run(...)` and the integration points stay the same.
+[`openai-agents-python`](https://github.com/openai/openai-agents-python)
+the same patterns hold — replace `client.chat.completions.create(...)`
+with `Agent.run(...)` and the integration points stay the same.
 
 ## Architecture
 
@@ -65,6 +65,8 @@ ingests into the same event log.
 ## Minimal Swarm with shared context
 
 ```python
+import json
+
 from openai import OpenAI
 
 from contextweaver.context.manager import ContextManager
@@ -140,7 +142,10 @@ def respond(user_query: str, turn: int) -> str:
 
     msg = response.choices[0].message
     if msg.function_call:
-        result = FUNCTIONS[msg.function_call.name](msg.function_call.arguments)
+        # function_call.arguments is a JSON string; parse before invoking
+        # the Python callable so structured arguments flow correctly.
+        fn_args = json.loads(msg.function_call.arguments or "{}")
+        result = FUNCTIONS[msg.function_call.name](**fn_args)
         ctx_mgr.ingest_sync(ContextItem(
             id=f"tc-{turn}", kind=ItemKind.tool_call,
             text=f"{msg.function_call.name}(...)", parent_id=f"u{turn}",
