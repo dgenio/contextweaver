@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Gateway surface specification** (#30, #31). New
+  `docs/gateway_spec.md` codifies the three contract gaps blocking the
+  MCP proxy and gateway runtimes: canonical `tool_id` grammar
+  (`{namespace}:{name}[@{version}][#{hash8}]` with a deterministic
+  sha256-based hash over the input-schema shape), `ChoiceCard` size
+  bounds expressed in exact `cl100k_base` `tiktoken` counts (target ≤
+  60, hard cap ≤ 80 per card; banned fields enumerated), and the
+  `tool_browse` path-navigation grammar (`/namespace/cluster/...` with
+  reserved `*` segment and a fixed error shape). The spec also commits
+  the proxy (#13) and gateway (#28) to a single schema-exposure
+  strategy: stripped cards plus on-demand hydration via the existing
+  `Catalog.hydrate` primitive — no `--full-schemas` opt-in. Two new
+  bullets in `docs/agent-context/invariants.md` make the
+  `ChoiceCard`-is-schema-free and `tool_id`-round-trip rules review
+  blockers, and `mkdocs.yml` surfaces the spec under the Guides
+  section.
 - **Framework integration guides** for v0.6 (#77, #78, #79, #80).
   New pages under `docs/`: `integration_llamaindex.md`,
   `integration_langchain.md` (covers LangChain + LangGraph),
