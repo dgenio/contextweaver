@@ -206,8 +206,7 @@ Gemini reads a word.
   resolves to.
 - **Function-calling loops.** Use `exclude_ids` on subsequent
   `router.route()` calls so the agent stops re-recommending a tool it
-  just used (issue
-  [#112](https://github.com/dgenio/contextweaver/issues/112)).
+  just used.
 - **Budget overruns.** Inspect `pack.stats.dropped_reasons` after each
   build — it pinpoints which pipeline stage rejected what.
 

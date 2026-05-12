@@ -288,8 +288,7 @@ for a runnable side-by-side comparison.
   alongside the checkpoint if you need cross-session continuity.
 - **Tool not in the shortlist.** Inspect `result.scores` — the TF-IDF
   retriever may need richer descriptions or tags. You can also use
-  `context_hints=[...]` to inject conversation context into scoring
-  (issue [#116](https://github.com/dgenio/contextweaver/issues/116)).
+  `context_hints=[...]` to inject conversation context into scoring.
 
 ## See also
 

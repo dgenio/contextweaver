@@ -63,9 +63,8 @@ print(result.candidate_ids)   # → ['fastmcp:slack_send_message', ...]
 The adapter preserves MCP annotations (`readOnlyHint`, `destructiveHint`,
 `costHint`) as `SelectableItem.side_effects` / `cost_hint` / tags, so the
 router can score them naturally — and so you can apply
-[negative routing](https://github.com/dgenio/contextweaver/issues/112) and
-[toolset gating](https://github.com/dgenio/contextweaver/issues/22) without
-extra plumbing. See the [FastMCP adapter source](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/adapters/fastmcp.py)
+negative routing (`Router.route(..., exclude_ids=..., exclude_tags=...)`)
+and catalog-level toolset gating without extra plumbing. See the [FastMCP adapter source](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/adapters/fastmcp.py)
 for the full mapping table.
 
 > Annotations are server-declared hints, not security controls. See the

@@ -208,8 +208,7 @@ addressable via the
   on construction; you can also build an `interpret`-phase prompt
   per-hand-off to keep the new agent oriented without blowing tokens.
 - **Strict / seeded / adaptive modes** — `ProfileConfig` lets you fix a
-  deterministic mode for production replays (see
-  [#45](https://github.com/dgenio/contextweaver/issues/45)).
+  deterministic mode for production replays.
 
 ## Troubleshooting
 
@@ -220,10 +219,9 @@ addressable via the
   the **same** `ContextManager` instance — a fresh one per agent loses
   the prior event log.
 - **Function-calling loop runs forever.** contextweaver doesn't decide
-  whether to call another function — the SDK does. Use the
-  [negative-routing](https://github.com/dgenio/contextweaver/issues/112)
-  `exclude_ids` parameter to prevent the router from re-recommending a
-  tool the agent just used.
+  whether to call another function — the SDK does. Use
+  `Router.route(..., exclude_ids=[...])` to prevent the router from
+  re-recommending a tool the agent just used.
 - **Token budget tuning.** Inspect `pack.stats` after each build; if
   `dropped_count` is high, increase the relevant phase budget. The
   defaults (`route=2000`, `call=3000`, `interpret=4000`, `answer=6000`)

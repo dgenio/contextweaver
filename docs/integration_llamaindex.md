@@ -191,9 +191,8 @@ the typical pattern is:
   `tool_result` items by default; expose them via
   `ResultEnvelope.facts` to build a per-session knowledge base.
 - **Custom retrieval backend** — register a BM25 / fuzzy retriever via
-  `engine_registry` (see issue
-  [#47](https://github.com/dgenio/contextweaver/issues/47)) when LlamaIndex
-  is already producing embeddings and you'd rather route on those.
+  `engine_registry` when LlamaIndex is already producing embeddings and
+  you'd rather route on those.
 
 ## Troubleshooting
 
@@ -208,8 +207,7 @@ the typical pattern is:
 - **The router skips a tool you know is relevant.** Check
   `result.scores` — TF-IDF on short descriptions can lose to keyword
   collisions. Add tags or tweak the description, or use
-  `context_hints=[...]` (see issue
-  [#116](https://github.com/dgenio/contextweaver/issues/116)).
+  `context_hints=[...]`.
 - **Budget overrun.** Inspect `pack.stats` after every build — the
   `dropped_reasons` map tells you exactly which stage rejected what.
 

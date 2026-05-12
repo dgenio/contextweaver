@@ -218,8 +218,7 @@ to the LLM, the wall-clock gain is usually 50 – 200 ms per turn.
 - **Custom phase budgets.** Tighten `Phase.answer` for fast responses,
   loosen `Phase.interpret` for long tool results.
 - **Strict / seeded modes.** Lock determinism for production replays
-  by passing a `ProfileConfig` with `mode=Mode.seeded` (see issue
-  [#45](https://github.com/dgenio/contextweaver/issues/45)).
+  by passing a `ProfileConfig` with `mode=Mode.seeded`.
 - **Async firewall summarisers.** If your summariser does network IO,
   wrap it as a `Summarizer` protocol implementation and feed it into
   `ContextManager(summarizer=...)`; the pipeline awaits at the right
@@ -232,8 +231,7 @@ to the LLM, the wall-clock gain is usually 50 – 200 ms per turn.
   scoring stage processes fewer candidates, or filter `event_log` to
   the current session window.
 - **Function-call loop.** Use `exclude_ids` on the next `router.route()`
-  so the model doesn't re-pick the function it just used (issue
-  [#112](https://github.com/dgenio/contextweaver/issues/112)).
+  so the model doesn't re-pick the function it just used.
 - **Async deadlock.** Always `await ctx_mgr.build(...)` inside Pipecat
   processors — calling `build_sync()` on a running event loop is fine
   in principle (the implementation doesn't block on IO), but mixing
