@@ -22,6 +22,8 @@ example:
 	python examples/mcp_adapter_demo.py
 	python examples/a2a_adapter_demo.py
 	python examples/langchain_memory_demo.py
+	python examples/cookbook/byot_recipe.py
+	python examples/cookbook/firewall_drilldown_recipe.py
 
 demo:
 	python -m contextweaver demo

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Framework integration guides** for v0.6 (#77, #78, #79, #80).
+  New pages under `docs/`: `integration_llamaindex.md`,
+  `integration_langchain.md` (covers LangChain + LangGraph),
+  `integration_openai_adk.md`, `integration_google_adk.md`, and
+  `integration_pipecat.md`.  Each follows the existing
+  `integration_mcp.md` / `integration_a2a.md` template (architecture
+  diagram, minimal wiring, advanced patterns, troubleshooting) and uses
+  the actual `ContextManager.ingest_tool_result_sync(tool_call_id, ...)`
+  / `Router.route(...)` APIs throughout.  `README.md`'s two Framework
+  Integrations tables are updated to link the new guides; the FAQ
+  framework question is rewritten to match.
+- **`docs/interop.md`** — "How contextweaver Fits" positioning page
+  (#89).  Includes the policy-vs-execution framing, a runtime boundary
+  ASCII diagram, a runtime interop matrix covering 10+ runtimes, three
+  minimal integration snippets (routing-only, firewall-only, full
+  pipeline), and an explicit non-goals section.
+- **`docs/cookbook.md` + `examples/cookbook/`** — integration cookbook
+  (#105) with four recipes: FastMCP routing, A2A multi-agent session,
+  bring-your-own-tools, and firewall + drilldown.  Two new runnable
+  scripts (`examples/cookbook/byot_recipe.py`,
+  `examples/cookbook/firewall_drilldown_recipe.py`) are added to
+  `make example`; the FastMCP and A2A recipes link to the existing
+  `examples/fastmcp_adapter_demo.py` and `examples/a2a_adapter_demo.py`.
+- **`mkdocs.yml` nav** — adds top-level "How contextweaver Fits" and
+  "Cookbook" entries plus five new framework guides under the existing
+  "Guides" section, and surfaces the existing `troubleshooting.md` in
+  the nav.
+
 ## [0.3.0] - 2026-05-11
 
 ### Added

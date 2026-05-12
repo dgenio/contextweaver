@@ -63,11 +63,19 @@ nav:
   - Home: index.md
   - Quickstart: quickstart.md
   - Concepts: concepts.md
+  - How contextweaver Fits: interop.md
+  - Cookbook: cookbook.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md
       - MCP Integration: integration_mcp.md
       - A2A Integration: integration_a2a.md
+      - LlamaIndex: integration_llamaindex.md
+      - LangChain + LangGraph: integration_langchain.md
+      - OpenAI Agents SDK: integration_openai_adk.md
+      - Google ADK / Vertex AI: integration_google_adk.md
+      - Pipecat: integration_pipecat.md
   - Architecture: architecture.md
+  - Troubleshooting: troubleshooting.md
   - API Reference: reference/
 
 exclude_docs: |

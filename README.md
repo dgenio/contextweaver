@@ -181,14 +181,20 @@ The runtime loop example demonstrates:
 
 ## Framework Integrations
 
+Looking for "where does contextweaver fit alongside my runtime?" — start with the
+[How contextweaver Fits](docs/interop.md) positioning page, then jump into the
+[Cookbook](docs/cookbook.md) for copy-paste recipes.
+
 | Framework | Guide | Use Case |
 |---|---|---|
 | MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security note](docs/integration_mcp.md#security-considerations) |
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| LlamaIndex | Guide (v0.2) | RAG + tools with budget control |
-| OpenAI Agents SDK | Guide (v0.2) | Function-calling agents with routing |
-| Google ADK | Guide (v0.2) | Gemini tool-use with context budgets |
-| LangChain / LangGraph | Guide (v0.2) | Chain + graph agents with firewall |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
 
 ---
 
@@ -296,10 +302,12 @@ contextweaver works with any LLM provider and any agent framework:
 |---|---|---|
 | MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| LlamaIndex | Guide (v0.2) | RAG + tools with budget control |
-| OpenAI Agents SDK | Guide (v0.2) | Function-calling agents with routing |
-| Google ADK | Guide (v0.2) | Gemini tool-use with context budgets |
-| LangChain / LangGraph | Guide (v0.2) | Chain + graph agents with firewall |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -402,6 +410,8 @@ contextweaver replay --session session.json --phase answer
 | `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
 | `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
+| `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
+| `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
 
 ```bash
 make example   # run all examples
@@ -426,9 +436,16 @@ Inspect `pack.stats` (a `BuildStats` object) after every `build_sync()` / `build
 
 **Q: Does this work with [framework X]?**
 Yes, contextweaver is framework-agnostic — it compiles context; you send `pack.prompt`
-to any LLM or framework.
-See [integration guides](docs/) for MCP and A2A; LlamaIndex, LangChain, OpenAI Agents
-SDK, and Google ADK guides are in progress.
+to any LLM or framework. See dedicated guides for
+[MCP](docs/integration_mcp.md),
+[A2A](docs/integration_a2a.md),
+[LlamaIndex](docs/integration_llamaindex.md),
+[LangChain + LangGraph](docs/integration_langchain.md),
+[OpenAI Agents SDK](docs/integration_openai_adk.md),
+[Google ADK / Vertex AI](docs/integration_google_adk.md), and
+[Pipecat](docs/integration_pipecat.md).  If your runtime isn't listed, the
+[bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
+is the canonical starting point.
 
 **Q: What's the performance overhead?**
 Typically 10–50 ms for a context build (depends on event log size and deduplication).
