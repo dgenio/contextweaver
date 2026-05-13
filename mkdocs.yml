@@ -65,6 +65,7 @@ nav:
   - Concepts: concepts.md
   - How contextweaver Fits: interop.md
   - Cookbook: cookbook.md
+  - Gateway Spec: gateway_spec.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md
       - MCP Integration: integration_mcp.md

@@ -66,6 +66,14 @@ Consolidating all serialization into `serde.py` removes encapsulation. Removing 
 
 `types.py`, `envelope.py`, `config.py`, `serde.py`, and `exceptions.py` are pure data — no I/O, no side effects. Adding I/O (file reads, network calls, logging) to these modules breaks the layered architecture.
 
+### Do not put schemas on `ChoiceCard`
+
+`ChoiceCard` (`envelope.py:134`) carries the `has_schema: bool` flag and never the schema itself. Embedding `args_schema` or `output_schema` (in any form, including stringified or nested in `tags`) regresses the constant-context-cost property of the gateway surface. Agents that need the full schema call the `tool_hydrate(tool_id)` meta-tool (proxy) or the gateway's `tool_execute`, which hydrates internally; both ultimately route to the `Catalog.hydrate` primitive in `routing/catalog.py`. See [`docs/gateway_spec.md`](../gateway_spec.md) §2 and §4.
+
+### Do not bypass canonical `tool_id` round-trip
+
+Adapters MUST emit `tool_id` values that round-trip through the canonical `parse_tool_id` / `format_tool_id` helpers (landing under [#29](https://github.com/dgenio/contextweaver/issues/29)). Hand-formatted ids like the legacy `f"mcp:{name}"` form will not survive the cutover described in [`docs/gateway_spec.md`](../gateway_spec.md) §1.7 and are a review blocker once those helpers ship.
+
 ## Safe vs Unsafe Simplifications
 
 | Change | Safe? | Why |
