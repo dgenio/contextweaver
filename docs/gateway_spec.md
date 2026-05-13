@@ -59,7 +59,7 @@ Total `tool_id` length: ≤ 240 characters.
 |---|---|---|---|
 | `namespace` | Inferred from upstream tool name via `infer_namespace` (`adapters/mcp.py:24`) or upstream `server_name` if available. | Yes | Server restart, version bump within the same server identity. |
 | `name` | Upstream tool name, derived per separator type (see §1.4). Dot/slash separators are stripped from `name` (the namespace field carries the prefix); underscore separators and the `mcp` fallback preserve the upstream value verbatim, because underscores can appear inside the upstream name itself and stripping would lose the original. | Yes | Description-only updates. |
-| `version` | Upstream `_meta.version` or equivalent, if declared. | No | The lifetime of one upstream-declared semver. |
+| `version` | Upstream `_meta.version` or equivalent, if declared. | No | The lifetime of one upstream-declared version string. |
 | `hash8` | First 8 hex chars of `sha256` over the canonical input-schema shape (see §1.3). | No, but **required** when `version` is absent. | Description-only updates; changes whenever input-schema shape changes. |
 
 ### 1.3 Hash input (canonical form)
@@ -83,10 +83,18 @@ def _canonical_shape(input_schema: dict[str, object]) -> str:
         separators=(",", ":"),
     )
 
-def _hash8(name: str, input_schema: dict[str, object]) -> str:
-    canonical = name + "\n" + _canonical_shape(input_schema)
+def _hash8(upstream_name: str, input_schema: dict[str, object]) -> str:
+    canonical = upstream_name + "\n" + _canonical_shape(input_schema)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
 ```
+
+The `upstream_name` input is the original tool name as reported by the
+upstream server, *before* any namespace stripping in §1.2. Including
+the upstream name (not the derived `name` field of §1.2) ensures that
+two upstream tools sharing an input-schema shape but originating in
+different namespaces — for example `github.create_issue` and
+`gitlab.create_issue`, both reduced to `name=create_issue` after
+de-prefixing — still produce distinct `hash8` values.
 
 `hashlib.sha256` is stdlib; no new core dependency is introduced.
 [`rfc8785`](https://pypi.org/project/rfc8785/) (JSON Canonicalization
@@ -260,6 +268,10 @@ segment  = ( [a-z0-9] [a-z0-9_-]{0,63} ) | "*"
   break clients that already special-case it.
 - Segments are case-sensitive lowercase. Adapters are responsible for
   lower-casing namespaces during graph construction.
+- Root-level segments resolve to namespaces and additionally satisfy
+  §1.1's namespace grammar (must begin with `[a-z]`, not `[0-9]`).
+  Deeper segments (clusters, tool-name leaves) may start with a digit
+  when permitted by the addressed node.
 
 ### 3.3 Examples
 
@@ -297,27 +309,55 @@ materialised via hydration.** No `--full-schemas` opt-in is offered.
 
 ### 4.1 Transparent proxy (#13)
 
-The transparent proxy intercepts the upstream `tools/list` and replaces
-each tool definition with a stripped form:
+The transparent proxy publishes two surfaces:
 
-```jsonc
-{
-  "name": "<canonical tool_id>",
-  "description": "<truncated per §2.4>",
-  "inputSchema": { "type": "object" }      // sentinel, no properties
-}
+1. **Discovery channel** — it intercepts the upstream `tools/list` and
+   replaces each tool definition with a stripped form (so agents can
+   see the full catalog but pay constant context cost per tool):
+
+   ```jsonc
+   {
+     "name": "<canonical tool_id>",
+     "description": "<truncated per §2.4>",
+     "inputSchema": { "type": "object" }      // sentinel, no properties
+   }
+   ```
+
+2. **Invocation channel** — it exposes the same two meta-tools the
+   gateway exposes (§4.2): `tool_hydrate(tool_id)` for retrieving the
+   real schema and `tool_execute(tool_id, args)` for invoking a tool.
+
+The stripped entries in `tools/list` are **discovery-only**. Agents
+MUST invoke tools through `tool_execute(tool_id, args)`; the proxy
+looks up the upstream schema (via `Catalog.hydrate`), validates `args`,
+calls upstream, and returns the result. Calling a stripped tool
+directly by its name (= canonical `tool_id`) is not supported — and
+the sentinel `inputSchema` guarantees any client that strictly
+validates args against the declared schema would refuse to do so
+anyway.
+
+Agent flow:
+
+```
+tools/list                         → see stripped catalog (cards)
+[optional] tool_hydrate(tool_id)   → retrieve real schema
+tool_execute(tool_id, args)        → invoke upstream tool, get result
 ```
 
-Agents that need the real schema MUST call the meta-tool
-`tool_hydrate(tool_id)`, which returns the upstream schema verbatim. The
-proxy then forwards `tool_execute(tool_id, args)` to the upstream MCP
-server.
+Why this is "transparent": the proxy surfaces the *entire* upstream
+catalog (one card per tool) without filtering, ranking, or top-`k`
+truncation. The gateway (§4.2) shares the same invocation channel
+(`tool_hydrate` + `tool_execute`) but replaces the bulk discovery
+channel with `tool_browse(query|path)` for query/path-scoped lookups.
+Both modes converge on the same agent contract — only the discovery
+channel differs.
 
-Why this is acceptable for "transparent" proxies: even today,
-`Catalog.hydrate` (`routing/catalog.py`) already supplies the schema on
-demand; the proxy is exposing that same capability over MCP. Agent
-runtimes that cannot tolerate a hydrate step are a known limitation —
-they should use the gateway mode (§4.2) instead.
+A note on MCP `name` characters: the canonical `tool_id` may contain
+`:` and `#`. MCP treats `name` as an opaque string, but a strict
+downstream client MAY reject these characters. Proxy implementations
+MAY URL-encode the `tool_id` (`%3A`, `%23`) in the `name` field when
+they detect such a client; round-trip is preserved because §1.6's
+`parse_tool_id` / `format_tool_id` consume the decoded form.
 
 ### 4.2 Two-tool gateway (#28)
 
