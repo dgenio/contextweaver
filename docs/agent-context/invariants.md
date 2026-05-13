@@ -68,7 +68,7 @@ Consolidating all serialization into `serde.py` removes encapsulation. Removing 
 
 ### Do not put schemas on `ChoiceCard`
 
-`ChoiceCard` (`envelope.py:134`) carries the `has_schema: bool` flag and never the schema itself. Embedding `args_schema` or `output_schema` (in any form, including stringified or nested in `tags`) regresses the constant-context-cost property of the gateway surface. Agents that need the full schema call `Catalog.hydrate` (proxy) or the gateway's `tool_execute`, which hydrates internally. See [`docs/gateway_spec.md`](../gateway_spec.md) §2 and §4.
+`ChoiceCard` (`envelope.py:134`) carries the `has_schema: bool` flag and never the schema itself. Embedding `args_schema` or `output_schema` (in any form, including stringified or nested in `tags`) regresses the constant-context-cost property of the gateway surface. Agents that need the full schema call the `tool_hydrate(tool_id)` meta-tool (proxy) or the gateway's `tool_execute`, which hydrates internally; both ultimately route to the `Catalog.hydrate` primitive in `routing/catalog.py`. See [`docs/gateway_spec.md`](../gateway_spec.md) §2 and §4.
 
 ### Do not bypass canonical `tool_id` round-trip
 

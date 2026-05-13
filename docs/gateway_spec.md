@@ -58,7 +58,7 @@ Total `tool_id` length: ≤ 240 characters.
 | Field | Source | Required | Stable across |
 |---|---|---|---|
 | `namespace` | Inferred from upstream tool name via `infer_namespace` (`adapters/mcp.py:24`) or upstream `server_name` if available. | Yes | Server restart, version bump within the same server identity. |
-| `name` | Upstream tool name verbatim (after de-prefixing the namespace if `infer_namespace` produced one). | Yes | Description-only updates. |
+| `name` | Upstream tool name, derived per separator type (see §1.4). Dot/slash separators are stripped from `name` (the namespace field carries the prefix); underscore separators and the `mcp` fallback preserve the upstream value verbatim, because underscores can appear inside the upstream name itself and stripping would lose the original. | Yes | Description-only updates. |
 | `version` | Upstream `_meta.version` or equivalent, if declared. | No | The lifetime of one upstream-declared semver. |
 | `hash8` | First 8 hex chars of `sha256` over the canonical input-schema shape (see §1.3). | No, but **required** when `version` is absent. | Description-only updates; changes whenever input-schema shape changes. |
 
@@ -102,11 +102,23 @@ if a future ecosystem produces incompatible hashes, but is not required.
 | `read_file` | *(none)* | `mcp:read_file#7b2f0e14` |
 | `weather.get` | `2024-05` | `weather:get@2024-05` |
 
-The `slack_send_message` row is intentional: `infer_namespace` already
-extracts `slack` from a three-segment underscore name, and the upstream
-`name` is preserved verbatim. Adapters MUST NOT strip the namespace
-prefix from `name` once it has been used for the namespace field;
-round-tripping back to upstream requires the original.
+The four rows illustrate a single `name`-derivation rule keyed on the
+separator `infer_namespace` matched:
+
+- **Dot or slash** (`github.create_issue`, `weather.get`): the prefix
+  used as `namespace` is dropped from `name` because the separator
+  unambiguously splits the upstream string into two parts. The
+  original is reconstructable as `f"{namespace}{sep}{name}"` once the
+  adapter remembers which separator it matched.
+- **Underscore with ≥ 3 segments** (`slack_send_message`): the prefix
+  is **preserved** in `name`. Underscores can appear inside the
+  upstream name itself, so stripping them would discard information
+  the adapter needs to round-trip back to upstream.
+- **`mcp` fallback** (`read_file`): no prefix was inferred, so `name`
+  is the upstream value as-is.
+
+This is the only `name`-derivation rule the spec defines; §1.2's row
+is a short pointer to this section.
 
 ### 1.5 Collision behaviour
 
