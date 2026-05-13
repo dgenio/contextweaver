@@ -65,10 +65,12 @@ Total `tool_id` length: ≤ 240 characters.
 ### 1.3 Hash input (canonical form)
 
 When `version` is **absent**, adapters MUST emit `hash8`. The hash is
-computed over a deterministic canonical form of the input-schema *shape*
-(top-level property names + top-level `required` array — types and
-descriptions are deliberately excluded so that prose-only edits do not
-churn the id):
+computed over two inputs concatenated: **(a)** the *upstream tool name*
+(see §1.2 and the explanatory paragraph below) and **(b)** a
+deterministic canonical form of the input-schema *shape* (top-level
+property names + top-level `required` array — types and descriptions
+are deliberately excluded so that prose-only edits do not churn the
+id):
 
 ```python
 import hashlib
@@ -410,7 +412,7 @@ extras.
 ## 6. Invariants captured by this spec
 
 The two assertions below are added to
-[`docs/agent-context/invariants.md`](agent-context/invariants.md) when
+[`docs/agent-context/invariants.md`](https://github.com/dgenio/contextweaver/blob/main/docs/agent-context/invariants.md) when
 this spec lands and are review blockers for any future PR touching the
 adapter or routing surfaces:
 
@@ -435,5 +437,5 @@ adapter or routing surfaces:
   §1.1.
 - `routing/catalog.py` — `Catalog.hydrate`, the hydration primitive both
   §4.1 and §4.2 reuse.
-- [`docs/agent-context/invariants.md`](agent-context/invariants.md) —
+- [`docs/agent-context/invariants.md`](https://github.com/dgenio/contextweaver/blob/main/docs/agent-context/invariants.md) —
   destination of the assertions in §6.
