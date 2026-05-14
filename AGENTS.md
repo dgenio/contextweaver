@@ -20,7 +20,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | Path | Responsibility |
 |---|---|
 | `types.py` | Core dataclasses and enums: `SelectableItem`, `ContextItem`, `Phase`, `ItemKind`, `Sensitivity` |
-| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult` |
+| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
 | `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine` (store protocols re-exported from `store/protocols.py`) |
@@ -38,7 +38,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
-| `adapters/` | MCP, FastMCP, and A2A protocol adapters |
+| `adapters/` | MCP, FastMCP, A2A, and weaver-spec protocol adapters |
 | `__main__.py` | CLI: 7 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) |
 
 ## Pipelines (summary)
@@ -65,6 +65,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ContextPack` | Rendered prompt + stats from a context build |
 | `BuildStats` | What was kept, dropped, and why — diagnostic output of every build |
 | `ChoiceCard` | LLM-friendly compact card (never includes full schemas) |
+| `RoutingDecision` | Spec-aligned routing output (id, choice_cards, timestamp, selection); build via `RouteResult.to_routing_decision(...)` |
 | `ChoiceGraph` | Bounded DAG for routing, serializable, validated on load |
 | `GraphManifest` | Build-time metadata attached to every routing graph (hash, seed, engine versions, timestamp) |
 | `RouteTrace` | Always-populated structured audit of a routing call; per-step expansions opt-in via `debug=True` |

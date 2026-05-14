@@ -279,13 +279,24 @@ contextweaver supports both emerging agentic protocols out of the box:
 - Cross-agent session loading via `load_a2a_session_jsonl()`
 - A2A results stored in `ResultEnvelope` with facts and artifact handles
 
+**weaver-spec** — canonical contracts for the Weaver Stack (contextweaver,
+ChainWeaver, agent-kernel):
+
+- Lossless `to_weaver_*` / `from_weaver_*` round-trips for `SelectableItem`,
+  `ChoiceCard`, `RoutingDecision`, and `Frame` (via `ResultEnvelope`)
+- `weaver_contracts` is an opt-in dep — `pip install 'contextweaver[weaver-spec]'`
+- Validated in CI on every PR against the published JSON Schemas at
+  `https://weaver-spec.dev/contracts/v0/`
+
 > contextweaver is positioned to become the standard context management layer for AI agents.
-> Supporting MCP and A2A now means your codebase is future-proof as these protocols mature
-> and gain wider adoption.
+> Supporting MCP, A2A, and weaver-spec now means your codebase is future-proof as these
+> protocols mature and gain wider adoption.
 
 - [MCP Integration](docs/integration_mcp.md)
 - [A2A Integration](docs/integration_a2a.md)
+- [weaver-spec mapping](docs/weaver_spec_mapping.md)
 - [MCP Specification](https://modelcontextprotocol.io/)
+- [weaver-spec](https://github.com/dgenio/weaver-spec)
 
 ### 4. Framework Agnostic
 
@@ -330,6 +341,37 @@ contextweaver follows [Semantic Versioning](https://semver.org/):
 
 > Adopting a library is a long-term commitment. contextweaver's versioning policy ensures you
 > can upgrade safely, and the roadmap shows where it's headed.
+
+#### Weaver Spec Compatibility
+
+contextweaver implements `weaver_contracts >= 0.2.0, < 1.0` (canonical
+contracts for the Weaver Stack — see
+[weaver-spec](https://github.com/dgenio/weaver-spec)).
+
+| Invariant | Status | Where enforced |
+|---|---|---|
+| **I-03** — Routing presents bounded choices, not full schema catalogs | ✅ Satisfied | `ChoiceCard` strips `args_schema`; routing returns ≤ `top_k` cards. See [`src/contextweaver/routing/cards.py`](src/contextweaver/routing/cards.py) and [`docs/gateway_spec.md`](docs/gateway_spec.md). |
+| **I-05** — contextweaver receives Frames, not raw output | ✅ Satisfied via firewall | Tool outputs above `firewall_threshold` are stored out-of-band as `ArtifactRef`s; the LLM-facing surface is the `ResultEnvelope` (mapped to a spec `Frame` by [`adapters/weaver_contracts.py`](src/contextweaver/adapters/weaver_contracts.py)). |
+
+**Contract adapters** (`pip install 'contextweaver[weaver-spec]'`):
+
+```python
+from contextweaver.adapters.weaver_contracts import (
+    to_weaver_routing_decision,
+    from_weaver_routing_decision,
+    to_weaver_frame,
+    from_weaver_frame,
+)
+```
+
+Round-trips are lossless via a reserved `metadata["_contextweaver"]` payload;
+see [`docs/weaver_spec_mapping.md`](docs/weaver_spec_mapping.md) for the full
+mapping table.
+
+**CI conformance** — every PR runs `scripts/weaver_spec_conformance.py`,
+which does both a Python round-trip (`cw → spec → cw == cw`) and JSON-Schema
+validation against the published schemas at
+`https://weaver-spec.dev/contracts/v0/`. Run locally with `make weaver-conformance`.
 
 ### 6. Roadmap & Community
 

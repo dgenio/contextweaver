@@ -32,6 +32,7 @@ from contextweaver.envelope import (
     ContextPack,
     HydrationResult,
     ResultEnvelope,
+    RoutingDecision,
 )
 from contextweaver.exceptions import (
     ArtifactNotFoundError,
@@ -128,6 +129,7 @@ __all__ = [
     "ItemKind",
     "Phase",
     "ResultEnvelope",
+    "RoutingDecision",
     "SelectableItem",
     "Sensitivity",
     "ToolCard",
