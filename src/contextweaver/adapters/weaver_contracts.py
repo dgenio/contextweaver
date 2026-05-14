@@ -98,6 +98,13 @@ def to_weaver_selectable_item(item: SelectableItem) -> _ws_types.SelectableItem:
         CatalogError: When ``weaver_contracts`` is not installed.
     """
     ws = _import_weaver_contracts()
+    metadata = dict(item.metadata)
+    if _CW_META_KEY in metadata:
+        raise CatalogError(
+            f"SelectableItem.metadata uses the reserved adapter key {_CW_META_KEY!r}; "
+            "rename it before calling to_weaver_selectable_item() so the round-trip "
+            "stays lossless."
+        )
     cw_extras: dict[str, Any] = {
         "kind": item.kind,
         "tags": list(item.tags),
@@ -109,7 +116,6 @@ def to_weaver_selectable_item(item: SelectableItem) -> _ws_types.SelectableItem:
         "side_effects": item.side_effects,
         "cost_hint": item.cost_hint,
     }
-    metadata = dict(item.metadata)
     metadata[_CW_META_KEY] = cw_extras
     capability_id = f"{item.namespace}:{item.name}" if item.namespace else item.id
     spec_item: Any = ws.SelectableItem(
@@ -296,8 +302,11 @@ def to_weaver_routing_decision(decision: RoutingDecision) -> _ws_types.RoutingDe
 
     The contextweaver ``choice_cards`` list (a flat list of 1:1 cards) is
     grouped into a single spec ``ChoiceCard`` menu whose ``items`` carry the
-    individual options.  Round-trip is lossless via
-    :func:`from_weaver_routing_decision`.
+    individual options.  The contextweaver-side ``selected_card_id`` (which
+    refers to a card *within* the flat list) is remapped to the synthetic
+    menu's ``id`` whenever the underlying item is present in the menu, so
+    downstream consumers can resolve which menu was selected.  Round-trip is
+    lossless via :func:`from_weaver_routing_decision`.
 
     Raises:
         CatalogError: When ``decision.choice_cards`` is empty (the spec
@@ -306,13 +315,23 @@ def to_weaver_routing_decision(decision: RoutingDecision) -> _ws_types.RoutingDe
     if not decision.choice_cards:
         raise CatalogError("weaver_contracts.RoutingDecision requires at least one ChoiceCard")
     ws = _import_weaver_contracts()
-    spec_menu = to_weaver_choice_cards(decision.choice_cards, menu_id=f"{decision.id}:menu")
+    menu_id = f"{decision.id}:menu"
+    spec_menu = to_weaver_choice_cards(decision.choice_cards, menu_id=menu_id)
+    # ``decision.selected_card_id`` refers to a contextweaver 1:1 card by ID;
+    # the spec's ``selected_card_id`` references one of the grouped spec menus.
+    # Remap to the synthetic menu's ID when the selected card is present in
+    # the flat list — otherwise leave it untouched (e.g. when the caller has
+    # already supplied a spec-shaped menu ID).
+    cw_card_ids = {card.id for card in decision.choice_cards}
+    spec_selected_card_id = decision.selected_card_id
+    if spec_selected_card_id is not None and spec_selected_card_id in cw_card_ids:
+        spec_selected_card_id = menu_id
     spec_decision: Any = ws.RoutingDecision(
         id=decision.id,
         choice_cards=[spec_menu],
         timestamp=_ensure_aware(decision.timestamp),
         selected_item_id=decision.selected_item_id,
-        selected_card_id=decision.selected_card_id,
+        selected_card_id=spec_selected_card_id,
         context_summary=decision.context_summary,
         metadata=dict(decision.metadata),
     )
@@ -325,17 +344,35 @@ def from_weaver_routing_decision(
     """Convert a spec ``RoutingDecision`` back to the contextweaver form.
 
     Flattens options from every spec menu in ``spec_decision.choice_cards``
-    into a single list of contextweaver :class:`ChoiceCard` instances.
+    into a single list of contextweaver :class:`ChoiceCard` instances.  When
+    ``selected_card_id`` references one of those synthetic menus (the
+    ``f"{decision.id}:menu"`` produced by :func:`to_weaver_routing_decision`),
+    it is remapped back to the contextweaver card that contains the selected
+    item so the round-trip is lossless.
     """
     cw_cards: list[ChoiceCard] = []
+    menu_ids_seen: set[str] = set()
     for spec_menu in spec_decision.choice_cards:
+        menu_ids_seen.add(spec_menu.id)
         cw_cards.extend(from_weaver_choice_card(spec_menu))
+    selected_card_id = spec_decision.selected_card_id
+    if (
+        selected_card_id is not None
+        and selected_card_id in menu_ids_seen
+        and spec_decision.selected_item_id is not None
+    ):
+        # Reverse the to_weaver_routing_decision remap: prefer the CW card
+        # whose ID matches the selected item.
+        for card in cw_cards:
+            if card.id == spec_decision.selected_item_id:
+                selected_card_id = card.id
+                break
     return RoutingDecision(
         id=spec_decision.id,
         choice_cards=cw_cards,
         timestamp=_ensure_aware(spec_decision.timestamp),
         selected_item_id=spec_decision.selected_item_id,
-        selected_card_id=spec_decision.selected_card_id,
+        selected_card_id=selected_card_id,
         context_summary=spec_decision.context_summary,
         metadata=dict(getattr(spec_decision, "metadata", None) or {}),
     )
@@ -417,6 +454,7 @@ def from_weaver_frame(spec_frame: _ws_types.Frame) -> ResultEnvelope:
     """
     raw_meta = getattr(spec_frame, "metadata", None) or {}
     metadata = dict(raw_meta)
+    cw_origin = _CW_META_KEY in metadata
     cw_extras = metadata.pop(_CW_META_KEY, None) or {}
     cw_artifacts_data = cw_extras.get("artifacts", [])
     artifacts: list[ArtifactRef]
@@ -436,11 +474,17 @@ def from_weaver_frame(spec_frame: _ws_types.Frame) -> ResultEnvelope:
     provenance = dict(cw_extras.get("provenance", {}))
     if spec_frame.redaction_notes:
         provenance.setdefault("redaction_notes", spec_frame.redaction_notes)
+    # Only reverse the ``"(no summary)"`` sentinel when ``_contextweaver``
+    # metadata proves the Frame was produced by ``to_weaver_frame``.  Foreign
+    # producers might legitimately use that exact string and we must not lose
+    # their data.
     original_summary = cw_extras.get("original_summary")
     if isinstance(original_summary, str):
         summary = original_summary
+    elif cw_origin and spec_frame.summary == "(no summary)":
+        summary = ""
     else:
-        summary = spec_frame.summary if spec_frame.summary != "(no summary)" else ""
+        summary = spec_frame.summary
     return ResultEnvelope(
         status=status,
         summary=summary,

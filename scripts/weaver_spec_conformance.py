@@ -190,10 +190,9 @@ def _validate_against_schema(payload: dict[str, Any], schema_path: Path) -> None
     import jsonschema  # noqa: PLC0415  (optional dep, lazy)
 
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    # Use the local-file validator to avoid network resolution of $ref.
-    base_uri = schema_path.parent.resolve().as_uri() + "/"
 
-    # Resolve sibling $ref schemas locally.
+    # Resolve sibling $ref schemas locally so the validator never hits the
+    # network for the spec's internal cross-references.
     try:
         from referencing import Registry, Resource  # noqa: PLC0415
         from referencing.jsonschema import DRAFT202012  # noqa: PLC0415
@@ -216,6 +215,18 @@ def _validate_against_schema(payload: dict[str, Any], schema_path: Path) -> None
 
 
 def _check_schemas(schemas_dir: Path) -> None:
+    """Validate adapter-produced spec payloads against weaver-spec JSON Schemas.
+
+    Note: only the adapter's ``to_weaver_*`` output is validated. The
+    contextweaver-side :meth:`RoutingDecision.to_dict` produces a
+    *contextweaver-shaped* document (1:1 cards in ``choice_cards``), not a
+    spec-shaped one — see ``docs/weaver_spec_mapping.md``. The corresponding
+    contract claim in the docstring of
+    :class:`contextweaver.envelope.RoutingDecision` directs callers through
+    ``to_weaver_routing_decision()`` when they need schema-valid JSON, so the
+    gate intentionally does not run the spec schema against
+    ``to_dict()`` output.
+    """
     # SelectableItem
     spec_item = to_weaver_selectable_item(_sample_selectable_item())
     _validate_against_schema(

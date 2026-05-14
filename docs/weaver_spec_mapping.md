@@ -16,8 +16,12 @@ pip install 'contextweaver[weaver-spec]'
 
 contextweaver tracks `weaver_contracts >= 0.2.0, < 1.0` (any MAJOR=0 release;
 the spec promises no breaking changes within a major version). The CI step
-`weaver-spec conformance` exercises the adapter against the published schemas
-at `https://weaver-spec.dev/contracts/v0/` on every PR.
+`weaver-spec conformance` fetches the JSON Schemas at job time from
+`https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/`
+(the source the gate uses) and exercises the adapter against them on every
+PR. The same documents are also published at
+`https://weaver-spec.dev/contracts/v0/` — both URLs serve the same content;
+the raw GitHub URL is the one the gate actually reads.
 
 ## Name-clash note
 

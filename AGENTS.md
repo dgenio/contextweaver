@@ -65,7 +65,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ContextPack` | Rendered prompt + stats from a context build |
 | `BuildStats` | What was kept, dropped, and why — diagnostic output of every build |
 | `ChoiceCard` | LLM-friendly compact card (never includes full schemas) |
-| `RoutingDecision` | Spec-aligned routing output (id, choice_cards, timestamp, selection); build via `RouteResult.to_routing_decision(...)` |
+| `RoutingDecision` | Routing output shaped for weaver-spec interop (id, choice_cards, timestamp, selection). `choice_cards` is a flat list of CW 1:1 cards; for schema-valid spec JSON, go through `adapters.weaver_contracts.to_weaver_routing_decision()`. Build with `RouteResult.to_routing_decision(...)`. |
 | `ChoiceGraph` | Bounded DAG for routing, serializable, validated on load |
 | `GraphManifest` | Build-time metadata attached to every routing graph (hash, seed, engine versions, timestamp) |
 | `RouteTrace` | Always-populated structured audit of a routing call; per-step expansions opt-in via `debug=True` |
@@ -95,6 +95,7 @@ make docs-serve  # mkdocs serve (live preview)
 make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
+make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter (CI gating, fetches schemas)
 ```
 
 Run `pre-commit install` once after cloning to activate git hooks

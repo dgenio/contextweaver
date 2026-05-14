@@ -162,7 +162,14 @@ class RouteResult:
         if not self.candidate_items:
             raise RouteError("RoutingDecision requires at least one candidate item")
         score_map = dict(zip(self.candidate_ids, self.scores, strict=False))
-        cards = make_choice_cards(self.candidate_items, scores=score_map)
+        # ``make_choice_cards`` defaults to ``max_choices=20``; pass an explicit
+        # cap so converting a router configured with ``top_k > 20`` does not
+        # silently truncate candidates (PR #201 review).
+        cards = make_choice_cards(
+            self.candidate_items,
+            scores=score_map,
+            max_choices=max(len(self.candidate_items), 1),
+        )
         resolved_card_id = selected_card_id
         if resolved_card_id is None and selected_item_id is not None:
             for card in cards:
@@ -185,7 +192,18 @@ class RouteResult:
             cw_meta["context_hints"] = list(self.context_hints)
         if self.clarifying_question is not None:
             cw_meta["clarifying_question"] = self.clarifying_question
-        meta.setdefault("contextweaver", cw_meta)
+        # Merge router-supplied diagnostics into ``metadata["contextweaver"]``
+        # rather than ``setdefault``: if the caller already populated that key
+        # with their own dict, ``setdefault`` would silently drop our
+        # diagnostics (PR #201 review).
+        existing = meta.get("contextweaver")
+        if isinstance(existing, dict):
+            merged = dict(existing)
+            for key, value in cw_meta.items():
+                merged.setdefault(key, value)
+            meta["contextweaver"] = merged
+        else:
+            meta["contextweaver"] = cw_meta
         return RoutingDecision(
             id=decision_id if decision_id is not None else f"rd-{uuid.uuid4()}",
             choice_cards=cards,

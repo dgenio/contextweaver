@@ -10,10 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Weaver-spec interop** (#143, #145, #151). New
-  `RoutingDecision` dataclass in `contextweaver.envelope` matching the
-  `weaver_contracts` contract shape (id, choice_cards, timestamp,
-  selected_item_id, selected_card_id, context_summary, metadata) with
-  `to_dict`/`from_dict` and ISO 8601 timestamp serialization. New
+  `RoutingDecision` dataclass in `contextweaver.envelope` mirroring the
+  field set of the `weaver_contracts.RoutingDecision` contract (id,
+  choice_cards, timestamp, selected_item_id, selected_card_id,
+  context_summary, metadata) with `to_dict`/`from_dict` and ISO 8601
+  timestamp serialization. Note that `choice_cards` stores a flat list of
+  contextweaver 1:1 `ChoiceCard` instances — schema-valid spec JSON requires
+  going through `adapters.weaver_contracts.to_weaver_routing_decision()`,
+  which groups the cards into a single spec `ChoiceCard` menu. New
   `RouteResult.to_routing_decision(...)` helper builds a spec-aligned decision
   from a routing call (preserving router diagnostics under
   `metadata["contextweaver"]`). New

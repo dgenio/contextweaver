@@ -221,12 +221,21 @@ class HydrationResult:
 
 @dataclass
 class RoutingDecision:
-    """Structured, spec-aligned result of a routing call.
+    """Structured result of a routing call, shaped for weaver-spec interop.
 
-    Mirrors the ``RoutingDecision`` contract from
-    `weaver-spec <https://github.com/dgenio/weaver-spec>`_: a stable decision
-    record bundling the ``ChoiceCard`` menu, an optional LLM selection, and
-    audit metadata.  Issue #151.
+    Mirrors the field set of the weaver-spec ``RoutingDecision`` contract
+    (`weaver-spec <https://github.com/dgenio/weaver-spec>`_) but stores the
+    options as a flat list of contextweaver 1:1 :class:`ChoiceCard` instances
+    rather than the spec's 1:N menu shape (each spec ``ChoiceCard`` carries an
+    ``items`` list of ``SelectableItem``).  Issue #151.
+
+    .. important::
+       :meth:`to_dict` produces a contextweaver-shaped JSON payload, **not**
+       a spec-compliant document.  For schema-valid output that round-trips
+       through ``weaver_contracts``, use
+       :func:`contextweaver.adapters.weaver_contracts.to_weaver_routing_decision`
+       and serialise its result with the standard ``dataclasses.asdict``
+       helper documented in ``docs/weaver_spec_mapping.md``.
 
     Distinct from :class:`~contextweaver.routing.router.RouteResult`, which is
     the internal beam-search output.  Use
@@ -237,7 +246,8 @@ class RoutingDecision:
         id: Unique identifier for this decision.  Non-empty.
         choice_cards: The bounded choices presented during the routing call.
             Typically the ``RouteResult.candidate_items`` rendered as
-            :class:`ChoiceCard` instances.
+            :class:`ChoiceCard` instances.  When mapped via the adapter the
+            full list is grouped into a single spec ``ChoiceCard`` menu.
         timestamp: Timezone-aware UTC timestamp of when the decision was
             created.  Serialised as ISO 8601.
         selected_item_id: Optional ID of the item the downstream LLM picked.
@@ -292,14 +302,18 @@ class RoutingDecision:
         """Deserialise from a JSON-compatible dict.
 
         ``timestamp`` may be a ``datetime`` instance or an ISO 8601 string.
-        Naive timestamps (no timezone) are assumed to be UTC.
+        The common RFC 3339 ``Z`` UTC suffix is normalised to ``+00:00`` so
+        payloads validated against the spec's ``date-time`` format parse on
+        Python 3.10 (the stdlib ``datetime.fromisoformat`` only learned to
+        accept ``Z`` in 3.11).  Naive timestamps are assumed to be UTC.
         """
         raw_ts = data.get("timestamp")
         ts: datetime
         if isinstance(raw_ts, datetime):
             ts = raw_ts
         elif isinstance(raw_ts, str):
-            ts = datetime.fromisoformat(raw_ts)
+            normalised = raw_ts[:-1] + "+00:00" if raw_ts.endswith("Z") else raw_ts
+            ts = datetime.fromisoformat(normalised)
         else:
             ts = datetime.now(timezone.utc)
         if ts.tzinfo is None:

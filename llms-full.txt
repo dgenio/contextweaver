@@ -313,8 +313,10 @@ ChainWeaver, agent-kernel):
 - Lossless `to_weaver_*` / `from_weaver_*` round-trips for `SelectableItem`,
   `ChoiceCard`, `RoutingDecision`, and `Frame` (via `ResultEnvelope`)
 - `weaver_contracts` is an opt-in dep — `pip install 'contextweaver[weaver-spec]'`
-- Validated in CI on every PR against the published JSON Schemas at
-  `https://weaver-spec.dev/contracts/v0/`
+- Validated in CI on every PR against the JSON Schemas at
+  `raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/`
+  (the source the gate fetches; the same documents are also published at
+  `https://weaver-spec.dev/contracts/v0/`)
 
 > contextweaver is positioned to become the standard context management layer for AI agents.
 > Supporting MCP, A2A, and weaver-spec now means your codebase is future-proof as these
@@ -379,7 +381,7 @@ contracts for the Weaver Stack — see
 | Invariant | Status | Where enforced |
 |---|---|---|
 | **I-03** — Routing presents bounded choices, not full schema catalogs | ✅ Satisfied | `ChoiceCard` strips `args_schema`; routing returns ≤ `top_k` cards. See [`src/contextweaver/routing/cards.py`](src/contextweaver/routing/cards.py) and [`docs/gateway_spec.md`](docs/gateway_spec.md). |
-| **I-05** — contextweaver receives Frames, not raw output | ✅ Satisfied via firewall | Tool outputs above `firewall_threshold` are stored out-of-band as `ArtifactRef`s; the LLM-facing surface is the `ResultEnvelope` (mapped to a spec `Frame` by [`adapters/weaver_contracts.py`](src/contextweaver/adapters/weaver_contracts.py)). |
+| **I-05** — contextweaver receives Frames, not raw output | ⚠️ Satisfied on the Frame adapter path | The canonical Frame-shaped ingestion lives on the spec adapter: tool outputs above `firewall_threshold` are stored out-of-band as `ArtifactRef`s and the LLM-facing `ResultEnvelope` maps to a spec `Frame` via [`adapters/weaver_contracts.py`](src/contextweaver/adapters/weaver_contracts.py). The legacy raw-output ingestion APIs (`ContextManager.ingest_tool_result(raw_output=...)`, `ingest_mcp_result(...)`) still exist for backwards compatibility; treat them as non-canonical for spec compliance. |
 
 **Contract adapters** (`pip install 'contextweaver[weaver-spec]'`):
 
@@ -398,8 +400,10 @@ mapping table.
 
 **CI conformance** — every PR runs `scripts/weaver_spec_conformance.py`,
 which does both a Python round-trip (`cw → spec → cw == cw`) and JSON-Schema
-validation against the published schemas at
-`https://weaver-spec.dev/contracts/v0/`. Run locally with `make weaver-conformance`.
+validation. CI fetches the schemas from
+`raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/`, which
+mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
+(same content, different host). Run locally with `make weaver-conformance`.
 
 ### 6. Roadmap & Community
 
@@ -1663,6 +1667,8 @@ make docs-serve  # mkdocs serve (live preview)
 make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
+make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
+                         # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
 
 `make ci` runs all six targets in sequence. It is the single validation gate.

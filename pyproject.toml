@@ -49,7 +49,9 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
     "weaver_contracts>=0.2,<1",
-    "jsonschema>=4.0",
+    # 4.18 ships ``referencing`` — the conformance script's local $ref
+    # resolver depends on it (PR #201 review).
+    "jsonschema>=4.18",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -106,6 +108,7 @@ all = [
     "contextweaver[ann]",
     "contextweaver[otel]",
     "contextweaver[graph]",
+    "contextweaver[weaver-spec]",
 ]
 
 [project.scripts]

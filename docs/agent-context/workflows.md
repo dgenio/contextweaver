@@ -15,6 +15,8 @@ make docs-serve  # mkdocs serve (live preview)
 make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
+make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
+                         # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
 
 `make ci` runs all six targets in sequence. It is the single validation gate.
