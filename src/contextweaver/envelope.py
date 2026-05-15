@@ -2,7 +2,8 @@
 
 Contains the "output" dataclasses produced by the Context Engine and the
 Routing Engine: :class:`ResultEnvelope`, :class:`BuildStats`,
-:class:`ContextPack`, :class:`ChoiceCard`, and :class:`HydrationResult`.
+:class:`ContextPack`, :class:`ChoiceCard`, :class:`HydrationResult`, and
+:class:`RoutingDecision`.
 
 Every dataclass implements :meth:`to_dict` / :meth:`from_dict` for easy
 serialisation to JSON-compatible dicts.
@@ -11,6 +12,7 @@ serialisation to JSON-compatible dicts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from contextweaver.types import ArtifactRef, Phase, SelectableItem, ViewSpec
@@ -214,4 +216,114 @@ class HydrationResult:
             args_schema=dict(data.get("args_schema", {})),
             examples=list(data.get("examples", [])),
             constraints=dict(data.get("constraints", {})),
+        )
+
+
+@dataclass
+class RoutingDecision:
+    """Structured result of a routing call, shaped for weaver-spec interop.
+
+    Mirrors the field set of the weaver-spec ``RoutingDecision`` contract
+    (`weaver-spec <https://github.com/dgenio/weaver-spec>`_) but stores the
+    options as a flat list of contextweaver 1:1 :class:`ChoiceCard` instances
+    rather than the spec's 1:N menu shape (each spec ``ChoiceCard`` carries an
+    ``items`` list of ``SelectableItem``).  Issue #151.
+
+    .. important::
+       :meth:`to_dict` produces a contextweaver-shaped JSON payload, **not**
+       a spec-compliant document.  For schema-valid output that round-trips
+       through ``weaver_contracts``, use
+       :func:`contextweaver.adapters.weaver_contracts.to_weaver_routing_decision`
+       and serialise its result with the standard ``dataclasses.asdict``
+       helper documented in ``docs/weaver_spec_mapping.md``.
+
+    Distinct from :class:`~contextweaver.routing.router.RouteResult`, which is
+    the internal beam-search output.  Use
+    :meth:`~contextweaver.routing.router.RouteResult.to_routing_decision` to
+    build a ``RoutingDecision`` from a routing call.
+
+    Attributes:
+        id: Unique identifier for this decision.  Non-empty.
+        choice_cards: The bounded choices presented during the routing call.
+            Typically the ``RouteResult.candidate_items`` rendered as
+            :class:`ChoiceCard` instances.  When mapped via the adapter the
+            full list is grouped into a single spec ``ChoiceCard`` menu.
+        timestamp: Timezone-aware UTC timestamp of when the decision was
+            created.  Serialised as ISO 8601.
+        selected_item_id: Optional ID of the item the downstream LLM picked.
+            ``None`` while the response is pending.
+        selected_card_id: Optional ID of the :class:`ChoiceCard` that
+            contained the selected item.
+        context_summary: Optional brief summary of the context that drove
+            this routing decision.  For debugging and audit.
+        metadata: Optional implementation-specific metadata.  Use the
+            ``"_contextweaver"`` namespace for CW-specific fields when
+            interoperating with the weaver-spec adapter.
+
+    Example:
+        >>> from datetime import datetime, timezone
+        >>> from contextweaver.envelope import RoutingDecision, ChoiceCard
+        >>> card = ChoiceCard(id="t1", name="search", description="Search")
+        >>> rd = RoutingDecision(
+        ...     id="dec-1",
+        ...     choice_cards=[card],
+        ...     timestamp=datetime(2026, 5, 14, tzinfo=timezone.utc),
+        ... )
+        >>> rd.id
+        'dec-1'
+    """
+
+    id: str
+    choice_cards: list[ChoiceCard]
+    timestamp: datetime
+    selected_item_id: str | None = None
+    selected_card_id: str | None = None
+    context_summary: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict (ISO 8601 timestamp)."""
+        d: dict[str, Any] = {
+            "id": self.id,
+            "choice_cards": [c.to_dict() for c in self.choice_cards],
+            "timestamp": self.timestamp.isoformat(),
+            "metadata": dict(self.metadata),
+        }
+        if self.selected_item_id is not None:
+            d["selected_item_id"] = self.selected_item_id
+        if self.selected_card_id is not None:
+            d["selected_card_id"] = self.selected_card_id
+        if self.context_summary is not None:
+            d["context_summary"] = self.context_summary
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RoutingDecision:
+        """Deserialise from a JSON-compatible dict.
+
+        ``timestamp`` may be a ``datetime`` instance or an ISO 8601 string.
+        The common RFC 3339 ``Z`` UTC suffix is normalised to ``+00:00`` so
+        payloads validated against the spec's ``date-time`` format parse on
+        Python 3.10 (the stdlib ``datetime.fromisoformat`` only learned to
+        accept ``Z`` in 3.11).  Naive timestamps are assumed to be UTC.
+        """
+        raw_ts = data.get("timestamp")
+        ts: datetime
+        if isinstance(raw_ts, datetime):
+            ts = raw_ts
+        elif isinstance(raw_ts, str):
+            normalised = raw_ts[:-1] + "+00:00" if raw_ts.endswith("Z") else raw_ts
+            ts = datetime.fromisoformat(normalised)
+        else:
+            ts = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return cls(
+            id=data["id"],
+            choice_cards=[ChoiceCard.from_dict(c) for c in data.get("choice_cards", [])],
+            timestamp=ts,
+            selected_item_id=data.get("selected_item_id"),
+            selected_card_id=data.get("selected_card_id"),
+            context_summary=data.get("context_summary"),
+            metadata=dict(data.get("metadata", {})),
         )

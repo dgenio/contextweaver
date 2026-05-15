@@ -18,6 +18,8 @@ make scorecard   # render benchmarks/scorecard.md from benchmarks/results/latest
 make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits non-zero on drift)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
+make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
+                         # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
 
 `make ci` runs all six targets in sequence. It is the single validation gate.

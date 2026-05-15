@@ -188,3 +188,49 @@ def test_custom_extractor_error_falls_back() -> None:
     assert env is not None
     assert env.status == "partial"
     assert env.facts == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #190 — content-addressed idempotency
+# ---------------------------------------------------------------------------
+
+
+def test_apply_firewall_sets_content_hash_on_returned_ref() -> None:
+    """The artifact ref returned from the first firewall pass carries a sha256 hash."""
+    import hashlib
+
+    raw = "raw tool output that should be stored verbatim"
+    item = ContextItem(id="r-hash", kind=ItemKind.tool_result, text=raw)
+    store = InMemoryArtifactStore()
+    processed, env = apply_firewall(item, store)
+    expected = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    assert processed.artifact_ref is not None
+    assert processed.artifact_ref.content_hash == expected
+
+
+def test_apply_firewall_is_idempotent_on_already_processed_items() -> None:
+    """Issue #190: re-running the firewall must not overwrite raw bytes.
+
+    The bug: ``apply_firewall`` would re-fire on items whose ``text``
+    had already been replaced with the summary, storing the summary
+    under the same handle and destroying the original raw payload.
+    """
+    raw = "x" * 10_000
+    item = ContextItem(id="r190", kind=ItemKind.tool_result, text=raw)
+    store = InMemoryArtifactStore()
+
+    # First pass — fires.
+    processed_a, env_a = apply_firewall(item, store)
+    assert env_a is not None
+    assert processed_a.artifact_ref is not None
+    handle = processed_a.artifact_ref.handle
+    raw_after_first = store.get(handle)
+
+    # Second pass on the post-firewall item — must be a no-op.
+    processed_b, env_b = apply_firewall(processed_a, store)
+    assert env_b is None  # nothing to compact a second time
+    raw_after_second = store.get(handle)
+
+    # Raw bytes preserved across the second pass.
+    assert raw_after_first == raw_after_second
+    assert raw_after_first.decode("utf-8") == raw

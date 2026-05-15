@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+import pytest
+
 from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
     ContextPack,
     ResultEnvelope,
+    RoutingDecision,
 )
 from contextweaver.types import ArtifactRef, Phase, ViewSpec
 
@@ -177,3 +182,320 @@ def test_choice_card_from_partial_dict() -> None:
     assert card.tags == []
     assert card.cost_hint == 0.0
     assert card.side_effects is False
+
+
+# ---------------------------------------------------------------------------
+# RoutingDecision (issue #151)
+# ---------------------------------------------------------------------------
+
+
+def test_routing_decision_defaults() -> None:
+    card = ChoiceCard(id="c1", name="n", description="d")
+    ts = datetime(2026, 5, 14, 12, 0, tzinfo=timezone.utc)
+    rd = RoutingDecision(id="rd-1", choice_cards=[card], timestamp=ts)
+    assert rd.id == "rd-1"
+    assert rd.choice_cards == [card]
+    assert rd.timestamp == ts
+    assert rd.selected_item_id is None
+    assert rd.selected_card_id is None
+    assert rd.context_summary is None
+    assert rd.metadata == {}
+
+
+def test_routing_decision_to_dict_omits_none_optionals() -> None:
+    card = ChoiceCard(id="c1", name="n", description="d")
+    ts = datetime(2026, 5, 14, tzinfo=timezone.utc)
+    rd = RoutingDecision(id="rd-1", choice_cards=[card], timestamp=ts)
+    d = rd.to_dict()
+    assert d["id"] == "rd-1"
+    assert d["timestamp"] == "2026-05-14T00:00:00+00:00"
+    assert d["metadata"] == {}
+    # JSON Schema rejects null for these — they must be absent, not None.
+    assert "selected_item_id" not in d
+    assert "selected_card_id" not in d
+    assert "context_summary" not in d
+
+
+def test_routing_decision_roundtrip() -> None:
+    cards = [
+        ChoiceCard(id="t1", name="search", description="Search", score=0.9),
+        ChoiceCard(id="t2", name="filter", description="Filter", tags=["query"]),
+    ]
+    ts = datetime(2026, 5, 14, 9, 30, 15, tzinfo=timezone.utc)
+    rd = RoutingDecision(
+        id="rd-abc",
+        choice_cards=cards,
+        timestamp=ts,
+        selected_item_id="t1",
+        selected_card_id="t1",
+        context_summary="user asked about reports",
+        metadata={"trace_id": "abc-123"},
+    )
+    d = rd.to_dict()
+    restored = RoutingDecision.from_dict(d)
+    assert restored.id == "rd-abc"
+    assert len(restored.choice_cards) == 2
+    assert restored.choice_cards[0].id == "t1"
+    assert restored.choice_cards[0].score == 0.9
+    assert restored.choice_cards[1].tags == ["query"]
+    assert restored.timestamp == ts
+    assert restored.selected_item_id == "t1"
+    assert restored.selected_card_id == "t1"
+    assert restored.context_summary == "user asked about reports"
+    assert restored.metadata == {"trace_id": "abc-123"}
+
+
+def test_routing_decision_from_dict_accepts_datetime_object() -> None:
+    card = ChoiceCard(id="t1", name="n", description="d")
+    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rd = RoutingDecision.from_dict(
+        {"id": "rd-1", "choice_cards": [card.to_dict()], "timestamp": ts}
+    )
+    assert rd.timestamp == ts
+
+
+def test_routing_decision_from_dict_naive_timestamp_assumed_utc() -> None:
+    card = ChoiceCard(id="t1", name="n", description="d")
+    rd = RoutingDecision.from_dict(
+        {"id": "rd-1", "choice_cards": [card.to_dict()], "timestamp": "2026-05-14T00:00:00"}
+    )
+    assert rd.timestamp.tzinfo is not None
+    assert rd.timestamp.tzinfo.utcoffset(rd.timestamp) == timezone.utc.utcoffset(rd.timestamp)
+
+
+def test_routing_decision_from_partial_dict() -> None:
+    rd = RoutingDecision.from_dict({"id": "rd-1"})
+    assert rd.id == "rd-1"
+    assert rd.choice_cards == []
+    assert rd.timestamp.tzinfo is not None
+    assert rd.metadata == {}
+
+
+def test_routing_decision_metadata_is_copied_not_aliased() -> None:
+    card = ChoiceCard(id="t1", name="n", description="d")
+    original_meta = {"trace_id": "abc"}
+    rd = RoutingDecision(
+        id="rd-1",
+        choice_cards=[card],
+        timestamp=datetime.now(timezone.utc),
+        metadata=original_meta,
+    )
+    rd.to_dict()["metadata"]["trace_id"] = "MUTATED"
+    assert rd.metadata == {"trace_id": "abc"}
+    assert original_meta == {"trace_id": "abc"}
+
+
+# ---------------------------------------------------------------------------
+# RouteResult.to_routing_decision (issue #151)
+# ---------------------------------------------------------------------------
+
+
+def test_route_result_to_routing_decision_basic() -> None:
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [
+        SelectableItem(id="t1", kind="tool", name="search", description="Search"),
+        SelectableItem(id="t2", kind="tool", name="filter", description="Filter"),
+    ]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=["t1", "t2"],
+        scores=[0.85, 0.42],
+    )
+    rd = result.to_routing_decision(decision_id="rd-test")
+    assert rd.id == "rd-test"
+    assert len(rd.choice_cards) == 2
+    assert rd.choice_cards[0].id == "t1"
+    assert rd.choice_cards[0].score == 0.85
+    assert rd.choice_cards[1].score == 0.42
+    assert rd.selected_item_id is None
+    assert rd.timestamp.tzinfo is not None
+
+
+def test_route_result_to_routing_decision_auto_id_is_unique() -> None:
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(candidate_items=items, candidate_ids=["t1"], scores=[1.0])
+    rd1 = result.to_routing_decision()
+    rd2 = result.to_routing_decision()
+    assert rd1.id != rd2.id
+    assert rd1.id.startswith("rd-")
+    assert rd2.id.startswith("rd-")
+
+
+def test_route_result_to_routing_decision_with_selection() -> None:
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [
+        SelectableItem(id="t1", kind="tool", name="search", description="Search"),
+        SelectableItem(id="t2", kind="tool", name="filter", description="Filter"),
+    ]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=["t1", "t2"],
+        scores=[0.85, 0.42],
+    )
+    rd = result.to_routing_decision(
+        decision_id="rd-1",
+        selected_item_id="t1",
+        context_summary="user wanted search",
+    )
+    assert rd.selected_item_id == "t1"
+    # selected_card_id is auto-resolved from selected_item_id.
+    assert rd.selected_card_id == "t1"
+    assert rd.context_summary == "user wanted search"
+
+
+def test_route_result_to_routing_decision_preserves_router_diagnostics() -> None:
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=["t1"],
+        scores=[0.9],
+        is_ambiguous=True,
+        excluded_count=3,
+        gated_count=2,
+        context_hints=["billing"],
+        context_boost_applied=True,
+        clarifying_question="Did you mean billing or analytics?",
+    )
+    rd = result.to_routing_decision()
+    cw_meta = rd.metadata["contextweaver"]
+    assert cw_meta["is_ambiguous"] is True
+    assert cw_meta["excluded_count"] == 3
+    assert cw_meta["gated_count"] == 2
+    assert cw_meta["context_boost_applied"] is True
+    assert cw_meta["context_hints"] == ["billing"]
+    assert cw_meta["clarifying_question"] == "Did you mean billing or analytics?"
+
+
+def test_route_result_to_routing_decision_empty_raises() -> None:
+    from contextweaver.exceptions import RouteError
+    from contextweaver.routing.router import RouteResult
+
+    result = RouteResult()
+    with pytest.raises(RouteError, match="at least one candidate"):
+        result.to_routing_decision()
+
+
+def test_route_result_to_routing_decision_now_override() -> None:
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(candidate_items=items, candidate_ids=["t1"], scores=[1.0])
+    fixed = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rd = result.to_routing_decision(now=fixed)
+    assert rd.timestamp == fixed
+
+
+def test_route_result_to_routing_decision_naive_now_assumed_utc() -> None:
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(candidate_items=items, candidate_ids=["t1"], scores=[1.0])
+    naive = datetime(2026, 1, 1)
+    rd = result.to_routing_decision(now=naive)
+    assert rd.timestamp.tzinfo is not None
+
+
+def test_route_result_to_routing_decision_preserves_caller_supplied_metadata_namespace() -> None:
+    """Regression for the setdefault→merge fix (PR #201 Phase 1).
+
+    A caller may supply their own ``metadata['contextweaver']`` dict for tracing
+    or correlation. The helper must merge the router diagnostics into that
+    existing namespace rather than dropping them via ``setdefault``.
+    """
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=["t1"],
+        scores=[1.0],
+        is_ambiguous=True,
+        excluded_count=2,
+    )
+    rd = result.to_routing_decision(
+        metadata={"contextweaver": {"trace_id": "abc-123", "request_id": "req-1"}}
+    )
+    cw_meta = rd.metadata["contextweaver"]
+    # Caller keys preserved
+    assert cw_meta["trace_id"] == "abc-123"
+    assert cw_meta["request_id"] == "req-1"
+    # Router diagnostics merged in
+    assert cw_meta["is_ambiguous"] is True
+    assert cw_meta["excluded_count"] == 2
+
+
+def test_route_result_to_routing_decision_caller_metadata_wins_on_key_collision() -> None:
+    """If the caller pre-populates a diagnostic key (e.g. ``is_ambiguous``),
+    keep the caller's value — they presumably know what they're doing.
+    """
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=["t1"],
+        scores=[1.0],
+        is_ambiguous=True,  # router says True
+    )
+    rd = result.to_routing_decision(
+        metadata={"contextweaver": {"is_ambiguous": False}}  # caller forces False
+    )
+    assert rd.metadata["contextweaver"]["is_ambiguous"] is False
+
+
+def test_routing_decision_from_dict_parses_z_suffix_timestamp() -> None:
+    """Regression for the RFC 3339 Z-suffix normalisation (PR #201 Phase 1).
+
+    Python 3.10's ``datetime.fromisoformat`` does not accept the ``Z`` suffix
+    that schema-valid ``date-time`` payloads commonly use. The helper must
+    normalise ``Z`` → ``+00:00`` so spec-shaped payloads parse across the
+    full 3.10 / 3.11 / 3.12 matrix.
+    """
+    rd = RoutingDecision.from_dict(
+        {
+            "id": "rd-z",
+            "choice_cards": [
+                {"id": "t1", "name": "n", "description": "d"},
+            ],
+            "timestamp": "2026-05-14T00:00:00Z",
+        }
+    )
+    assert rd.timestamp.tzinfo is not None
+    assert rd.timestamp == datetime(2026, 5, 14, 0, 0, 0, tzinfo=timezone.utc)
+
+
+def test_route_result_to_routing_decision_preserves_more_than_twenty_candidates() -> None:
+    """Regression for the max_choices truncation guard (PR #201 Phase 1).
+
+    ``make_choice_cards`` defaults to ``max_choices=20``. A router configured
+    with ``top_k > 20`` must round-trip every candidate into the
+    ``RoutingDecision.choice_cards`` list — no silent truncation.
+    """
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [
+        SelectableItem(id=f"t{i}", kind="tool", name=f"n{i}", description="d") for i in range(25)
+    ]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=[item.id for item in items],
+        scores=[1.0 - i * 0.01 for i in range(25)],
+    )
+    rd = result.to_routing_decision()
+    assert len(rd.choice_cards) == 25
+    assert [c.id for c in rd.choice_cards] == [f"t{i}" for i in range(25)]

@@ -20,7 +20,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | Path | Responsibility |
 |---|---|
 | `types.py` | Core dataclasses and enums: `SelectableItem`, `ContextItem`, `Phase`, `ItemKind`, `Sensitivity` |
-| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult` |
+| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
 | `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine` (store protocols re-exported from `store/protocols.py`) |
@@ -38,7 +38,16 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
-| `adapters/` | MCP, FastMCP, and A2A protocol adapters |
+| `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
+| `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
+| `adapters/` | MCP, FastMCP, A2A, and weaver-spec protocol adapters + MCP proxy / gateway runtime (issues #13, #28, #29, #34) |
+| `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
+| `adapters/mcp_gateway.py` | Two-tool gateway dispatch (`tool_browse` + `tool_execute` + `tool_view`, issues #28 / #34) |
+| `adapters/mcp_proxy.py` | Transparent proxy dispatch (stripped `tools/list` + `tool_hydrate` + `tool_execute`, issue #13) |
+| `adapters/mcp_upstream.py` | Concrete `UpstreamCall` adapters (`StubUpstream`, `McpClientUpstream`, `MultiplexUpstream`) |
+| `adapters/mcp_gateway_server.py` | Bind `mcp_gateway` onto `mcp.server.Server` over stdio (issue #28) |
+| `adapters/mcp_proxy_server.py` | Bind `mcp_proxy` onto `mcp.server.Server` over stdio (issue #13) |
+| `adapters/gateway_error.py` | Structured `GatewayError` (codes + §3.4 wire shape) |
 | `__main__.py` | CLI: 7 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) |
 
 ## Pipelines (summary)
@@ -65,6 +74,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ContextPack` | Rendered prompt + stats from a context build |
 | `BuildStats` | What was kept, dropped, and why — diagnostic output of every build |
 | `ChoiceCard` | LLM-friendly compact card (never includes full schemas) |
+| `RoutingDecision` | Routing output shaped for weaver-spec interop (id, choice_cards, timestamp, selection). `choice_cards` is a flat list of CW 1:1 cards; for schema-valid spec JSON, go through `adapters.weaver_contracts.to_weaver_routing_decision()`. Build with `RouteResult.to_routing_decision(...)`. |
 | `ChoiceGraph` | Bounded DAG for routing, serializable, validated on load |
 | `GraphManifest` | Build-time metadata attached to every routing graph (hash, seed, engine versions, timestamp) |
 | `RouteTrace` | Always-populated structured audit of a routing call; per-step expansions opt-in via `debug=True` |
@@ -73,6 +83,11 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `MaskRedactionHook` | Built-in redaction hook for sensitivity enforcement |
 | `HydrationResult` | Result of hydrating a tool call with context |
 | `ViewRegistry` | Maps content-type patterns to view generators for progressive disclosure |
+| `ProxyRuntime` | Shared core for MCP proxy (#13) and gateway (#28) modes — owns upstream catalog, per-session `ContextManager`, browse / execute / view dispatch |
+| `ExposureMode` | `TRANSPARENT` (#13) vs `GATEWAY` (#28) for `ProxyRuntime` |
+| `UpstreamCall` | Transport-agnostic Protocol over upstream MCP fan-out (used by `ProxyRuntime`) |
+| `GatewayError` | Structured error payload (§3.4) returned from every gateway/proxy meta-tool |
+| `ToolIdParts` | Destructured canonical `tool_id` (namespace / name / version / hash8) |
 
 **Vocabulary notes:**
 - `SelectableItem` is the canonical name. `ToolCard` is a user-facing alias — use `SelectableItem` in code and docs.
@@ -97,6 +112,7 @@ make scorecard   # render benchmarks/scorecard.md from benchmarks/results/latest
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
+make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter (CI gating, fetches schemas)
 ```
 
 Run `pre-commit install` once after cloning to activate git hooks
@@ -130,7 +146,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 - **Google-style docstrings** on all public classes and functions.
 - **100-character line length** (enforced by ruff).
 - **≤ 300 lines per module** — exempt: `types.py`, `envelope.py`, `__main__.py`.
-- **Minimal core runtime dependencies.** The core install pulls only `tiktoken`, `PyYAML`, and `rank-bm25` — each is broadly used in GenAI stacks and unblocks default behaviour. Adding a new core dependency requires explicit justification: broad ecosystem use, small wheel, and a default the library would otherwise have to approximate. Heavy or runtime-specific packages (CLI, OpenTelemetry, fuzzy retrieval, ANN, NetworkX, FastMCP, LangChain) live under `[project.optional-dependencies]` and are loaded via guarded imports.
+- **Core runtime dependencies.** The core install pulls `tiktoken`, `PyYAML`, `rank-bm25`, plus `mcp` and `jsonschema` (added when the proxy / gateway runtimes landed — both are load-bearing for `docs/gateway_spec.md` §4.4 schema validation and the MCP transport binding).  Adding *another* core dependency requires explicit justification: broad ecosystem use, small wheel, and a default the library would otherwise have to approximate.  Heavy or runtime-specific packages (CLI, OpenTelemetry, fuzzy retrieval, ANN, NetworkX, FastMCP, LangChain) live under `[project.optional-dependencies]` and are loaded via guarded imports.
 
 ## Testing
 
