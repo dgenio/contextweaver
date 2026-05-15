@@ -125,7 +125,7 @@ async def dispatch_meta_tool(
 
     The returned dict is the MCP ``CallToolResult`` shape (``content``,
     ``isError``).  Errors produced by :class:`ProxyRuntime` are
-    serialised via :func:`_envelope_call_result` so they are visible to
+    serialised via :func:`envelope_call_result` so they are visible to
     the agent's client without raising across the MCP boundary.
 
     Args:
@@ -142,12 +142,12 @@ async def dispatch_meta_tool(
             path=args.get("path"),
             top_k=args.get("top_k"),
         )
-        return _envelope_call_result(result, label="tool_browse")
+        return envelope_call_result(result, label="tool_browse")
     if name == TOOL_EXECUTE:
         tool_id = args.get("tool_id")
         tool_args = args.get("args", {}) or {}
         if not isinstance(tool_id, str) or not isinstance(tool_args, dict):
-            return _envelope_call_result(
+            return envelope_call_result(
                 GatewayError(
                     code="ARGS_INVALID",
                     message="tool_execute requires string 'tool_id' and object 'args'.",
@@ -155,12 +155,12 @@ async def dispatch_meta_tool(
                 label="tool_execute",
             )
         envelope = await runtime.execute(tool_id, tool_args)
-        return _envelope_call_result(envelope, label="tool_execute")
+        return envelope_call_result(envelope, label="tool_execute")
     if name == TOOL_VIEW:
         handle = args.get("handle")
         selector = args.get("selector", {}) or {}
         if not isinstance(handle, str) or not isinstance(selector, dict):
-            return _envelope_call_result(
+            return envelope_call_result(
                 GatewayError(
                     code="ARGS_INVALID",
                     message="tool_view requires string 'handle' and object 'selector'.",
@@ -168,8 +168,8 @@ async def dispatch_meta_tool(
                 label="tool_view",
             )
         sliced = runtime.view(handle, selector)
-        return _envelope_call_result(sliced, label="tool_view")
-    return _envelope_call_result(
+        return envelope_call_result(sliced, label="tool_view")
+    return envelope_call_result(
         GatewayError(
             code="ARGS_INVALID",
             message=f"unknown meta-tool {name!r} (valid: {list(GATEWAY_TOOL_NAMES)})",
@@ -178,8 +178,12 @@ async def dispatch_meta_tool(
     )
 
 
-def _envelope_call_result(value: Any, *, label: str) -> dict[str, Any]:  # noqa: ANN401
+def envelope_call_result(value: Any, *, label: str) -> dict[str, Any]:  # noqa: ANN401
     """Wrap *value* in an MCP ``CallToolResult`` dict.
+
+    Shared by :mod:`mcp_gateway` and :mod:`mcp_proxy` — promoted to a
+    public symbol so both siblings can import it without coupling
+    through a private name.
 
     - :class:`GatewayError` → ``isError=True`` with the §3.4 JSON shape
       as a text content part.

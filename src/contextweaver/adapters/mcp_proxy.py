@@ -30,7 +30,7 @@ import logging
 from typing import Any
 
 from contextweaver.adapters.gateway_error import GatewayError
-from contextweaver.adapters.mcp_gateway import _envelope_call_result
+from contextweaver.adapters.mcp_gateway import envelope_call_result
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
 
 logger = logging.getLogger("contextweaver.adapters.mcp_proxy")
@@ -131,7 +131,7 @@ async def dispatch_proxy_request(
         name = params.get("name")
         args = params.get("arguments", {}) or {}
         if not isinstance(name, str):
-            return _envelope_call_result(
+            return envelope_call_result(
                 GatewayError(
                     code="ARGS_INVALID",
                     message="tools/call params require a string 'name'.",
@@ -141,7 +141,7 @@ async def dispatch_proxy_request(
         if name == TOOL_HYDRATE:
             tool_id = args.get("tool_id")
             if not isinstance(tool_id, str):
-                return _envelope_call_result(
+                return envelope_call_result(
                     GatewayError(
                         code="ARGS_INVALID",
                         message="tool_hydrate requires a string 'tool_id'.",
@@ -150,7 +150,7 @@ async def dispatch_proxy_request(
                 )
             hydrated = runtime.hydrate(tool_id)
             if isinstance(hydrated, GatewayError):
-                return _envelope_call_result(hydrated, label=TOOL_HYDRATE)
+                return envelope_call_result(hydrated, label=TOOL_HYDRATE)
             payload = {
                 "tool_id": tool_id,
                 "args_schema": hydrated.args_schema,
@@ -165,7 +165,7 @@ async def dispatch_proxy_request(
             tool_id = args.get("tool_id")
             tool_args = args.get("args", {}) or {}
             if not isinstance(tool_id, str) or not isinstance(tool_args, dict):
-                return _envelope_call_result(
+                return envelope_call_result(
                     GatewayError(
                         code="ARGS_INVALID",
                         message="tool_execute requires string 'tool_id' and object 'args'.",
@@ -173,15 +173,15 @@ async def dispatch_proxy_request(
                     label=TOOL_EXECUTE,
                 )
             envelope = await runtime.execute(tool_id, tool_args)
-            return _envelope_call_result(envelope, label=TOOL_EXECUTE)
-        return _envelope_call_result(
+            return envelope_call_result(envelope, label=TOOL_EXECUTE)
+        return envelope_call_result(
             GatewayError(
                 code="ARGS_INVALID",
                 message=f"proxy mode does not expose meta-tool {name!r}",
             ),
             label=name,
         )
-    return _envelope_call_result(
+    return envelope_call_result(
         GatewayError(
             code="ARGS_INVALID",
             message=f"unsupported MCP method {method!r}",

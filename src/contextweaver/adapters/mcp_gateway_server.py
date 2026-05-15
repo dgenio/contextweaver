@@ -66,7 +66,8 @@ class McpGatewayServer:
     ) -> None:
         if runtime.mode != ExposureMode.GATEWAY:
             logger.warning(
-                "McpGatewayServer received runtime in %s mode; forcing GATEWAY",
+                "McpGatewayServer received runtime in %s mode; expected GATEWAY — "
+                "behaviour may differ",
                 runtime.mode,
             )
         self.runtime = runtime

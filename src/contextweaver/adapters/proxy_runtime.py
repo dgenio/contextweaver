@@ -33,6 +33,7 @@ none of these primitives raise across the MCP boundary.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -46,6 +47,8 @@ from contextweaver.adapters.mcp import mcp_result_to_envelope, mcp_tool_to_selec
 from contextweaver.context.manager import ContextManager
 from contextweaver.envelope import ChoiceCard, HydrationResult, ResultEnvelope
 from contextweaver.exceptions import (
+    ArtifactNotFoundError,
+    ContextWeaverError,
     ItemNotFoundError,
     PathInvalidError,
     PathNotFoundError,
@@ -201,7 +204,12 @@ class ProxyRuntime:
         self._raw_tool_defs = raw_defs
         if items:
             self._graph = self._tree_builder.build(items)
-            self._router = Router(self._graph, items=items, beam_width=self._beam_width)
+            self._router = Router(
+                self._graph,
+                items=items,
+                beam_width=self._beam_width,
+                top_k=self._top_k,
+            )
         else:
             self._graph = None
             self._router = None
@@ -254,9 +262,9 @@ class ProxyRuntime:
         if self._router is None or not self._catalog.all():
             return []
         effective_top_k = top_k if top_k is not None else self._top_k
-        # Router.top_k is set at construction; per-call overrides are
-        # applied by truncating the result.  Reconstruct only when the
-        # override exceeds the configured Router capacity.
+        # Router.top_k is set at construction to self._top_k; per-call
+        # overrides are applied by truncating the result via make_choice_cards.
+        # Values larger than self._top_k are silently capped at self._top_k.
         result = self._router.route(query)
         scores = dict(zip(result.candidate_ids, result.scores, strict=False))
         cards = make_choice_cards(
@@ -377,13 +385,16 @@ class ProxyRuntime:
             if not artifact_store.exists(handle):
                 artifact_store.put(handle=handle, content=data, media_type=mime, label=label)
         if full_text and not envelope.artifacts:
-            text_handle = f"text:{tool_id}:{len(full_text)}"
-            artifact_store.put(
-                handle=text_handle,
-                content=full_text.encode("utf-8"),
-                media_type="text/plain",
-                label=f"text result from {tool_id}",
-            )
+            content_bytes = full_text.encode("utf-8")
+            text_hash = hashlib.sha256(content_bytes).hexdigest()[:16]
+            text_handle = f"text:{tool_id}:{text_hash}"
+            if not artifact_store.exists(text_handle):
+                artifact_store.put(
+                    handle=text_handle,
+                    content=content_bytes,
+                    media_type="text/plain",
+                    label=f"text result from {tool_id}",
+                )
         envelope.provenance.setdefault("tool_id", tool_id)
         return envelope
 
@@ -401,7 +412,7 @@ class ProxyRuntime:
         store: InMemoryArtifactStore = self._context_manager.artifact_store  # type: ignore[assignment]
         try:
             return store.drilldown(handle, selector)
-        except Exception as exc:  # noqa: BLE001
+        except (ArtifactNotFoundError, ContextWeaverError) as exc:
             return GatewayError(
                 code="VIEW_FAILED",
                 message=str(exc),

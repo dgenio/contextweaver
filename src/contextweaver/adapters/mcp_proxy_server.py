@@ -65,7 +65,8 @@ class McpProxyServer:
     ) -> None:
         if runtime.mode != ExposureMode.TRANSPARENT:
             logger.warning(
-                "McpProxyServer received runtime in %s mode; forcing TRANSPARENT",
+                "McpProxyServer received runtime in %s mode; expected TRANSPARENT — "
+                "behaviour may differ",
                 runtime.mode,
             )
         self.runtime = runtime
