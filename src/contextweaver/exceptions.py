@@ -45,3 +45,15 @@ class DuplicateItemError(ContextWeaverError):
 
 class ConfigError(ContextWeaverError):
     """Raised when a configuration value or preset name is invalid."""
+
+
+class PathInvalidError(CatalogError):
+    """Raised when a ``tool_browse`` path violates the §3.2 grammar."""
+
+
+class PathNotFoundError(CatalogError):
+    """Raised when a well-formed ``tool_browse`` path resolves to no node."""
+
+
+class UpstreamError(ContextWeaverError):
+    """Raised when an upstream MCP tool call fails for transport/protocol reasons."""

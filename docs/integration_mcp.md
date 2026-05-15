@@ -213,3 +213,83 @@ control.
 proposed/future feature, not a type that is implemented in the library
 today. For actual access control, enforce authorization in your own
 application or policy layer.
+
+---
+
+## Runtime modes: transparent proxy and two-tool gateway
+
+The MCP adapter ships two runtime modes for fronting one or more
+upstream MCP servers.  Both share the
+[`ProxyRuntime`](../src/contextweaver/adapters/proxy_runtime.py) core and
+satisfy the contracts in [`docs/gateway_spec.md`](gateway_spec.md):
+
+| Mode | Discovery channel | Invocation channel | Schema exposure |
+|------|-------------------|--------------------|-----------------|
+| `ExposureMode.TRANSPARENT` (#13) | Stripped `tools/list` — one entry per upstream tool with sentinel `inputSchema: {"type": "object"}` | `tool_hydrate(tool_id)` + `tool_execute(tool_id, args)` | On demand via `tool_hydrate` |
+| `ExposureMode.GATEWAY` (#28 + #34) | None — the agent never sees a `tools/list` | `tool_browse(query|path)` + `tool_execute(tool_id, args)` + `tool_view(handle, selector)` | Internal: `tool_execute` hydrates and validates before upstream dispatch |
+
+Both modes share the same invocation contract: arguments to
+`tool_execute` are validated against the hydrated schema via
+`jsonschema` before any upstream call, per
+[`gateway_spec.md` §4.4](gateway_spec.md#4-schema-exposure-strategy).
+
+### Wiring a gateway over stdio
+
+```python
+import asyncio
+from contextweaver.adapters import ProxyRuntime, StubUpstream
+from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
+
+runtime = ProxyRuntime(StubUpstream([...]))
+await runtime.refresh_catalog()
+server = McpGatewayServer(runtime, name="example-gateway")
+asyncio.run(server.run_stdio())
+```
+
+### Wiring a transparent proxy over stdio
+
+```python
+from contextweaver.adapters import ExposureMode, ProxyRuntime, StubUpstream
+from contextweaver.adapters.mcp_proxy_server import McpProxyServer
+
+runtime = ProxyRuntime(StubUpstream([...]), mode=ExposureMode.TRANSPARENT)
+await runtime.refresh_catalog()
+server = McpProxyServer(runtime, name="example-proxy")
+asyncio.run(server.run_stdio())
+```
+
+### Connecting to real upstream MCP servers
+
+Swap [`StubUpstream`](../src/contextweaver/adapters/mcp_upstream.py) for
+`McpClientUpstream(session)` (one upstream) or
+`MultiplexUpstream([a, b, ...])` (multi-server fan-out).  The runtime
+itself is transport-agnostic; the upstream adapter handles the wire
+protocol.
+
+### Error shape
+
+Every gateway / proxy meta-tool returns either a `ResultEnvelope` or a
+typed
+[`GatewayError`](../src/contextweaver/adapters/gateway_error.py)
+matching `gateway_spec.md` §3.4:
+
+```json
+{
+  "error": "PATH_INVALID" | "PATH_NOT_FOUND" | "ARGS_INVALID" | "UPSTREAM_ERROR" | "HYDRATE_FAILED" | "VIEW_FAILED",
+  "message": "<human-readable>",
+  "path": "<offending path or tool_id>",
+  "details": { "...": "..." }
+}
+```
+
+The meta-tools never raise across the MCP boundary — failures are
+delivered as `isError=true` `CallToolResult` payloads.
+
+### See also
+
+- [`docs/gateway_spec.md`](gateway_spec.md) — the normative
+  surface specification.
+- [`examples/mcp_gateway_demo.py`](../examples/mcp_gateway_demo.py) —
+  end-to-end gateway flow using `StubUpstream`.
+- [`examples/mcp_proxy_demo.py`](../examples/mcp_proxy_demo.py) —
+  end-to-end proxy flow.

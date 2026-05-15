@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.exceptions import CatalogError
+from contextweaver.routing.tool_id import canonical_tool_id
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
 
 logger = logging.getLogger("contextweaver.adapters")
@@ -53,6 +54,36 @@ def infer_namespace(tool_name: str) -> str:
     if len(parts) >= 3 and parts[0]:
         return parts[0]
     return "mcp"
+
+
+def _derive_tool_id_name(upstream_name: str) -> str:
+    """Derive the canonical ``tool_id`` name field from *upstream_name* (§1.4).
+
+    The rule is keyed on the separator that :func:`infer_namespace` matched:
+
+    - Dot or slash separator: the namespace prefix is stripped from
+      ``name`` (it is unambiguously carried by the namespace field).
+    - Underscore with ≥ 3 segments, or the ``mcp`` fallback: the prefix
+      is **preserved** in ``name`` because underscores can appear inside
+      the upstream tool name itself.
+
+    Args:
+        upstream_name: The raw upstream MCP tool name.
+
+    Returns:
+        The derived ``name`` portion of the canonical ``tool_id``.
+    """
+    if "." in upstream_name:
+        prefix, _, rest = upstream_name.partition(".")
+        if prefix and rest:
+            return rest
+    if "/" in upstream_name:
+        prefix, _, rest = upstream_name.partition("/")
+        if prefix and rest:
+            return rest
+    # Underscore-≥3-segments and the ``mcp`` fallback both preserve the
+    # full upstream name.
+    return upstream_name
 
 
 def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
@@ -121,14 +152,32 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     side_effects = not annotations.get("readOnlyHint", False)
     cost_hint = float(annotations.get("costHint", 0.0))
 
-    logger.debug("mcp_tool_to_selectable: name=%s, tags=%s", name, sorted(tags))
+    # Canonical tool_id per docs/gateway_spec.md §1.  The legacy
+    # ``mcp:{name}`` form is retired (§1.7 — no deprecation period).
+    upstream_name = str(name)
+    namespace = infer_namespace(upstream_name)
+    derived_name = _derive_tool_id_name(upstream_name)
+    meta_block = tool_def.get("_meta") or {}
+    version_raw = meta_block.get("version") if isinstance(meta_block, dict) else None
+    version = str(version_raw) if version_raw else None
+    tool_id = canonical_tool_id(
+        namespace=namespace,
+        name=derived_name,
+        upstream_name=upstream_name,
+        input_schema=input_schema,
+        version=version,
+    )
+
+    logger.debug(
+        "mcp_tool_to_selectable: name=%s, tool_id=%s, tags=%s", name, tool_id, sorted(tags)
+    )
     return SelectableItem(
-        id=f"mcp:{name}",
+        id=tool_id,
         kind="tool",
-        name=str(name),
+        name=upstream_name,
         description=str(description),
         tags=sorted(tags),
-        namespace=infer_namespace(str(name)),
+        namespace=namespace,
         args_schema=dict(input_schema),
         output_schema=output_schema,
         side_effects=side_effects,

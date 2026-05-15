@@ -162,13 +162,13 @@ class RouteResult:
         if not self.candidate_items:
             raise RouteError("RoutingDecision requires at least one candidate item")
         score_map = dict(zip(self.candidate_ids, self.scores, strict=False))
-        # ``make_choice_cards`` defaults to ``max_choices=20``; pass an explicit
+        # ``make_choice_cards`` defaults to ``max_cards=20``; pass an explicit
         # cap so converting a router configured with ``top_k > 20`` does not
         # silently truncate candidates (PR #201 review).
         cards = make_choice_cards(
             self.candidate_items,
             scores=score_map,
-            max_choices=max(len(self.candidate_items), 1),
+            max_cards=max(len(self.candidate_items), 1),
         )
         resolved_card_id = selected_card_id
         if resolved_card_id is None and selected_item_id is not None:

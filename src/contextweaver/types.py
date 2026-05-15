@@ -124,21 +124,39 @@ ToolCard = SelectableItem
 
 @dataclass
 class ArtifactRef:
-    """A lightweight reference to an out-of-band artifact stored in an ArtifactStore."""
+    """A lightweight reference to an out-of-band artifact stored in an ArtifactStore.
+
+    Attributes:
+        handle: Opaque key used to retrieve the artifact via
+            :meth:`ArtifactStore.get` / :meth:`drilldown`.
+        media_type: MIME type of the stored bytes.
+        size_bytes: Size of the stored bytes in bytes.
+        label: Optional human-readable label.
+        content_hash: ``sha256`` digest of the stored bytes as a
+            lowercase hex string.  Empty when not populated by the
+            writing path (legacy ``ArtifactRef`` instances pre-#190).
+            Populated by :func:`~contextweaver.context.firewall.apply_firewall`
+            and used to short-circuit re-firewall passes on items that
+            already carry a firewall-processed body (issue #190).
+    """
 
     handle: str
     media_type: str
     size_bytes: int
     label: str = ""
+    content_hash: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
-        return {
+        out: dict[str, Any] = {
             "handle": self.handle,
             "media_type": self.media_type,
             "size_bytes": self.size_bytes,
             "label": self.label,
         }
+        if self.content_hash:
+            out["content_hash"] = self.content_hash
+        return out
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArtifactRef:
@@ -148,6 +166,7 @@ class ArtifactRef:
             media_type=data["media_type"],
             size_bytes=int(data["size_bytes"]),
             label=data.get("label", ""),
+            content_hash=data.get("content_hash", ""),
         )
 
 
