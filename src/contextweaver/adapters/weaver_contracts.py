@@ -1,3 +1,9 @@
+# FUTURE: This module is over the ≤300-line soft cap (currently ~530 lines).
+# The four type-pair mappings share the ``metadata['_contextweaver']``
+# round-trip convention so they're easier to review together for now, but a
+# decomposition into ``adapters/weaver_contracts/{selectable_item,choice_card,
+# routing_decision,frame}.py`` is the natural follow-up once the weaver-spec
+# surface stabilizes.
 """weaver-spec contract adapter for contextweaver.
 
 Converts between contextweaver's internal types and the canonical contracts
@@ -325,6 +331,15 @@ def to_weaver_routing_decision(decision: RoutingDecision) -> _ws_types.RoutingDe
     cw_card_ids = {card.id for card in decision.choice_cards}
     spec_selected_card_id = decision.selected_card_id
     if spec_selected_card_id is not None and spec_selected_card_id in cw_card_ids:
+        # Stash the original CW card id in the menu's metadata so
+        # ``from_weaver_routing_decision`` can reverse the remap even when
+        # ``selected_item_id`` is None (otherwise the round-trip would be
+        # lossy in that corner case).
+        if spec_menu.metadata is None:
+            spec_menu.metadata = {}
+        spec_menu.metadata[_CW_META_KEY] = {
+            "original_selected_card_id": spec_selected_card_id,
+        }
         spec_selected_card_id = menu_id
     spec_decision: Any = ws.RoutingDecision(
         id=decision.id,
@@ -347,26 +362,39 @@ def from_weaver_routing_decision(
     into a single list of contextweaver :class:`ChoiceCard` instances.  When
     ``selected_card_id`` references one of those synthetic menus (the
     ``f"{decision.id}:menu"`` produced by :func:`to_weaver_routing_decision`),
-    it is remapped back to the contextweaver card that contains the selected
-    item so the round-trip is lossless.
+    it is remapped back to the original contextweaver card id so the
+    round-trip is lossless.  The reverse-remap uses (in order):
+
+    1. the menu's ``metadata['_contextweaver']['original_selected_card_id']``
+       stash placed by :func:`to_weaver_routing_decision` — always present
+       when the forward remap was applied, regardless of whether
+       ``selected_item_id`` is set;
+    2. the CW card whose id matches ``spec_decision.selected_item_id`` when
+       no stash is available (e.g. for foreign-origin decisions);
+    3. the raw spec value, untouched, when neither applies.
     """
     cw_cards: list[ChoiceCard] = []
-    menu_ids_seen: set[str] = set()
+    menu_lookup: dict[str, Any] = {}
     for spec_menu in spec_decision.choice_cards:
-        menu_ids_seen.add(spec_menu.id)
+        menu_lookup[spec_menu.id] = spec_menu
         cw_cards.extend(from_weaver_choice_card(spec_menu))
     selected_card_id = spec_decision.selected_card_id
-    if (
-        selected_card_id is not None
-        and selected_card_id in menu_ids_seen
-        and spec_decision.selected_item_id is not None
-    ):
-        # Reverse the to_weaver_routing_decision remap: prefer the CW card
-        # whose ID matches the selected item.
-        for card in cw_cards:
-            if card.id == spec_decision.selected_item_id:
-                selected_card_id = card.id
-                break
+    if selected_card_id is not None and selected_card_id in menu_lookup:
+        menu = menu_lookup[selected_card_id]
+        menu_meta = getattr(menu, "metadata", None) or {}
+        cw_extras = menu_meta.get(_CW_META_KEY) or {}
+        stashed = cw_extras.get("original_selected_card_id")
+        if isinstance(stashed, str) and stashed:
+            # Stash from to_weaver_routing_decision — exact reverse of the
+            # forward remap. Lossless even when selected_item_id is None.
+            selected_card_id = stashed
+        elif spec_decision.selected_item_id is not None:
+            # Foreign-origin decision: pick the CW card whose id matches
+            # the selected item as a best-effort fallback.
+            for card in cw_cards:
+                if card.id == spec_decision.selected_item_id:
+                    selected_card_id = card.id
+                    break
     return RoutingDecision(
         id=spec_decision.id,
         choice_cards=cw_cards,

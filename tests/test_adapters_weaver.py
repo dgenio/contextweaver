@@ -347,6 +347,69 @@ def test_routing_decision_roundtrip_preserves_selected_card_id() -> None:
     assert restored.selected_card_id == "t1"
 
 
+def test_routing_decision_roundtrip_lossless_when_selected_item_id_is_none() -> None:
+    """Roundtrip must restore selected_card_id even with selected_item_id=None.
+
+    Audit corner case (PR #201 Phase 2 finding A2): when a caller sets
+    ``selected_card_id`` without ``selected_item_id``, the forward remap
+    swaps the CW card id for the synthetic menu id. The reverse-remap
+    previously required ``selected_item_id`` to walk back, so this corner
+    case lost data. The stashed ``original_selected_card_id`` in the menu's
+    metadata now makes the reverse unconditional.
+    """
+    cards = [
+        ChoiceCard(id="t1", name="n1", description="d"),
+        ChoiceCard(id="t2", name="n2", description="d"),
+    ]
+    rd = RoutingDecision(
+        id="rd-1",
+        choice_cards=cards,
+        timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        selected_item_id=None,
+        selected_card_id="t1",
+    )
+    restored = from_weaver_routing_decision(to_weaver_routing_decision(rd))
+    assert restored.selected_card_id == "t1"
+    assert restored.selected_item_id is None
+
+
+def test_routing_decision_roundtrip_lossless_when_no_selection_at_all() -> None:
+    """No selection on either side — round-trip is a no-op for those fields."""
+    cards = [ChoiceCard(id="t1", name="n", description="d")]
+    rd = RoutingDecision(
+        id="rd-1",
+        choice_cards=cards,
+        timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        selected_item_id=None,
+        selected_card_id=None,
+    )
+    restored = from_weaver_routing_decision(to_weaver_routing_decision(rd))
+    assert restored.selected_card_id is None
+    assert restored.selected_item_id is None
+
+
+def test_from_weaver_routing_decision_foreign_origin_no_stash() -> None:
+    """A spec.RoutingDecision built outside CW (no _contextweaver stash) still
+    flattens correctly; the selected_card_id is left as-is when there's no
+    matching menu and no stash."""
+    cards = [ChoiceCard(id="ext1", name="n", description="d")]
+    spec_menu = to_weaver_choice_cards(cards, menu_id="external-menu")
+    # Drop the _contextweaver stash that to_weaver_choice_cards may have set
+    # (it doesn't, but be defensive).
+    if spec_menu.metadata:
+        spec_menu.metadata.pop("_contextweaver", None)
+    spec_rd = weaver_contracts.RoutingDecision(
+        id="rd-foreign",
+        choice_cards=[spec_menu],
+        timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        selected_card_id="external-menu",
+        selected_item_id="ext1",
+    )
+    rd = from_weaver_routing_decision(spec_rd)
+    # Foreign-origin fallback: pick the CW card whose id matches selected_item_id.
+    assert rd.selected_card_id == "ext1"
+
+
 # ---------------------------------------------------------------------------
 # ResultEnvelope ↔ weaver_contracts.Frame
 # ---------------------------------------------------------------------------

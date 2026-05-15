@@ -1637,6 +1637,12 @@ Adapters MUST emit `tool_id` values that round-trip through the canonical `parse
 - **Google-style docstrings** — every public class and function.
 - **Type hints** — every public function and method.
 - **Custom exceptions only** — from `contextweaver.exceptions`, not bare Python exceptions.
+- **Reserved `metadata['_contextweaver']` namespace** — the weaver-spec adapter
+  (`adapters/weaver_contracts.py`) round-trips contextweaver-specific fields
+  through `metadata['_contextweaver']` on the produced spec objects. Caller
+  input that already uses this key must raise `CatalogError` rather than be
+  silently clobbered, and the reverse path must read it back before falling
+  back to heuristics. Do not repurpose the key for unrelated metadata.
 
 ## Update Triggers
 

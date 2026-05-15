@@ -405,3 +405,97 @@ def test_route_result_to_routing_decision_naive_now_assumed_utc() -> None:
     naive = datetime(2026, 1, 1)
     rd = result.to_routing_decision(now=naive)
     assert rd.timestamp.tzinfo is not None
+
+
+def test_route_result_to_routing_decision_preserves_caller_supplied_metadata_namespace() -> None:
+    """Regression for the setdefault→merge fix (PR #201 Phase 1).
+
+    A caller may supply their own ``metadata['contextweaver']`` dict for tracing
+    or correlation. The helper must merge the router diagnostics into that
+    existing namespace rather than dropping them via ``setdefault``.
+    """
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=["t1"],
+        scores=[1.0],
+        is_ambiguous=True,
+        excluded_count=2,
+    )
+    rd = result.to_routing_decision(
+        metadata={"contextweaver": {"trace_id": "abc-123", "request_id": "req-1"}}
+    )
+    cw_meta = rd.metadata["contextweaver"]
+    # Caller keys preserved
+    assert cw_meta["trace_id"] == "abc-123"
+    assert cw_meta["request_id"] == "req-1"
+    # Router diagnostics merged in
+    assert cw_meta["is_ambiguous"] is True
+    assert cw_meta["excluded_count"] == 2
+
+
+def test_route_result_to_routing_decision_caller_metadata_wins_on_key_collision() -> None:
+    """If the caller pre-populates a diagnostic key (e.g. ``is_ambiguous``),
+    keep the caller's value — they presumably know what they're doing.
+    """
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [SelectableItem(id="t1", kind="tool", name="n", description="d")]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=["t1"],
+        scores=[1.0],
+        is_ambiguous=True,  # router says True
+    )
+    rd = result.to_routing_decision(
+        metadata={"contextweaver": {"is_ambiguous": False}}  # caller forces False
+    )
+    assert rd.metadata["contextweaver"]["is_ambiguous"] is False
+
+
+def test_routing_decision_from_dict_parses_z_suffix_timestamp() -> None:
+    """Regression for the RFC 3339 Z-suffix normalisation (PR #201 Phase 1).
+
+    Python 3.10's ``datetime.fromisoformat`` does not accept the ``Z`` suffix
+    that schema-valid ``date-time`` payloads commonly use. The helper must
+    normalise ``Z`` → ``+00:00`` so spec-shaped payloads parse across the
+    full 3.10 / 3.11 / 3.12 matrix.
+    """
+    rd = RoutingDecision.from_dict(
+        {
+            "id": "rd-z",
+            "choice_cards": [
+                {"id": "t1", "name": "n", "description": "d"},
+            ],
+            "timestamp": "2026-05-14T00:00:00Z",
+        }
+    )
+    assert rd.timestamp.tzinfo is not None
+    assert rd.timestamp == datetime(2026, 5, 14, 0, 0, 0, tzinfo=timezone.utc)
+
+
+def test_route_result_to_routing_decision_preserves_more_than_twenty_candidates() -> None:
+    """Regression for the max_choices truncation guard (PR #201 Phase 1).
+
+    ``make_choice_cards`` defaults to ``max_choices=20``. A router configured
+    with ``top_k > 20`` must round-trip every candidate into the
+    ``RoutingDecision.choice_cards`` list — no silent truncation.
+    """
+    from contextweaver.routing.router import RouteResult
+    from contextweaver.types import SelectableItem
+
+    items = [
+        SelectableItem(id=f"t{i}", kind="tool", name=f"n{i}", description="d") for i in range(25)
+    ]
+    result = RouteResult(
+        candidate_items=items,
+        candidate_ids=[item.id for item in items],
+        scores=[1.0 - i * 0.01 for i in range(25)],
+    )
+    rd = result.to_routing_decision()
+    assert len(rd.choice_cards) == 25
+    assert [c.id for c in rd.choice_cards] == [f"t{i}" for i in range(25)]
