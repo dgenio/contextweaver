@@ -53,6 +53,18 @@ jobs:
       - name: Demo
         run: make demo
 
+      - name: Weaver-spec conformance
+        # Round-trip + JSON-Schema validation against the canonical contracts
+        # published at https://weaver-spec.dev/contracts/v0/. Gating because
+        # weaver_contracts + jsonschema ship in [dev] (issues #143, #145).
+        run: |
+          mkdir -p .weaver-schemas
+          for s in routing_decision choice_card selectable_item frame; do
+            curl -fsSL "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/${s}.schema.json" \
+              -o ".weaver-schemas/${s}.schema.json"
+          done
+          python scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas
+
       - name: Benchmark (informational, non-gating)
         continue-on-error: true
         run: python benchmarks/benchmark.py

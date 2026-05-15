@@ -1141,3 +1141,10 @@ async def test_load_fastmcp_catalog_requires_extra(monkeypatch: pytest.MonkeyPat
     else:
         monkeypatch.delitem(sys.modules, "fastmcp", raising=False)
     importlib.reload(fastmcp_mod)
+
+
+# weaver-spec contract adapter (issue #143) tests live in
+# ``tests/test_adapters_weaver.py`` so the module-level
+# ``pytest.importorskip("weaver_contracts")`` there does not suppress the
+# MCP / A2A / FastMCP coverage above when the optional package is absent
+# (PR #201 review).

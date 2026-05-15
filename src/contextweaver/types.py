@@ -237,6 +237,7 @@ from contextweaver.envelope import (  # noqa: E402
     ContextPack,
     HydrationResult,
     ResultEnvelope,
+    RoutingDecision,
 )
 
 __all__ = [
@@ -249,6 +250,7 @@ __all__ = [
     "ItemKind",
     "Phase",
     "ResultEnvelope",
+    "RoutingDecision",
     "SelectableItem",
     "Sensitivity",
     "ToolCard",

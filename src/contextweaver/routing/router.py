@@ -12,18 +12,23 @@ issue cluster:
 * Uncertainty signals (issue #14) — ``RouteResult.is_ambiguous`` and
   ``RouteResult.clarifying_question``
 * Structured trace (issue #51) — ``RouteResult.trace``
+* Weaver-spec interop (issue #151) — :meth:`RouteResult.to_routing_decision`
 """
 
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard, tokenize
+from contextweaver.envelope import RoutingDecision
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import Retriever
+from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.filters import (
     augment_query,
     filter_items,
@@ -115,6 +120,99 @@ class RouteResult:
     def debug_trace(self) -> list[dict[str, Any]]:
         """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape."""
         return self.trace.to_legacy_dicts()
+
+    def to_routing_decision(
+        self,
+        *,
+        decision_id: str | None = None,
+        selected_item_id: str | None = None,
+        selected_card_id: str | None = None,
+        context_summary: str | None = None,
+        now: datetime | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> RoutingDecision:
+        """Build a spec-aligned :class:`RoutingDecision` from this result.
+
+        Renders :attr:`candidate_items` into a list of
+        :class:`~contextweaver.envelope.ChoiceCard` instances (preserving the
+        per-candidate scores) and wraps them in a :class:`RoutingDecision`
+        envelope.  Issue #151.
+
+        Args:
+            decision_id: Identifier to assign to the decision.  Defaults to a
+                freshly minted ``"rd-{uuid4}"`` string when not provided.
+            selected_item_id: Optional ID of the item the downstream LLM picked.
+            selected_card_id: Optional ID of the :class:`ChoiceCard` containing
+                the selected item.  When omitted, populated from
+                ``selected_item_id`` if it matches one of the candidates.
+            context_summary: Optional brief context summary for audit / debug.
+            now: Optional timezone-aware timestamp.  Defaults to
+                ``datetime.now(timezone.utc)``.
+            metadata: Optional metadata dict.  Merged with router-supplied
+                provenance under ``metadata["contextweaver"]``.
+
+        Returns:
+            A :class:`RoutingDecision` ready for serialisation or adapter
+            mapping to ``weaver_contracts.RoutingDecision``.
+
+        Raises:
+            RouteError: If this result has no :attr:`candidate_items`.  The
+                weaver-spec contract mandates at least one choice card.
+        """
+        if not self.candidate_items:
+            raise RouteError("RoutingDecision requires at least one candidate item")
+        score_map = dict(zip(self.candidate_ids, self.scores, strict=False))
+        # ``make_choice_cards`` defaults to ``max_choices=20``; pass an explicit
+        # cap so converting a router configured with ``top_k > 20`` does not
+        # silently truncate candidates (PR #201 review).
+        cards = make_choice_cards(
+            self.candidate_items,
+            scores=score_map,
+            max_choices=max(len(self.candidate_items), 1),
+        )
+        resolved_card_id = selected_card_id
+        if resolved_card_id is None and selected_item_id is not None:
+            for card in cards:
+                if card.id == selected_item_id:
+                    resolved_card_id = card.id
+                    break
+        timestamp = now if now is not None else datetime.now(timezone.utc)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        meta: dict[str, Any] = {}
+        if metadata:
+            meta.update(metadata)
+        cw_meta: dict[str, Any] = {
+            "is_ambiguous": self.is_ambiguous,
+            "excluded_count": self.excluded_count,
+            "gated_count": self.gated_count,
+            "context_boost_applied": self.context_boost_applied,
+        }
+        if self.context_hints:
+            cw_meta["context_hints"] = list(self.context_hints)
+        if self.clarifying_question is not None:
+            cw_meta["clarifying_question"] = self.clarifying_question
+        # Merge router-supplied diagnostics into ``metadata["contextweaver"]``
+        # rather than ``setdefault``: if the caller already populated that key
+        # with their own dict, ``setdefault`` would silently drop our
+        # diagnostics (PR #201 review).
+        existing = meta.get("contextweaver")
+        if isinstance(existing, dict):
+            merged = dict(existing)
+            for key, value in cw_meta.items():
+                merged.setdefault(key, value)
+            meta["contextweaver"] = merged
+        else:
+            meta["contextweaver"] = cw_meta
+        return RoutingDecision(
+            id=decision_id if decision_id is not None else f"rd-{uuid.uuid4()}",
+            choice_cards=cards,
+            timestamp=timestamp,
+            selected_item_id=selected_item_id,
+            selected_card_id=resolved_card_id,
+            context_summary=context_summary,
+            metadata=meta,
+        )
 
 
 # ---------------------------------------------------------------------------

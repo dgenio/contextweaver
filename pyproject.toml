@@ -38,7 +38,9 @@ Repository = "https://github.com/dgenio/contextweaver"
 Changelog = "https://github.com/dgenio/contextweaver/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-# Dev / test toolchain.
+# Dev / test toolchain. Includes weaver_contracts + jsonschema so the
+# weaver-spec adapter (#143) and CI conformance check (#145) run on every PR
+# without requiring the [weaver-spec] runtime extra.
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -46,6 +48,16 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "pre-commit>=3.7",
+    "weaver_contracts>=0.2,<1",
+    # 4.18 ships ``referencing`` — the conformance script's local $ref
+    # resolver depends on it (PR #201 review).
+    "jsonschema>=4.18",
+]
+# weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
+# Runtime extra for end users who want to interoperate with the canonical
+# Weaver Stack contracts without pulling the full [dev] toolchain.
+weaver-spec = [
+    "weaver_contracts>=0.2,<1",
 ]
 # FastMCP adapter integration.
 fastmcp = [
@@ -96,6 +108,7 @@ all = [
     "contextweaver[ann]",
     "contextweaver[otel]",
     "contextweaver[graph]",
+    "contextweaver[weaver-spec]",
 ]
 
 [project.scripts]
@@ -152,6 +165,16 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "typer.*"
+ignore_missing_imports = true
+
+# weaver_contracts does not ship a py.typed marker; treat as untyped for mypy
+# while still being a real installed package the adapter can import.
+[[tool.mypy.overrides]]
+module = "weaver_contracts.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "jsonschema.*"
 ignore_missing_imports = true
 
 [tool.coverage.run]

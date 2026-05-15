@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark llms llms-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark llms llms-check weaver-conformance
 
 fmt:
 	ruff format src/ tests/ examples/
@@ -44,3 +44,11 @@ llms:
 
 llms-check:
 	python scripts/gen_llms.py --check
+
+weaver-conformance:
+	@mkdir -p .weaver-schemas
+	@for s in routing_decision choice_card selectable_item frame; do \
+		curl -fsSL "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/$$s.schema.json" \
+			-o ".weaver-schemas/$$s.schema.json"; \
+	done
+	python scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas

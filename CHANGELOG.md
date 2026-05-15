@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Weaver-spec interop** (#143, #145, #151). New
+  `RoutingDecision` dataclass in `contextweaver.envelope` mirroring the
+  field set of the `weaver_contracts.RoutingDecision` contract (id,
+  choice_cards, timestamp, selected_item_id, selected_card_id,
+  context_summary, metadata) with `to_dict`/`from_dict` and ISO 8601
+  timestamp serialization. Note that `choice_cards` stores a flat list of
+  contextweaver 1:1 `ChoiceCard` instances — schema-valid spec JSON requires
+  going through `adapters.weaver_contracts.to_weaver_routing_decision()`,
+  which groups the cards into a single spec `ChoiceCard` menu. New
+  `RouteResult.to_routing_decision(...)` helper builds a spec-aligned decision
+  from a routing call (preserving router diagnostics under
+  `metadata["contextweaver"]`). New
+  `contextweaver.adapters.weaver_contracts` module providing lossless
+  `to_weaver_*` / `from_weaver_*` round-trips for `SelectableItem`,
+  `ChoiceCard`, `RoutingDecision`, and `Frame` (via `ResultEnvelope`);
+  contextweaver-specific fields are preserved under `metadata["_contextweaver"]`.
+  New optional extra `contextweaver[weaver-spec]` and `[dev]` dep on
+  `weaver_contracts >= 0.2, < 1` + `jsonschema >= 4`. New README section
+  declaring `weaver_contracts >= 0.2.0, < 1.0` compatibility, satisfied
+  invariants (I-03, I-05), and an exact pointer to the round-trip API. New
+  `docs/weaver_spec_mapping.md` documenting the field-by-field mapping and
+  the `SelectableItem` / `ChoiceCard` name-clash convention. New
+  `scripts/weaver_spec_conformance.py` and `make weaver-conformance` target
+  that runs a Python round-trip plus JSON-Schema validation against the
+  published schemas at `https://weaver-spec.dev/contracts/v0/`; wired into
+  CI as a gating step (the issue allowed a non-gating stub, but the
+  available `weaver_contracts` + `jsonschema` dev deps unlock real schema
+  validation today).
 - **Gateway surface specification** (#30, #31). New
   `docs/gateway_spec.md` codifies the three contract gaps blocking the
   MCP proxy and gateway runtimes: canonical `tool_id` grammar

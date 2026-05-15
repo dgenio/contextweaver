@@ -1,7 +1,7 @@
 """Adapters sub-package for contextweaver.
 
-Provides thin adapters that convert external protocol data (MCP, A2A, FastMCP)
-into contextweaver-native types.
+Provides thin adapters that convert external protocol data (MCP, A2A, FastMCP,
+weaver-spec) into contextweaver-native types and back.
 """
 
 from __future__ import annotations
@@ -23,12 +23,29 @@ from contextweaver.adapters.mcp import (
     mcp_result_to_envelope,
     mcp_tool_to_selectable,
 )
+from contextweaver.adapters.weaver_contracts import (
+    from_weaver_choice_card,
+    from_weaver_choice_card_single,
+    from_weaver_frame,
+    from_weaver_routing_decision,
+    from_weaver_selectable_item,
+    to_weaver_choice_card,
+    to_weaver_choice_cards,
+    to_weaver_frame,
+    to_weaver_routing_decision,
+    to_weaver_selectable_item,
+)
 
 __all__ = [
     "a2a_agent_to_selectable",
     "a2a_result_to_envelope",
     "fastmcp_tool_to_selectable",
     "fastmcp_tools_to_catalog",
+    "from_weaver_choice_card",
+    "from_weaver_choice_card_single",
+    "from_weaver_frame",
+    "from_weaver_routing_decision",
+    "from_weaver_selectable_item",
     "infer_fastmcp_namespace",
     "infer_namespace",
     "load_a2a_session_jsonl",
@@ -36,4 +53,9 @@ __all__ = [
     "load_mcp_session_jsonl",
     "mcp_result_to_envelope",
     "mcp_tool_to_selectable",
+    "to_weaver_choice_card",
+    "to_weaver_choice_cards",
+    "to_weaver_frame",
+    "to_weaver_routing_decision",
+    "to_weaver_selectable_item",
 ]
