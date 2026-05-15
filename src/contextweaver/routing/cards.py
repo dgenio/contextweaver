@@ -356,11 +356,15 @@ def bound_browse_response(
         for c in ordered
     ]
     # Drop from the tail (lowest score, highest id) until we fit.
+    # Precompute token counts once and maintain a running total to keep
+    # the loop O(n) rather than O(n²).
+    cached_counts = [_card_token_count(c) for c in enforced]
+    running_total = sum(cached_counts)
     while enforced:
-        total = sum(_card_token_count(c) for c in enforced) + preamble_tokens
         cap = hard_cap_tokens_per_card * len(enforced) + preamble_tokens
-        if total <= cap:
+        if running_total + preamble_tokens <= cap:
             break
+        running_total -= cached_counts.pop()
         enforced.pop()
     return enforced
 

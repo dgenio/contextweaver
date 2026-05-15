@@ -25,6 +25,7 @@ types) because the runtime's downstream consumers
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -85,21 +86,40 @@ class McpClientUpstream:
 
     Args:
         session: A connected :class:`mcp.client.session.ClientSession`.
+        timeout: Seconds before an upstream call is abandoned and an
+            ``isError`` result is returned.  Defaults to 30 seconds.
+            Pass ``None`` to disable the timeout (not recommended for
+            production deployments).
     """
 
-    def __init__(self, session: Any) -> None:  # noqa: ANN401 — MCP SDK ClientSession
+    def __init__(
+        self,
+        session: Any,  # noqa: ANN401 — MCP SDK ClientSession
+        *,
+        timeout: float | None = 30.0,
+    ) -> None:
         self._session = session
+        self._timeout = timeout
 
     async def list_tools(self) -> list[dict[str, Any]]:
         """Call ``tools/list`` upstream and return dict-shaped defs."""
-        listing = await self._session.list_tools()
+        listing = await asyncio.wait_for(self._session.list_tools(), timeout=self._timeout)
         tools = getattr(listing, "tools", listing) or []
         return [_tool_to_dict(t) for t in tools]
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Forward a tool call and return a dict-shaped MCP result."""
         try:
-            result = await self._session.call_tool(tool_name, arguments)
+            result = await asyncio.wait_for(
+                self._session.call_tool(tool_name, arguments),
+                timeout=self._timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.debug("upstream call_tool %s timed out after %ss", tool_name, self._timeout)
+            return {
+                "content": [{"type": "text", "text": f"upstream timeout after {self._timeout}s"}],
+                "isError": True,
+            }
         except Exception as exc:  # noqa: BLE001
             logger.debug("upstream call_tool %s failed: %s", tool_name, exc)
             return {

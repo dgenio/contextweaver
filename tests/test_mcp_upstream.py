@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import pytest
+
 from contextweaver.adapters.mcp_upstream import (
     McpClientUpstream,
     MultiplexUpstream,
@@ -167,3 +169,36 @@ async def test_mcp_client_upstream_translates_exceptions() -> None:
     out = await upstream.call_tool("t", {})
     assert out["isError"] is True
     assert "network" in out["content"][0]["text"]
+
+
+async def test_mcp_client_upstream_call_tool_timeout() -> None:
+    """A hung call_tool returns an isError result after the timeout."""
+    import asyncio
+
+    class _HangSession:
+        async def list_tools(self) -> Any:  # noqa: ANN401
+            await asyncio.sleep(9999)
+
+        async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:  # noqa: ANN401
+            await asyncio.sleep(9999)
+
+    upstream = McpClientUpstream(_HangSession(), timeout=0.01)
+    out = await upstream.call_tool("slow_tool", {})
+    assert out["isError"] is True
+    assert "timeout" in out["content"][0]["text"].lower()
+
+
+async def test_mcp_client_upstream_list_tools_timeout() -> None:
+    """A hung list_tools raises TimeoutError (callers handle it)."""
+    import asyncio
+
+    class _HangSession:
+        async def list_tools(self) -> Any:  # noqa: ANN401
+            await asyncio.sleep(9999)
+
+        async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:  # noqa: ANN401
+            await asyncio.sleep(9999)
+
+    upstream = McpClientUpstream(_HangSession(), timeout=0.01)
+    with pytest.raises(asyncio.TimeoutError):
+        await upstream.list_tools()
