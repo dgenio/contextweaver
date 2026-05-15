@@ -10,15 +10,29 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Diogo Santos", email = "diogofcul@hotmail.com" }]
-keywords = ["ai", "agents", "context", "llm", "tools", "routing"]
+keywords = [
+    "ai",
+    "agents",
+    "context",
+    "context-engineering",
+    "llm",
+    "tools",
+    "tool-routing",
+    "mcp",
+    "prompt-budgeting",
+    "agent-infrastructure",
+    "routing",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
 ]
@@ -34,8 +48,11 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/dgenio/contextweaver"
+Documentation = "https://dgenio.github.io/contextweaver"
 Repository = "https://github.com/dgenio/contextweaver"
 Changelog = "https://github.com/dgenio/contextweaver/blob/main/CHANGELOG.md"
+Issues = "https://github.com/dgenio/contextweaver/issues"
+Discussions = "https://github.com/dgenio/contextweaver/discussions"
 
 [project.optional-dependencies]
 # Dev / test toolchain.

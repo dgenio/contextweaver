@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Render the public benchmark scorecard from ``benchmarks/results/latest.json``.
+
+The renderer reads the JSON dropped by ``benchmarks/benchmark.py`` and emits
+``benchmarks/scorecard.md`` — a public, committed, deterministic document so
+downstream readers can see contextweaver's routing and context-pipeline
+characteristics without running the harness themselves (#197).
+
+Determinism contract: given the same input JSON, the rendered markdown is
+byte-identical on every run. CI can verify with::
+
+    make benchmark && make scorecard && git diff --quiet benchmarks/scorecard.md
+
+Usage::
+
+    python scripts/render_scorecard.py
+    python scripts/render_scorecard.py --input path.json --output path.md
+    python scripts/render_scorecard.py --check    # exits non-zero on drift
+
+The script is intentionally stdlib-only — no contextweaver imports, so it can
+run before the package is installed (matching the ``scripts/gen_llms.py``
+convention).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_INPUT = REPO_ROOT / "benchmarks" / "results" / "latest.json"
+DEFAULT_OUTPUT = REPO_ROOT / "benchmarks" / "scorecard.md"
+
+
+# ---------------------------------------------------------------------------
+# Rendering primitives
+# ---------------------------------------------------------------------------
+
+
+_REQUIRED_TOP_KEYS = ("benchmark_version", "k", "seed", "routing", "context")
+_REQUIRED_ROUTING_KEYS = (
+    "catalog_size",
+    "queries_evaluated",
+    "precision_at_k",
+    "recall_at_k",
+    "mrr",
+    "latency_ms_p50",
+    "latency_ms_p95",
+    "latency_ms_p99",
+)
+_REQUIRED_CONTEXT_KEYS = (
+    "scenario",
+    "event_count",
+    "items_included",
+    "items_dropped",
+    "dedup_removed",
+    "prompt_tokens",
+    "budget_tokens",
+    "budget_utilization_pct",
+    "artifacts_created",
+    "avg_compaction_ratio",
+)
+
+
+def _validate(payload: dict[str, Any]) -> None:
+    """Raise ``ValueError`` if *payload* is missing fields the renderer needs."""
+    missing = [k for k in _REQUIRED_TOP_KEYS if k not in payload]
+    if missing:
+        raise ValueError(f"latest.json missing top-level keys: {missing}")
+    for row in payload["routing"]:
+        miss = [k for k in _REQUIRED_ROUTING_KEYS if k not in row]
+        if miss:
+            raise ValueError(f"routing row missing keys: {miss}")
+    for row in payload["context"]:
+        miss = [k for k in _REQUIRED_CONTEXT_KEYS if k not in row]
+        if miss:
+            raise ValueError(f"context row missing keys: {miss}")
+
+
+def _routing_table(rows: list[dict[str, Any]], k: int) -> str:
+    header = (
+        f"| catalog_size | queries | precision@{k} | recall@{k} | "
+        "MRR | p50 (ms) | p95 (ms) | p99 (ms) |"
+    )
+    sep = "|---:|---:|---:|---:|---:|---:|---:|---:|"
+    lines = [header, sep]
+    for r in sorted(rows, key=lambda x: int(x["catalog_size"])):
+        lines.append(
+            "| {size} | {q} | {prec:.4f} | {rec:.4f} | {mrr:.4f} "
+            "| {p50:.3f} | {p95:.3f} | {p99:.3f} |".format(
+                size=int(r["catalog_size"]),
+                q=int(r["queries_evaluated"]),
+                prec=float(r["precision_at_k"]),
+                rec=float(r["recall_at_k"]),
+                mrr=float(r["mrr"]),
+                p50=float(r["latency_ms_p50"]),
+                p95=float(r["latency_ms_p95"]),
+                p99=float(r["latency_ms_p99"]),
+            )
+        )
+    return "\n".join(lines)
+
+
+def _context_table(rows: list[dict[str, Any]]) -> str:
+    header = (
+        "| scenario | events | included | dropped | dedup | "
+        "tokens | budget | util % | artifacts | compaction |"
+    )
+    sep = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+    lines = [header, sep]
+    for r in sorted(rows, key=lambda x: str(x["scenario"])):
+        lines.append(
+            "| {s} | {ev} | {inc} | {dr} | {dd} | {tok} | {bud} "
+            "| {util:.1f}% | {art} | {comp:.2f}x |".format(
+                s=str(r["scenario"]),
+                ev=int(r["event_count"]),
+                inc=int(r["items_included"]),
+                dr=int(r["items_dropped"]),
+                dd=int(r["dedup_removed"]),
+                tok=int(r["prompt_tokens"]),
+                bud=int(r["budget_tokens"]),
+                util=float(r["budget_utilization_pct"]),
+                art=int(r["artifacts_created"]),
+                comp=float(r["avg_compaction_ratio"]),
+            )
+        )
+    return "\n".join(lines)
+
+
+def render(payload: dict[str, Any]) -> str:
+    """Return the scorecard markdown for *payload* (deterministic)."""
+    _validate(payload)
+    k = int(payload["k"])
+    seed = int(payload["seed"])
+    benchmark_version = str(payload["benchmark_version"])
+
+    parts = [
+        "# contextweaver — Benchmark Scorecard",
+        "",
+        "> Auto-generated by `make scorecard`. Do not edit by hand.",
+        "> Source: `benchmarks/results/latest.json` (produced by `make benchmark`).",
+        "",
+        f"- Harness version: `{benchmark_version}`",
+        f"- Seed: `{seed}`",
+        f"- Rank cutoff `k`: `{k}`",
+        "- Token estimator: `CharDivFourEstimator` (deterministic, no model dependency)",
+        "- Answer-phase budget: `6000` tokens",
+        "",
+        "All numbers below are reproducible deterministically by running",
+        "`make benchmark && make scorecard` from a clean checkout. Hardware and",
+        "Python version affect latency only; recall, drops, dedup, and token",
+        "counts are environment-independent.",
+        "",
+        "---",
+        "",
+        "## Routing accuracy & latency",
+        "",
+        "Gold dataset: 50 hand-curated queries (`benchmarks/routing_gold.json`)",
+        "covering all 8 catalog namespaces. Each query is repeated three times",
+        "for latency percentile stability.",
+        "",
+        _routing_table(payload["routing"], k),
+        "",
+        "Reading the table:",
+        "",
+        f"- `precision@{k}` is bounded by `1 / k` when each query has a single",
+        "  expected tool, so the headline accuracy signal is `recall@k` and `MRR`.",
+        "- Recall degrades predictably as the catalog grows — noise items",
+        "  compete with true matches; the routing-only experience for catalogs",
+        "  larger than ~200 items benefits from one of the optional retrieval",
+        "  backends (`bm25`, `fuzzy`) configured via `Router(scorer_backend=...)`.",
+        "- p50/p95 latencies stay under a millisecond at catalog_size ≤ 83.",
+        "  At catalog_size 1000 the p99 climbs into the tens of milliseconds",
+        "  because the beam search has to evaluate substantially more children",
+        "  per step; this is the regime where switching to a retriever-first",
+        "  shortlist (the `Retriever` protocol on the `EngineRegistry`) is the",
+        "  expected next step.",
+        "",
+        "---",
+        "",
+        "## Context pipeline scenarios",
+        "",
+        "Reference event logs under `benchmarks/scenarios/` are pushed through",
+        "`ContextManager.build_sync(phase=Phase.answer)`. The firewall",
+        "intercepts every `tool_result`; large results become artifacts and the",
+        "prompt sees their summaries instead.",
+        "",
+        _context_table(payload["context"]),
+        "",
+        "Reading the table:",
+        "",
+        "- `dropped > 0` means `select_and_pack` had to evict candidates to",
+        "  stay under the answer-phase budget — the `stress_conversation`",
+        "  scenario is sized to force this so the budget-driven selection",
+        "  stage shows up in benchmark output (#181).",
+        "- `dedup > 0` proves the Jaccard near-duplicate stage actively",
+        "  removed redundant context.",
+        "- `compaction > 1.0×` is the average ratio of raw artifact bytes to",
+        "  injected summary bytes — that's the firewall's load-bearing job.",
+        "",
+        "---",
+        "",
+        "## Methodology",
+        "",
+        "- **Deterministic seeds.** All catalog generation, scenario loading,",
+        "  and beam-search tie-breaking is seeded; identical inputs always",
+        "  produce identical outputs (`make benchmark` is a no-op on a fresh",
+        "  re-run for routing accuracy + context metrics; only latency",
+        "  varies with hardware).",
+        "- **No LLM calls.** The harness is pure-Python, stdlib + minimal core",
+        "  deps. The token estimator is `CharDivFourEstimator` so the numbers",
+        "  do not depend on `tiktoken`'s cached encoding state.",
+        "- **No network access.** The benchmark is safe to run in air-gapped",
+        "  CI environments.",
+        "- **Hardware variance.** Latency numbers are measured on the runner",
+        "  that produced `latest.json`. Treat them as ordering, not absolutes:",
+        "  the relative cost between catalog sizes is portable; the absolute",
+        "  microsecond count is not.",
+        "",
+        "See [`benchmarks/README.md`](README.md) for the full harness reference",
+        "and the per-scenario notes.",
+        "",
+        "---",
+        "",
+        "## Regenerating",
+        "",
+        "```bash",
+        "make benchmark   # writes benchmarks/results/latest.json",
+        "make scorecard   # writes benchmarks/scorecard.md from latest.json",
+        "git diff --quiet benchmarks/scorecard.md   # passes on clean re-run",
+        "```",
+        "",
+        "Per-backend matrices (`tfidf`, `bm25`, `fuzzy`) and a weekly scheduled",
+        "regeneration are tracked as follow-ups to this scorecard.",
+        "",
+    ]
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0] if __doc__ else None,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--input", default=str(DEFAULT_INPUT), help="Path to latest.json")
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="Path to scorecard.md")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Do not write; exit non-zero if the existing file would change.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Render the scorecard. Returns 0 on success, 1 on drift in --check mode."""
+    args = _parse_args(argv)
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+
+    if not input_path.exists():
+        print(
+            f"error: {input_path} not found — run `make benchmark` first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
+    rendered = render(payload)
+
+    if args.check:
+        existing = output_path.read_text(encoding="utf-8") if output_path.exists() else ""
+        if existing != rendered:
+            print(
+                f"error: {output_path} is out of date. Run `make scorecard`.",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(rendered, encoding="utf-8")
+    print(f"Wrote {output_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

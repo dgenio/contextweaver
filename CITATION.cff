@@ -1,0 +1,25 @@
+# Citation File Format 1.2.0 — https://citation-file-format.github.io/
+cff-version: 1.2.0
+message: "If you use contextweaver in published work, please cite it as below."
+title: contextweaver
+abstract: >-
+  contextweaver is a Python library for dynamic context management for
+  tool-using AI agents. It provides phase-specific, budget-aware context
+  compilation with a context firewall, plus bounded-choice routing over
+  large tool catalogs via DAG and beam search.
+type: software
+authors:
+  - family-names: Santos
+    given-names: Diogo
+    email: diogofcul@hotmail.com
+repository-code: "https://github.com/dgenio/contextweaver"
+url: "https://dgenio.github.io/contextweaver"
+license: Apache-2.0
+version: 0.3.0
+keywords:
+  - context engineering
+  - tool routing
+  - prompt budgeting
+  - agent infrastructure
+  - large language models
+  - mcp

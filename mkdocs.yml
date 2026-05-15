@@ -1,8 +1,8 @@
 site_name: contextweaver
 site_url: https://dgenio.github.io/contextweaver
 site_description: >-
-  Phase-specific, budget-aware context compilation for tool-using AI agents.
-  Zero runtime dependencies. Python ≥ 3.10.
+  Phase-specific, budget-aware context engineering for tool-using AI agents.
+  Minimal core dependencies. Python ≥ 3.10.
 
 repo_url: https://github.com/dgenio/contextweaver
 repo_name: dgenio/contextweaver
@@ -62,9 +62,13 @@ plugins:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Which pattern fits?: which_pattern.md
   - Concepts: concepts.md
   - How contextweaver Fits: interop.md
   - Cookbook: cookbook.md
+  - Architectures:
+      - Overview: architectures/index.md
+      - Slack ops bot: architectures/slack_ops_bot.md
   - Gateway Spec: gateway_spec.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md
@@ -76,6 +80,7 @@ nav:
       - Google ADK / Vertex AI: integration_google_adk.md
       - Pipecat: integration_pipecat.md
   - Architecture: architecture.md
+  - Benchmarks: benchmarks.md
   - Troubleshooting: troubleshooting.md
   - API Reference: reference/
 

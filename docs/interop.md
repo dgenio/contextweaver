@@ -3,6 +3,9 @@
 > Where does contextweaver sit relative to my agent runtime, my LLM provider,
 > and my tool catalog? What does it own, and what does it deliberately leave
 > to the rest of the stack? This page is the orientation map.
+>
+> **In a hurry?** [Which pattern fits my use case?](which_pattern.md) is a
+> symptom-based decision tree that lands each branch on one concrete next step.
 
 ## Positioning — policy vs. execution
 

@@ -1,10 +1,10 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark llms llms-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark scorecard scorecard-check architectures llms llms-check
 
 fmt:
-	ruff format src/ tests/ examples/
+	ruff format src/ tests/ examples/ scripts/
 
 lint:
-	ruff check src/ tests/ examples/
+	ruff check src/ tests/ examples/ scripts/
 
 type:
 	mypy src/
@@ -24,6 +24,10 @@ example:
 	python examples/langchain_memory_demo.py
 	python examples/cookbook/byot_recipe.py
 	python examples/cookbook/firewall_drilldown_recipe.py
+	$(MAKE) architectures
+
+architectures:
+	python examples/architectures/slack_ops_bot/main.py
 
 demo:
 	python -m contextweaver demo
@@ -36,6 +40,12 @@ docs-serve:
 
 benchmark:
 	python benchmarks/benchmark.py
+
+scorecard:
+	python scripts/render_scorecard.py
+
+scorecard-check:
+	python scripts/render_scorecard.py --check
 
 ci: fmt lint type test example demo
 

@@ -1,5 +1,9 @@
 # Architecture
 
+> **New here?** [Which pattern fits my use case?](which_pattern.md) routes you
+> to the smallest piece that fixes your symptom — most callers only need one
+> of the two engines, not the whole pipeline.
+
 contextweaver is structured around two cooperating engines that together solve
 the "context window problem" for tool-using AI agents.
 

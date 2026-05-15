@@ -82,16 +82,19 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 ## Commands
 
 ```bash
-make fmt      # ruff format src/ tests/ examples/
-make lint     # ruff check src/ tests/ examples/
+make fmt      # ruff format src/ tests/ examples/ scripts/
+make lint     # ruff check src/ tests/ examples/ scripts/
 make type     # mypy src/
 make test     # pytest --cov=contextweaver --cov-report=term-missing -q
-make example  # run all example scripts
+make example  # run all example scripts (includes architectures via the umbrella target)
+make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo
 make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make scorecard   # render benchmarks/scorecard.md from benchmarks/results/latest.json
+make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 ```

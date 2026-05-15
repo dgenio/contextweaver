@@ -53,6 +53,13 @@ jobs:
       - name: Demo
         run: make demo
 
+      - name: Scorecard drift check (gating)
+        # Runs before the benchmark step so it validates the committed pair
+        # (benchmarks/results/latest.json + benchmarks/scorecard.md). The
+        # benchmark step below overwrites latest.json with this runner's
+        # numbers, which would otherwise make the check non-portable.
+        run: python scripts/render_scorecard.py --check
+
       - name: Benchmark (informational, non-gating)
         continue-on-error: true
         run: python benchmarks/benchmark.py
