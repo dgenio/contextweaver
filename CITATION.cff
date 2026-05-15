@@ -16,6 +16,14 @@ repository-code: "https://github.com/dgenio/contextweaver"
 url: "https://dgenio.github.io/contextweaver"
 license: Apache-2.0
 version: 0.3.0
+date-released: "2026-05-11"
+# DOI placeholder — replace once a Zenodo (or equivalent) archive of a tagged
+# release is published. The current value points at Zenodo's "concept DOI"
+# placeholder pattern and is not a live record.
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.XXXXXXX"
+    description: "Concept DOI (placeholder — replace after first Zenodo release)"
 keywords:
   - context engineering
   - tool routing
