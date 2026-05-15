@@ -96,9 +96,9 @@ def test_make_choice_cards_default() -> None:
     assert len(cards) == 5
 
 
-def test_make_choice_cards_max_choices() -> None:
+def test_make_choice_cards_max_cards() -> None:
     items = [_item(f"t{i}") for i in range(30)]
-    cards = make_choice_cards(items, max_choices=10)
+    cards = make_choice_cards(items, max_cards=10)
     assert len(cards) <= 10
 
 
@@ -106,26 +106,21 @@ def test_make_choice_cards_preserves_order_no_scores() -> None:
     """Without scores, original input order is preserved when capping."""
     # IDs in reverse alphabetical order
     items = [_item(f"z{i}") for i in range(5)] + [_item(f"a{i}") for i in range(5)]
-    cards = make_choice_cards(items, max_choices=5)
+    cards = make_choice_cards(items, max_cards=5)
     # Should keep first 5 (z0..z4), not alphabetically first
     assert [c.id for c in cards] == [f"z{i}" for i in range(5)]
 
 
-def test_make_choice_cards_max_desc_chars_clamped() -> None:
-    """max_desc_chars < 4 is clamped to 4."""
-    items = [_item("t1", description="Hello world")]
-    cards = make_choice_cards(items, max_desc_chars=1)
-    # Should not crash; description is truncated to 4 chars
-    assert len(cards[0].description) <= 4
-    assert cards[0].description.endswith("...")
+def test_make_choice_cards_truncates_description_to_token_budget() -> None:
+    """Per docs/gateway_spec.md §2.4, descriptions are truncated by tokens."""
+    from contextweaver.routing.cards import count_tokens
 
-
-def test_make_choice_cards_truncates_description() -> None:
-    long_desc = "A" * 300
+    long_desc = "A long sentence. " * 100  # ~400 tokens
     items = [_item("t1", description=long_desc)]
-    cards = make_choice_cards(items, max_desc_chars=50)
-    assert len(cards[0].description) <= 50
-    assert cards[0].description.endswith("...")
+    cards = make_choice_cards(items, target_tokens_per_card=60)
+    # Truncated to fit the per-card target.
+    rendered_line = f"[1/1] {cards[0].id} ({cards[0].kind}) — {cards[0].description}"
+    assert count_tokens(rendered_line) <= 80  # hard cap
 
 
 def test_make_choice_cards_with_scores() -> None:
@@ -138,12 +133,13 @@ def test_make_choice_cards_with_scores() -> None:
     assert score_map["t2"] == 0.3
 
 
-def test_make_choice_cards_max_total_chars() -> None:
-    items = [_item(f"t{i}", description="X" * 100) for i in range(20)]
-    scores = {f"t{i}": float(i) for i in range(20)}
-    cards = make_choice_cards(items, max_total_chars=500, scores=scores)
-    text = render_cards_text(cards)
-    assert len(text) <= 500
+def test_make_choice_cards_score_desc_id_asc_ordering() -> None:
+    """§2.5: ties broken by tool_id ascending."""
+    items = [_item("t_zzz"), _item("t_aaa"), _item("t_mmm")]
+    # All same score → tie-break by id ascending.
+    scores = {"t_zzz": 0.5, "t_aaa": 0.5, "t_mmm": 0.5}
+    cards = make_choice_cards(items, scores=scores)
+    assert [c.id for c in cards] == ["t_aaa", "t_mmm", "t_zzz"]
 
 
 def test_make_choice_cards_no_schemas_in_output() -> None:
@@ -162,7 +158,7 @@ def test_make_choice_cards_no_schemas_in_output() -> None:
 def test_render_cards_text_format() -> None:
     cards = [
         ChoiceCard(
-            id="billing.invoices.search",
+            id="billing:invoices_search@1.0",
             name="search",
             description="Search invoices by date",
             tags=["billing", "search"],
@@ -172,7 +168,7 @@ def test_render_cards_text_format() -> None:
     ]
     text = render_cards_text(cards)
     assert "[1/1]" in text
-    assert "billing.invoices.search" in text
+    assert "billing:invoices_search@1.0" in text
     assert "(tool)" in text
     assert "score=0.82" in text
     assert "[billing, search]" in text

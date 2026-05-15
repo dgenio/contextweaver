@@ -39,11 +39,13 @@ All CI checks must pass before a PR can be merged.
 ## Style guide
 
 - **Python ≥ 3.10** — use `X | Y` union syntax, `match` statements where appropriate.
-- **Minimal core runtime dependencies** — the core ships with `tiktoken`, `PyYAML`, and
-  `rank-bm25`. Adding a new entry to `dependencies` in `pyproject.toml` requires broad
-  ecosystem use, a small wheel, and a default the library would otherwise approximate.
-  Heavy or runtime-specific packages go under `[project.optional-dependencies]` (e.g.
-  `cli`, `otel`, `retrieval`, `ann`, `graph`) and must be loaded via guarded imports
+- **Core runtime dependencies** — the core ships with `tiktoken`, `PyYAML`, `rank-bm25`,
+  plus `mcp` and `jsonschema` (the latter two are required by the MCP proxy / gateway
+  runtimes — see `docs/gateway_spec.md` §4.4 and `adapters/mcp_*`).  Adding *another*
+  entry to `dependencies` in `pyproject.toml` requires broad ecosystem use, a small
+  wheel, and a default the library would otherwise approximate.  Heavy or
+  runtime-specific packages go under `[project.optional-dependencies]` (e.g. `cli`,
+  `otel`, `retrieval`, `ann`, `graph`) and must be loaded via guarded imports
   (`try: import x ... except ImportError: ...`).
 - **Type hints everywhere** — all public functions and methods must be fully annotated.
 - **Docstrings** — use Google-style docstrings on all public classes and functions.

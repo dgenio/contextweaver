@@ -5,21 +5,152 @@ Converts :class:`~contextweaver.types.SelectableItem` objects into compact
 LLM prompts.  Full arg schemas are intentionally omitted to minimise token
 usage.
 
+The sizing rules in ``docs/gateway_spec.md`` §2 are expressed in **exact
+``cl100k_base`` token counts** rather than characters.  This module's
+public API is token-native:
+
+- Single card target ≤ 60 tokens, hard cap ≤ 80 tokens.
+- ``tool_browse`` response target ≤ ``60·n``, hard cap ≤ ``80·n + 32``
+  (32-token preamble allowance).
+- Ordering: descending score, ties broken by ``id`` ascending.
+
 Public API:
-    - :func:`item_to_card` — single item → card
-    - :func:`render_cards` — list of items → list of cards (preserves order)
-    - :func:`make_choice_cards` — items → bounded card list with truncation
-    - :func:`render_cards_text` — cards → numbered text block for prompts
-    - :func:`cards_for_route` — route IDs + catalog → matching cards
-    - :func:`format_card_for_prompt` — single card → multi-line text
+    - :func:`item_to_card` — single item → card.
+    - :func:`render_cards` — list of items → list of cards (preserves order).
+    - :func:`make_choice_cards` — items → bounded card list with
+      token-budget truncation per §2.3 / §2.4.
+    - :func:`bound_browse_response` — apply the §2.3 ``tool_browse``
+      response bound to an already-built card list.
+    - :func:`render_cards_text` — cards → numbered text block for prompts.
+    - :func:`cards_for_route` — route IDs + catalog → matching cards.
+    - :func:`format_card_for_prompt` — single card → multi-line text.
+    - :func:`truncate_description_to_tokens` — deterministic
+      sentence-aware truncation for §2.4.
 """
 
 from __future__ import annotations
 
+import logging
+import re
+from typing import Any
+
+import tiktoken
+
 from contextweaver.envelope import ChoiceCard
-from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.types import SelectableItem
+
+_logger = logging.getLogger("contextweaver.routing.cards")
+
+# Lazy ``cl100k_base`` encoder for §2.3 token accounting.  Loaded on
+# first use because :func:`tiktoken.get_encoding` downloads the BPE file
+# from a network URL on the first call in environments without a
+# pre-warmed cache.  In offline / air-gapped environments the load
+# fails; we fall back to a deterministic chars-per-token estimate
+# (``len(text) // 4``) that matches the existing
+# :class:`~contextweaver.protocols.TiktokenEstimator` fallback and keeps
+# the §2.3 bounds enforced — at the cost of approximate-rather-than-exact
+# token counts.
+_ENCODER: Any | None = None
+_ENCODER_FAILED: bool = False
+
+
+def _get_encoder() -> Any | None:  # noqa: ANN401 — tiktoken Encoding is not typed
+    """Return the cached cl100k_base encoder, or ``None`` if offline.
+
+    Logs a single warning on first failure, mirroring
+    :class:`~contextweaver.protocols.TiktokenEstimator`'s offline behaviour.
+    """
+    global _ENCODER, _ENCODER_FAILED
+    if _ENCODER is not None:
+        return _ENCODER
+    if _ENCODER_FAILED:
+        return None
+    try:
+        _ENCODER = tiktoken.get_encoding("cl100k_base")
+        return _ENCODER
+    except Exception as exc:  # pragma: no cover - exercised in offline tests
+        _ENCODER_FAILED = True
+        _logger.warning(
+            "tiktoken cl100k_base encoding unavailable (%s); falling back to "
+            "chars/4 token estimate for §2.3 budget enforcement.",
+            exc,
+        )
+        return None
+
+
+# §2.3 default token budgets.
+DEFAULT_CARD_TARGET_TOKENS = 60
+DEFAULT_CARD_HARD_CAP_TOKENS = 80
+DEFAULT_BROWSE_PREAMBLE_TOKENS = 32
+
+# §2.4 sentence terminators considered when truncating descriptions.
+_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?:\s|$)")
+
+# §2.4 ellipsis character (U+2026).
+_ELLIPSIS = "…"
+
+
+def count_tokens(text: str) -> int:
+    """Return the ``cl100k_base`` token count of *text*.
+
+    Falls back to ``len(text) // 4`` if the encoding is unavailable (e.g.
+    offline environment without a pre-warmed tiktoken cache).  The
+    fallback is deterministic so the §2.3 bounds remain meaningful even
+    in air-gapped CI.
+    """
+    if not text:
+        return 0
+    enc = _get_encoder()
+    if enc is not None:
+        return len(enc.encode(text))
+    return len(text) // 4 or 1
+
+
+def truncate_description_to_tokens(text: str, max_tokens: int) -> str:
+    """Truncate *text* deterministically to at most *max_tokens* tokens (§2.4).
+
+    Algorithm (deterministic, sentence-boundary-aware):
+
+    1. If *text* already fits, return it verbatim.
+    2. Otherwise, find the longest sentence-terminated prefix that fits.
+    3. If no sentence boundary fits, hard-cut to the byte offset whose
+       token count is ``max_tokens - 1`` and append ``"…"`` (U+2026).
+
+    Args:
+        text: The description to truncate.
+        max_tokens: Maximum tokens permitted.  Values ``<= 0`` return ``""``.
+
+    Returns:
+        The truncated description, stable for the same input.
+    """
+    if max_tokens <= 0:
+        return ""
+    if count_tokens(text) <= max_tokens:
+        return text
+
+    # Try sentence boundaries from longest prefix down.
+    boundaries = [m.end() for m in _SENTENCE_BOUNDARY_RE.finditer(text)]
+    for end in reversed(boundaries):
+        candidate = text[:end].rstrip()
+        if count_tokens(candidate) <= max_tokens:
+            return candidate
+
+    # No sentence boundary fits — hard-cut to (max_tokens - 1) tokens and
+    # append the ellipsis.  Binary search over character offsets to find
+    # the largest prefix whose encoded length is below the cap.
+    target = max(max_tokens - 1, 0)
+    lo, hi = 0, len(text)
+    best = 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if count_tokens(text[:mid]) <= target:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return text[:best].rstrip() + _ELLIPSIS
 
 
 def item_to_card(
@@ -40,11 +171,14 @@ def item_to_card(
     Returns:
         A :class:`ChoiceCard` with ``args_schema`` omitted.
     """
+    # §2.1 caps: name ≤ 64 chars, tags ≤ 5 entries (each ≤ 24 chars).
+    capped_name = item.name[:64]
+    capped_tags = sorted({t[:24] for t in item.tags})[:5]
     return ChoiceCard(
         id=item.id,
-        name=item.name,
+        name=capped_name,
         description=item.description,
-        tags=list(item.tags),
+        tags=capped_tags,
         kind=item.kind,
         namespace=item.namespace,
         has_schema=bool(item.args_schema),
@@ -66,61 +200,169 @@ def render_cards(items: list[SelectableItem]) -> list[ChoiceCard]:
     return [item_to_card(item) for item in items]
 
 
+def _card_token_count(card: ChoiceCard) -> int:
+    """Approximate the rendered token cost of a single card.
+
+    Matches the format produced by :func:`render_cards_text` so that the
+    sum of per-card costs is a tight upper bound on the rendered length.
+    """
+    tag_str = f" [{', '.join(card.tags)}]" if card.tags else ""
+    score_str = f" score={card.score:.2f}" if card.score is not None else ""
+    line = f"[1/1] {card.id} ({card.kind}) — {card.description}{tag_str}{score_str}"
+    return count_tokens(line)
+
+
+def _enforce_card_budget(
+    card: ChoiceCard,
+    *,
+    target_tokens: int,
+    hard_cap_tokens: int,
+) -> ChoiceCard:
+    """Truncate *card.description* to keep the card under the §2.3 budget.
+
+    The card builder MUST NOT silently drop fields — truncation is
+    confined to ``description``.  Raises :class:`CatalogError` if the
+    card still exceeds *hard_cap_tokens* after maximal truncation
+    (e.g. an unreasonably long tags list).
+    """
+    if _card_token_count(card) <= target_tokens:
+        return card
+
+    # Truncate description until the card fits the target, then verify
+    # the hard cap.  The non-description content (id, name, kind, tags,
+    # score) is fixed-size for a given card, so the description budget
+    # is target_tokens - (card_tokens - description_tokens).
+    fixed_overhead = _card_token_count(
+        ChoiceCard(
+            id=card.id,
+            name=card.name,
+            description="",
+            tags=card.tags,
+            kind=card.kind,
+            namespace=card.namespace,
+            has_schema=card.has_schema,
+            score=card.score,
+            cost_hint=card.cost_hint,
+            side_effects=card.side_effects,
+        )
+    )
+    description_budget = max(target_tokens - fixed_overhead, 1)
+    truncated_desc = truncate_description_to_tokens(card.description, description_budget)
+    truncated = ChoiceCard(
+        id=card.id,
+        name=card.name,
+        description=truncated_desc,
+        tags=card.tags,
+        kind=card.kind,
+        namespace=card.namespace,
+        has_schema=card.has_schema,
+        score=card.score,
+        cost_hint=card.cost_hint,
+        side_effects=card.side_effects,
+    )
+    final_tokens = _card_token_count(truncated)
+    if final_tokens > hard_cap_tokens:
+        raise CatalogError(
+            f"ChoiceCard for {card.id!r} exceeds hard cap "
+            f"({final_tokens} > {hard_cap_tokens} tokens) "
+            "after description truncation; non-description fields too large."
+        )
+    return truncated
+
+
+def _sort_cards_for_browse(cards: list[ChoiceCard]) -> list[ChoiceCard]:
+    """Apply the §2.5 deterministic ordering: score desc, id asc."""
+    return sorted(cards, key=lambda c: (-(c.score or 0.0), c.id))
+
+
 def make_choice_cards(
     items: list[SelectableItem],
     *,
-    max_choices: int = 20,
-    max_desc_chars: int = 240,
-    max_total_chars: int | None = None,
+    max_cards: int = 20,
+    target_tokens_per_card: int = DEFAULT_CARD_TARGET_TOKENS,
+    hard_cap_tokens_per_card: int = DEFAULT_CARD_HARD_CAP_TOKENS,
     scores: dict[str, float] | None = None,
 ) -> list[ChoiceCard]:
     """Create a bounded list of :class:`ChoiceCard` objects.
 
-    Descriptions longer than *max_desc_chars* are truncated with ``"..."``.
-    If *max_total_chars* is set the lowest-scored cards are dropped until the
-    rendered text fits.
-
-    Cards are ordered by score descending.  When scores are equal (or absent),
-    the original input order is preserved as a stable tie-break.
+    Each card is rendered with a description truncated to fit
+    *target_tokens_per_card* (per §2.4).  Cards are then sorted per
+    §2.5 (score desc, ``id`` asc) and capped to *max_cards*.
 
     Args:
         items: Source items.
-        max_choices: Maximum number of cards to return.
-        max_desc_chars: Maximum description length before truncation
-            (clamped to a minimum of 4).
-        max_total_chars: Optional cap on total rendered text length.
-        scores: Optional mapping of item-id → score.
+        max_cards: Maximum number of cards to return.
+        target_tokens_per_card: Target per-card token budget (§2.3).
+            Defaults to :data:`DEFAULT_CARD_TARGET_TOKENS` (60).
+        hard_cap_tokens_per_card: Hard cap per card; truncation that
+            still exceeds this cap raises :class:`CatalogError`.
+            Defaults to :data:`DEFAULT_CARD_HARD_CAP_TOKENS` (80).
+        scores: Optional mapping of item-id → score.  When absent, the
+            original input order is preserved.
 
     Returns:
         A list of :class:`ChoiceCard` objects.
+
+    Raises:
+        CatalogError: If any card cannot be truncated below the hard cap.
     """
-    # Need at least 4 chars to produce "X..." (1 visible + "...")
-    max_desc_chars = max(max_desc_chars, 4)
     score_map = scores or {}
+    cards = [
+        _enforce_card_budget(
+            item_to_card(item, score=score_map.get(item.id)),
+            target_tokens=target_tokens_per_card,
+            hard_cap_tokens=hard_cap_tokens_per_card,
+        )
+        for item in items
+    ]
 
-    cards: list[ChoiceCard] = []
-    for item in items:
-        card = item_to_card(item, score=score_map.get(item.id))
-        # Truncate description
-        if len(card.description) > max_desc_chars:
-            card.description = card.description[: max_desc_chars - 3] + "..."
-        cards.append(card)
+    if score_map:
+        cards = _sort_cards_for_browse(cards)
 
-    # Cap at max_choices — keep highest-scored, tie-break by original index
-    if len(cards) > max_choices:
-        indexed = list(enumerate(cards))
-        indexed.sort(key=lambda t: (-(t[1].score or 0.0), t[0]))
-        cards = [c for _, c in indexed[:max_choices]]
+    return cards[:max_cards]
 
-    # Honour max_total_chars by dropping lowest-scored tail
-    if max_total_chars is not None:
-        indexed = list(enumerate(cards))
-        indexed.sort(key=lambda t: (-(t[1].score or 0.0), t[0]))
-        while indexed and len(render_cards_text([c for _, c in indexed])) > max_total_chars:
-            indexed.pop()
-        cards = [c for _, c in indexed]
 
-    return cards
+def bound_browse_response(
+    cards: list[ChoiceCard],
+    *,
+    target_tokens_per_card: int = DEFAULT_CARD_TARGET_TOKENS,
+    hard_cap_tokens_per_card: int = DEFAULT_CARD_HARD_CAP_TOKENS,
+    preamble_tokens: int = DEFAULT_BROWSE_PREAMBLE_TOKENS,
+) -> list[ChoiceCard]:
+    """Apply the §2.3 ``tool_browse`` response bound.
+
+    Drops the lowest-scoring cards (tail of the §2.5 ordering) until the
+    total rendered token count fits ``hard_cap_per_card * n +
+    preamble_tokens``.  Each retained card has already been individually
+    bounded by :func:`_enforce_card_budget`.
+
+    Args:
+        cards: Cards produced by :func:`make_choice_cards`.
+        target_tokens_per_card: §2.3 target.  Defaults to 60.
+        hard_cap_tokens_per_card: §2.3 hard cap.  Defaults to 80.
+        preamble_tokens: §2.3 preamble allowance.  Defaults to 32.
+
+    Returns:
+        A possibly shortened list of cards whose summed rendered tokens
+        fit the §2.3 bound.
+    """
+    ordered = _sort_cards_for_browse(list(cards))
+    enforced = [
+        _enforce_card_budget(
+            c,
+            target_tokens=target_tokens_per_card,
+            hard_cap_tokens=hard_cap_tokens_per_card,
+        )
+        for c in ordered
+    ]
+    # Drop from the tail (lowest score, highest id) until we fit.
+    while enforced:
+        total = sum(_card_token_count(c) for c in enforced) + preamble_tokens
+        cap = hard_cap_tokens_per_card * len(enforced) + preamble_tokens
+        if total <= cap:
+            break
+        enforced.pop()
+    return enforced
 
 
 def render_cards_text(cards: list[ChoiceCard]) -> str:
@@ -128,7 +370,7 @@ def render_cards_text(cards: list[ChoiceCard]) -> str:
 
     Format per line::
 
-        [1/5] billing.invoices.search (tool) — Search invoices by date [billing, search] score=0.82
+        [1/5] billing:invoices_search (tool) — Search invoices by date [billing, search] score=0.82
 
     Score is shown **only** when ``card.score is not None``.
 
@@ -144,8 +386,7 @@ def render_cards_text(cards: list[ChoiceCard]) -> str:
         tags_str = f" [{', '.join(sorted(card.tags))}]" if card.tags else ""
         score_str = f" score={card.score:.2f}" if card.score is not None else ""
         lines.append(
-            f"[{idx}/{total}] {card.id} ({card.kind}) "
-            f"\u2014 {card.description}{tags_str}{score_str}"
+            f"[{idx}/{total}] {card.id} ({card.kind}) — {card.description}{tags_str}{score_str}"
         )
     return "\n".join(lines)
 

@@ -8,6 +8,7 @@ containing a human-readable summary, extracted facts, and an
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Literal
 
@@ -15,7 +16,7 @@ from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import ResultEnvelope
 from contextweaver.protocols import ArtifactStore, EventHook, Extractor, NoOpHook, Summarizer
 from contextweaver.summarize.extract import extract_facts
-from contextweaver.types import ContextItem, ItemKind
+from contextweaver.types import ArtifactRef, ContextItem, ItemKind
 
 logger = logging.getLogger("contextweaver.context")
 
@@ -66,14 +67,35 @@ def apply_firewall(
     if item.kind != ItemKind.tool_result:
         return item, None
 
+    # Issue #190 — content-addressed firewall idempotency.  If the item
+    # already carries an ``artifact_ref`` with a populated
+    # ``content_hash``, an earlier firewall pass has stored the raw
+    # bytes and replaced ``item.text`` with the summary.  Re-firing on a
+    # subsequent ``build()`` call would overwrite the original raw bytes
+    # with the summary and silently break drilldown.  Short-circuit: the
+    # item is already firewall-processed; return it untouched and signal
+    # "no new envelope" so downstream stages know nothing changed.
+    if item.artifact_ref is not None and item.artifact_ref.content_hash:
+        return item, None
+
     raw_bytes = item.text.encode("utf-8")
+    content_hash = hashlib.sha256(raw_bytes).hexdigest()
     handle = f"artifact:{item.id}"
     media = str(item.metadata.get("media_type", "text/plain"))
-    ref = artifact_store.put(
+    stored_ref = artifact_store.put(
         handle=handle,
         content=raw_bytes,
         media_type=media,
         label=f"raw tool result for {item.id}",
+    )
+    # Attach the content_hash so subsequent firewall passes can detect
+    # this item as already-processed (#190).
+    ref = ArtifactRef(
+        handle=stored_ref.handle,
+        media_type=stored_ref.media_type,
+        size_bytes=stored_ref.size_bytes,
+        label=stored_ref.label,
+        content_hash=content_hash,
     )
 
     status: Literal["ok", "partial", "error"] = "ok"

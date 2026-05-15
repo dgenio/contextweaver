@@ -37,6 +37,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CI as a gating step (the issue allowed a non-gating stub, but the
   available `weaver_contracts` + `jsonschema` dev deps unlock real schema
   validation today).
+- **MCP proxy + two-tool gateway runtime** (#13, #28, #29, #34).  Lands the
+  full proxy/gateway surface specified by `docs/gateway_spec.md`:
+  - `src/contextweaver/routing/tool_id.py` — canonical `tool_id` grammar
+    (`parse_tool_id`, `format_tool_id`, `compute_hash8`, `canonical_tool_id`,
+    `ToolIdParts`) per §1.  `mcp_tool_to_selectable` is cut over to emit
+    canonical ids (§1.7); the legacy `mcp:{name}` form is retired.
+  - `src/contextweaver/routing/path.py` — `tool_browse` path-navigation
+    grammar (`parse_path`, `resolve_path`) per §3, with two new typed
+    exceptions (`PathInvalidError`, `PathNotFoundError`).
+  - `src/contextweaver/routing/cards.py` — refit to **token-native**
+    enforcement of the §2.3 ChoiceCard size bounds against
+    `cl100k_base` (`make_choice_cards`, `bound_browse_response`,
+    `truncate_description_to_tokens`, `count_tokens`).  The old
+    `max_total_chars` / `max_desc_chars` arguments are removed.
+  - `src/contextweaver/adapters/proxy_runtime.py` — `ProxyRuntime`
+    shared core with `ExposureMode`, `UpstreamCall` Protocol, and
+    browse / execute / view / hydrate / strip_tools_list primitives
+    (#29).  Validates `tool_execute` args against the hydrated schema
+    via `jsonschema` (§4.4).
+  - `src/contextweaver/adapters/mcp_gateway.py` — three meta-tools
+    (`tool_browse`, `tool_execute`, `tool_view`) with structured
+    `GatewayError` returns (§3.4) (#28, #34).
+  - `src/contextweaver/adapters/mcp_proxy.py` — transparent-proxy
+    surfaces: stripped `tools/list` + `tool_hydrate` + `tool_execute`
+    (§4.1) (#13).
+  - `src/contextweaver/adapters/mcp_upstream.py` — concrete
+    `UpstreamCall` adapters: `StubUpstream` (in-process tests / demos),
+    `McpClientUpstream` (single MCP `ClientSession`), and
+    `MultiplexUpstream` (multi-server fan-out).
+  - `src/contextweaver/adapters/mcp_gateway_server.py` /
+    `mcp_proxy_server.py` — bind the dispatch layers onto a real
+    `mcp.server.Server` over stdio.
+  - `src/contextweaver/adapters/gateway_error.py` — typed `GatewayError`
+    dataclass with the §3.4 wire shape.
+  - Two new runnable demos (`examples/mcp_gateway_demo.py`,
+    `examples/mcp_proxy_demo.py`) wired into `make example`.
+- **Content-addressed firewall idempotency** (#190).
+  `ArtifactRef.content_hash` (lowercase sha256 hex) is populated when
+  the firewall stores raw bytes.  `apply_firewall` now short-circuits
+  when an incoming item already carries a populated `content_hash`,
+  preventing the previous regression where a `build()` call run after
+  `ingest_tool_result_sync()` overwrote the original raw bytes with the
+  summary.
+
+### Changed
+
+- **`mcp` and `jsonschema` promoted to core dependencies** (was: planned
+  optional extras).  Driven by the gateway / proxy runtimes — both are
+  load-bearing for `gateway_spec.md` §4.4 argument validation and the
+  MCP transport binding.  The AGENTS.md "minimal core runtime
+  dependencies" rule is amended accordingly.
+- **`mcp_tool_to_selectable` emits canonical `tool_id`** (§1.7
+  cutover).  Existing call sites that hard-coded `f"mcp:{name}"` must
+  consume the canonical form (round-tripped through
+  `parse_tool_id` / `format_tool_id`).
+- **`make_choice_cards` is token-native** against `cl100k_base`.  The
+  `max_total_chars` and `max_desc_chars` keyword arguments are removed;
+  callers use `target_tokens_per_card` and `hard_cap_tokens_per_card`
+  (defaults 60 / 80 matching `gateway_spec.md` §2.3).
+
+### Added (carried from prior unreleased entries)
+
 - **Gateway surface specification** (#30, #31). New
   `docs/gateway_spec.md` codifies the three contract gaps blocking the
   MCP proxy and gateway runtimes: canonical `tool_id` grammar

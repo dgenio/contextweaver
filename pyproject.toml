@@ -22,14 +22,21 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
 ]
-# Minimal core runtime dependencies. Each entry is broadly used in GenAI stacks
-# (often already pulled in transitively) and unblocks default behaviour the
-# library would otherwise have to approximate. Heavy or runtime-specific
-# packages live under [project.optional-dependencies] below.
+# Core runtime dependencies.  contextweaver opted into shipping the MCP SDK
+# and ``jsonschema`` as core (rather than gating them behind optional extras)
+# when the MCP proxy / gateway runtimes landed in v0.4: both are load-bearing
+# for the gateway invocation contract (see ``docs/gateway_spec.md`` §4.4) and
+# gating them behind extras forced every caller through a guarded-import
+# dance.  ``tiktoken``, ``PyYAML``, ``rank-bm25`` are broadly used in GenAI
+# stacks (often already pulled in transitively) and unblock default behaviour
+# the library would otherwise have to approximate.  Other heavy or
+# runtime-specific packages remain under [project.optional-dependencies].
 dependencies = [
     "tiktoken>=0.5",
     "PyYAML>=6.0",
     "rank-bm25>=0.2",
+    "mcp>=1.0",
+    "jsonschema>=4.0",
 ]
 
 [project.urls]
@@ -171,6 +178,10 @@ ignore_missing_imports = true
 # while still being a real installed package the adapter can import.
 [[tool.mypy.overrides]]
 module = "weaver_contracts.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mcp.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
