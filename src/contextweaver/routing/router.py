@@ -387,8 +387,13 @@ class Router:
         if idx is not None:
             return self._retriever.score_one(query, idx)
 
+        # ``tokenize`` now handles ``:`` (outer split), ``_`` ``-`` ``.`` ``/``
+        # (inner-compound split) directly — see issue #213 — so the manual
+        # ``replace(...)`` workarounds that used to live here are no longer
+        # needed: feeding the raw node_id produces both the compound form
+        # (high-confidence exact-id hits) and the per-segment sub-tokens.
         q_tokens = tokenize(query)
-        n_tokens = tokenize(node_id.replace(":", " ").replace("_", " ").replace("/", " "))
+        n_tokens = tokenize(node_id)
         return jaccard(q_tokens, n_tokens)
 
     # ------------------------------------------------------------------

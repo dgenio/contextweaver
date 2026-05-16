@@ -2,10 +2,14 @@
 
 Evaluates:
   Routing   — precision@k, recall@k, MRR, p50/p95/p99 latency across catalog sizes
+              and (optionally) per backend (tfidf / bm25 / fuzzy) and per namespace
   Context   — prompt_tokens, budget_utilization_pct, included/dropped/dedup counts,
-              artifacts_created, avg_compaction_ratio
+              artifacts_created, avg_compaction_ratio, naive-concat token delta
 
-Catalog sizes tested: 50, ~83 (natural pool cap), 1000 (synthetic extension).
+Catalog sizes tested:
+  - Legacy ``routing`` summary: 50, ~83 (natural pool cap), 1000 (synthetic extension)
+  - Matrix ``routing_matrix``: 100, 500, 1000 (overridable via ``--sizes``)
+
 Deterministic: seeded RNG, sorted outputs.
 No LLM calls or external network access.
 
@@ -13,6 +17,9 @@ Usage::
 
     python benchmarks/benchmark.py
     python benchmarks/benchmark.py --output benchmarks/results/custom.json --k 5
+    # Full per-backend × per-size matrix (issue #208):
+    python benchmarks/benchmark.py --matrix
+    python benchmarks/benchmark.py --matrix --backends tfidf,bm25 --sizes 100,500
 
 Exit codes: 0 on success, 1 on any error.
 """
@@ -37,6 +44,7 @@ from contextweaver.routing.catalog import (  # noqa: E402
     generate_sample_catalog,
     load_catalog_dicts,
 )
+from contextweaver._utils import FuzzyScorer  # noqa: E402
 from contextweaver.routing.router import Router  # noqa: E402
 from contextweaver.routing.tree import TreeBuilder  # noqa: E402
 from contextweaver.store.event_log import InMemoryEventLog  # noqa: E402
@@ -95,10 +103,25 @@ def _make_catalog(n: int, seed: int = 42) -> list[SelectableItem]:
     return sorted(items, key=lambda i: i.id)[:n]
 
 
-def _build_router(items: list[SelectableItem]) -> Router:
-    """Compile *items* into a TreeBuilder DAG and wrap with a Router."""
+def _build_router(items: list[SelectableItem], scorer_backend: str = "tfidf") -> Router:
+    """Compile *items* into a TreeBuilder DAG and wrap with a Router.
+
+    Args:
+        items: Catalog items to compile into the routing DAG.
+        scorer_backend: One of ``tfidf`` / ``bm25`` / ``fuzzy``. The ``fuzzy``
+            backend requires the ``[retrieval]`` extra and will raise a
+            :class:`~contextweaver.exceptions.ConfigError` when missing — callers
+            that want to skip rather than fail should pre-check
+            :data:`_FUZZY_AVAILABLE`.
+    """
     graph = TreeBuilder().build(items)
-    return Router(graph, items=items)
+    return Router(graph, items=items, scorer_backend=scorer_backend)
+
+
+# ``FuzzyScorer`` is the runtime ``None`` sentinel exposed by ``_utils`` when
+# the ``[retrieval]`` extra is missing. The matrix runner uses this to record
+# a ``"status": "skipped: missing rapidfuzz"`` row rather than crash (#208).
+_FUZZY_AVAILABLE: bool = FuzzyScorer is not None
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +160,39 @@ class RoutingStats:
     latency_ms_p50: float
     latency_ms_p95: float
     latency_ms_p99: float
+
+
+@dataclass
+class MatrixCell:
+    """One row in ``routing_matrix`` — a (backend, catalog_size) cell.
+
+    See issue #208. The cell carries the same accuracy / latency metrics as
+    :class:`RoutingStats` plus the routing backend identity, and gains a
+    ``status`` field used to record graceful skips (e.g. fuzzy backend when
+    the ``[retrieval]`` extra is missing).
+    """
+
+    backend: str
+    catalog_size: int
+    queries_evaluated: int
+    precision_at_k: float
+    recall_at_k: float
+    mrr: float
+    latency_ms_p50: float
+    latency_ms_p95: float
+    latency_ms_p99: float
+    status: str = "ok"
+
+
+@dataclass
+class NamespaceCell:
+    """Per-namespace recall@k breakdown (issue #209)."""
+
+    backend: str
+    catalog_size: int
+    namespace: str
+    queries_evaluated: int
+    recall_at_k: float
 
 
 def _run_routing_benchmark(
@@ -199,6 +255,153 @@ def _run_routing_benchmark(
             )
         )
     return results
+
+
+# ---------------------------------------------------------------------------
+# Per-backend × per-size matrix (issue #208) with per-namespace breakdown (#209)
+# ---------------------------------------------------------------------------
+
+
+def _entry_namespace(entry: dict[str, object]) -> str:
+    """Derive a stable namespace label for a gold entry.
+
+    Prefers the explicit ``namespace`` field added in #209; falls back to the
+    dot-prefix of the first ``expected`` id for legacy entries.
+    """
+    ns = entry.get("namespace")
+    if isinstance(ns, str) and ns:
+        return ns
+    expected = entry.get("expected")
+    if isinstance(expected, list) and expected:
+        first = expected[0]
+        if isinstance(first, str) and "." in first:
+            return first.split(".", 1)[0]
+    return "unknown"
+
+
+def _percentile(sorted_lats: list[float], pct: float) -> float:
+    """Return ``pct``-th percentile of pre-sorted latency samples (ms)."""
+    if not sorted_lats:
+        return 0.0
+    idx = min(int(len(sorted_lats) * pct), len(sorted_lats) - 1)
+    return round(sorted_lats[idx], 3)
+
+
+def _run_matrix_cell(
+    gold: list[dict[str, object]],
+    backend: str,
+    catalog_size: int,
+    k: int,
+    seed: int,
+    n_timing_runs: int,
+) -> tuple[MatrixCell, list[NamespaceCell]]:
+    """Run one (backend, catalog_size) cell and return its row + per-namespace rows."""
+    if backend == "fuzzy" and not _FUZZY_AVAILABLE:
+        skipped = MatrixCell(
+            backend=backend,
+            catalog_size=catalog_size,
+            queries_evaluated=0,
+            precision_at_k=0.0,
+            recall_at_k=0.0,
+            mrr=0.0,
+            latency_ms_p50=0.0,
+            latency_ms_p95=0.0,
+            latency_ms_p99=0.0,
+            status="skipped: missing rapidfuzz",
+        )
+        return skipped, []
+
+    items = _make_catalog(catalog_size, seed=seed)
+    item_ids = {it.id for it in items}
+    router = _build_router(items, scorer_backend=backend)
+
+    latencies_ms: list[float] = []
+    precisions: list[float] = []
+    recalls: list[float] = []
+    rrs: list[float] = []
+    # Per-namespace accumulator: ns -> list[recall_at_k]
+    ns_recalls: dict[str, list[float]] = {}
+
+    for entry in gold:
+        query = str(entry["query"])
+        raw_expected = entry.get("expected", [])
+        if not isinstance(raw_expected, list):
+            continue
+        expected = [e for e in raw_expected if isinstance(e, str) and e in item_ids]
+        if not expected:
+            continue
+        ns = _entry_namespace(entry)
+
+        last_result = None
+        for _ in range(n_timing_runs):
+            t0 = time.perf_counter()
+            last_result = router.route(query)
+            latencies_ms.append((time.perf_counter() - t0) * 1000)
+        if last_result is None:
+            continue
+
+        predicted = last_result.candidate_ids
+        rec = _recall_at_k(predicted, expected, k)
+        precisions.append(_precision_at_k(predicted, expected, k))
+        recalls.append(rec)
+        rrs.append(_reciprocal_rank(predicted, expected))
+        ns_recalls.setdefault(ns, []).append(rec)
+
+    latencies_ms.sort()
+    cell = MatrixCell(
+        backend=backend,
+        catalog_size=len(items),
+        queries_evaluated=len(precisions),
+        precision_at_k=round(statistics.mean(precisions), 4) if precisions else 0.0,
+        recall_at_k=round(statistics.mean(recalls), 4) if recalls else 0.0,
+        mrr=round(statistics.mean(rrs), 4) if rrs else 0.0,
+        latency_ms_p50=_percentile(latencies_ms, 0.50),
+        latency_ms_p95=_percentile(latencies_ms, 0.95),
+        latency_ms_p99=_percentile(latencies_ms, 0.99),
+        status="ok",
+    )
+    ns_rows = [
+        NamespaceCell(
+            backend=backend,
+            catalog_size=len(items),
+            namespace=ns,
+            queries_evaluated=len(rs),
+            recall_at_k=round(statistics.mean(rs), 4) if rs else 0.0,
+        )
+        for ns, rs in sorted(ns_recalls.items())
+    ]
+    return cell, ns_rows
+
+
+def _run_matrix(
+    gold: list[dict[str, object]],
+    backends: list[str],
+    catalog_sizes: list[int],
+    k: int,
+    seed: int,
+    n_timing_runs: int,
+) -> tuple[list[MatrixCell], list[NamespaceCell]]:
+    """Run the full ``backends × catalog_sizes`` matrix (issue #208).
+
+    Returns a flat list of :class:`MatrixCell` rows (sorted deterministically by
+    ``(backend, catalog_size)``) plus a flat list of :class:`NamespaceCell`
+    rows for the per-namespace breakdown (#209).
+    """
+    cells: list[MatrixCell] = []
+    ns_cells: list[NamespaceCell] = []
+    for backend in sorted(backends):
+        for n in sorted(catalog_sizes):
+            cell, ns_rows = _run_matrix_cell(
+                gold=gold,
+                backend=backend,
+                catalog_size=n,
+                k=k,
+                seed=seed,
+                n_timing_runs=n_timing_runs,
+            )
+            cells.append(cell)
+            ns_cells.extend(ns_rows)
+    return cells, ns_cells
 
 
 # ---------------------------------------------------------------------------
@@ -322,9 +525,52 @@ def _print_context_table(rows: list[ContextStats]) -> None:
         )
 
 
+def _print_matrix_table(cells: list[MatrixCell], k: int) -> None:
+    """Print the per-backend × per-size matrix (issue #208)."""
+    header = (
+        f"{'backend':<8}  {'catalog_size':>12}  {'queries':>7}  {'prec@' + str(k):>8}"
+        f"  {'recall@' + str(k):>9}  {'mrr':>6}  {'p50_ms':>7}  {'p95_ms':>7}"
+        f"  {'p99_ms':>7}  {'status':<32}"
+    )
+    sep = "-" * len(header)
+    print("\n=== Routing Matrix (per-backend × per-size) ===")
+    print(header)
+    print(sep)
+    for c in cells:
+        print(
+            f"{c.backend:<8}  {c.catalog_size:>12}  {c.queries_evaluated:>7}"
+            f"  {c.precision_at_k:>8.4f}  {c.recall_at_k:>9.4f}  {c.mrr:>6.4f}"
+            f"  {c.latency_ms_p50:>7.3f}  {c.latency_ms_p95:>7.3f}"
+            f"  {c.latency_ms_p99:>7.3f}  {c.status:<32}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
+
+_DEFAULT_MATRIX_BACKENDS = "tfidf,bm25,fuzzy"
+_DEFAULT_MATRIX_SIZES = "100,500,1000"
+
+
+def _csv_int_list(raw: str) -> list[int]:
+    """Parse a ``"100,500,1000"``-style flag into a sorted list of ints."""
+    if not raw:
+        return []
+    out: list[int] = []
+    for piece in raw.split(","):
+        piece = piece.strip()
+        if piece:
+            out.append(int(piece))
+    return out
+
+
+def _csv_str_list(raw: str) -> list[str]:
+    """Parse a ``"tfidf,bm25"``-style flag into a list of names."""
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -345,6 +591,34 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=3,
         help="Routing query repetitions per query for latency measurement",
     )
+    parser.add_argument(
+        "--matrix",
+        action="store_true",
+        help="Also emit a per-backend × per-size matrix (issue #208).",
+    )
+    parser.add_argument(
+        "--backends",
+        default=_DEFAULT_MATRIX_BACKENDS,
+        help=(
+            "Comma-separated routing backends for the matrix run "
+            "(any of: tfidf, bm25, fuzzy). The 'fuzzy' backend requires "
+            "the [retrieval] extra; missing backends are recorded with "
+            "an explicit 'status: skipped' row rather than silently omitted."
+        ),
+    )
+    parser.add_argument(
+        "--sizes",
+        default=_DEFAULT_MATRIX_SIZES,
+        help="Comma-separated catalog sizes for the matrix run.",
+    )
+    parser.add_argument(
+        "--no-naive-delta",
+        action="store_true",
+        help=(
+            "Disable per-scenario naïve-concat baseline measurement (issue #215). "
+            "Default is enabled; the naive_delta block is additive to each context row."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -355,7 +629,8 @@ def main(argv: list[str] | None = None) -> int:
     # Load gold dataset
     gold: list[dict[str, object]] = json.loads(_GOLD_PATH.read_text(encoding="utf-8"))
 
-    # Catalog sizes: 50, natural cap (~83), and 1000-item synthetic extension
+    # Catalog sizes for the legacy single-backend ``routing`` summary list.
+    # The matrix runner (#208) uses its own ``--sizes`` (default 100/500/1000).
     catalog_sizes = [50, 83, 1000]
 
     # Scenario files
@@ -379,13 +654,48 @@ def main(argv: list[str] | None = None) -> int:
     _print_routing_table(routing_results, args.k)
     _print_context_table(context_results)
 
+    # Optional per-backend × per-size matrix + per-namespace breakdown (#208, #209).
+    matrix_cells: list[MatrixCell] = []
+    ns_cells: list[NamespaceCell] = []
+    if args.matrix:
+        backends = _csv_str_list(args.backends) or _csv_str_list(_DEFAULT_MATRIX_BACKENDS)
+        sizes = _csv_int_list(args.sizes) or _csv_int_list(_DEFAULT_MATRIX_SIZES)
+        matrix_cells, ns_cells = _run_matrix(
+            gold=gold,
+            backends=backends,
+            catalog_sizes=sizes,
+            k=args.k,
+            seed=args.seed,
+            n_timing_runs=args.timing_runs,
+        )
+        _print_matrix_table(matrix_cells, args.k)
+
+    # Optional naïve-concat baseline (#215) — additive ``naive_delta`` per context row.
+    context_dicts = [asdict(r) for r in context_results]
+    if not args.no_naive_delta:
+        # Import is local because ``scripts/`` is not a package and the
+        # naïve-baseline implementation deliberately lives outside the library.
+        sys.path.insert(0, str(_ROOT / "scripts"))
+        from baseline_naive import compute_naive_delta  # noqa: E402,PLC0415
+
+        scenario_index = {p.stem: p for p in scenario_paths}
+        for row in context_dicts:
+            scenario_path = scenario_index.get(str(row.get("scenario", "")))
+            if scenario_path is None:
+                continue
+            row["naive_delta"] = compute_naive_delta(scenario_path, row)
+
     out = {
-        "benchmark_version": "1.0",
+        "benchmark_version": "1.1",
         "k": args.k,
         "seed": args.seed,
         "routing": [asdict(r) for r in routing_results],
-        "context": [asdict(r) for r in context_results],
+        "context": context_dicts,
     }
+    if matrix_cells:
+        out["routing_matrix"] = [asdict(c) for c in matrix_cells]
+    if ns_cells:
+        out["routing_per_namespace"] = [asdict(c) for c in ns_cells]
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)

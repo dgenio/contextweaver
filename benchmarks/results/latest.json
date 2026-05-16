@@ -1,37 +1,37 @@
 {
-  "benchmark_version": "1.0",
+  "benchmark_version": "1.1",
   "k": 5,
   "seed": 42,
   "routing": [
     {
       "catalog_size": 50,
       "queries_evaluated": 50,
-      "precision_at_k": 0.16,
-      "recall_at_k": 0.74,
-      "mrr": 0.71,
-      "latency_ms_p50": 0.296,
-      "latency_ms_p95": 0.43,
-      "latency_ms_p99": 0.538
+      "precision_at_k": 0.152,
+      "recall_at_k": 0.72,
+      "mrr": 0.7033,
+      "latency_ms_p50": 0.305,
+      "latency_ms_p95": 0.365,
+      "latency_ms_p99": 1.117
     },
     {
       "catalog_size": 83,
       "queries_evaluated": 50,
-      "precision_at_k": 0.132,
+      "precision_at_k": 0.128,
       "recall_at_k": 0.61,
-      "mrr": 0.6083,
-      "latency_ms_p50": 0.473,
-      "latency_ms_p95": 0.557,
-      "latency_ms_p99": 0.859
+      "mrr": 0.589,
+      "latency_ms_p50": 0.487,
+      "latency_ms_p95": 0.534,
+      "latency_ms_p99": 1.441
     },
     {
       "catalog_size": 1000,
       "queries_evaluated": 50,
-      "precision_at_k": 0.064,
-      "recall_at_k": 0.31,
-      "mrr": 0.32,
-      "latency_ms_p50": 28.54,
-      "latency_ms_p95": 30.422,
-      "latency_ms_p99": 34.245
+      "precision_at_k": 0.076,
+      "recall_at_k": 0.37,
+      "mrr": 0.3667,
+      "latency_ms_p50": 27.719,
+      "latency_ms_p95": 30.558,
+      "latency_ms_p99": 37.527
     }
   ],
   "context": [
@@ -45,7 +45,13 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 25.2,
       "artifacts_created": 15,
-      "avg_compaction_ratio": 1.0
+      "avg_compaction_ratio": 1.0,
+      "naive_delta": {
+        "naive_tokens": 2767,
+        "cw_tokens": 1514,
+        "pct_reduction": 45.28,
+        "coverage_pct": 100.0
+      }
     },
     {
       "scenario": "long_conversation",
@@ -57,7 +63,13 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 42.5,
       "artifacts_created": 21,
-      "avg_compaction_ratio": 1.41
+      "avg_compaction_ratio": 1.41,
+      "naive_delta": {
+        "naive_tokens": 4365,
+        "cw_tokens": 2548,
+        "pct_reduction": 41.63,
+        "coverage_pct": 100.0
+      }
     },
     {
       "scenario": "short_conversation",
@@ -69,7 +81,13 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 8.3,
       "artifacts_created": 4,
-      "avg_compaction_ratio": 1.0
+      "avg_compaction_ratio": 1.0,
+      "naive_delta": {
+        "naive_tokens": 1946,
+        "cw_tokens": 496,
+        "pct_reduction": 74.51,
+        "coverage_pct": 100.0
+      }
     },
     {
       "scenario": "stress_conversation",
@@ -81,7 +99,289 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 110.9,
       "artifacts_created": 32,
-      "avg_compaction_ratio": 3.29
+      "avg_compaction_ratio": 3.29,
+      "naive_delta": {
+        "naive_tokens": 17482,
+        "cw_tokens": 6651,
+        "pct_reduction": 61.96,
+        "coverage_pct": 92.52
+      }
+    }
+  ],
+  "routing_matrix": [
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "queries_evaluated": 50,
+      "precision_at_k": 0.124,
+      "recall_at_k": 0.59,
+      "mrr": 0.5867,
+      "latency_ms_p50": 2.765,
+      "latency_ms_p95": 4.107,
+      "latency_ms_p99": 4.737,
+      "status": "ok"
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "queries_evaluated": 50,
+      "precision_at_k": 0.1,
+      "recall_at_k": 0.48,
+      "mrr": 0.5,
+      "latency_ms_p50": 17.078,
+      "latency_ms_p95": 24.053,
+      "latency_ms_p99": 26.568,
+      "status": "ok"
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "queries_evaluated": 50,
+      "precision_at_k": 0.128,
+      "recall_at_k": 0.61,
+      "mrr": 0.589,
+      "latency_ms_p50": 0.713,
+      "latency_ms_p95": 0.823,
+      "latency_ms_p99": 2.087,
+      "status": "ok"
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "queries_evaluated": 50,
+      "precision_at_k": 0.104,
+      "recall_at_k": 0.49,
+      "mrr": 0.5,
+      "latency_ms_p50": 7.3,
+      "latency_ms_p95": 7.656,
+      "latency_ms_p99": 13.362,
+      "status": "ok"
+    }
+  ],
+  "routing_per_namespace": [
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "admin",
+      "queries_evaluated": 8,
+      "recall_at_k": 1.0
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "analytics",
+      "queries_evaluated": 7,
+      "recall_at_k": 1.0
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "billing",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.25
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "comms",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.625
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "crm",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.3333
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "docs",
+      "queries_evaluated": 2,
+      "recall_at_k": 0.5
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "infra",
+      "queries_evaluated": 5,
+      "recall_at_k": 0.2
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "namespace": "search",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.5833
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "admin",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.5625
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "analytics",
+      "queries_evaluated": 7,
+      "recall_at_k": 0.5714
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "billing",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.8125
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "comms",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.875
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "crm",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.1667
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "docs",
+      "queries_evaluated": 2,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "infra",
+      "queries_evaluated": 5,
+      "recall_at_k": 0.2
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "namespace": "search",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "admin",
+      "queries_evaluated": 8,
+      "recall_at_k": 1.0
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "analytics",
+      "queries_evaluated": 7,
+      "recall_at_k": 1.0
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "billing",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.25
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "comms",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.625
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "crm",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.3333
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "docs",
+      "queries_evaluated": 2,
+      "recall_at_k": 0.5
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "infra",
+      "queries_evaluated": 5,
+      "recall_at_k": 0.2
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "namespace": "search",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.75
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "admin",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.5625
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "analytics",
+      "queries_evaluated": 7,
+      "recall_at_k": 0.5714
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "billing",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.875
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "comms",
+      "queries_evaluated": 8,
+      "recall_at_k": 0.875
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "crm",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.1667
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "docs",
+      "queries_evaluated": 2,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "infra",
+      "queries_evaluated": 5,
+      "recall_at_k": 0.2
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "namespace": "search",
+      "queries_evaluated": 6,
+      "recall_at_k": 0.0
     }
   ]
 }

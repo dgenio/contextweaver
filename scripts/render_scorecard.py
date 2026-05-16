@@ -131,6 +131,100 @@ def _context_table(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _matrix_table(cells: list[dict[str, Any]], k: int) -> str:
+    """Render the per-backend × per-size matrix (#208).
+
+    Cells with a non-``ok`` ``status`` (e.g. ``"skipped: missing rapidfuzz"``)
+    are shown with metric placeholders so per-backend coverage is never
+    silently omitted.
+    """
+    header = (
+        f"| backend | catalog_size | queries | precision@{k} | recall@{k} | "
+        "MRR | p50 (ms) | p95 (ms) | p99 (ms) | status |"
+    )
+    sep = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"
+    lines = [header, sep]
+    for r in sorted(
+        cells, key=lambda x: (str(x.get("backend", "")), int(x.get("catalog_size", 0)))
+    ):
+        status = str(r.get("status", "ok"))
+        if status != "ok":
+            lines.append(
+                "| {b} | {sz} | — | — | — | — | — | — | — | {s} |".format(
+                    b=str(r["backend"]),
+                    sz=int(r["catalog_size"]),
+                    s=status,
+                )
+            )
+            continue
+        lines.append(
+            "| {b} | {sz} | {q} | {prec:.4f} | {rec:.4f} | {mrr:.4f} "
+            "| {p50:.3f} | {p95:.3f} | {p99:.3f} | ok |".format(
+                b=str(r["backend"]),
+                sz=int(r["catalog_size"]),
+                q=int(r["queries_evaluated"]),
+                prec=float(r["precision_at_k"]),
+                rec=float(r["recall_at_k"]),
+                mrr=float(r["mrr"]),
+                p50=float(r["latency_ms_p50"]),
+                p95=float(r["latency_ms_p95"]),
+                p99=float(r["latency_ms_p99"]),
+            )
+        )
+    return "\n".join(lines)
+
+
+def _per_namespace_table(rows: list[dict[str, Any]], k: int) -> str:
+    """Render the per-namespace recall@k breakdown (#209)."""
+    header = f"| backend | catalog_size | namespace | queries | recall@{k} |"
+    sep = "|---|---:|---|---:|---:|"
+    lines = [header, sep]
+    for r in sorted(
+        rows,
+        key=lambda x: (
+            str(x.get("backend", "")),
+            int(x.get("catalog_size", 0)),
+            str(x.get("namespace", "")),
+        ),
+    ):
+        lines.append(
+            "| {b} | {sz} | {ns} | {q} | {rec:.4f} |".format(
+                b=str(r["backend"]),
+                sz=int(r["catalog_size"]),
+                ns=str(r["namespace"]),
+                q=int(r["queries_evaluated"]),
+                rec=float(r["recall_at_k"]),
+            )
+        )
+    return "\n".join(lines)
+
+
+def _naive_delta_table(context_rows: list[dict[str, Any]]) -> str:
+    """Render the naïve-concat baseline section (#215) when rows carry ``naive_delta``.
+
+    Returns an empty string when no row has a ``naive_delta`` block — the
+    caller is expected to gate emission accordingly.
+    """
+    annotated = [r for r in context_rows if isinstance(r.get("naive_delta"), dict)]
+    if not annotated:
+        return ""
+    header = "| scenario | naive_tokens | cw_tokens | token reduction | coverage proxy |"
+    sep = "|---|---:|---:|---:|---:|"
+    lines = [header, sep]
+    for r in sorted(annotated, key=lambda x: str(x["scenario"])):
+        nd = r["naive_delta"]
+        lines.append(
+            "| {s} | {nt} | {ct} | {pct:.2f}% | {cov:.2f}% |".format(
+                s=str(r["scenario"]),
+                nt=int(nd.get("naive_tokens", 0)),
+                ct=int(nd.get("cw_tokens", 0)),
+                pct=float(nd.get("pct_reduction", 0.0)),
+                cov=float(nd.get("coverage_pct", 0.0)),
+            )
+        )
+    return "\n".join(lines)
+
+
 def render(payload: dict[str, Any]) -> str:
     """Return the scorecard markdown for *payload* (deterministic)."""
     _validate(payload)
@@ -165,79 +259,141 @@ def render(payload: dict[str, Any]) -> str:
         "",
         _routing_table(payload["routing"], k),
         "",
-        "Reading the table:",
-        "",
-        f"- `precision@{k}` is bounded by `1 / k` when each query has a single",
-        "  expected tool, so the headline accuracy signal is `recall@k` and `MRR`.",
-        "- Recall degrades predictably as the catalog grows — noise items",
-        "  compete with true matches; the routing-only experience for catalogs",
-        "  larger than ~200 items benefits from one of the optional retrieval",
-        "  backends (`bm25`, `fuzzy`) configured via `Router(scorer_backend=...)`.",
-        "- p50/p95 latencies stay under a millisecond at catalog_size ≤ 83.",
-        "  At catalog_size 1000 the p99 climbs into the tens of milliseconds",
-        "  because the beam search has to evaluate substantially more children",
-        "  per step; this is the regime where switching to a retriever-first",
-        "  shortlist (the `Retriever` protocol on the `EngineRegistry`) is the",
-        "  expected next step.",
-        "",
-        "---",
-        "",
-        "## Context pipeline scenarios",
-        "",
-        "Reference event logs under `benchmarks/scenarios/` are pushed through",
-        "`ContextManager.build_sync(phase=Phase.answer)`. The firewall",
-        "intercepts every `tool_result`; large results become artifacts and the",
-        "prompt sees their summaries instead.",
-        "",
-        _context_table(payload["context"]),
-        "",
-        "Reading the table:",
-        "",
-        "- `dropped > 0` means `select_and_pack` had to evict candidates to",
-        "  stay under the answer-phase budget — the `stress_conversation`",
-        "  scenario is sized to force this so the budget-driven selection",
-        "  stage shows up in benchmark output (#181).",
-        "- `dedup > 0` proves the Jaccard near-duplicate stage actively",
-        "  removed redundant context.",
-        "- `compaction > 1.0×` is the average ratio of raw artifact bytes to",
-        "  injected summary bytes — that's the firewall's load-bearing job.",
-        "",
-        "---",
-        "",
-        "## Methodology",
-        "",
-        "- **Deterministic seeds.** All catalog generation, scenario loading,",
-        "  and beam-search tie-breaking is seeded; identical inputs always",
-        "  produce identical outputs (`make benchmark` is a no-op on a fresh",
-        "  re-run for routing accuracy + context metrics; only latency",
-        "  varies with hardware).",
-        "- **No LLM calls.** The harness is pure-Python, stdlib + minimal core",
-        "  deps. The token estimator is `CharDivFourEstimator` so the numbers",
-        "  do not depend on `tiktoken`'s cached encoding state.",
-        "- **No network access.** The benchmark is safe to run in air-gapped",
-        "  CI environments.",
-        "- **Hardware variance.** Latency numbers are measured on the runner",
-        "  that produced `latest.json`. Treat them as ordering, not absolutes:",
-        "  the relative cost between catalog sizes is portable; the absolute",
-        "  microsecond count is not.",
-        "",
-        "See [`benchmarks/README.md`](README.md) for the full harness reference",
-        "and the per-scenario notes.",
-        "",
-        "---",
-        "",
-        "## Regenerating",
-        "",
-        "```bash",
-        "make benchmark   # writes benchmarks/results/latest.json",
-        "make scorecard   # writes benchmarks/scorecard.md from latest.json",
-        "git diff --quiet benchmarks/scorecard.md   # passes on clean re-run",
-        "```",
-        "",
-        "Per-backend matrices (`tfidf`, `bm25`, `fuzzy`) and a weekly scheduled",
-        "regeneration are tracked as follow-ups to this scorecard.",
-        "",
     ]
+
+    # Per-backend × per-size matrix (issue #208) — additive, gated by presence.
+    matrix_rows = payload.get("routing_matrix")
+    if isinstance(matrix_rows, list) and matrix_rows:
+        parts.extend(
+            [
+                "### Per-backend × per-size matrix",
+                "",
+                "Generated by `make benchmark-matrix` (issue #208). The matrix lets",
+                "you compare the bundled `tfidf` baseline against the optional",
+                "`bm25` (core dep) and `fuzzy` (`[retrieval]` extra) backends across",
+                "three catalog sizes. Skipped backends are recorded explicitly.",
+                "",
+                _matrix_table(matrix_rows, k),
+                "",
+            ]
+        )
+
+    # Per-namespace recall (#209).
+    per_ns_rows = payload.get("routing_per_namespace")
+    if isinstance(per_ns_rows, list) and per_ns_rows:
+        parts.extend(
+            [
+                "### Per-namespace recall@k",
+                "",
+                "Breakdown of recall@k by gold-set namespace (issue #209). Useful",
+                "for identifying which tool namespaces benefit most from a given",
+                "scoring backend.",
+                "",
+                _per_namespace_table(per_ns_rows, k),
+                "",
+            ]
+        )
+
+    parts.extend(
+        [
+            "Reading the routing tables:",
+            "",
+            f"- `precision@{k}` is bounded by `1 / k` when each query has a single",
+            "  expected tool, so the headline accuracy signal is `recall@k` and `MRR`.",
+            "- Recall degrades predictably as the catalog grows — noise items",
+            "  compete with true matches; the routing-only experience for catalogs",
+            "  larger than ~200 items benefits from one of the optional retrieval",
+            "  backends (`bm25`, `fuzzy`) configured via `Router(scorer_backend=...)`.",
+            "- p50/p95 latencies stay under a millisecond at catalog_size ≤ 83.",
+            "  At catalog_size 1000 the p99 climbs into the tens of milliseconds",
+            "  because the beam search has to evaluate substantially more children",
+            "  per step; this is the regime where switching to a retriever-first",
+            "  shortlist (the `Retriever` protocol on the `EngineRegistry`) is the",
+            "  expected next step.",
+            "",
+            "---",
+            "",
+            "## Context pipeline scenarios",
+            "",
+            "Reference event logs under `benchmarks/scenarios/` are pushed through",
+            "`ContextManager.build_sync(phase=Phase.answer)`. The firewall",
+            "intercepts every `tool_result`; large results become artifacts and the",
+            "prompt sees their summaries instead.",
+            "",
+            _context_table(payload["context"]),
+            "",
+            "Reading the table:",
+            "",
+            "- `dropped > 0` means `select_and_pack` had to evict candidates to",
+            "  stay under the answer-phase budget — the `stress_conversation`",
+            "  scenario is sized to force this so the budget-driven selection",
+            "  stage shows up in benchmark output (#181).",
+            "- `dedup > 0` proves the Jaccard near-duplicate stage actively",
+            "  removed redundant context.",
+            "- `compaction > 1.0×` is the average ratio of raw artifact bytes to",
+            "  injected summary bytes — that's the firewall's load-bearing job.",
+            "",
+        ]
+    )
+
+    # Naïve-baseline section (#215).
+    naive_block = _naive_delta_table(payload["context"])
+    if naive_block:
+        parts.extend(
+            [
+                "### vs. naïve concat baseline",
+                "",
+                "Token cost and coverage proxy against the no-op baseline of",
+                "concatenating *all* tool schemas + the full conversation history.",
+                "The naïve token count is measured with `tiktoken.cl100k_base`; the",
+                "coverage proxy is `items_included / event_count` (deterministic,",
+                "no LLM judge — see `scripts/baseline_naive.py`).",
+                "",
+                naive_block,
+                "",
+            ]
+        )
+
+    parts.extend(
+        [
+            "---",
+            "",
+            "## Methodology",
+            "",
+            "- **Deterministic seeds.** All catalog generation, scenario loading,",
+            "  and beam-search tie-breaking is seeded; identical inputs always",
+            "  produce identical outputs (`make benchmark` is a no-op on a fresh",
+            "  re-run for routing accuracy + context metrics; only latency",
+            "  varies with hardware).",
+            "- **No LLM calls.** The harness is pure-Python, stdlib + minimal core",
+            "  deps. The token estimator is `CharDivFourEstimator` so the numbers",
+            "  do not depend on `tiktoken`'s cached encoding state.",
+            "- **No network access.** The benchmark is safe to run in air-gapped",
+            "  CI environments.",
+            "- **Hardware variance.** Latency numbers are measured on the runner",
+            "  that produced `latest.json`. Treat them as ordering, not absolutes:",
+            "  the relative cost between catalog sizes is portable; the absolute",
+            "  microsecond count is not.",
+            "",
+            "See [`benchmarks/README.md`](README.md) for the full harness reference",
+            "and the per-scenario notes.",
+            "",
+            "---",
+            "",
+            "## Regenerating",
+            "",
+            "```bash",
+            "make benchmark   # writes benchmarks/results/latest.json",
+            "make scorecard   # writes benchmarks/scorecard.md from latest.json",
+            "git diff --quiet benchmarks/scorecard.md   # passes on clean re-run",
+            "```",
+            "",
+            "Per-backend matrices (`tfidf`, `bm25`, `fuzzy`) are generated via",
+            "`make benchmark-matrix` (#208). Weekly scheduled regeneration runs",
+            "out of `.github/workflows/scorecard-weekly.yml` (#207).",
+            "",
+        ]
+    )
     return "\n".join(parts)
 
 
