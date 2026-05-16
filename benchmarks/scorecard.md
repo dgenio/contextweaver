@@ -18,7 +18,7 @@ counts are environment-independent.
 
 ## Routing accuracy & latency
 
-Gold dataset: 50 hand-curated queries (`benchmarks/routing_gold.json`)
+Gold dataset: 200 hand-curated queries (`benchmarks/routing_gold.json`)
 covering all 8 catalog namespaces. Each query is repeated three times
 for latency percentile stability.
 

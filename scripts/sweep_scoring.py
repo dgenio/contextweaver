@@ -223,7 +223,7 @@ flagged below as candidates for a deliberately-scoped follow-up.
 """
 
 
-def _row_line(rank: int, r: SweepRow, default_id: str) -> str:
+def _row_line(rank: int, r: SweepRow) -> str:
     cfg = r.config
     is_default = (
         "**default**"
@@ -294,7 +294,7 @@ def render_report(rows: list[SweepRow]) -> str:
         ]
     )
     for i, r in enumerate(rows_sorted[:top_n], 1):
-        parts.append(_row_line(i, r, default_id="default"))
+        parts.append(_row_line(i, r))
     parts.append("")
 
     # Pareto candidates: configs that strictly dominate the default
