@@ -14,8 +14,10 @@ make ci       # fmt + lint + type + test + example + demo  (6 targets)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make benchmark-matrix  # benchmark + per-backend × per-size matrix (tfidf/bm25/fuzzy × 100/500/1000)
 make scorecard   # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits non-zero on drift)
+make sweep-scoring  # grid-search ScoringConfig weights, write benchmarks/sweep_scoring.md
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter

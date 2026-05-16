@@ -1,0 +1,77 @@
+name: Benchmark delta (soft)
+
+# Issue #211 — runs on every PR; posts a sticky comment with the recall@5
+# and latency delta vs main. Stays soft (continue-on-error: true) per the
+# Round 2 Q4=A backlog plan: hard regression gating is premature without
+# wider matrix coverage.
+#
+# Fork-PR caveat: PRs from forks do not get a writable GITHUB_TOKEN, so
+# pull_request can't post comments on them. The comment will still be
+# generated as a workflow artifact / step summary in that case — only
+# the PR comment is skipped.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  delta:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          path: head
+          fetch-depth: 1
+
+      - name: Checkout base (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: base
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install head dependencies
+        working-directory: head
+        run: pip install -e ".[dev,langchain,retrieval]"
+
+      - name: Run head benchmark
+        working-directory: head
+        run: python benchmarks/benchmark.py --matrix --output ../head-latest.json
+
+      - name: Render delta against committed base
+        # Uses the COMMITTED base latest.json as the comparison point —
+        # avoids running the benchmark twice and keeps the baseline stable
+        # across PRs that don't otherwise touch the routing/context code.
+        run: |
+          python head/scripts/benchmark_delta.py \
+            --base base/benchmarks/results/latest.json \
+            --head head-latest.json \
+            --output delta.md
+          echo "## Benchmark delta" >> "$GITHUB_STEP_SUMMARY"
+          cat delta.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post / update sticky comment
+        # Skips silently on fork PRs (no write token). The step summary
+        # above still carries the rendered delta either way.
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: delta.md
+          edit-mode: replace
+          # The body itself starts with the contextweaver:benchmark-delta
+          # HTML marker — peter-evans uses body-includes to find the
+          # previous comment to edit.
+          body-includes: "contextweaver:benchmark-delta"

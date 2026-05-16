@@ -1,37 +1,37 @@
 {
-  "benchmark_version": "1.0",
+  "benchmark_version": "1.1",
   "k": 5,
   "seed": 42,
   "routing": [
     {
       "catalog_size": 50,
-      "queries_evaluated": 50,
-      "precision_at_k": 0.16,
-      "recall_at_k": 0.74,
-      "mrr": 0.71,
-      "latency_ms_p50": 0.296,
-      "latency_ms_p95": 0.43,
-      "latency_ms_p99": 0.538
+      "queries_evaluated": 115,
+      "precision_at_k": 0.1165,
+      "recall_at_k": 0.5652,
+      "mrr": 0.4919,
+      "latency_ms_p50": 0.321,
+      "latency_ms_p95": 0.434,
+      "latency_ms_p99": 0.479
     },
     {
       "catalog_size": 83,
-      "queries_evaluated": 50,
-      "precision_at_k": 0.132,
-      "recall_at_k": 0.61,
-      "mrr": 0.6083,
-      "latency_ms_p50": 0.473,
-      "latency_ms_p95": 0.557,
-      "latency_ms_p99": 0.859
+      "queries_evaluated": 200,
+      "precision_at_k": 0.078,
+      "recall_at_k": 0.3825,
+      "mrr": 0.3253,
+      "latency_ms_p50": 0.46,
+      "latency_ms_p95": 0.541,
+      "latency_ms_p99": 0.687
     },
     {
       "catalog_size": 1000,
-      "queries_evaluated": 50,
-      "precision_at_k": 0.064,
-      "recall_at_k": 0.31,
-      "mrr": 0.32,
-      "latency_ms_p50": 28.54,
-      "latency_ms_p95": 30.422,
-      "latency_ms_p99": 34.245
+      "queries_evaluated": 200,
+      "precision_at_k": 0.03,
+      "recall_at_k": 0.1475,
+      "mrr": 0.1325,
+      "latency_ms_p50": 24.649,
+      "latency_ms_p95": 26.544,
+      "latency_ms_p99": 27.898
     }
   ],
   "context": [
@@ -45,7 +45,13 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 25.2,
       "artifacts_created": 15,
-      "avg_compaction_ratio": 1.0
+      "avg_compaction_ratio": 1.0,
+      "naive_delta": {
+        "naive_tokens": 1239.0,
+        "cw_tokens": 1514.0,
+        "pct_reduction": 0.0,
+        "coverage_pct": 100.0
+      }
     },
     {
       "scenario": "long_conversation",
@@ -57,7 +63,13 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 42.5,
       "artifacts_created": 21,
-      "avg_compaction_ratio": 1.41
+      "avg_compaction_ratio": 1.41,
+      "naive_delta": {
+        "naive_tokens": 2837.0,
+        "cw_tokens": 2548.0,
+        "pct_reduction": 10.19,
+        "coverage_pct": 100.0
+      }
     },
     {
       "scenario": "short_conversation",
@@ -69,7 +81,13 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 8.3,
       "artifacts_created": 4,
-      "avg_compaction_ratio": 1.0
+      "avg_compaction_ratio": 1.0,
+      "naive_delta": {
+        "naive_tokens": 418.0,
+        "cw_tokens": 496.0,
+        "pct_reduction": 0.0,
+        "coverage_pct": 100.0
+      }
     },
     {
       "scenario": "stress_conversation",
@@ -81,7 +99,155 @@
       "budget_tokens": 6000,
       "budget_utilization_pct": 110.9,
       "artifacts_created": 32,
-      "avg_compaction_ratio": 3.29
+      "avg_compaction_ratio": 3.29,
+      "naive_delta": {
+        "naive_tokens": 15954.0,
+        "cw_tokens": 6651.0,
+        "pct_reduction": 58.31,
+        "coverage_pct": 96.88
+      }
     }
-  ]
+  ],
+  "matrix": [
+    {
+      "backend": "tfidf",
+      "catalog_size": 100,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.078,
+      "recall_at_k": 0.3825,
+      "mrr": 0.3229,
+      "latency_ms_p50": 0.637,
+      "latency_ms_p95": 0.738,
+      "latency_ms_p99": 0.906,
+      "status": ""
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.055,
+      "recall_at_k": 0.2675,
+      "mrr": 0.2413,
+      "latency_ms_p50": 6.597,
+      "latency_ms_p95": 7.362,
+      "latency_ms_p99": 7.799,
+      "status": ""
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 1000,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.03,
+      "recall_at_k": 0.1475,
+      "mrr": 0.1325,
+      "latency_ms_p50": 25.027,
+      "latency_ms_p95": 26.875,
+      "latency_ms_p99": 29.239,
+      "status": ""
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 100,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.078,
+      "recall_at_k": 0.3825,
+      "mrr": 0.3232,
+      "latency_ms_p50": 2.682,
+      "latency_ms_p95": 3.822,
+      "latency_ms_p99": 4.35,
+      "status": ""
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.056,
+      "recall_at_k": 0.275,
+      "mrr": 0.2491,
+      "latency_ms_p50": 16.392,
+      "latency_ms_p95": 21.966,
+      "latency_ms_p99": 24.51,
+      "status": ""
+    },
+    {
+      "backend": "bm25",
+      "catalog_size": 1000,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.03,
+      "recall_at_k": 0.1475,
+      "mrr": 0.1392,
+      "latency_ms_p50": 44.379,
+      "latency_ms_p95": 72.749,
+      "latency_ms_p99": 79.214,
+      "status": ""
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.095,
+      "recall_at_k": 0.4675,
+      "mrr": 0.3638,
+      "latency_ms_p50": 0.468,
+      "latency_ms_p95": 0.54,
+      "latency_ms_p99": 0.573,
+      "status": ""
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.048,
+      "recall_at_k": 0.235,
+      "mrr": 0.2232,
+      "latency_ms_p50": 6.349,
+      "latency_ms_p95": 6.745,
+      "latency_ms_p99": 7.029,
+      "status": ""
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.031,
+      "recall_at_k": 0.15,
+      "mrr": 0.1473,
+      "latency_ms_p50": 24.537,
+      "latency_ms_p95": 26.373,
+      "latency_ms_p99": 27.885,
+      "status": ""
+    }
+  ],
+  "per_namespace": {
+    "tfidf": {
+      "admin": 0.42,
+      "analytics": 0.24,
+      "billing": 0.2,
+      "comms": 0.04,
+      "crm": 0.0769,
+      "docs": 0.0,
+      "infra": 0.0,
+      "search": 0.1923
+    },
+    "bm25": {
+      "admin": 0.42,
+      "analytics": 0.24,
+      "billing": 0.28,
+      "comms": 0.04,
+      "crm": 0.0769,
+      "docs": 0.0,
+      "infra": 0.0,
+      "search": 0.1154
+    },
+    "fuzzy": {
+      "admin": 0.3,
+      "analytics": 0.32,
+      "billing": 0.22,
+      "comms": 0.0,
+      "crm": 0.0,
+      "docs": 0.0,
+      "infra": 0.12,
+      "search": 0.2308
+    }
+  }
 }

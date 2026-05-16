@@ -65,38 +65,64 @@ and calling `ContextManager.build_sync(phase=Phase.answer)`.
 
 ## Baseline metrics (seed=42, k=5)
 
-Run on 2026-05-15 with contextweaver v0.3.0+, Python 3.11. Latency numbers
+Run on 2026-05-16 with contextweaver v0.4.0+, Python 3.11. Latency numbers
 are environment-dependent; recall, drops, dedup, and token counts are not.
 The committed [`scorecard.md`](../benchmarks/scorecard.md) is rendered from
-the same `results/latest.json`.
+the same `results/latest.json`. As of #208/#209 the harness emits a
+**per-backend × per-size matrix** (`tfidf` / `bm25` / `fuzzy` × 100 / 500
+/ 1000) plus **per-namespace recall@5** under `routing.matrix` and
+`routing.per_namespace`. The legacy single-backend rows (50 / 83 / 1000
+on `tfidf`) are preserved verbatim for back-compat.
 
-### Routing
+### Routing (legacy single-backend rows)
 
 | catalog_size | queries | prec@5 | recall@5 |   mrr | p50_ms | p95_ms | p99_ms |
 |-------------:|--------:|-------:|---------:|------:|-------:|-------:|-------:|
-|           50 |      50 | 0.1600 |   0.7400 | 0.7100 |  0.296 |  0.430 |  0.538 |
-|           83 |      50 | 0.1320 |   0.6100 | 0.6083 |  0.473 |  0.557 |  0.859 |
-|         1000 |      50 | 0.0640 |   0.3100 | 0.3200 | 28.540 | 30.422 | 34.245 |
+|           50 |     115 | 0.1165 |   0.5652 | 0.4919 |  0.304 |  0.390 |  0.443 |
+|           83 |     200 | 0.0780 |   0.3825 | 0.3253 |  0.476 |  0.565 |  0.769 |
+|         1000 |     200 | 0.0300 |   0.1475 | 0.1325 | 25.332 | 29.268 | 36.844 |
 
 Notes:
-- All 50 gold queries evaluated at every catalog size (catalog generated with matching `n` so all gold IDs are present)
-- Recall degrades predictably as catalog grows (noise items compete with true matches)
-- p50/p95 stay under a millisecond up to catalog_size 83; at catalog_size 1000 the p99 climbs into the tens of milliseconds because beam search has to evaluate substantially more children — that's the regime where the `Retriever`/`EngineRegistry` shortlist is the next step
+- Gold set expanded from 50 → 200 hand-authored queries (#209). Queries
+  whose `expected` tools don't exist at the smaller catalog size (50) are
+  skipped, hence `queries: 115` rather than 200 in the first row.
+- Recall numbers are lower than the v0.3.0 baseline (0.74 / 0.61 / 0.31)
+  because the expanded gold set is markedly harder — it includes
+  naturalistic queries on every tool, not just the headline operations.
+- See `matrix` and `per_namespace` blocks in `latest.json` (#208 / #209)
+  for the new published surface.
+
+### Routing matrix (run `make benchmark-matrix`)
+
+The 3 × 3 cross-product. ⚠️ markers in the scorecard flag cells whose
+p99 exceeds `min_p99 × 1.30` at the same catalog size.
+
+| backend | catalog_size | queries | recall@5 |   mrr | p99_ms |
+|:--------|-------------:|--------:|---------:|------:|-------:|
+| tfidf   |          100 |     200 |   0.3825 | 0.3229 |  0.999 |
+| tfidf   |          500 |     200 |   0.2675 | 0.2413 |  8.200 |
+| tfidf   |         1000 |     200 |   0.1475 | 0.1325 | 28.642 |
+| bm25    |          100 |     200 |   0.3825 | 0.3232 |  4.653 |
+| bm25    |          500 |     200 |   0.2750 | 0.2491 | 24.536 |
+| bm25    |         1000 |     200 |   0.1475 | 0.1392 | 80.929 |
+| fuzzy   |          100 |     200 |   0.4675 | 0.3638 |  0.704 |
+| fuzzy   |          500 |     200 |   0.2350 | 0.2232 |  9.225 |
+| fuzzy   |         1000 |     200 |   0.1500 | 0.1473 | 30.527 |
 
 ### Context pipeline
 
-| scenario             | events | incl | drop | dedup |  tok |  util% | arts | compact |
-|:---------------------|-------:|-----:|-----:|------:|-----:|-------:|-----:|--------:|
-| large_catalog        |     60 |   60 |    0 |     0 | 1514 |  25.2% |   15 |  1.00x  |
-| long_conversation    |     82 |   82 |    0 |     0 | 2548 |  42.5% |   21 |  1.41x  |
-| short_conversation   |     18 |   18 |    0 |     0 |  496 |   8.3% |    4 |  1.00x  |
-| stress_conversation  |    147 |  136 |    7 |     4 | 6651 | 110.9% |   32 |  3.29x  |
+| scenario             | events | incl | drop | dedup |  tok |  util% | arts | compact | naive→cw red. |
+|:---------------------|-------:|-----:|-----:|------:|-----:|-------:|-----:|--------:|--------------:|
+| large_catalog        |     60 |   60 |    0 |     0 | 1514 |  25.2% |   15 |  1.00x  |          0.0% |
+| long_conversation    |     82 |   82 |    0 |     0 | 2548 |  42.5% |   21 |  1.41x  |         10.2% |
+| short_conversation   |     18 |   18 |    0 |     0 |  496 |   8.3% |    4 |  1.00x  |          0.0% |
+| stress_conversation  |    147 |  136 |    7 |     4 | 6651 | 110.9% |   32 |  3.29x  |         58.3% |
 
 Notes:
-- `compact=1.00x` means tool results are small enough that the firewall summary ≈ raw length
-- `long_conversation` reaches 1.41x compaction from the large invoice search response
-- `stress_conversation` is the new budget-pressure scenario (#181): three large tool results (logs, grep, dashboard) push average compaction to 3.29x, four near-duplicate agent messages drive `dedup_removed=4`, and the total prompt size pushes past the 6000-token answer budget so `items_dropped=7`
-- The other three scenarios remain a "light load" baseline so reviewers can see the difference between unloaded and stressed pipeline behaviour
+- `compact=1.00x` means tool results are small enough that the firewall summary ≈ raw length.
+- `long_conversation` reaches 1.41x compaction from the large invoice search response.
+- `stress_conversation` is the budget-pressure scenario (#181): three large tool results (logs, grep, dashboard) push average compaction to 3.29x, four near-duplicate agent messages drive `dedup_removed=4`, and the total prompt size pushes past the 6000-token answer budget so `items_dropped=7`.
+- `naive→cw red.` is the percent reduction vs the naïve "concatenate every event's text" baseline (#215), computed with the same `CharDivFourEstimator` so numerator and denominator are directly comparable. The light-load scenarios show 0% because their input is already under contextweaver's render overhead; the saving is in the stress regime.
 
 ## Output
 

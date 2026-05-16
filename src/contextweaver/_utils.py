@@ -162,6 +162,12 @@ STOPWORDS: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 _SPLIT_RE = re.compile(r"\W+")
+# Surface tokens that keep dotted / snake_case / hyphenated / slashed ids intact
+# as a single match. Stripped of leading / trailing delimiters before use; the
+# *internal* delimiters then drive sub-token emission (issue #213).
+_SURFACE_RE = re.compile(r"[\w./\-]+")
+_SUB_SPLIT_RE = re.compile(r"[._\-/]+")
+_DELIM_CHARS = "._-/"
 
 
 def tokenize_list(text: str) -> list[str]:
@@ -174,9 +180,12 @@ def tokenize_list(text: str) -> list[str]:
 
     Steps:
     1. Lower-case the input.
-    2. Split on one or more non-word characters.
-    3. Discard tokens shorter than 2 characters.
-    4. Remove :data:`STOPWORDS`.
+    2. Scan word-like runs that may include internal ``.``/``_``/``-``/``/``
+       (so dotted / snake_case ids stay intact).
+    3. Strip surrounding delimiter characters from each run.
+    4. Emit the joined form (length ≥ 2 and not a STOPWORD).
+    5. If the run still has internal delimiters, also emit each sub-token
+       — again filtered by length ≥ 2 and STOPWORD membership.
 
     Args:
         text: Raw input string.
@@ -185,8 +194,16 @@ def tokenize_list(text: str) -> list[str]:
         A ``list[str]`` of normalised, stop-word-filtered tokens in
         occurrence order. Duplicate tokens are preserved.
     """
-    tokens = _SPLIT_RE.split(text.lower())
-    return [t for t in tokens if len(t) >= 2 and t not in STOPWORDS]
+    out: list[str] = []
+    for raw in _SURFACE_RE.findall(text.lower()):
+        stripped = raw.strip(_DELIM_CHARS)
+        if len(stripped) >= 2 and stripped not in STOPWORDS:
+            out.append(stripped)
+        if _SUB_SPLIT_RE.search(stripped):
+            for sub in _SUB_SPLIT_RE.split(stripped):
+                if len(sub) >= 2 and sub not in STOPWORDS:
+                    out.append(sub)
+    return out
 
 
 def tokenize(text: str) -> set[str]:
@@ -195,8 +212,10 @@ def tokenize(text: str) -> set[str]:
     Steps:
     1. Lower-case the input.
     2. Split on one or more non-word characters.
-    3. Discard tokens shorter than 2 characters.
-    4. Remove :data:`STOPWORDS`.
+    3. For tokens with internal ``.``/``_``/``-``/``/`` delimiters, also
+       emit each sub-token (the original token is retained).
+    4. Discard tokens shorter than 2 characters.
+    5. Remove :data:`STOPWORDS`.
 
     Args:
         text: Raw input string.

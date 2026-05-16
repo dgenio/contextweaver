@@ -197,3 +197,125 @@ def test_main_errors_when_input_missing(tmp_path: Path) -> None:
         ["--input", str(tmp_path / "no-such.json"), "--output", str(tmp_path / "out.md")]
     )
     assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# Matrix / per-namespace / naïve-baseline sections (#208 / #209 / #215)
+# ---------------------------------------------------------------------------
+
+
+def _payload_with_matrix() -> dict[str, object]:
+    """A sample payload that exercises every new section."""
+    payload = json.loads(json.dumps(_SAMPLE_PAYLOAD))
+    payload["matrix"] = [
+        {
+            "backend": "tfidf",
+            "catalog_size": 100,
+            "queries_evaluated": 200,
+            "precision_at_k": 0.078,
+            "recall_at_k": 0.38,
+            "mrr": 0.32,
+            "latency_ms_p50": 0.6,
+            "latency_ms_p95": 0.8,
+            "latency_ms_p99": 1.0,
+            "status": "",
+        },
+        {
+            "backend": "bm25",
+            "catalog_size": 100,
+            "queries_evaluated": 200,
+            "precision_at_k": 0.078,
+            "recall_at_k": 0.38,
+            "mrr": 0.32,
+            # 2.0 > 1.0 * 1.30 = 1.3 → ⚠️
+            "latency_ms_p50": 1.5,
+            "latency_ms_p95": 1.8,
+            "latency_ms_p99": 2.0,
+            "status": "",
+        },
+        {
+            "backend": "fuzzy",
+            "catalog_size": 100,
+            "queries_evaluated": 0,
+            "precision_at_k": 0.0,
+            "recall_at_k": 0.0,
+            "mrr": 0.0,
+            "latency_ms_p50": 0.0,
+            "latency_ms_p95": 0.0,
+            "latency_ms_p99": 0.0,
+            "status": "skipped: rapidfuzz not installed",
+        },
+    ]
+    payload["per_namespace"] = {
+        "tfidf": {"admin": 0.40, "billing": 0.25},
+        "bm25": {"admin": 0.45, "billing": 0.20},
+    }
+    payload["context"][0]["naive_delta"] = {
+        "naive_tokens": 15954.0,
+        "cw_tokens": 6651.0,
+        "pct_reduction": 58.31,
+        "coverage_pct": 96.88,
+    }
+    payload["context"][1]["naive_delta"] = {
+        "naive_tokens": 418.0,
+        "cw_tokens": 496.0,
+        "pct_reduction": 0.0,
+        "coverage_pct": 100.0,
+    }
+    return payload
+
+
+def test_render_includes_matrix_section_when_present() -> None:
+    md = render_scorecard.render(_payload_with_matrix())
+    assert "## Per-backend × per-size matrix (#208)" in md
+    # tfidf p99=1.0 is the fastest → ✅; bm25 p99=2.0 exceeds 1.30× → ⚠️.
+    matrix_section = md.split("## Per-backend × per-size matrix", 1)[1]
+    bm25_line = next(ln for ln in matrix_section.splitlines() if "| bm25 | 100 |" in ln)
+    tfidf_line = next(ln for ln in matrix_section.splitlines() if "| tfidf | 100 |" in ln)
+    assert "⚠️" in bm25_line
+    assert "✅" in tfidf_line
+
+
+def test_render_renders_skipped_matrix_row_as_status_note() -> None:
+    md = render_scorecard.render(_payload_with_matrix())
+    # The fuzzy row carries a non-empty status; the renderer should embed
+    # that string italicised rather than reporting fake zero metrics.
+    matrix_section = md.split("## Per-backend × per-size matrix", 1)[1]
+    fuzzy_line = next(ln for ln in matrix_section.splitlines() if "| fuzzy | 100 |" in ln)
+    assert "skipped: rapidfuzz not installed" in fuzzy_line
+    # Skipped rows must NOT carry a marker (they didn't run).
+    assert "⚠️" not in fuzzy_line
+    assert "✅" not in fuzzy_line
+
+
+def test_render_includes_per_namespace_section() -> None:
+    md = render_scorecard.render(_payload_with_matrix())
+    assert "## Per-namespace recall (#209)" in md
+    ns_section = md.split("## Per-namespace recall (#209)", 1)[1]
+    # Sorted by namespace name across backends.
+    admin_idx = ns_section.find("| admin |")
+    billing_idx = ns_section.find("| billing |")
+    assert admin_idx != -1 and billing_idx != -1
+    assert admin_idx < billing_idx
+
+
+def test_render_includes_naive_section_and_average() -> None:
+    md = render_scorecard.render(_payload_with_matrix())
+    assert "## vs naïve concat (#215)" in md
+    # Average across the two scenarios is (58.31 + 0.0) / 2 = 29.16.
+    assert "29.16" in md
+
+
+def test_render_omits_naive_section_when_no_delta() -> None:
+    """Payload without any naive_delta entry doesn't render the naïve section."""
+    payload = json.loads(json.dumps(_SAMPLE_PAYLOAD))
+    md = render_scorecard.render(payload)
+    assert "vs naïve concat" not in md
+
+
+def test_matrix_validation_rejects_missing_field() -> None:
+    """Matrix rows missing required keys raise ValueError naming the field."""
+    payload = _payload_with_matrix()
+    del payload["matrix"][0]["mrr"]  # type: ignore[index]
+    with pytest.raises(ValueError, match=r"mrr"):
+        render_scorecard.render(payload)

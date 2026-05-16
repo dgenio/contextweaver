@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-backend × per-size benchmark matrix** (#208). New `--matrix`,
+  `--backends`, `--sizes` flags on `benchmarks/benchmark.py` and a
+  `make benchmark-matrix` target. Emits a 3 × 3 cross-product
+  (`tfidf` / `bm25` / `fuzzy` × 100 / 500 / 1000) into
+  `latest.json.matrix`. Optional backends record a `status` field
+  rather than silently disappearing when their extra is missing
+  (e.g. `fuzzy` without `[retrieval]`). Latency budget markers (✅
+  within `min_p99 × 1.30`, ⚠️ otherwise) flow into the scorecard.
+- **Expanded routing gold set** (#209). 50 → 200 hand-authored
+  queries in `benchmarks/routing_gold.json`, with ≥20 per namespace
+  across all 8 catalog namespaces. Every entry gains a top-level
+  `namespace` field. The benchmark aggregates recall@k into
+  `routing.per_namespace` keyed by backend so the scorecard can show
+  which namespaces are weakest on each scorer.
+- **Naïve-baseline harness** (#215). New `scripts/baseline_naive.py`
+  + per-scenario `naive_delta` block in `latest.json` showing
+  `naive_tokens`, `cw_tokens`, `pct_reduction`, and a parent-chain
+  coverage proxy. The scorecard renders a "vs naïve concat" section
+  with the measured average; the README replaces its illustrative
+  "70% lower cost" claim with the measured number on the stress
+  scenario and a footnote linking the scorecard.
+- **Weight-sweep tool** (#214). New `scripts/sweep_scoring.py` +
+  `make sweep-scoring` target. Grid-searches the 243-point
+  `ScoringConfig` weight space against the committed scenarios,
+  ranks every configuration by a documented composite (50% coverage,
+  30% util-overrun penalty, 20% drop-rate penalty), and surfaces any
+  Pareto-dominating configurations as candidates for a follow-up
+  defaults change. Per #214 this PR ships the report; defaults stay
+  put until a separate issue revisits them.
+- **Soft PR regression comment** (#211). New
+  `scripts/benchmark_delta.py` + `.github/workflows/benchmark-delta.yml`
+  workflow. On every PR, runs the matrix benchmark against the PR
+  head and posts a sticky comment with recall@5, MRR, and p99 deltas
+  vs the committed `main` baseline. Cells exceeding `base × 1.30` on
+  p99 flag ⚠️ (same convention as the scorecard). Stays soft
+  (`continue-on-error: true`); never blocks merges. PR template
+  gains an encouraged-but-optional "Reproducibility" subsection.
+- **Weekly scorecard regen** (#207). New
+  `.github/workflows/scorecard-weekly.yml` runs Mondays at 06:00 UTC,
+  regenerates `latest.json` + `scorecard.md`, and opens a drift PR
+  via `peter-evans/create-pull-request` tagged `area/eval` +
+  `automated`. Manual trigger via `workflow_dispatch` for verification.
+
+### Changed
+
+- **Namespace-aware tokenizer** (#213). `contextweaver._utils.tokenize`
+  now emits sub-tokens for ids containing `.`, `_`, `-`, or `/` in
+  addition to the original joined token. `crm.deals.search` indexes
+  as `{crm.deals.search, crm, deals, search}`; `billing_invoices`
+  splits on the underscore that `\W+` left intact. Sub-tokens still
+  pass through `STOPWORDS` and the `len ≥ 2` filter. Determinism
+  preserved. On the new 3 × 3 matrix this is net-positive on
+  **8 of 9 cells** (recall@5 lift +0.75pp to +3.50pp; tfidf and bm25
+  improve at every size). One cell — **fuzzy at catalog_size 100**
+  — drops 1.50pp, slightly over #213's strict ≤1pp regression bound.
+  Documented in the PR body per the issue's "regression bounds are
+  strict" posture; the maintainer may wish to defer the tokenizer
+  slice and file a follow-up if the fuzzy/100 cell matters more than
+  the lift elsewhere.
+- `benchmarks/benchmark.py` schema bumped to `1.1`. Additive only:
+  new top-level `matrix` array and `per_namespace` dict; new
+  `naive_delta` block on each context row. Legacy `routing` array
+  and existing `context` fields preserved verbatim.
+- `Makefile` `.PHONY` extended with `benchmark-matrix` and
+  `sweep-scoring`; both targets thread through `make help`.
+
 ## [0.4.0] - 2026-05-16
 
 ### Added

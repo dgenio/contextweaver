@@ -20,6 +20,15 @@ Fixes # <!-- issue number, if applicable -->
 - [ ] Related issue linked in the summary above
 - [ ] Agent-facing docs updated if pipeline, API, or conventions changed
 
+## Reproducibility
+
+<!--
+  Encouraged (not required) for PRs that change scoring, the tokenizer, or
+  routing internals. Paste the sticky benchmark-delta comment summary and
+  any relevant rows from `benchmarks/scorecard.md` so reviewers can see
+  the measured impact without running the harness themselves (#211).
+-->
+
 ## Notes for reviewers
 
 <!-- Anything the reviewer should pay special attention to, known limitations, follow-up work, etc. -->

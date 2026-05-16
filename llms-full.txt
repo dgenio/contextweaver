@@ -81,10 +81,16 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
-Cost:         70% lower  ·  Latency: sub-second  ·  Quality: relevant context only
+Cost:         up to 58% lower on the stress scenario¹  ·  Latency: sub-millisecond at catalog ≤ 100  ·  Quality: relevant context only
 ```
 
 See [`examples/before_after.py`](examples/before_after.py) for a runnable side-by-side comparison.
+
+¹ _Measured against the naïve "concatenate every event's text" baseline on
+the published scenarios (#215). The stress scenario shows 58.3% reduction;
+light-load scenarios (input already under budget) show 0%. See
+[`benchmarks/scorecard.md`](benchmarks/scorecard.md) for the full
+per-scenario breakdown._
 
 ---
 
@@ -1365,6 +1371,86 @@ application or policy layer.
 
 ---
 
+## Runtime modes: transparent proxy and two-tool gateway
+
+The MCP adapter ships two runtime modes for fronting one or more
+upstream MCP servers.  Both share the
+[`ProxyRuntime`](../src/contextweaver/adapters/proxy_runtime.py) core and
+satisfy the contracts in [`docs/gateway_spec.md`](gateway_spec.md):
+
+| Mode | Discovery channel | Invocation channel | Schema exposure |
+|------|-------------------|--------------------|-----------------|
+| `ExposureMode.TRANSPARENT` (#13) | Stripped `tools/list` — one entry per upstream tool with sentinel `inputSchema: {"type": "object"}` | `tool_hydrate(tool_id)` + `tool_execute(tool_id, args)` | On demand via `tool_hydrate` |
+| `ExposureMode.GATEWAY` (#28 + #34) | None — the agent never sees a `tools/list` | `tool_browse(query|path)` + `tool_execute(tool_id, args)` + `tool_view(handle, selector)` | Internal: `tool_execute` hydrates and validates before upstream dispatch |
+
+Both modes share the same invocation contract: arguments to
+`tool_execute` are validated against the hydrated schema via
+`jsonschema` before any upstream call, per
+[`gateway_spec.md` §4.4](gateway_spec.md#4-schema-exposure-strategy).
+
+### Wiring a gateway over stdio
+
+```python
+import asyncio
+from contextweaver.adapters import ProxyRuntime, StubUpstream
+from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
+
+runtime = ProxyRuntime(StubUpstream([...]))
+await runtime.refresh_catalog()
+server = McpGatewayServer(runtime, name="example-gateway")
+asyncio.run(server.run_stdio())
+```
+
+### Wiring a transparent proxy over stdio
+
+```python
+from contextweaver.adapters import ExposureMode, ProxyRuntime, StubUpstream
+from contextweaver.adapters.mcp_proxy_server import McpProxyServer
+
+runtime = ProxyRuntime(StubUpstream([...]), mode=ExposureMode.TRANSPARENT)
+await runtime.refresh_catalog()
+server = McpProxyServer(runtime, name="example-proxy")
+asyncio.run(server.run_stdio())
+```
+
+### Connecting to real upstream MCP servers
+
+Swap [`StubUpstream`](../src/contextweaver/adapters/mcp_upstream.py) for
+`McpClientUpstream(session)` (one upstream) or
+`MultiplexUpstream([a, b, ...])` (multi-server fan-out).  The runtime
+itself is transport-agnostic; the upstream adapter handles the wire
+protocol.
+
+### Error shape
+
+Every gateway / proxy meta-tool returns either a `ResultEnvelope` or a
+typed
+[`GatewayError`](../src/contextweaver/adapters/gateway_error.py)
+matching `gateway_spec.md` §3.4:
+
+```json
+{
+  "error": "PATH_INVALID" | "PATH_NOT_FOUND" | "ARGS_INVALID" | "UPSTREAM_ERROR" | "HYDRATE_FAILED" | "VIEW_FAILED",
+  "message": "<human-readable>",
+  "path": "<offending path or tool_id>",
+  "details": { "...": "..." }
+}
+```
+
+The meta-tools never raise across the MCP boundary — failures are
+delivered as `isError=true` `CallToolResult` payloads.
+
+### See also
+
+- [`docs/gateway_spec.md`](gateway_spec.md) — the normative
+  surface specification.
+- [`examples/mcp_gateway_demo.py`](../examples/mcp_gateway_demo.py) —
+  end-to-end gateway flow using `StubUpstream`.
+- [`examples/mcp_proxy_demo.py`](../examples/mcp_proxy_demo.py) —
+  end-to-end proxy flow.
+
+---
+
 <!-- FILE: docs/integration_a2a.md -->
 
 # A2A Integration
@@ -1697,8 +1783,10 @@ make ci       # fmt + lint + type + test + example + demo  (6 targets)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make benchmark-matrix  # benchmark + per-backend × per-size matrix (tfidf/bm25/fuzzy × 100/500/1000)
 make scorecard   # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits non-zero on drift)
+make sweep-scoring  # grid-search ScoringConfig weights, write benchmarks/sweep_scoring.md
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter

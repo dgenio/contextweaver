@@ -11,6 +11,7 @@ from contextweaver._utils import (
     TfIdfScorer,
     jaccard,
     tokenize,
+    tokenize_list,
 )
 
 
@@ -39,6 +40,90 @@ def test_tokenize_returns_set() -> None:
     tokens = tokenize("hello hello world")
     assert isinstance(tokens, set)
     assert len(tokens) == 2  # hello, world
+
+
+# ---------------------------------------------------------------------------
+# Namespace-aware sub-token splitting (issue #213)
+# ---------------------------------------------------------------------------
+
+
+def test_tokenize_splits_dotted_id() -> None:
+    """Dotted tool ids contribute both the joined form and component parts."""
+    tokens = tokenize("crm.deals.search")
+    assert "crm.deals.search" in tokens  # original retained
+    assert "crm" in tokens
+    assert "deals" in tokens
+    assert "search" in tokens
+
+
+def test_tokenize_splits_underscored_id() -> None:
+    """Snake_case ids split on underscores (which \\W+ leaves alone)."""
+    tokens = tokenize("billing_invoices_search")
+    assert "billing_invoices_search" in tokens
+    assert "billing" in tokens
+    assert "invoices" in tokens
+    assert "search" in tokens
+
+
+def test_tokenize_splits_hyphenated_id() -> None:
+    tokens = tokenize("tool-execute-call")
+    assert "tool-execute-call" in tokens
+    assert "tool" in tokens
+    assert "execute" in tokens
+    assert "call" in tokens
+
+
+def test_tokenize_splits_slash_path() -> None:
+    tokens = tokenize("admin/audit/export")
+    assert "admin" in tokens
+    assert "audit" in tokens
+    assert "export" in tokens
+
+
+def test_tokenize_stopwords_filtered_from_subtokens() -> None:
+    """STOPWORDS apply to sub-tokens, not just surface tokens."""
+    tokens = tokenize("the_search")
+    # ``the`` is a stopword and must be filtered out of the sub-token output.
+    assert "the" not in tokens
+    assert "search" in tokens
+    # the joined form survives because it's not itself a stopword.
+    assert "the_search" in tokens
+
+
+def test_tokenize_short_subtokens_filtered() -> None:
+    """Sub-tokens shorter than 2 chars are dropped, same as surface tokens."""
+    tokens = tokenize("a.search")
+    assert "a" not in tokens  # single char
+    assert "search" in tokens
+
+
+def test_tokenize_no_delimiter_unchanged() -> None:
+    """Tokens without internal delimiters behave exactly as before."""
+    tokens = tokenize("search database quickly")
+    assert tokens == {"search", "database", "quickly"}
+
+
+def test_tokenize_deterministic_100x() -> None:
+    """The augmented tokenizer is deterministic across repeated calls."""
+    expected = tokenize("crm.deals.search billing_invoices")
+    for _ in range(100):
+        assert tokenize("crm.deals.search billing_invoices") == expected
+
+
+def test_tokenize_list_preserves_order_and_duplicates() -> None:
+    """tokenize_list emits the surface token, then its sub-tokens, in order."""
+    result = tokenize_list("crm.deals search crm.deals")
+    # crm.deals -> joined, crm, deals (first occurrence), then "search",
+    # then crm.deals again -> joined, crm, deals.
+    assert result == [
+        "crm.deals",
+        "crm",
+        "deals",
+        "search",
+        "crm.deals",
+        "crm",
+        "deals",
+    ]
 
 
 def test_jaccard_identical() -> None:

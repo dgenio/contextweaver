@@ -1,0 +1,62 @@
+name: Scorecard weekly regen
+
+# Issue #207 — Mondays at 06:00 UTC, run the benchmark + scorecard from a
+# clean checkout and open a PR if either drifts. peter-evans/create-pull-request
+# handles the find-or-create logic so re-runs update the same PR instead of
+# spawning duplicates.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  # Allow manual triggering for verification.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    permissions:
+      # peter-evans/create-pull-request needs write access to push the
+      # auto-update branch and open the PR. Scoped narrowly to this job.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Matches the default CI matrix entry — 3.11 is the runner that
+          # produced the committed latest.json baseline.
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,langchain,retrieval]"
+
+      - name: Regenerate benchmark + scorecard
+        run: |
+          python benchmarks/benchmark.py --matrix
+          python scripts/render_scorecard.py
+
+      - name: Open PR on drift
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/weekly-scorecard
+          base: main
+          commit-message: "chore(eval): weekly scorecard update"
+          title: "chore(eval): weekly scorecard update"
+          labels: |
+            area/eval
+            automated
+          body: |
+            Scheduled weekly regeneration of `benchmarks/results/latest.json`
+            and `benchmarks/scorecard.md` from this runner (Python 3.11,
+            `ubuntu-latest`). Latency numbers will always change between
+            runs; recall, drops, dedup, and token counts should not unless
+            scoring or scenarios changed in main.
+
+            Triggered by `.github/workflows/scorecard-weekly.yml`. If you
+            don't want this PR, close it — the workflow will recreate one
+            next week (or on `workflow_dispatch`).
+          delete-branch: true
