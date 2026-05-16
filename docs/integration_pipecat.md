@@ -5,6 +5,17 @@
 > agents stay budget-aware and don't stall the pipeline on a single
 > multi-KB function result.
 
+!!! tip "Canonical worked example"
+    The [Voice agent reference architecture](architectures/voice_agent.md)
+    is the canonical end-to-end worked example for this guide. It walks
+    a five-turn customer-service call against an 18-tool catalog,
+    exercises every recommendation on this page (the
+    `asyncio.to_thread(mgr.build_sync, …)` pattern, tight per-phase
+    budgets, persistent facts across the call), and ships a deterministic
+    `OUTPUT.md` you can read without running the script. Start there if
+    you want to see the pieces work together before reading the
+    integration details below.
+
 ## Why
 
 Pipecat's pipeline architecture is designed for sub-100 ms turn-taking.

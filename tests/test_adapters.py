@@ -17,6 +17,8 @@ from contextweaver.adapters.fastmcp import (
     fastmcp_tool_to_selectable,
     fastmcp_tools_to_catalog,
     infer_fastmcp_namespace,
+    make_context_hook,
+    make_discovery_tool,
 )
 from contextweaver.adapters.mcp import (
     infer_namespace,
@@ -24,7 +26,12 @@ from contextweaver.adapters.mcp import (
     mcp_result_to_envelope,
     mcp_tool_to_selectable,
 )
+from contextweaver.context.manager import ContextManager
 from contextweaver.exceptions import CatalogError
+from contextweaver.routing.catalog import Catalog
+from contextweaver.routing.router import Router
+from contextweaver.routing.tree import TreeBuilder
+from contextweaver.types import SelectableItem
 
 # ---------------------------------------------------------------------------
 # MCP adapter — mcp_tool_to_selectable
@@ -1156,3 +1163,210 @@ async def test_load_fastmcp_catalog_requires_extra(monkeypatch: pytest.MonkeyPat
 # ``pytest.importorskip("weaver_contracts")`` there does not suppress the
 # MCP / A2A / FastMCP coverage above when the optional package is absent
 # (PR #201 review).
+
+
+# ---------------------------------------------------------------------------
+# FastMCP CodeMode adapter — make_discovery_tool / make_context_hook (issue #87)
+# ---------------------------------------------------------------------------
+
+
+def _build_test_catalog() -> Catalog:
+    """Build a 6-tool catalog with two distinct domains for discovery tests."""
+    catalog = Catalog()
+    items = [
+        ("github.search_repos", "search_repos", "Search GitHub repositories by keyword", ["vcs"]),
+        ("github.create_issue", "create_issue", "Create a new GitHub issue", ["vcs", "write"]),
+        ("github.merge_pr", "merge_pr", "Merge a GitHub pull request", ["vcs", "write"]),
+        ("slack.send_message", "send_message", "Post a message to a Slack channel", ["messaging"]),
+        ("slack.search_messages", "search_messages", "Search Slack messages", ["messaging"]),
+        ("db.query", "db_query", "Run a read-only SQL query", ["database"]),
+    ]
+    for tid, name, desc, tags in items:
+        catalog.register(
+            SelectableItem(
+                id=tid,
+                kind="tool",
+                name=name,
+                description=desc,
+                namespace=tid.split(".", 1)[0],
+                tags=tags,
+                args_schema={"type": "object", "properties": {"q": {"type": "string"}}},
+            )
+        )
+    return catalog
+
+
+def _build_test_router(catalog: Catalog, top_k: int = 3) -> Router:
+    items = catalog.all()
+    graph = TreeBuilder(max_children=8).build(items)
+    return Router(graph, items=items, top_k=top_k)
+
+
+def test_make_discovery_tool_returns_callable() -> None:
+    """The factory returns a plain callable with no captured FastMCP refs."""
+    catalog = _build_test_catalog()
+    router = _build_test_router(catalog)
+    discover = make_discovery_tool(router, catalog)
+    assert callable(discover)
+    # Plain function, not a partial / bound method / dataclass.
+    assert discover.__name__ == "discover"
+
+
+def test_discovery_tool_filters_catalog_to_shortlist() -> None:
+    """The discovery callable narrows the catalog to a query-relevant shortlist."""
+    catalog = _build_test_catalog()
+    router = _build_test_router(catalog, top_k=3)
+    discover = make_discovery_tool(router, catalog)
+
+    out = discover("search github repositories for the payments service")
+
+    # Strict bounds — exact shortlist size from the router config.
+    assert len(out) == 3
+    # The relevant tool must be in the shortlist; ordering is deterministic
+    # but TF-IDF score ties depend on tokenization, so we only assert membership.
+    names = [t["name"] for t in out]
+    assert "search_repos" in names
+
+
+def test_discovery_tool_returns_correct_dict_shape() -> None:
+    """Every returned dict has exactly the FastMCP CodeMode-required keys."""
+    catalog = _build_test_catalog()
+    router = _build_test_router(catalog)
+    discover = make_discovery_tool(router, catalog)
+    out = discover("send a slack message about the deploy")
+
+    assert len(out) >= 1
+    for tool in out:
+        assert set(tool.keys()) == {"name", "description", "input_schema"}
+        assert isinstance(tool["name"], str)
+        assert isinstance(tool["description"], str)
+        assert isinstance(tool["input_schema"], dict)
+
+
+def test_discovery_tool_top_k_ceiling() -> None:
+    """The top_k ceiling parameter caps the shortlist size below the router default."""
+    catalog = _build_test_catalog()
+    # Router defaults to top_k=3; pin to a strict ceiling of 2.
+    router = _build_test_router(catalog, top_k=3)
+    discover = make_discovery_tool(router, catalog, top_k=2)
+    out = discover("search github repositories")
+    assert len(out) == 2
+
+
+def test_discovery_tool_negative_top_k_raises() -> None:
+    """Negative ceilings are rejected at factory time, not at call time."""
+    catalog = _build_test_catalog()
+    router = _build_test_router(catalog)
+    with pytest.raises(ValueError, match="top_k must be >= 0"):
+        make_discovery_tool(router, catalog, top_k=-1)
+
+
+def test_discovery_tool_input_schema_is_copy() -> None:
+    """The returned input_schema is a copy — mutating it does not affect the catalog."""
+    catalog = _build_test_catalog()
+    router = _build_test_router(catalog)
+    discover = make_discovery_tool(router, catalog)
+    out = discover("search github repositories")
+
+    # Mutate the returned dict.
+    out[0]["input_schema"]["mutated"] = True
+
+    # Re-call: fresh result must not see the mutation.
+    out2 = discover("search github repositories")
+    assert "mutated" not in out2[0]["input_schema"]
+
+
+def test_discovery_tool_does_not_import_fastmcp() -> None:
+    """The discovery callable must not touch the fastmcp package at runtime."""
+    catalog = _build_test_catalog()
+    router = _build_test_router(catalog)
+    discover = make_discovery_tool(router, catalog)
+
+    # Snapshot sys.modules before the call; assert no new fastmcp.* keys.
+    import sys
+
+    fastmcp_modules_before = {k for k in sys.modules if k.startswith("fastmcp")}
+    discover("search github repositories")
+    fastmcp_modules_after = {k for k in sys.modules if k.startswith("fastmcp")}
+    new_imports = fastmcp_modules_after - fastmcp_modules_before
+    # If fastmcp was already imported (e.g. by the integration test in this
+    # module), the empty-diff assertion still holds; we only forbid *new*
+    # imports caused by the callable itself.
+    assert new_imports == set(), f"discovery hook leaked fastmcp imports: {new_imports}"
+
+
+def test_context_hook_compacts_large_result() -> None:
+    """The context hook drives the firewall on a >threshold raw result."""
+    mgr = ContextManager()
+    hook = make_context_hook(mgr)
+    raw = "x" * 5000
+    summary = hook("what changed?", raw)
+
+    # Firewall fires above the 2000-char default — summary is bounded.
+    assert len(summary) < len(raw)
+    assert len(summary) <= 600  # firewall summary is configured to ~500-char ceiling
+    # Raw bytes parked in the artifact store.
+    assert len(list(mgr.artifact_store.list_refs())) == 1
+
+
+def test_context_hook_passthrough_below_threshold() -> None:
+    """Short results below the firewall threshold pass through unchanged on the prompt.
+
+    The ``ingest_tool_result_sync`` pipeline always parks raw bytes in the
+    artifact store (so drilldown stays available), but below the firewall
+    threshold the returned text is the raw output verbatim — that's the
+    invariant CodeMode callers rely on.
+    """
+    mgr = ContextManager()
+    hook = make_context_hook(mgr, firewall_threshold=2000)
+    raw = "hello world"
+    summary = hook("what changed?", raw)
+    # Below threshold — the prompt-side summary is the raw text unchanged.
+    assert summary == raw
+
+
+def test_context_hook_records_query_as_metadata() -> None:
+    """The hook stamps the query onto item.metadata so traces can correlate it."""
+    mgr = ContextManager()
+    hook = make_context_hook(mgr)
+    raw = "x" * 5000
+    hook("look up incident OPS-4821", raw)
+
+    # The firewalled ContextItem is the most recent ingested event.
+    events = mgr.event_log.all()
+    # The last item is the firewalled tool result.
+    tool_result = events[-1]
+    assert tool_result.metadata.get("codemode_query") == "look up incident OPS-4821"
+
+
+def test_context_hook_negative_threshold_raises() -> None:
+    """Negative thresholds are rejected at factory time."""
+    mgr = ContextManager()
+    with pytest.raises(ValueError, match="firewall_threshold must be >= 0"):
+        make_context_hook(mgr, firewall_threshold=-1)
+
+
+def test_discovery_tool_skips_graph_only_nodes() -> None:
+    """Candidate ids not in the catalog (e.g. category labels) are skipped silently."""
+    catalog = _build_test_catalog()
+    items = catalog.all()
+    graph = TreeBuilder(max_children=8).build(items)
+    router = Router(graph, items=items, top_k=3)
+
+    # Force a fake non-hydratable id into the router output by patching.
+    real_route = router.route
+
+    def patched_route(query: str, **kwargs: object) -> object:
+        result = real_route(query, **kwargs)
+        # Prepend a synthetic id that the catalog does not know about.
+        result.candidate_ids = ["nonexistent.virtual_node", *result.candidate_ids]
+        return result
+
+    router.route = patched_route  # type: ignore[method-assign]
+
+    discover = make_discovery_tool(router, catalog)
+    out = discover("search github repositories")
+    # The virtual node is skipped silently; real candidates still surface.
+    names = [t["name"] for t in out]
+    assert "nonexistent.virtual_node" not in names
+    assert len(out) >= 1

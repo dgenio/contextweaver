@@ -17,6 +17,8 @@ from contextweaver.adapters.fastmcp import (
     fastmcp_tools_to_catalog,
     infer_fastmcp_namespace,
     load_fastmcp_catalog,
+    make_context_hook,
+    make_discovery_tool,
 )
 from contextweaver.adapters.gateway_error import GatewayError
 from contextweaver.adapters.mcp import (
@@ -81,6 +83,8 @@ __all__ = [
     "load_a2a_session_jsonl",
     "load_fastmcp_catalog",
     "load_mcp_session_jsonl",
+    "make_context_hook",
+    "make_discovery_tool",
     "make_gateway_meta_tools",
     "make_proxy_meta_tools",
     "make_stripped_tools_list",

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **FastMCP CodeMode hooks** (#87). New
+  `contextweaver.adapters.fastmcp.make_discovery_tool(router, catalog)`
+  and `make_context_hook(context_manager)` factories return plain
+  callables suitable for FastMCP CodeMode's custom-discovery-tool and
+  context hooks (or any runtime with the same shape — LangChain,
+  LlamaIndex, hand-rolled agent loops). Neither hook imports `fastmcp`
+  at runtime; the callable contract is framework-agnostic.
+  `examples/fastmcp_discovery_demo.py` demonstrates a 22-tool catalog
+  shrinking to a 3-tool shortlist (86% token reduction). `fastmcp>=2.0`
+  is now part of the `[dev]` extra so a real in-memory FastMCP server
+  integration test (`tests/test_adapters_fastmcp_discovery.py`) runs on
+  every CI matrix cell. Reference:
+  https://github.com/PrefectHQ/fastmcp/discussions/3365
+- **Code-review bot reference architecture** (#204). New
+  `examples/architectures/code_review_bot/` walks a six-step pull-request
+  review against a 24-tool catalog (grep / git / lint / typecheck /
+  test / review). The firewall is the load-bearing pattern: a synthetic
+  ~28 KB diff dump and ~2.5 KB grep result both compact to ~500-char
+  summaries while raw bytes stay addressable via the artifact store.
+  Linked from `docs/architectures/index.md` and runnable under
+  `make architectures`.
+- **Voice agent reference architecture** (#205). New
+  `examples/architectures/voice_agent/` is the canonical worked example
+  for `docs/integration_pipecat.md`. Walks a five-turn customer-service
+  call against an 18-tool catalog, demonstrating the
+  `asyncio.to_thread(mgr.build_sync, …)` pattern and tight per-phase
+  budgets (`ContextBudget(route=200, call=500, interpret=400,
+  answer=1000)`) for sub-300 ms TTS. Pipecat is optional via the new
+  `[voice]` extra; the example runs end-to-end without it.
+
 ## [0.4.0] - 2026-05-16
 
 ### Added

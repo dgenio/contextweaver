@@ -10,18 +10,31 @@ Core conversion functions (:func:`fastmcp_tool_to_selectable`,
 install required.  Live server discovery (:func:`load_fastmcp_catalog`)
 requires the ``contextweaver[fastmcp]`` optional extra.
 
+FastMCP CodeMode hooks (:func:`make_discovery_tool`, :func:`make_context_hook`)
+return plain callables suitable for any runtime that supports custom
+discovery / context hooks (FastMCP CodeMode, LangChain, LlamaIndex,
+hand-rolled loops); no ``fastmcp`` import is needed on either the producer
+or the consumer side of the returned callable.
+
 FastMCP composition docs: https://gofastmcp.com/servers/composition
+FastMCP CodeMode discussion: https://github.com/PrefectHQ/fastmcp/discussions/3365
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+import uuid
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
-from contextweaver.exceptions import CatalogError
+from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.types import SelectableItem
+
+if TYPE_CHECKING:
+    from contextweaver.context.manager import ContextManager
+    from contextweaver.routing.router import Router
 
 logger = logging.getLogger("contextweaver.adapters")
 
@@ -280,3 +293,136 @@ async def load_fastmcp_catalog(
         raise CatalogError(f"Failed to list tools from FastMCP server: {exc}") from exc
 
     return fastmcp_tools_to_catalog(tool_dicts, namespace=namespace)
+
+
+# ---------------------------------------------------------------------------
+# CodeMode-style hooks (issue #87)
+# ---------------------------------------------------------------------------
+#
+# These factories produce plain ``Callable`` objects that any runtime
+# supporting a custom-discovery-tool hook can call.  They do **not** import
+# ``fastmcp`` on either the producer or the consumer side, so the same
+# callables work with FastMCP CodeMode, LangChain ``BindToolsMixin`` shims,
+# LlamaIndex tool selectors, or a hand-rolled agent loop.  The shape is
+# pinned by the issue:
+#
+#   discovery hook  : ``Callable[[str], list[dict]]``
+#   context  hook   : ``Callable[[str, str], str]``
+#
+# Reference: https://github.com/PrefectHQ/fastmcp/discussions/3365
+
+
+def make_discovery_tool(
+    router: Router,
+    catalog: Catalog,
+    *,
+    top_k: int | None = None,
+) -> Callable[[str], list[dict[str, Any]]]:
+    """Wrap a :class:`Router` + :class:`Catalog` pair as a discovery callable.
+
+    The returned function accepts a single user query string and returns a
+    list of tool dicts (``{"name", "description", "input_schema"}``) for the
+    top-ranked candidates.  This is the shape FastMCP CodeMode's custom
+    discovery hook expects, but it is intentionally framework-agnostic —
+    any runtime that wants a "given this query, hand me a shortlist of
+    callable tools" hook can use it.
+
+    Args:
+        router: A configured :class:`Router`.  Its own ``top_k`` parameter
+            still applies; *top_k* below is an additional ceiling.
+        catalog: The :class:`Catalog` whose items the router was built over,
+            used to hydrate each candidate id back into name / description /
+            input schema.
+        top_k: Optional ceiling on the returned shortlist size.  ``None``
+            (default) honours whatever the router was configured with.
+            When provided, the smaller of ``router.top_k`` and *top_k* wins.
+
+    Returns:
+        A pure callable ``(query: str) -> list[dict[str, Any]]`` with no
+        captured FastMCP / external-runtime references.  The function is
+        side-effect-free aside from the router's own internal scoring cache.
+
+    Raises:
+        ValueError: If *top_k* is negative.
+    """
+    if top_k is not None and top_k < 0:
+        raise ValueError(f"top_k must be >= 0, got {top_k}")
+
+    def discover(query: str) -> list[dict[str, Any]]:
+        result = router.route(query)
+        ids = result.candidate_ids
+        if top_k is not None:
+            ids = ids[:top_k]
+        out: list[dict[str, Any]] = []
+        for tid in ids:
+            try:
+                hydrated = catalog.hydrate(tid)
+            except (ItemNotFoundError, CatalogError):
+                # Candidate id not in catalog (graph-only node, e.g. category
+                # label).  Skip rather than fail — the discovery hook must
+                # never reject a valid query just because one node is
+                # virtual.
+                continue
+            out.append(
+                {
+                    "name": hydrated.item.name,
+                    "description": hydrated.item.description,
+                    "input_schema": dict(hydrated.args_schema),
+                }
+            )
+        return out
+
+    return discover
+
+
+def make_context_hook(
+    context_manager: ContextManager,
+    *,
+    firewall_threshold: int = 2000,
+) -> Callable[[str, str], str]:
+    """Wrap a :class:`ContextManager` firewall as a (query, raw_result) → summary callable.
+
+    The returned function ingests *raw_result* through the firewall, parking
+    the raw bytes in the artifact store and returning the compact summary
+    text that should be placed on the LLM prompt.  This is the shape a
+    FastMCP CodeMode "context hook" expects, but it is again
+    framework-agnostic — any runtime that wants a "give me a budget-aware
+    summary of this raw tool output" hook can use it.
+
+    Args:
+        context_manager: A configured :class:`ContextManager`.  The hook
+            mutates its event log + artifact store on every call.
+        firewall_threshold: Character threshold above which the firewall
+            kicks in; below it the raw text is returned unchanged.  Matches
+            :meth:`ContextManager.ingest_tool_result_sync`'s default.
+
+    Returns:
+        A pure callable ``(query, raw_result) -> str``.  *query* is recorded
+        as the parent user-turn id for dependency closure; *raw_result* is
+        the verbatim tool output.  Returns the firewall summary (or the raw
+        result if below threshold).
+
+    Raises:
+        ValueError: If *firewall_threshold* is negative.
+    """
+    if firewall_threshold < 0:
+        raise ValueError(f"firewall_threshold must be >= 0, got {firewall_threshold}")
+
+    def hook(query: str, raw_result: str) -> str:
+        # Stable, collision-resistant ids: short uuid is plenty since the
+        # CodeMode hook is a single-shot pipeline, not a long-running session.
+        call_id = f"codemode:{uuid.uuid4().hex[:12]}"
+        item, _envelope = context_manager.ingest_tool_result_sync(
+            tool_call_id=call_id,
+            raw_output=raw_result,
+            tool_name="codemode.discovery",
+            firewall_threshold=firewall_threshold,
+        )
+        # Record the query as metadata so traces can correlate the hook call
+        # back to the user turn that triggered it.  Don't ingest it as a
+        # user_turn ContextItem — the hook is stateless w.r.t. conversation
+        # history; only the firewall side-effect is intentional.
+        item.metadata.setdefault("codemode_query", query)
+        return item.text
+
+    return hook

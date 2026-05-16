@@ -76,6 +76,12 @@ dev = [
     # 4.18 ships ``referencing`` — the conformance script's local $ref
     # resolver depends on it (PR #201 review).
     "jsonschema>=4.18",
+    # FastMCP is pulled into [dev] so the CodeMode discovery-tool integration
+    # test (``tests/test_adapters_fastmcp_discovery.py``) — which spins up a
+    # real in-memory FastMCP server — runs on every CI matrix cell.  The
+    # ``[fastmcp]`` runtime extra below stays for end users who don't want
+    # the dev toolchain.
+    "fastmcp>=2.0",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -90,6 +96,16 @@ fastmcp = [
 # LangChain integration examples.
 langchain = [
     "langchain-core>=0.3",
+]
+# Real-time voice agents: Pipecat frame processors composed with the
+# contextweaver context engine.  Optional because pipecat-ai pulls heavy
+# transitive deps (audio codecs, VAD models) — the
+# ``examples/architectures/voice_agent`` script runs end-to-end without
+# this extra installed; install only when you want to wire contextweaver
+# into a real Pipecat ``FrameProcessor`` (see
+# ``docs/integration_pipecat.md`` for the worked code).
+voice = [
+    "pipecat-ai>=0.0.50",
 ]
 # Docs site (mkdocs).
 docs = [
@@ -133,6 +149,7 @@ all = [
     "contextweaver[otel]",
     "contextweaver[graph]",
     "contextweaver[weaver-spec]",
+    "contextweaver[voice]",
 ]
 
 [project.scripts]
