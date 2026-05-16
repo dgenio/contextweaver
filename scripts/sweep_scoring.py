@@ -321,8 +321,6 @@ def render_report(rows: list[SweepRow]) -> str:
             f"| {note} |"
         )
 
-    if default_row is not None and not default_row.is_default:
-        pass  # unreachable — default_row is found by is_default
     if default_row is not None and default_rank > 10:
         parts += [
             "",

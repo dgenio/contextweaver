@@ -187,3 +187,16 @@ def test_matrix_cell_shape() -> None:
         latency_ms_p99=1.0,
     )
     assert cell.status == ""
+
+
+def test_parse_args_rejects_unknown_backends() -> None:
+    """Typos in `--backends` exit cleanly with code 2, not a traceback."""
+    with pytest.raises(SystemExit) as exc_info:
+        benchmark._parse_args(["--matrix", "--backends", "tfidf,bogus"])
+    assert exc_info.value.code == 2
+
+
+def test_parse_args_accepts_supported_backends() -> None:
+    """All three documented backends pass `--backends` validation."""
+    args = benchmark._parse_args(["--matrix", "--backends", "tfidf,bm25,fuzzy"])
+    assert args.backends == ["tfidf", "bm25", "fuzzy"]

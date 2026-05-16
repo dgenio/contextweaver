@@ -411,7 +411,7 @@ class ContextStats:
     budget_utilization_pct: float
     artifacts_created: int
     avg_compaction_ratio: float
-    naive_delta: dict[str, float] | None = None
+    naive_delta: dict[str, float | int] | None = None
 
 
 def _load_scenario(path: Path) -> list[ContextItem]:
@@ -468,12 +468,12 @@ def _run_context_benchmark(
                 if summary_bytes > 0:
                     ratios.append(raw_bytes / summary_bytes)
 
-        naive_delta: dict[str, float] | None = None
+        naive_delta: dict[str, float | int] | None = None
         if with_naive:
             delta = compute_naive_delta(events=events, pack=pack, cw_tokens=prompt_toks)
             naive_delta = {
-                "naive_tokens": float(delta.naive_tokens),
-                "cw_tokens": float(delta.cw_tokens),
+                "naive_tokens": int(delta.naive_tokens),
+                "cw_tokens": int(delta.cw_tokens),
                 "pct_reduction": delta.pct_reduction,
                 "coverage_pct": delta.coverage_pct,
             }
@@ -613,7 +613,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Skip the naïve-baseline delta computation (faster iteration).",
     )
     parser.set_defaults(with_naive=True)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    unknown_backends = sorted(set(args.backends) - set(_BACKENDS_DEFAULT))
+    if unknown_backends:
+        parser.error(
+            f"unsupported --backends value(s): {', '.join(unknown_backends)}. "
+            f"Choose from: {', '.join(_BACKENDS_DEFAULT)}."
+        )
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:

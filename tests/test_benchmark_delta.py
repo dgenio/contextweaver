@@ -191,3 +191,87 @@ def test_missing_matrix_block_skipped_cleanly() -> None:
     # Routing + context tables still present.
     assert "### Routing" in out
     assert "### Context pipeline" in out
+
+
+def test_matrix_row_with_status_rendered_as_skipped() -> None:
+    """A matrix row with non-empty `status` must not be rendered as a zero-vs-real regression."""
+    base = _make_payload()
+    head = _make_payload()
+    # Simulate the PR build skipping fuzzy because rapidfuzz isn't installed.
+    head["matrix"] = [
+        {
+            "backend": "fuzzy",
+            "catalog_size": 100,
+            "queries_evaluated": 0,
+            "precision_at_k": 0.0,
+            "recall_at_k": 0.0,
+            "mrr": 0.0,
+            "latency_ms_p50": 0.0,
+            "latency_ms_p95": 0.0,
+            "latency_ms_p99": 0.0,
+            "status": "skipped: rapidfuzz not installed (contextweaver[retrieval] extra)",
+        }
+    ]
+    # Base has the fuzzy row populated with real numbers.
+    base["matrix"] = [
+        {
+            "backend": "fuzzy",
+            "catalog_size": 100,
+            "queries_evaluated": 50,
+            "precision_at_k": 0.1,
+            "recall_at_k": 0.5,
+            "mrr": 0.3,
+            "latency_ms_p50": 1.0,
+            "latency_ms_p95": 5.0,
+            "latency_ms_p99": 10.0,
+            "status": "",
+        }
+    ]
+    out = benchmark_delta.render(base, head)
+    # The status text appears in the matrix row.
+    assert "skipped: rapidfuzz not installed" in out
+    # No spurious latency-budget warning fired because of the zeroed metrics.
+    matrix_section = out.split("### Matrix")[1].split("### Context pipeline")[0]
+    assert "⚠️" not in matrix_section
+    # No "-0.5000" or "-10.000" deltas in the skipped row.
+    assert "-0.5000" not in matrix_section
+    assert "-10.000" not in matrix_section
+
+
+def test_matrix_row_with_status_on_base_only() -> None:
+    """Status on the base row alone is also surfaced (e.g., base was skipped, head ran)."""
+    base = _make_payload()
+    head = _make_payload()
+    base["matrix"] = [
+        {
+            "backend": "fuzzy",
+            "catalog_size": 100,
+            "queries_evaluated": 0,
+            "precision_at_k": 0.0,
+            "recall_at_k": 0.0,
+            "mrr": 0.0,
+            "latency_ms_p50": 0.0,
+            "latency_ms_p95": 0.0,
+            "latency_ms_p99": 0.0,
+            "status": "skipped: rapidfuzz not installed (contextweaver[retrieval] extra)",
+        }
+    ]
+    head["matrix"] = [
+        {
+            "backend": "fuzzy",
+            "catalog_size": 100,
+            "queries_evaluated": 50,
+            "precision_at_k": 0.1,
+            "recall_at_k": 0.5,
+            "mrr": 0.3,
+            "latency_ms_p50": 1.0,
+            "latency_ms_p95": 5.0,
+            "latency_ms_p99": 10.0,
+            "status": "",
+        }
+    ]
+    out = benchmark_delta.render(base, head)
+    matrix_section = out.split("### Matrix")[1].split("### Context pipeline")[0]
+    assert "skipped" in matrix_section
+    # The latency-budget marker for the skipped row must be suppressed.
+    assert "⚠️" not in matrix_section

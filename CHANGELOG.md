@@ -20,9 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Expanded routing gold set** (#209). 50 → 200 hand-authored
   queries in `benchmarks/routing_gold.json`, with ≥20 per namespace
   across all 8 catalog namespaces. Every entry gains a top-level
-  `namespace` field. The benchmark aggregates recall@k into
-  `routing.per_namespace` keyed by backend so the scorecard can show
-  which namespaces are weakest on each scorer.
+  `namespace` field. The benchmark aggregates recall@k into a
+  top-level `per_namespace` object keyed by backend so the scorecard
+  can show which namespaces are weakest on each scorer.
 - **Naïve-baseline harness** (#215). New `scripts/baseline_naive.py`
   + per-scenario `naive_delta` block in `latest.json` showing
   `naive_tokens`, `cw_tokens`, `pct_reduction`, and a parent-chain

@@ -70,9 +70,9 @@ are environment-dependent; recall, drops, dedup, and token counts are not.
 The committed [`scorecard.md`](../benchmarks/scorecard.md) is rendered from
 the same `results/latest.json`. As of #208/#209 the harness emits a
 **per-backend × per-size matrix** (`tfidf` / `bm25` / `fuzzy` × 100 / 500
-/ 1000) plus **per-namespace recall@5** under `routing.matrix` and
-`routing.per_namespace`. The legacy single-backend rows (50 / 83 / 1000
-on `tfidf`) are preserved verbatim for back-compat.
+/ 1000) plus **per-namespace recall@5** at top-level `matrix` and
+`per_namespace` keys in `results/latest.json`. The legacy single-backend
+rows (50 / 83 / 1000 on `tfidf`) are preserved verbatim for back-compat.
 
 ### Routing (legacy single-backend rows)
 

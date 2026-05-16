@@ -78,6 +78,19 @@ def _index(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
     return {_key(r): r for r in rows}
 
 
+def _row_status(row: dict[str, Any] | None) -> str:
+    """Return the row's non-empty ``status`` string, or ``""`` when absent/ran.
+
+    Skipped matrix cells (e.g. fuzzy without the ``[retrieval]`` extra) carry
+    a populated ``status`` plus zeroed metrics. Treating those zeros as real
+    numeric deltas would render them as large regressions, so the delta
+    table needs to detect the skip and render the status text instead.
+    """
+    if row is None:
+        return ""
+    return str(row.get("status") or "")
+
+
 def _routing_delta_table(
     base_rows: list[dict[str, Any]],
     head_rows: list[dict[str, Any]],
@@ -97,6 +110,15 @@ def _routing_delta_table(
         b = base_idx.get(key)
         h = head_idx.get(key)
         backend, size = key
+        base_status = _row_status(b)
+        head_status = _row_status(h)
+        if base_status or head_status:
+            # Skipped on at least one side — render the status verbatim and
+            # suppress numeric Δ + latency marker. Prefer the head status when
+            # both are present (PR-side state is what the reviewer cares about).
+            note = head_status or base_status
+            lines.append(f"| {backend} | {size} | _skipped_ | _skipped_ | _skipped_ | {note} |")
+            continue
         rec = _delta_cell(
             None if b is None else float(b["recall_at_k"]),
             None if h is None else float(h["recall_at_k"]),
