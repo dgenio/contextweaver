@@ -23,5 +23,17 @@
       "mcp__mcp-registry__list_connectors",
       "mcp__mcp-registry__search_mcp_registry"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
   }
 }
