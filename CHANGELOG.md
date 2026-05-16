@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`SqliteEventLog` + shared `_sqlite_base.py`** (#174, #223). First
+  persistent `EventLog` backend, layered on a small connection +
+  migration helper that the rest of the SQLite-stores epic will reuse.
+  Sets `PRAGMA journal_mode=WAL` and `PRAGMA foreign_keys=ON` on open,
+  versions schema migrations through a `_contextweaver_schema_version`
+  table, and round-trips every `ContextItem` field (including JSON
+  `metadata` and nested `ArtifactRef`). Constructor accepts a filesystem
+  path or `":memory:"`; the parent directory is created automatically.
+  Single-process; sync only. New `[sqlite]` extras-group placeholder.
+- **`JsonFileArtifactStore`** (#42). Filesystem-backed
+  `ArtifactStore` implementation that stores each artifact as a
+  `{base_dir}/{handle}.data` byte file plus a `{base_dir}/{handle}.json`
+  metadata file. Re-instantiating against the same directory recovers
+  the metadata index automatically. Handles containing path separators,
+  `..`, `.`, or null bytes are rejected at write time. Drilldown
+  selectors (`head` / `lines` / `json_keys` / `rows`) match
+  `InMemoryArtifactStore` byte-for-byte via a shared module-private
+  helper `_apply_selector` in `store/artifacts.py`.
+- **`EventLog` lifecycle methods** (#223). The `EventLog` protocol now
+  requires `close()`, `__enter__`, and `__exit__` so persistent backends
+  fit the contract cleanly. `InMemoryEventLog.close()` is a no-op so
+  existing callers are unaffected; the methods make
+  `with SqliteEventLog(path) as log:` the recommended idiom for the new
+  backend.
+
 ## [0.4.0] - 2026-05-16
 
 ### Added

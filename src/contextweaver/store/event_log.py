@@ -8,6 +8,7 @@ from this store when generating context candidates.
 from __future__ import annotations
 
 import logging
+from types import TracebackType
 from typing import Any
 
 from contextweaver.exceptions import DuplicateItemError, ItemNotFoundError
@@ -153,6 +154,25 @@ class InMemoryEventLog:
 
     def __len__(self) -> int:
         return len(self._items)
+
+    def close(self) -> None:
+        """No-op for the in-memory backend.
+
+        Defined so :class:`InMemoryEventLog` satisfies the
+        :class:`~contextweaver.store.protocols.EventLog` protocol's lifecycle
+        contract; persistent backends override this to release resources.
+        """
+
+    def __enter__(self) -> InMemoryEventLog:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the event log to a JSON-compatible dict."""

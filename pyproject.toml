@@ -116,6 +116,13 @@ retrieval = [
 ann = [
     "hnswlib>=0.8",
 ]
+# Persistent SQLite-backed stores (issues #174 / #223).  The implementations
+# rely only on stdlib ``sqlite3``; this extras group exists so installs can
+# opt into a future ``aiosqlite``-based async variant or schema-migration
+# tooling without changing the public install surface.  Empty today on
+# purpose — the contract is "if you want the SQLite stores, install this
+# extra" even though it currently adds no third-party deps.
+sqlite = []
 # OpenTelemetry tracing + metrics export.
 otel = [
     "opentelemetry-api>=1.20",
