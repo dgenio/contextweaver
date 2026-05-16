@@ -32,39 +32,36 @@ Mapping (see ``AGENTS.md`` for the full ``ItemKind`` map):
 
 System prompts (top-level API param, not a message) are out of scope.
 
+The decoder helpers live in :mod:`._anthropic_decode` and the encoder
+helpers in :mod:`._anthropic_encode` to keep this public surface focused
+and within the repo's ≤300-line module guideline.
+
 Issue #222 (closes #194 together with the OpenAI slice #219).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from contextweaver.adapters._anthropic_decode import (
+    _blocks_to_items,
+    _normalise_content,
+)
+from contextweaver.adapters._anthropic_encode import _block_index_sort_key, _item_to_block
 from contextweaver.adapters._messages_common import (
     expect_dict,
     expect_list,
     group_items_by_msg_index,
     ingest_into_manager,
-    json_args_dumps,
-    sort_key_by_meta_index,
 )
 from contextweaver.exceptions import CatalogError
-from contextweaver.types import ContextItem, ItemKind
+from contextweaver.types import ContextItem
 
 if TYPE_CHECKING:
     from contextweaver.context.manager import ContextManager
 
 logger = logging.getLogger("contextweaver.adapters")
-
-
-_PREFIX_USER = "anthropic:user:"
-_PREFIX_ASSISTANT = "anthropic:assistant:"
-_PREFIX_TOOL_USE = "anthropic:tool_use:"
-_PREFIX_TOOL_RESULT = "anthropic:tool_result:"
-
-
-# --- Public: from_anthropic_messages ---
 
 
 def from_anthropic_messages(
@@ -112,9 +109,6 @@ def from_anthropic_messages(
     return items
 
 
-# --- Public: to_anthropic_messages ---
-
-
 def to_anthropic_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
     """Inverse of :func:`from_anthropic_messages`.
 
@@ -150,224 +144,3 @@ def to_anthropic_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
         else:
             out.append({"role": role, "content": blocks})
     return out
-
-
-# --- Decoding (messages → items) ---
-
-
-def _normalise_content(
-    content: Any,  # noqa: ANN401 — content is opaque provider JSON
-    idx: int,
-    role: str,
-) -> list[dict[str, Any]]:
-    """Coerce the ``content`` field to a list of content blocks."""
-    if content is None:
-        return []
-    if isinstance(content, str):
-        return [{"type": "text", "text": content}]
-    if isinstance(content, list):
-        for b_idx, block in enumerate(content):
-            expect_dict(block, label=f"Anthropic content block [{idx}][{b_idx}]")
-        return list(content)
-    raise CatalogError(
-        f"Anthropic {role} message at index {idx} has unsupported content type: "
-        f"{type(content).__name__}"
-    )
-
-
-def _blocks_to_items(
-    blocks: list[dict[str, Any]],
-    msg_idx: int,
-    role: str,
-    was_string_shorthand: bool,
-    seen_tool_use_ids: set[str],
-) -> list[ContextItem]:
-    """Convert a normalised content-block list into one or more items."""
-    out: list[ContextItem] = []
-    for b_idx, block in enumerate(blocks):
-        block_type = block.get("type")
-        base_meta: dict[str, Any] = {
-            "role": role,
-            "msg_index": msg_idx,
-            "block_index": b_idx,
-            "block_type": block_type,
-            # Only meaningful when this group has a single text block; we
-            # tag every block so the inverse adapter sees it on group[0].
-            "was_string_shorthand": was_string_shorthand,
-            # Preserve the full original block so the inverse adapter can
-            # re-emit unknown provider fields (e.g. `cache_control`) and
-            # distinguish an explicit `is_error: False` from a missing one
-            # (PR #230 review).
-            "original_block": block,
-        }
-        if block_type == "text":
-            text = str(block.get("text", ""))
-            kind = ItemKind.user_turn if role == "user" else ItemKind.agent_msg
-            prefix = _PREFIX_USER if role == "user" else _PREFIX_ASSISTANT
-            out.append(
-                ContextItem(
-                    id=f"{prefix}{msg_idx}:{b_idx}",
-                    kind=kind,
-                    text=text,
-                    metadata=base_meta,
-                )
-            )
-        elif block_type == "tool_use":
-            if role != "assistant":
-                raise CatalogError(
-                    f"tool_use block at [{msg_idx}][{b_idx}] must be on an "
-                    f"assistant message, got role={role!r}"
-                )
-            tool_use_id = block.get("id")
-            if not tool_use_id:
-                raise CatalogError(f"Anthropic tool_use block at [{msg_idx}][{b_idx}] missing 'id'")
-            tool_name = block.get("name", "")
-            input_payload = block.get("input", {})
-            args_str = json_args_dumps(
-                input_payload, label=f"Anthropic tool_use.input at [{msg_idx}][{b_idx}]"
-            )
-            meta = {
-                **base_meta,
-                "tool_use_id": tool_use_id,
-                "function_name": tool_name,
-                "input": input_payload,
-            }
-            out.append(
-                ContextItem(
-                    id=f"{_PREFIX_TOOL_USE}{tool_use_id}",
-                    kind=ItemKind.tool_call,
-                    text=args_str,
-                    metadata=meta,
-                )
-            )
-            seen_tool_use_ids.add(tool_use_id)
-        elif block_type == "tool_result":
-            if role != "user":
-                raise CatalogError(
-                    f"tool_result block at [{msg_idx}][{b_idx}] must be on a "
-                    f"user message, got role={role!r}"
-                )
-            tool_use_id = block.get("tool_use_id")
-            if not tool_use_id:
-                raise CatalogError(
-                    f"Anthropic tool_result block at [{msg_idx}][{b_idx}] missing 'tool_use_id'"
-                )
-            if tool_use_id not in seen_tool_use_ids:
-                # Mirrors the openai_messages orphan-tool-result check
-                # and the gemini_contents FIFO check (PR #230 review).
-                raise CatalogError(
-                    f"Anthropic tool_result block at [{msg_idx}][{b_idx}] has "
-                    f"tool_use_id={tool_use_id!r} that does not match any prior "
-                    "assistant tool_use block"
-                )
-            text, content_for_meta = _stringify_tool_result_content(block.get("content"))
-            meta = {
-                **base_meta,
-                "tool_use_id": tool_use_id,
-                "is_error": bool(block.get("is_error", False)),
-                # Preserve whether is_error was *present* in the original
-                # block (vs. defaulted) so we can re-emit explicit False.
-                "is_error_present": "is_error" in block,
-                "content_payload": content_for_meta,
-            }
-            out.append(
-                ContextItem(
-                    id=f"{_PREFIX_TOOL_RESULT}{tool_use_id}",
-                    kind=ItemKind.tool_result,
-                    text=text,
-                    metadata=meta,
-                    parent_id=f"{_PREFIX_TOOL_USE}{tool_use_id}",
-                )
-            )
-        else:
-            raise CatalogError(
-                f"Anthropic content block at [{msg_idx}][{b_idx}] has unsupported "
-                f"type: {block_type!r}"
-            )
-    return out
-
-
-def _stringify_tool_result_content(
-    content: Any,  # noqa: ANN401 — content is opaque provider JSON
-) -> tuple[str, Any]:
-    """Reduce a tool_result.content payload to a string for ``ContextItem.text``.
-
-    Returns a ``(text, original_content)`` tuple — the original is stashed
-    in metadata so the inverse adapter can re-emit the exact same shape.
-    """
-    if content is None:
-        return "", None
-    if isinstance(content, str):
-        return content, content
-    if isinstance(content, list):
-        text_parts: list[str] = []
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                text_parts.append(str(part.get("text", "")))
-            else:
-                text_parts.append(json.dumps(part, sort_keys=True))
-        return "\n".join(text_parts), content
-    # Numbers, bools — coerce to string and store the original for round-trip.
-    return str(content), content
-
-
-# --- Encoding (items → messages) ---
-
-
-_block_index_sort_key = sort_key_by_meta_index("block_index")
-
-
-def _item_to_block(item: ContextItem) -> dict[str, Any]:
-    """Convert a single ContextItem back into an Anthropic content block.
-
-    Starts from the original decoded block (so unknown provider fields like
-    ``cache_control`` survive the round-trip) and overlays the canonical
-    decoded fields. Falls back to a constructed block when no original is
-    available (hand-constructed items).
-    """
-    meta = item.metadata or {}
-    block_type = meta.get("block_type")
-    original_block = meta.get("original_block")
-    # When original_block is present, start from a copy and overlay the
-    # canonical decoded fields. This preserves unknown / non-decoded keys
-    # (e.g. cache_control, citations) verbatim.
-    block: dict[str, Any] = dict(original_block) if isinstance(original_block, dict) else {}
-
-    if block_type == "text":
-        block["type"] = "text"
-        block["text"] = item.text
-        return block
-    if block_type == "tool_use":
-        tool_use_id = meta.get("tool_use_id")
-        if not tool_use_id:
-            raise CatalogError(f"tool_call item {item.id!r} missing 'tool_use_id' metadata")
-        block["type"] = "tool_use"
-        block["id"] = tool_use_id
-        block["name"] = meta.get("function_name", "")
-        block["input"] = meta.get("input", {})
-        return block
-    if block_type == "tool_result":
-        tool_use_id = meta.get("tool_use_id")
-        if not tool_use_id:
-            raise CatalogError(f"tool_result item {item.id!r} missing 'tool_use_id' metadata")
-        block["type"] = "tool_result"
-        block["tool_use_id"] = tool_use_id
-        # Preserve the original content shape: string vs list vs missing.
-        content_payload = meta.get("content_payload")
-        if content_payload is not None:
-            block["content"] = content_payload
-        elif "content" in block:
-            # Original block had no content; ensure we don't accidentally
-            # keep a content key from the original_block snapshot.
-            del block["content"]
-        # is_error: re-emit only if it was present in the original block.
-        # Preserves explicit `is_error: False` and omits when absent.
-        if meta.get("is_error_present"):
-            block["is_error"] = bool(meta.get("is_error", False))
-        else:
-            block.pop("is_error", None)
-        return block
-    # Fallback for items that were assembled without the round-trip metadata
-    # (e.g., constructed by hand). Emit as a plain text block carrying the
-    # item's text so the message remains valid Anthropic input.
-    return {"type": "text", "text": item.text}
