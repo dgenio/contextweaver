@@ -44,10 +44,17 @@ Anthropic adapter).
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from contextweaver.adapters._messages_common import (
+    expect_dict,
+    expect_list,
+    group_items_by_msg_index,
+    ingest_into_manager,
+    json_args_dumps,
+    sort_key_by_meta_index,
+)
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ContextItem, ItemKind
 
@@ -91,8 +98,7 @@ def from_gemini_contents(
             or a ``functionResponse`` whose ``name`` does not match a prior
             ``functionCall``.
     """
-    if not isinstance(contents, list):
-        raise CatalogError(f"from_gemini_contents expects a list, got {type(contents).__name__}")
+    expect_list(contents, fn_name="from_gemini_contents")
 
     items: list[ContextItem] = []
     # name → list of synthesised IDs from prior functionCalls (FIFO). When a
@@ -102,10 +108,7 @@ def from_gemini_contents(
     pending_calls: dict[str, list[str]] = {}
 
     for msg_idx, content in enumerate(contents):
-        if not isinstance(content, dict):
-            raise CatalogError(
-                f"Gemini content at index {msg_idx} is not a dict: {type(content).__name__}"
-            )
+        expect_dict(content, label=f"Gemini content at index {msg_idx}")
         role = content.get("role")
         if role not in ("user", "model", "function"):
             raise CatalogError(f"Gemini content at index {msg_idx} has unknown role: {role!r}")
@@ -115,16 +118,10 @@ def from_gemini_contents(
                 f"Gemini content at index {msg_idx} has non-list parts: {type(parts).__name__}"
             )
         for p_idx, part in enumerate(parts):
-            if not isinstance(part, dict):
-                raise CatalogError(
-                    f"Gemini part at [{msg_idx}][{p_idx}] is not a dict: {type(part).__name__}"
-                )
+            expect_dict(part, label=f"Gemini part at [{msg_idx}][{p_idx}]")
             items.append(_part_to_item(part, role, msg_idx, p_idx, pending_calls))
 
-    if into is not None:
-        for item in items:
-            into.ingest(item)
-
+    ingest_into_manager(items, into)
     logger.debug("from_gemini_contents: contents_in=%d, items_out=%d", len(contents), len(items))
     return items
 
@@ -150,16 +147,7 @@ def to_gemini_contents(items: list[ContextItem]) -> list[dict[str, Any]]:
     Raises:
         CatalogError: If items lack the required round-trip metadata.
     """
-    groups: dict[int, list[ContextItem]] = {}
-    for item in items:
-        meta = item.metadata or {}
-        msg_idx = meta.get("msg_index")
-        if msg_idx is None:
-            raise CatalogError(
-                f"ContextItem {item.id!r} missing 'msg_index' metadata; cannot "
-                "round-trip back to Gemini contents"
-            )
-        groups.setdefault(int(msg_idx), []).append(item)
+    groups = group_items_by_msg_index(items, target_label="Gemini contents")
 
     out: list[dict[str, Any]] = []
     for msg_idx in sorted(groups):
@@ -173,9 +161,7 @@ def to_gemini_contents(items: list[ContextItem]) -> list[dict[str, Any]]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Decoders
-# ---------------------------------------------------------------------------
+# --- Decoders ---
 
 
 def _part_to_item(
@@ -227,12 +213,7 @@ def _part_to_item(
         synthesised_id = f"{name}:{msg_idx}:{p_idx}"
         pending_calls.setdefault(name, []).append(synthesised_id)
         args = fc.get("args", {})
-        try:
-            args_str = json.dumps(args, sort_keys=True)
-        except (TypeError, ValueError) as exc:
-            raise CatalogError(
-                f"Gemini functionCall.args at [{msg_idx}][{p_idx}] is not JSON-serialisable: {exc}"
-            ) from exc
+        args_str = json_args_dumps(args, label=f"Gemini functionCall.args at [{msg_idx}][{p_idx}]")
         meta = {
             **base_meta,
             "part_type": "functionCall",
@@ -269,13 +250,9 @@ def _part_to_item(
         if not queue:
             pending_calls.pop(name, None)
         response = fr.get("response", {})
-        try:
-            response_str = json.dumps(response, sort_keys=True)
-        except (TypeError, ValueError) as exc:
-            raise CatalogError(
-                f"Gemini functionResponse.response at [{msg_idx}][{p_idx}] is "
-                f"not JSON-serialisable: {exc}"
-            ) from exc
+        response_str = json_args_dumps(
+            response, label=f"Gemini functionResponse.response at [{msg_idx}][{p_idx}]"
+        )
         meta = {
             **base_meta,
             "part_type": "functionResponse",
@@ -296,18 +273,10 @@ def _part_to_item(
     )
 
 
-# ---------------------------------------------------------------------------
-# Encoders
-# ---------------------------------------------------------------------------
+# --- Encoders ---
 
 
-def _part_index_sort_key(item: ContextItem) -> int:
-    meta = item.metadata or {}
-    part_idx = meta.get("part_index", 0)
-    try:
-        return int(part_idx)
-    except (TypeError, ValueError):
-        return 0
+_part_index_sort_key = sort_key_by_meta_index("part_index")
 
 
 def _item_to_part(item: ContextItem) -> dict[str, Any]:

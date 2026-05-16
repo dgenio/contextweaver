@@ -1,9 +1,11 @@
 """OpenAI Chat Completions message-array adapter for contextweaver.
 
-Bridges the OpenAI Chat Completions ``messages`` schema and
-contextweaver's :class:`~contextweaver.types.ContextItem` event log.
-Users with an existing OpenAI agent can drop the library in with a single
-call:
+Pure stateless converter between the OpenAI Chat Completions ``messages``
+schema and contextweaver's :class:`~contextweaver.types.ContextItem`
+event log. No provider SDK is imported at module load time (per the
+``adapters/`` path convention in ``AGENTS.md``); operate on plain
+``dict``s following the OpenAI Chat Completions JSON schema. Pydantic /
+OpenAI-SDK callers should convert via ``.model_dump()`` first.
 
 .. code-block:: python
 
@@ -14,12 +16,6 @@ call:
     mgr = ContextManager()
     from_openai_messages(messages, into=mgr)
     pack = mgr.build_sync(phase=Phase.answer, query=user_query)
-
-The adapter is a pure stateless converter — no provider SDK is imported
-at module load time (per the ``adapters/`` path convention in
-``AGENTS.md``).  Operate on plain ``dict``s following the documented
-OpenAI Chat Completions JSON schema; Pydantic / OpenAI-SDK callers
-should convert via ``.model_dump()`` before calling.
 
 Mapping rules:
 
@@ -43,6 +39,12 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from contextweaver.adapters._messages_common import (
+    expect_dict,
+    expect_list,
+    ingest_into_manager,
+    strip_prefix,
+)
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ContextItem, ItemKind
 
@@ -52,9 +54,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger("contextweaver.adapters")
 
 # ID prefix carries enough information to round-trip the OpenAI message:
-# - "openai:tool_call:<tool_call_id>" → the assistant's tool-call entry
+# - "openai:tool_call:<tool_call_id>"   → the assistant's tool-call entry
 # - "openai:tool_result:<tool_call_id>" → the matching role="tool" response
-# - "openai:user:<idx>" / "openai:assistant:<idx>" / "openai:system:<idx>" → turn entries
+# - "openai:{user,assistant,system}:<idx>" → turn entries
 _PREFIX_TOOL_CALL = "openai:tool_call:"
 _PREFIX_TOOL_RESULT = "openai:tool_result:"
 _PREFIX_USER = "openai:user:"
@@ -62,9 +64,7 @@ _PREFIX_ASSISTANT = "openai:assistant:"
 _PREFIX_SYSTEM = "openai:system:"
 
 
-# ---------------------------------------------------------------------------
-# Public: from_openai_messages
-# ---------------------------------------------------------------------------
+# --- Public: from_openai_messages ---
 
 
 def from_openai_messages(
@@ -91,8 +91,7 @@ def from_openai_messages(
         CatalogError: If a message is missing required fields, has an
             unknown role, or a ``role="tool"`` entry omits ``tool_call_id``.
     """
-    if not isinstance(messages, list):
-        raise CatalogError(f"from_openai_messages expects a list, got {type(messages).__name__}")
+    expect_list(messages, fn_name="from_openai_messages")
 
     # Track tool_call_ids announced by prior assistant messages so a
     # subsequent role="tool" entry must reference one of them. Without
@@ -101,8 +100,7 @@ def from_openai_messages(
     seen_tool_call_ids: set[str] = set()
     items: list[ContextItem] = []
     for idx, msg in enumerate(messages):
-        if not isinstance(msg, dict):
-            raise CatalogError(f"OpenAI message at index {idx} is not a dict: {type(msg).__name__}")
+        expect_dict(msg, label=f"OpenAI message at index {idx}")
         role = msg.get("role")
         if role == "system":
             items.append(_from_system(msg, idx))
@@ -115,17 +113,12 @@ def from_openai_messages(
         else:
             raise CatalogError(f"OpenAI message at index {idx} has unknown role: {role!r}")
 
-    if into is not None:
-        for item in items:
-            into.ingest(item)
-
+    ingest_into_manager(items, into)
     logger.debug("from_openai_messages: messages_in=%d, items_out=%d", len(messages), len(items))
     return items
 
 
-# ---------------------------------------------------------------------------
-# Public: to_openai_messages
-# ---------------------------------------------------------------------------
+# --- Public: to_openai_messages ---
 
 
 def to_openai_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
@@ -180,7 +173,7 @@ def to_openai_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
             payload = _tool_call_payload(item)
             messages.append({"role": "assistant", "content": None, "tool_calls": [payload]})
         elif item.kind is ItemKind.tool_result:
-            tool_call_id = item.metadata.get("tool_call_id") or _strip_prefix(
+            tool_call_id = item.metadata.get("tool_call_id") or strip_prefix(
                 item.id, _PREFIX_TOOL_RESULT
             )
             if not tool_call_id:
@@ -201,42 +194,39 @@ def to_openai_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
     return messages
 
 
-# ---------------------------------------------------------------------------
-# Per-role decoders
-# ---------------------------------------------------------------------------
+# --- Per-role decoders ---
 
 
 def _from_system(msg: dict[str, Any], idx: int) -> ContextItem:
-    content = _string_content(msg, idx, "system")
-    return ContextItem(
-        id=f"{_PREFIX_SYSTEM}{idx}",
-        kind=ItemKind.policy,
-        text=content,
-        metadata={"role": "system"},
-    )
+    return _make_turn(msg, idx, role="system", kind=ItemKind.policy, prefix=_PREFIX_SYSTEM)
 
 
 def _from_user(msg: dict[str, Any], idx: int) -> ContextItem:
-    content = _string_content(msg, idx, "user")
+    return _make_turn(msg, idx, role="user", kind=ItemKind.user_turn, prefix=_PREFIX_USER)
+
+
+def _make_turn(
+    msg: dict[str, Any], idx: int, *, role: str, kind: ItemKind, prefix: str
+) -> ContextItem:
     return ContextItem(
-        id=f"{_PREFIX_USER}{idx}",
-        kind=ItemKind.user_turn,
-        text=content,
-        metadata={"role": "user"},
+        id=f"{prefix}{idx}",
+        kind=kind,
+        text=_string_content(msg, idx, role),
+        metadata={"role": role},
     )
 
 
 def _from_assistant(
     msg: dict[str, Any], idx: int, seen_tool_call_ids: set[str]
 ) -> list[ContextItem]:
-    """Expand an assistant message into agent_msg + N tool_call items."""
+    """Expand an assistant message into agent_msg + N tool_call items.
+
+    Metadata keys ``content_is_null`` and ``original_content`` preserve
+    the three input shapes (``None`` / ``""`` / list-of-parts) so the
+    inverse adapter can re-emit them exactly (PR #230 review).
+    """
     out: list[ContextItem] = []
     raw_content = msg.get("content")
-    # Capture whether `content` was a list-of-parts (multimodal input).
-    # When it is, _string_content collapses it to text; we keep the original
-    # so to_openai_messages can re-emit the same list and avoid a lossy
-    # str round-trip (PR #230 review).
-    original_content: Any = raw_content
     text = "" if raw_content is None else _string_content(msg, idx, "assistant")
     out.append(
         ContextItem(
@@ -245,12 +235,8 @@ def _from_assistant(
             text=text,
             metadata={
                 "role": "assistant",
-                # Preserve None vs "" so to_openai_messages can re-emit None.
                 "content_is_null": raw_content is None,
-                # Preserve list-of-parts content for lossless round-trip.
-                "original_content": original_content,
-                # Tag both agent_msg and its child tool_calls with the same
-                # input index so to_openai_messages can re-associate them.
+                "original_content": raw_content,
                 "assistant_idx": idx,
             },
         )
@@ -261,20 +247,17 @@ def _from_assistant(
         raise CatalogError(f"OpenAI assistant message at index {idx} has non-list tool_calls")
 
     for tc_idx, tc in enumerate(tool_calls):
-        if not isinstance(tc, dict):
-            raise CatalogError(
-                f"OpenAI tool_call at index [{idx}].tool_calls[{tc_idx}] is not a dict"
-            )
+        loc = f"OpenAI tool_call at index [{idx}].tool_calls[{tc_idx}]"
+        expect_dict(tc, label=loc)
         tc_id = tc.get("id")
         if not tc_id:
-            raise CatalogError(f"OpenAI tool_call at index [{idx}].tool_calls[{tc_idx}] missing id")
+            raise CatalogError(f"{loc} missing id")
         fn = tc.get("function") or {}
-        if not isinstance(fn, dict):
-            raise CatalogError(f"OpenAI tool_call {tc_id!r} has non-dict function payload")
+        expect_dict(fn, label=f"OpenAI tool_call {tc_id!r} function payload")
         fn_name = fn.get("name", "")
-        # Arguments are a JSON-encoded string in OpenAI's schema. Preserve
-        # the raw string in text for inspection AND store the parsed args
-        # in metadata so to_openai_messages can re-emit the canonical shape.
+        # Arguments are a JSON-encoded string in OpenAI's schema; preserve
+        # raw text + parsed args in metadata so to_openai_messages can
+        # re-emit the canonical shape.
         args_str = fn.get("arguments", "")
         if not isinstance(args_str, str):
             args_str = json.dumps(args_str)
@@ -318,9 +301,7 @@ def _from_tool(msg: dict[str, Any], idx: int, seen_tool_call_ids: set[str]) -> C
     )
 
 
-# ---------------------------------------------------------------------------
-# to_openai_messages helpers
-# ---------------------------------------------------------------------------
+# --- to_openai_messages helpers ---
 
 
 def _collect_assistant_tool_calls(items: list[ContextItem], start: int) -> list[dict[str, Any]]:
@@ -357,7 +338,7 @@ def _tool_call_payload(item: ContextItem) -> dict[str, Any]:
     if not tool_call_id:
         # Fall back to stripping the prefix; rejects items that weren't
         # produced by this adapter.
-        tool_call_id = _strip_prefix(item.id, _PREFIX_TOOL_CALL)
+        tool_call_id = strip_prefix(item.id, _PREFIX_TOOL_CALL)
     if not tool_call_id:
         raise CatalogError(
             f"tool_call item {item.id!r} cannot round-trip: missing "
@@ -374,57 +355,42 @@ def _tool_call_payload(item: ContextItem) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
+# --- Shared helpers ---
 
 
-def _restore_assistant_content(item: ContextItem, meta: dict[str, Any]) -> Any:  # noqa: ANN401 — provider-shaped JSON
-    """Reconstruct the OpenAI assistant ``content`` field for round-trip.
-
-    Three distinct decoder inputs map to distinct outputs here:
-
-    - ``content`` originally ``None`` → emit ``None`` (uses ``content_is_null``).
-    - ``content`` originally a list of parts → emit the original list
-      (uses ``original_content``).
-    - ``content`` originally a string (including ``""``) → emit ``item.text``.
-
-    Without this restoration, all three would collapse via ``item.text or
-    None`` (PR #230 review).
-    """
+def _restore_assistant_content(
+    item: ContextItem, meta: dict[str, Any]
+) -> Any:  # noqa: ANN401 — provider-shaped JSON
+    """Reconstruct assistant ``content``: None / list / string (PR #230)."""
     if meta.get("content_is_null"):
         return None
     original = meta.get("original_content")
     if isinstance(original, list):
         return original
-    # Strings (including empty) and any non-list originals fall through to
-    # the canonical text the decoder stored.
     return item.text
 
 
 def _string_content(msg: dict[str, Any], idx: int, role: str) -> str:
-    """Coerce the ``content`` field to a string with a clear error on misuse."""
+    """Coerce ``content`` to a string; collapse list-of-parts to joined text.
+
+    The list path supports OpenAI's multimodal `content` shape. The original
+    list payload is preserved separately in metadata so the round-trip is
+    lossless (see :func:`_from_assistant`).
+    """
     content = msg.get("content")
     if content is None:
         return ""
     if isinstance(content, str):
         return content
-    # OpenAI also supports `content` as a list of content parts (vision /
-    # multimodal); we collapse the text parts and preserve unknown blocks
-    # via JSON so callers see *something* rather than silently losing data.
     if isinstance(content, list):
-        text_parts: list[str] = []
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                text_parts.append(str(part.get("text", "")))
-            else:
-                text_parts.append(json.dumps(part, sort_keys=True))
-        return "\n".join(text_parts)
+        parts = [
+            str(p.get("text", ""))
+            if isinstance(p, dict) and p.get("type") == "text"
+            else json.dumps(p, sort_keys=True)
+            for p in content
+        ]
+        return "\n".join(parts)
     raise CatalogError(
         f"OpenAI {role} message at index {idx} has unsupported content type: "
         f"{type(content).__name__}"
     )
-
-
-def _strip_prefix(value: str, prefix: str) -> str:
-    return value[len(prefix) :] if value.startswith(prefix) else ""
