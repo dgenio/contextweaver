@@ -94,6 +94,11 @@ def from_openai_messages(
     if not isinstance(messages, list):
         raise CatalogError(f"from_openai_messages expects a list, got {type(messages).__name__}")
 
+    # Track tool_call_ids announced by prior assistant messages so a
+    # subsequent role="tool" entry must reference one of them. Without
+    # this check, an orphan tool result would leave a dangling parent_id
+    # pointing at a non-existent ContextItem (PR #230 review).
+    seen_tool_call_ids: set[str] = set()
     items: list[ContextItem] = []
     for idx, msg in enumerate(messages):
         if not isinstance(msg, dict):
@@ -104,9 +109,9 @@ def from_openai_messages(
         elif role == "user":
             items.append(_from_user(msg, idx))
         elif role == "assistant":
-            items.extend(_from_assistant(msg, idx))
+            items.extend(_from_assistant(msg, idx, seen_tool_call_ids))
         elif role == "tool":
-            items.append(_from_tool(msg, idx))
+            items.append(_from_tool(msg, idx, seen_tool_call_ids))
         else:
             raise CatalogError(f"OpenAI message at index {idx} has unknown role: {role!r}")
 
@@ -157,7 +162,12 @@ def to_openai_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
             # Walk forward and collect any directly-adjacent tool_call items
             # that originated from this assistant turn.
             tool_calls = _collect_assistant_tool_calls(items, i + 1)
-            msg: dict[str, Any] = {"role": "assistant", "content": item.text or None}
+            meta = item.metadata or {}
+            # Use stored metadata to distinguish content=None / "" / list-of-
+            # parts at decode time. Without this, all three collapse to None
+            # (or to a str) on the round-trip (PR #230 review).
+            content_value = _restore_assistant_content(item, meta)
+            msg: dict[str, Any] = {"role": "assistant", "content": content_value}
             if tool_calls:
                 msg["tool_calls"] = [tc["payload"] for tc in tool_calls]
                 # Advance past the agent_msg AND the tool_call items we just
@@ -216,12 +226,18 @@ def _from_user(msg: dict[str, Any], idx: int) -> ContextItem:
     )
 
 
-def _from_assistant(msg: dict[str, Any], idx: int) -> list[ContextItem]:
+def _from_assistant(
+    msg: dict[str, Any], idx: int, seen_tool_call_ids: set[str]
+) -> list[ContextItem]:
     """Expand an assistant message into agent_msg + N tool_call items."""
     out: list[ContextItem] = []
     raw_content = msg.get("content")
-    # Assistant messages may have content=None when only tool_calls are present.
-    text = "" if raw_content is None else str(raw_content)
+    # Capture whether `content` was a list-of-parts (multimodal input).
+    # When it is, _string_content collapses it to text; we keep the original
+    # so to_openai_messages can re-emit the same list and avoid a lossy
+    # str round-trip (PR #230 review).
+    original_content: Any = raw_content
+    text = "" if raw_content is None else _string_content(msg, idx, "assistant")
     out.append(
         ContextItem(
             id=f"{_PREFIX_ASSISTANT}{idx}",
@@ -231,6 +247,8 @@ def _from_assistant(msg: dict[str, Any], idx: int) -> list[ContextItem]:
                 "role": "assistant",
                 # Preserve None vs "" so to_openai_messages can re-emit None.
                 "content_is_null": raw_content is None,
+                # Preserve list-of-parts content for lossless round-trip.
+                "original_content": original_content,
                 # Tag both agent_msg and its child tool_calls with the same
                 # input index so to_openai_messages can re-associate them.
                 "assistant_idx": idx,
@@ -274,13 +292,22 @@ def _from_assistant(msg: dict[str, Any], idx: int) -> list[ContextItem]:
                 },
             )
         )
+        seen_tool_call_ids.add(tc_id)
     return out
 
 
-def _from_tool(msg: dict[str, Any], idx: int) -> ContextItem:
+def _from_tool(msg: dict[str, Any], idx: int, seen_tool_call_ids: set[str]) -> ContextItem:
     tool_call_id = msg.get("tool_call_id")
     if not tool_call_id:
         raise CatalogError(f"OpenAI tool message at index {idx} missing tool_call_id")
+    if tool_call_id not in seen_tool_call_ids:
+        # The tool_call_id must reference a prior assistant tool_calls entry
+        # so the resulting ContextItem.parent_id points at a real item (PR
+        # #230 review). Mirrors the Gemini adapter's unmatched-response check.
+        raise CatalogError(
+            f"OpenAI tool message at index {idx} has tool_call_id={tool_call_id!r} "
+            "that does not match any prior assistant tool_calls entry"
+        )
     content = _string_content(msg, idx, "tool")
     return ContextItem(
         id=f"{_PREFIX_TOOL_RESULT}{tool_call_id}",
@@ -350,6 +377,29 @@ def _tool_call_payload(item: ContextItem) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+
+def _restore_assistant_content(item: ContextItem, meta: dict[str, Any]) -> Any:  # noqa: ANN401 — provider-shaped JSON
+    """Reconstruct the OpenAI assistant ``content`` field for round-trip.
+
+    Three distinct decoder inputs map to distinct outputs here:
+
+    - ``content`` originally ``None`` → emit ``None`` (uses ``content_is_null``).
+    - ``content`` originally a list of parts → emit the original list
+      (uses ``original_content``).
+    - ``content`` originally a string (including ``""``) → emit ``item.text``.
+
+    Without this restoration, all three would collapse via ``item.text or
+    None`` (PR #230 review).
+    """
+    if meta.get("content_is_null"):
+        return None
+    original = meta.get("original_content")
+    if isinstance(original, list):
+        return original
+    # Strings (including empty) and any non-list originals fall through to
+    # the canonical text the decoder stored.
+    return item.text
 
 
 def _string_content(msg: dict[str, Any], idx: int, role: str) -> str:

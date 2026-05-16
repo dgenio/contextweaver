@@ -190,8 +190,14 @@ on identical inputs. The invariant survives across the full
 
 ### Worked example: Anthropic `cache_control`
 
+> **Illustrative — requires the Anthropic SDK.** This snippet imports
+> `anthropic` to show how the byte-stable cards array slots into the
+> provider's cache-control API. contextweaver itself does not depend on
+> the Anthropic SDK; install it separately with `pip install anthropic`
+> to run the example as-is, or read it as a pattern reference.
+
 ```python
-import anthropic
+import anthropic  # pip install anthropic
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.catalog import Catalog
 

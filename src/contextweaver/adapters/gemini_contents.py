@@ -21,8 +21,11 @@ Gemini's native shape differs from OpenAI's and Anthropic's:
   ``role`` and ``parts[]``.
 - Roles are ``"user"`` and ``"model"`` (not ``"assistant"``). Tool
   responses use the synthetic role ``"function"`` per the SDK.
-- Each ``Part`` is one of: ``text``, ``functionCall``, ``functionResponse``,
-  ``inlineData`` (skipped), ``fileData`` (skipped).
+- Supported ``Part`` types: ``text``, ``functionCall``, ``functionResponse``.
+  Multimodal parts (``inlineData``, ``fileData``, etc.) are **not yet
+  supported** — the decoder raises :class:`CatalogError` rather than
+  silently dropping them, so callers know multimodal histories need a
+  preprocessing step before ingestion.
 - **There is no native ID** on ``functionCall`` — we synthesise a
   deterministic one as ``"<name>:<msg_index>:<part_index>"`` so the
   inverse adapter is reproducible.

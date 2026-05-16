@@ -231,6 +231,75 @@ def test_tool_result_with_is_error_preserved() -> None:
     assert to_anthropic_messages(items) == msgs
 
 
+def test_from_anthropic_messages_rejects_orphan_tool_result() -> None:
+    """tool_result with tool_use_id not announced by a prior tool_use → CatalogError.
+
+    PR #230 review: mirrors the openai_messages orphan check.
+    """
+    msgs = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_orphan",
+                    "content": "result without a call",
+                }
+            ],
+        }
+    ]
+    with pytest.raises(CatalogError, match="does not match any prior assistant tool_use"):
+        from_anthropic_messages(msgs)
+
+
+def test_roundtrip_preserves_explicit_is_error_false() -> None:
+    """Explicit `is_error: False` survives the round-trip (PR #230 review)."""
+    msgs = [
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "toolu_e", "name": "f", "input": {}}],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_e",
+                    "content": "ok",
+                    "is_error": False,
+                }
+            ],
+        },
+    ]
+    rebuilt = to_anthropic_messages(from_anthropic_messages(msgs))
+    assert rebuilt == msgs
+    # Defensive: the False must appear explicitly, not be stripped.
+    assert rebuilt[1]["content"][0]["is_error"] is False
+
+
+def test_roundtrip_preserves_unknown_block_fields_like_cache_control() -> None:
+    """Unknown provider fields on text blocks survive the round-trip.
+
+    PR #230 review: `cache_control` (and any other future Anthropic block
+    attribute we don't explicitly decode) must not be dropped.
+    """
+    msgs = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Hello there.",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    ]
+    rebuilt = to_anthropic_messages(from_anthropic_messages(msgs))
+    assert rebuilt == msgs
+    assert rebuilt[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
     """No provider SDK leaked into sys.modules through the adapter import."""
     assert "anthropic" not in sys.modules

@@ -243,6 +243,55 @@ def test_from_openai_messages_handles_multimodal_user_content_list() -> None:
     assert "Describe this:" in items[0].text
 
 
+def test_from_openai_messages_rejects_orphan_tool_call_id() -> None:
+    """role="tool" with a tool_call_id no prior assistant announced → CatalogError.
+
+    PR #230 review: dangling parent_id would break the event-log
+    dependency chain the adapter is meant to reconstruct.
+    """
+    msgs = [
+        {
+            "role": "tool",
+            "tool_call_id": "call_orphan",
+            "content": "result without a call",
+        }
+    ]
+    with pytest.raises(CatalogError, match="does not match any prior assistant tool_calls"):
+        from_openai_messages(msgs)
+
+
+def test_roundtrip_preserves_empty_string_assistant_content() -> None:
+    """content="" must NOT collapse to None on round-trip (PR #230 review)."""
+    msgs = [{"role": "assistant", "content": ""}]
+    rebuilt = to_openai_messages(from_openai_messages(msgs))
+    assert rebuilt == msgs
+    assert rebuilt[0]["content"] == ""  # specifically not None
+
+
+def test_roundtrip_preserves_multimodal_assistant_content_list() -> None:
+    """Assistant `content` as a list of parts must round-trip unchanged.
+
+    PR #230 review: previously the decoder collapsed the list to a text
+    string and the encoder re-emitted a string, losing image / unknown
+    parts. The decoder now stashes the original payload so the encoder
+    can re-emit it verbatim.
+    """
+    msgs = [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Here's what I see:"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "https://example.com/x.jpg"},
+                },
+            ],
+        }
+    ]
+    rebuilt = to_openai_messages(from_openai_messages(msgs))
+    assert rebuilt == msgs
+
+
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
     """Issue #219 design constraint: no provider SDK import at module level."""
     # The openai_messages module is already imported by these tests; assert

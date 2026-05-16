@@ -145,6 +145,9 @@ pip install -e ".[dev]"
 
 ```python
 from contextweaver.adapters.openai_messages import from_openai_messages
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import Phase
+
 mgr = ContextManager()
 from_openai_messages(messages, into=mgr)   # also: from_anthropic_messages / from_gemini_contents
 pack = mgr.build_sync(phase=Phase.answer, query="...")

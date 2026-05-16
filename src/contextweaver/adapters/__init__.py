@@ -1,10 +1,23 @@
 """Adapters sub-package for contextweaver.
 
-Provides thin adapters that convert external protocol data (MCP, A2A, FastMCP,
-weaver-spec) into contextweaver-native types and back, runtime modes for
-fronting upstream MCP servers (proxy + gateway), and provider-message
-ingestion helpers for one-call adoption from existing OpenAI / Anthropic /
-Gemini agents (issues #194, #219, #222).
+Provides thin, pure stateless adapters across three responsibility groups:
+
+1. **Protocol adapters** — convert external protocol data into
+   contextweaver-native types and back: MCP (:mod:`.mcp`),
+   FastMCP (:mod:`.fastmcp`), A2A (:mod:`.a2a`), and weaver-spec
+   (:mod:`.weaver_contracts`).
+2. **Runtime modes** — front upstream MCP servers as a transparent
+   proxy or two-tool gateway: :mod:`.proxy_runtime`, :mod:`.mcp_proxy`,
+   :mod:`.mcp_gateway`, :mod:`.mcp_proxy_server`,
+   :mod:`.mcp_gateway_server`, :mod:`.mcp_upstream`.
+3. **Provider-message ingestion** — one-call adoption from existing
+   OpenAI / Anthropic / Gemini chat histories (issues #194, #219, #222):
+   :mod:`.openai_messages`, :mod:`.anthropic_messages`,
+   :mod:`.gemini_contents`. Each module ships a ``from_*`` decoder
+   (plain provider dicts → ``ContextItem`` event-log entries) and a
+   ``to_*`` inverse, with no provider SDK imported at module load time.
+
+See ``AGENTS.md`` Module Map for the full per-file responsibility list.
 """
 
 from __future__ import annotations

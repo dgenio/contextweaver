@@ -100,6 +100,10 @@ def from_anthropic_messages(
     if not isinstance(messages, list):
         raise CatalogError(f"from_anthropic_messages expects a list, got {type(messages).__name__}")
 
+    # Track tool_use ids announced by prior assistant turns so a subsequent
+    # tool_result block must reference one of them. Without this check, an
+    # orphan tool_result would leave a dangling parent_id (PR #230 review).
+    seen_tool_use_ids: set[str] = set()
     items: list[ContextItem] = []
     for idx, msg in enumerate(messages):
         if not isinstance(msg, dict):
@@ -111,7 +115,7 @@ def from_anthropic_messages(
             raise CatalogError(f"Anthropic message at index {idx} has unknown role: {role!r}")
         blocks = _normalise_content(msg.get("content"), idx, role)
         original_is_string = isinstance(msg.get("content"), str)
-        items.extend(_blocks_to_items(blocks, idx, role, original_is_string))
+        items.extend(_blocks_to_items(blocks, idx, role, original_is_string, seen_tool_use_ids))
 
     if into is not None:
         for item in items:
@@ -213,6 +217,7 @@ def _blocks_to_items(
     msg_idx: int,
     role: str,
     was_string_shorthand: bool,
+    seen_tool_use_ids: set[str],
 ) -> list[ContextItem]:
     """Convert a normalised content-block list into one or more items."""
     out: list[ContextItem] = []
@@ -226,6 +231,11 @@ def _blocks_to_items(
             # Only meaningful when this group has a single text block; we
             # tag every block so the inverse adapter sees it on group[0].
             "was_string_shorthand": was_string_shorthand,
+            # Preserve the full original block so the inverse adapter can
+            # re-emit unknown provider fields (e.g. `cache_control`) and
+            # distinguish an explicit `is_error: False` from a missing one
+            # (PR #230 review).
+            "original_block": block,
         }
         if block_type == "text":
             text = str(block.get("text", ""))
@@ -271,6 +281,7 @@ def _blocks_to_items(
                     metadata=meta,
                 )
             )
+            seen_tool_use_ids.add(tool_use_id)
         elif block_type == "tool_result":
             if role != "user":
                 raise CatalogError(
@@ -282,11 +293,22 @@ def _blocks_to_items(
                 raise CatalogError(
                     f"Anthropic tool_result block at [{msg_idx}][{b_idx}] missing 'tool_use_id'"
                 )
+            if tool_use_id not in seen_tool_use_ids:
+                # Mirrors the openai_messages orphan-tool-result check
+                # and the gemini_contents FIFO check (PR #230 review).
+                raise CatalogError(
+                    f"Anthropic tool_result block at [{msg_idx}][{b_idx}] has "
+                    f"tool_use_id={tool_use_id!r} that does not match any prior "
+                    "assistant tool_use block"
+                )
             text, content_for_meta = _stringify_tool_result_content(block.get("content"))
             meta = {
                 **base_meta,
                 "tool_use_id": tool_use_id,
                 "is_error": bool(block.get("is_error", False)),
+                # Preserve whether is_error was *present* in the original
+                # block (vs. defaulted) so we can re-emit explicit False.
+                "is_error_present": "is_error" in block,
                 "content_payload": content_for_meta,
             }
             out.append(
@@ -346,35 +368,54 @@ def _block_index_sort_key(item: ContextItem) -> int:
 
 
 def _item_to_block(item: ContextItem) -> dict[str, Any]:
-    """Convert a single ContextItem back into an Anthropic content block."""
+    """Convert a single ContextItem back into an Anthropic content block.
+
+    Starts from the original decoded block (so unknown provider fields like
+    ``cache_control`` survive the round-trip) and overlays the canonical
+    decoded fields. Falls back to a constructed block when no original is
+    available (hand-constructed items).
+    """
     meta = item.metadata or {}
     block_type = meta.get("block_type")
+    original_block = meta.get("original_block")
+    # When original_block is present, start from a copy and overlay the
+    # canonical decoded fields. This preserves unknown / non-decoded keys
+    # (e.g. cache_control, citations) verbatim.
+    block: dict[str, Any] = dict(original_block) if isinstance(original_block, dict) else {}
+
     if block_type == "text":
-        return {"type": "text", "text": item.text}
+        block["type"] = "text"
+        block["text"] = item.text
+        return block
     if block_type == "tool_use":
         tool_use_id = meta.get("tool_use_id")
         if not tool_use_id:
             raise CatalogError(f"tool_call item {item.id!r} missing 'tool_use_id' metadata")
-        return {
-            "type": "tool_use",
-            "id": tool_use_id,
-            "name": meta.get("function_name", ""),
-            "input": meta.get("input", {}),
-        }
+        block["type"] = "tool_use"
+        block["id"] = tool_use_id
+        block["name"] = meta.get("function_name", "")
+        block["input"] = meta.get("input", {})
+        return block
     if block_type == "tool_result":
         tool_use_id = meta.get("tool_use_id")
         if not tool_use_id:
             raise CatalogError(f"tool_result item {item.id!r} missing 'tool_use_id' metadata")
-        block: dict[str, Any] = {
-            "type": "tool_result",
-            "tool_use_id": tool_use_id,
-        }
+        block["type"] = "tool_result"
+        block["tool_use_id"] = tool_use_id
         # Preserve the original content shape: string vs list vs missing.
         content_payload = meta.get("content_payload")
         if content_payload is not None:
             block["content"] = content_payload
-        if meta.get("is_error"):
-            block["is_error"] = True
+        elif "content" in block:
+            # Original block had no content; ensure we don't accidentally
+            # keep a content key from the original_block snapshot.
+            del block["content"]
+        # is_error: re-emit only if it was present in the original block.
+        # Preserves explicit `is_error: False` and omits when absent.
+        if meta.get("is_error_present"):
+            block["is_error"] = bool(meta.get("is_error", False))
+        else:
+            block.pop("is_error", None)
         return block
     # Fallback for items that were assembled without the round-trip metadata
     # (e.g., constructed by hand). Emit as a plain text block carrying the
