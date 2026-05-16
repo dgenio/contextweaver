@@ -431,6 +431,11 @@ class ChoiceCard:
 
     def __post_init__(self) -> None:
         """Enforce the gateway-spec §2 size bounds (issue #225)."""
+        if self.kind not in CHOICE_CARD_KINDS:
+            raise ValueError(
+                f"ChoiceCard.kind must be one of {CHOICE_CARD_KINDS}, "
+                f"got {self.kind!r}; see docs/gateway_spec.md §2"
+            )
         if len(self.name) > CHOICE_CARD_NAME_MAX_LEN:
             raise ValueError(
                 f"ChoiceCard.name exceeds {CHOICE_CARD_NAME_MAX_LEN} chars "

@@ -307,6 +307,25 @@ def test_choice_card_roundtrip() -> None:
     assert restored.side_effects is True
 
 
+def test_choice_card_rejects_unknown_kind() -> None:
+    """`kind` is constrained to the gateway-spec enum at runtime, not only by mypy."""
+    with pytest.raises(ValueError, match="ChoiceCard.kind must be one of"):
+        ChoiceCard(id="c1", name="n", description="d", kind="bogus")  # type: ignore[arg-type]
+
+
+def test_choice_card_from_dict_rejects_unknown_kind() -> None:
+    """`from_dict` must reject an out-of-enum `kind` value rather than silently accept it."""
+    with pytest.raises(ValueError, match="ChoiceCard.kind must be one of"):
+        ChoiceCard.from_dict({"id": "c1", "name": "n", "description": "d", "kind": "bogus"})
+
+
+def test_choice_card_accepts_all_documented_kinds() -> None:
+    """Every value of the `Literal[...]` enum constructs successfully."""
+    for kind in ("tool", "agent", "skill", "internal"):
+        card = ChoiceCard(id=f"c-{kind}", name="n", description="d", kind=kind)  # type: ignore[arg-type]
+        assert card.kind == kind
+
+
 def test_choice_card_from_partial_dict() -> None:
     card = ChoiceCard.from_dict({"id": "x", "name": "n", "description": "d"})
     assert card.tags == []
