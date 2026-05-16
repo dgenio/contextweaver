@@ -223,16 +223,19 @@ flagged below as candidates for a deliberately-scoped follow-up.
 """
 
 
+_DEFAULT_SCORING = ScoringConfig()
+
+
 def _row_line(rank: int, r: SweepRow) -> str:
     cfg = r.config
     is_default = (
         "**default**"
         if (
-            cfg["recency_weight"] == 0.30
-            and cfg["tag_match_weight"] == 0.25
-            and cfg["kind_priority_weight"] == 0.35
-            and cfg["token_cost_penalty"] == 0.10
-            and cfg["dedup_threshold"] == 0.85
+            cfg["recency_weight"] == _DEFAULT_SCORING.recency_weight
+            and cfg["tag_match_weight"] == _DEFAULT_SCORING.tag_match_weight
+            and cfg["kind_priority_weight"] == _DEFAULT_SCORING.kind_priority_weight
+            and cfg["token_cost_penalty"] == _DEFAULT_SCORING.token_cost_penalty
+            and cfg["dedup_threshold"] == _DEFAULT_SCORING.dedup_threshold
         )
         else ""
     )

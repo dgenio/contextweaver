@@ -436,8 +436,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.check:
         existing = output_path.read_text(encoding="utf-8") if output_path.exists() else ""
         if existing != rendered:
+            # Show a brief diff hint so CI output is actionable.
+            old_lines = existing.splitlines()
+            new_lines = rendered.splitlines()
+            diff_count = sum(1 for a, b in zip(old_lines, new_lines, strict=False) if a != b)
+            diff_count += abs(len(old_lines) - len(new_lines))
             print(
-                f"error: {output_path} is out of date. Run `make scorecard`.",
+                f"error: {output_path} is out of date ({diff_count} lines differ). "
+                f"Run `make scorecard`.",
                 file=sys.stderr,
             )
             return 1

@@ -242,8 +242,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    base = json.loads(Path(args.base).read_text(encoding="utf-8"))
-    head = json.loads(Path(args.head).read_text(encoding="utf-8"))
+    try:
+        base = json.loads(Path(args.base).read_text(encoding="utf-8"))
+        head = json.loads(Path(args.head).read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except json.JSONDecodeError as exc:
+        print(f"error: malformed JSON: {exc}", file=sys.stderr)
+        return 1
     body = render_delta(base, head)
     if args.output == "-":
         sys.stdout.write(body)
