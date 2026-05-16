@@ -61,41 +61,50 @@ and calling `ContextManager.build_sync(phase=Phase.answer)`.
 | `short_conversation.jsonl` | 5 | 4 (notifications.send, email.draft, email.send, deployments.status) | Infra freeze-prep workflow |
 | `long_conversation.jsonl` | 20 | 10+ | Complex CRM/billing/infra workflow; includes large invoice search result |
 | `large_catalog.jsonl` | 15 | 10+ (all 8 namespaces) | Research catalog workflow; exercises routing breadth |
+| `stress_conversation.jsonl` | 30+ | 25+ | SEV2 incident-response transcript with 3 large tool results (firewall fires), 4 near-duplicate pairs (dedup fires), and total token volume that pushes the 6000-token answer budget into drop territory (#181). Hand-authored to hit specific firewall/dedup/drop targets; if it needs to be regenerated, see the `#181` acceptance criteria for the invariants the new fixture must satisfy. |
 
 ## Baseline metrics (seed=42, k=5)
 
-Run on 2026-04-15 with contextweaver v0.1.7, Python 3.12.
+Run on 2026-05-15 with contextweaver v0.3.0+, Python 3.11. Latency numbers
+are environment-dependent; recall, drops, dedup, and token counts are not.
+The committed [`scorecard.md`](../benchmarks/scorecard.md) is rendered from
+the same `results/latest.json`.
 
 ### Routing
 
 | catalog_size | queries | prec@5 | recall@5 |   mrr | p50_ms | p95_ms | p99_ms |
 |-------------:|--------:|-------:|---------:|------:|-------:|-------:|-------:|
-|           50 |      50 | 0.1600 |   0.7400 | 0.7100 |  0.124 |  0.272 |  0.452 |
-|           83 |      50 | 0.1320 |   0.6100 | 0.6083 |  0.143 |  0.317 |  0.752 |
-|         1000 |      50 | 0.0640 |   0.3100 | 0.3200 |  0.353 |  0.742 |  1.057 |
+|           50 |      50 | 0.1600 |   0.7400 | 0.7100 |  0.296 |  0.430 |  0.538 |
+|           83 |      50 | 0.1320 |   0.6100 | 0.6083 |  0.473 |  0.557 |  0.859 |
+|         1000 |      50 | 0.0640 |   0.3100 | 0.3200 | 28.540 | 30.422 | 34.245 |
 
 Notes:
 - All 50 gold queries evaluated at every catalog size (catalog generated with matching `n` so all gold IDs are present)
 - Recall degrades predictably as catalog grows (noise items compete with true matches)
-- p99 latency stays under 1.1ms even at 1000 items
+- p50/p95 stay under a millisecond up to catalog_size 83; at catalog_size 1000 the p99 climbs into the tens of milliseconds because beam search has to evaluate substantially more children — that's the regime where the `Retriever`/`EngineRegistry` shortlist is the next step
 
 ### Context pipeline
 
-| scenario             | events | incl | drop | dedup |  tok | util% | arts | compact |
-|:---------------------|-------:|-----:|-----:|------:|-----:|------:|-----:|--------:|
-| large_catalog        |     60 |   60 |    0 |     0 | 1514 | 25.2% |   15 |  1.00x  |
-| long_conversation    |     82 |   82 |    0 |     0 | 2548 | 42.5% |   21 |  1.41x  |
-| short_conversation   |     18 |   18 |    0 |     0 |  496 |  8.3% |    4 |  1.00x  |
+| scenario             | events | incl | drop | dedup |  tok |  util% | arts | compact |
+|:---------------------|-------:|-----:|-----:|------:|-----:|-------:|-----:|--------:|
+| large_catalog        |     60 |   60 |    0 |     0 | 1514 |  25.2% |   15 |  1.00x  |
+| long_conversation    |     82 |   82 |    0 |     0 | 2548 |  42.5% |   21 |  1.41x  |
+| short_conversation   |     18 |   18 |    0 |     0 |  496 |   8.3% |    4 |  1.00x  |
+| stress_conversation  |    147 |  136 |    7 |     4 | 6651 | 110.9% |   32 |  3.29x  |
 
 Notes:
 - `compact=1.00x` means tool results are small enough that the firewall summary ≈ raw length
 - `long_conversation` reaches 1.41x compaction from the large invoice search response
-- 0% budget pressure at 6000-token answer budget; increase event density or reduce budget to stress-test
+- `stress_conversation` is the new budget-pressure scenario (#181): three large tool results (logs, grep, dashboard) push average compaction to 3.29x, four near-duplicate agent messages drive `dedup_removed=4`, and the total prompt size pushes past the 6000-token answer budget so `items_dropped=7`
+- The other three scenarios remain a "light load" baseline so reviewers can see the difference between unloaded and stressed pipeline behaviour
 
 ## Output
 
-Results are written to `benchmarks/results/latest.json`.  This path is
-git-ignored; only the `.gitkeep` placeholder is tracked.
+Results are written to `benchmarks/results/latest.json` and committed so
+that the [`scorecard.md`](../benchmarks/scorecard.md) (also committed)
+stays in sync with the source numbers. `make scorecard` regenerates the
+scorecard from `latest.json`; CI runs `make scorecard-check` and fails on
+drift.
 
 To compare across runs, copy `latest.json` to a dated filename before re-running:
 

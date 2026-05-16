@@ -1,17 +1,27 @@
 # contextweaver
 
-> Phase-specific, budget-aware context compilation for tool-using AI agents.
+[![CI](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml/badge.svg)](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/contextweaver.svg)](https://pypi.org/project/contextweaver/)
+[![Python versions](https://img.shields.io/pypi/pyversions/contextweaver.svg)](https://pypi.org/project/contextweaver/)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
+[![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
+
+> Phase-specific, budget-aware **context engineering** for tool-using AI agents
+> — context compilation with a context firewall plus bounded-choice tool routing.
 
 **600+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 
-[📖 Documentation](https://dgenio.github.io/contextweaver)
+[📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md)
 
 ---
 
 ## The Problem
 
 Even with 200K-token context windows, dumping everything into the prompt is expensive,
-slow, and degrades output quality. More context ≠ better answers.
+slow, and degrades output quality. More context ≠ better answers — **context engineering**
+(deciding what the model sees, when, and at what cost) is the lever that actually moves
+quality and latency.
 
 Imagine a tool-using agent with a 100-tool catalog and a 50-turn conversation history.
 At each step the agent must answer four questions:
@@ -128,6 +138,12 @@ pip install -e ".[dev]"
 For a guided setup with prerequisites, three runnable examples, expected output,
 and next steps, see [docs/quickstart.md](docs/quickstart.md).
 
+**Already have an agent and not sure which piece you need?**
+See [Which pattern fits my use case?](docs/which_pattern.md) — a symptom-based
+decision tree (long conversations → full pipeline; 50+ tools → routing-only;
+huge tool outputs → firewall-only) that points each branch to one concrete
+next step.
+
 ### Minimal agent loop
 
 ```python
@@ -230,6 +246,10 @@ contextweaver is built for production use with comprehensive quality gates:
 - **Deterministic by default** — tie-break by ID, sorted keys; identical inputs always
   produce identical outputs. Configurable retrieval backends (TF-IDF, BM25, fuzzy)
   preserve determinism within each mode.
+- **Public benchmark scorecard** — top-k recall, token savings, and routing latency at
+  catalog sizes 50 / 83 / 1000, plus context pipeline metrics across three reference
+  scenarios. See [`benchmarks/scorecard.md`](benchmarks/scorecard.md) (regenerate with
+  `make scorecard`).
 
 Run the full suite yourself:
 
@@ -458,6 +478,7 @@ contextweaver replay --session session.json --phase answer
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 | `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
 | `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
+| `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
 ```bash
 make example   # run all examples

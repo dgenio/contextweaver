@@ -52,7 +52,6 @@ from contextweaver.adapters.weaver_contracts import (  # noqa: E402
 from contextweaver.envelope import ChoiceCard, ResultEnvelope, RoutingDecision  # noqa: E402
 from contextweaver.types import ArtifactRef, SelectableItem, ViewSpec  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Sample fixtures
 # ---------------------------------------------------------------------------
@@ -155,9 +154,7 @@ def _check_frame_roundtrip() -> None:
     )
     restored = from_weaver_frame(frame)
     if restored != envelope:
-        raise AssertionError(
-            f"Frame round-trip drift:\n  in:  {envelope!r}\n  out: {restored!r}"
-        )
+        raise AssertionError(f"Frame round-trip drift:\n  in:  {envelope!r}\n  out: {restored!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +162,7 @@ def _check_frame_roundtrip() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _spec_to_jsonable(obj: Any) -> Any:
+def _spec_to_jsonable(obj: object) -> object:
     """Recursively convert weaver_contracts dataclasses into JSON-Schema-shaped dicts.
 
     Strips ``None`` values from dataclass output so that the resulting JSON
@@ -203,7 +200,8 @@ def _validate_against_schema(payload: dict[str, Any], schema_path: Path) -> None
             sibling_id = sibling_doc.get("$id")
             if sibling_id:
                 registry = registry.with_resource(
-                    sibling_id, Resource.from_contents(sibling_doc, default_specification=DRAFT202012)
+                    sibling_id,
+                    Resource.from_contents(sibling_doc, default_specification=DRAFT202012),
                 )
         validator = jsonschema.Draft202012Validator(schema, registry=registry)
     except ImportError:  # pragma: no cover - referencing ships with jsonschema>=4.18

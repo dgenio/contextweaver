@@ -9,6 +9,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Discoverability polish** (#200). Six small README/PyPI metadata changes
+  that together make contextweaver easier to find and to evaluate from
+  outside the repo: README badge row (CI, PyPI version, Python versions,
+  license, docs site, Discussions); "context engineering" as a secondary
+  phrase in the intro and Problem sections; `CITATION.cff` at repo root
+  (CFF v1.2) for the "Cite this repository" button; `Documentation` and
+  `Issues` and `Discussions` URLs in `pyproject.toml` `[project.urls]`;
+  new `Framework :: AsyncIO` and `Topic :: Scientific/Engineering ::
+  Artificial Intelligence` classifiers; extended keywords
+  (`context-engineering`, `mcp`, `tool-routing`, `prompt-budgeting`,
+  `agent-infrastructure`). The social-preview PNG is intentionally
+  deferred to a follow-up (requires a GitHub UI step beyond a code PR).
+- **Decision-tree landing page** (#199). New `docs/which_pattern.md`
+  branches on the user's symptom (long conversations, large catalogs,
+  huge tool outputs, real-time agents, MCP server, BYO tools, "I want a
+  realistic template") and lands each branch on one concrete next step.
+  Linked from the README Quickstart section and from the top of
+  `docs/architecture.md` and `docs/interop.md`; surfaced as the second
+  nav entry in `mkdocs.yml`.
+- **Production reference architectures cookbook — Slack ops bot** (#198,
+  partial). First reference architecture under
+  `examples/architectures/slack_ops_bot/`: 48-tool YAML catalog, six-turn
+  scripted incident-response transcript, mocked tool backends, firewall
+  on a 34 KB log dump, persistent facts that survive across turns.
+  Demonstrates the bounded-choice pattern (Router narrows 48 → 3, the
+  bot picks from the shortlist). Runnable under `make architectures` /
+  `make example`; documented at `docs/architectures/slack_ops_bot.md`
+  with captured output in `examples/architectures/slack_ops_bot/OUTPUT.md`.
+  Code-review bot and voice agent architectures are tracked as follow-ups.
+- **Benchmark scorecard** (#197). New `make scorecard` target renders
+  `benchmarks/scorecard.md` from `benchmarks/results/latest.json`
+  deterministically (stdlib-only Python via `scripts/render_scorecard.py`).
+  Committed scorecard surfaces top-k recall, latency percentiles, and
+  context-pipeline metrics (drops, dedup, compaction) for every
+  configuration. New `make scorecard-check` gating CI step prevents
+  drift between the committed `latest.json` and the committed scorecard;
+  `docs/benchmarks.md` documents the methodology, scope, and follow-up
+  work (per-backend matrix, weekly scheduled regeneration). The
+  scorecard link is added to the README "Why Trust" section.
+- **Stress-test benchmark scenario** (#181). New
+  `benchmarks/scenarios/stress_conversation.jsonl` — a SEV2
+  incident-response transcript with three large tool results (≥ 2 KB
+  raw, firewall fires), four near-duplicate agent messages (dedup
+  fires), and total prompt content that pushes the 6000-token answer
+  budget past 100% utilization (`items_dropped > 0`). The other three
+  scenarios remain as "light load" baselines so reviewers can see the
+  difference between unloaded and stressed pipeline behaviour. The
+  `benchmarks/results/latest.json` baseline is regenerated; the
+  benchmark README's metrics table is refreshed to match.
+
+### Changed
+
+- `make example` now includes the Slack ops bot architecture (via the
+  new `make architectures` umbrella target). `make fmt` / `make lint`
+  now cover `scripts/` so the renderer stays clean.
+- `benchmarks/results/latest.json` is now committed (no longer
+  documented as git-ignored) so the scorecard renders against a known
+  baseline. `benchmarks/README.md` table and prose updated accordingly.
+
+### Added (from PR #202)
+
 - **Weaver-spec interop** (#143, #145, #151). New
   `RoutingDecision` dataclass in `contextweaver.envelope` mirroring the
   field set of the `weaver_contracts.RoutingDecision` contract (id,
@@ -97,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callers use `target_tokens_per_card` and `hard_cap_tokens_per_card`
   (defaults 60 / 80 matching `gateway_spec.md` §2.3).
 
-### Added (carried from prior unreleased entries)
+### Added (continued — earlier entries)
 
 - **Gateway surface specification** (#30, #31). New
   `docs/gateway_spec.md` codifies the three contract gaps blocking the

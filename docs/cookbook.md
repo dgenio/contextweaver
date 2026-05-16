@@ -15,6 +15,11 @@ If you are evaluating where contextweaver fits in your runtime, start with
 the [How contextweaver Fits](interop.md) page first; come back here for
 working code.
 
+Looking for something larger than a recipe? [Reference architectures](architectures/index.md)
+ship end-to-end worked examples (50-tool catalog, multi-turn investigations,
+persistent facts) that exercise the full stack rather than one primitive at a
+time.
+
 ---
 
 ## 1. FastMCP + contextweaver routing

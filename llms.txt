@@ -10,7 +10,7 @@ Python ≥ 3.10.
 ## Docs
 
 - [Architecture](docs/architecture.md): Package layout, pipeline stages, design principles
-- [Concepts](docs/concepts.md): ContextItem, phases, context firewall, ChoiceGraph, sensitivity enforcement, and more
+- [Concepts](docs/concepts.md): ContextItem, phases, firewall, ChoiceGraph, sensitivity enforcement
 - [Quickstart](docs/quickstart.md): 10-minute guide to context builds, firewall, and routing
 - [MCP Integration](docs/integration_mcp.md): MCP adapter functions, JSONL format, end-to-end example
 - [A2A Integration](docs/integration_a2a.md): A2A adapter functions, multi-agent sessions
@@ -26,11 +26,11 @@ Python ≥ 3.10.
 
 ## API
 
-- [Types](src/contextweaver/types.py): Core dataclasses and enums (SelectableItem, ContextItem, Phase, ItemKind, Sensitivity)
+- [Types](src/contextweaver/types.py): Core dataclasses (SelectableItem, ContextItem, Phase, ItemKind, Sensitivity)
 - [Config](src/contextweaver/config.py): Configuration dataclasses (ContextBudget, ContextPolicy, ScoringConfig)
 - [Protocols](src/contextweaver/protocols.py): Protocol interfaces (TokenEstimator, EventHook, Summarizer, Extractor)
-- [Envelope](src/contextweaver/envelope.py): Result types (ResultEnvelope, BuildStats, ContextPack, ChoiceCard, HydrationResult)
-- [Context Manager](src/contextweaver/context/manager.py): Main entry point for context builds (build, build_sync, ingest, ingest_tool_result)
+- [Envelope](src/contextweaver/envelope.py): Result types (ResultEnvelope, BuildStats, ContextPack, ChoiceCard)
+- [Context Manager](src/contextweaver/context/manager.py): Main entry point for context builds (build, ingest, ingest_tool_result)
 - [Router](src/contextweaver/routing/router.py): Beam search routing over ChoiceGraph
 - [Catalog](src/contextweaver/routing/catalog.py): Tool catalog management and hydration
 

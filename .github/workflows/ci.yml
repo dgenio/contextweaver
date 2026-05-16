@@ -53,6 +53,13 @@ jobs:
       - name: Demo
         run: make demo
 
+      - name: Scorecard drift check (gating)
+        # Runs before the benchmark step so it validates the committed pair
+        # (benchmarks/results/latest.json + benchmarks/scorecard.md). The
+        # benchmark step below overwrites latest.json with this runner's
+        # numbers, which would otherwise make the check non-portable.
+        run: python scripts/render_scorecard.py --check
+
       - name: Weaver-spec conformance
         # Round-trip + JSON-Schema validation against the canonical contracts
         # published at https://weaver-spec.dev/contracts/v0/. Gating because
@@ -60,7 +67,7 @@ jobs:
         run: |
           mkdir -p .weaver-schemas
           for s in routing_decision choice_card selectable_item frame; do
-            curl -fsSL "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/${s}.schema.json" \
+            curl -fsSL --retry 3 --retry-delay 2 "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/${s}.schema.json" \
               -o ".weaver-schemas/${s}.schema.json"
           done
           python scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas

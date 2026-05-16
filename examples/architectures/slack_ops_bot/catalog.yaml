@@ -1,0 +1,410 @@
+# Slack ops bot — ~50 internal tools (mocked, names mirror common ops surfaces).
+#
+# Loaded via contextweaver.routing.catalog.load_catalog_yaml(). The file is the
+# canonical catalog for the architecture; main.py reads it and registers each
+# entry into a Catalog before building the routing graph.
+#
+# Namespaces:
+#   logs       — log search, log tail, ingest, retention
+#   deploy     — deploy, rollback, status, freeze, promote
+#   oncall     — schedule lookup, paging, escalation, ack
+#   alerts     — alert silence, ack, list, mute window
+#   tickets    — ticket lookup, create, update, comment, link, search
+#   metrics    — metric query, dashboard, slo, error budget
+#   identity   — user lookup, role lookup, group membership, audit
+#   infra      — restart, scale, drain, status
+#   feature    — feature flag list, set, rollout, kill switch
+
+- id: logs.search
+  kind: tool
+  name: logs_search
+  namespace: logs
+  description: Search ingested logs across services
+  tags: [logs, search]
+  side_effects: false
+  cost_hint: 0.30
+- id: logs.tail
+  kind: tool
+  name: logs_tail
+  namespace: logs
+  description: Tail the last N lines of a service log
+  tags: [logs, tail]
+  side_effects: false
+  cost_hint: 0.20
+- id: logs.grep
+  kind: tool
+  name: logs_grep
+  namespace: logs
+  description: Run a regex grep against a log stream
+  tags: [logs, search]
+  side_effects: false
+  cost_hint: 0.35
+- id: logs.retention
+  kind: tool
+  name: logs_retention
+  namespace: logs
+  description: Show or change retention policy for a log stream
+  tags: [logs, retention]
+  side_effects: true
+  cost_hint: 0.05
+
+- id: deploy.status
+  kind: tool
+  name: deploy_status
+  namespace: deploy
+  description: Show current deploy state of a service
+  tags: [deploy, status]
+  side_effects: false
+  cost_hint: 0.10
+- id: deploy.start
+  kind: tool
+  name: deploy_start
+  namespace: deploy
+  description: Start a deploy of a service from a build
+  tags: [deploy]
+  side_effects: true
+  cost_hint: 0.50
+- id: deploy.rollback
+  kind: tool
+  name: deploy_rollback
+  namespace: deploy
+  description: Roll a service back to a previous deploy
+  tags: [deploy, rollback]
+  side_effects: true
+  cost_hint: 0.50
+- id: deploy.freeze
+  kind: tool
+  name: deploy_freeze
+  namespace: deploy
+  description: Enable a deploy freeze across all services
+  tags: [deploy, freeze]
+  side_effects: true
+  cost_hint: 0.40
+- id: deploy.unfreeze
+  kind: tool
+  name: deploy_unfreeze
+  namespace: deploy
+  description: Lift a deploy freeze
+  tags: [deploy, freeze]
+  side_effects: true
+  cost_hint: 0.40
+- id: deploy.promote
+  kind: tool
+  name: deploy_promote
+  namespace: deploy
+  description: Promote a staging build to production
+  tags: [deploy, promote]
+  side_effects: true
+  cost_hint: 0.50
+- id: deploy.history
+  kind: tool
+  name: deploy_history
+  namespace: deploy
+  description: List recent deploys for a service
+  tags: [deploy, history]
+  side_effects: false
+  cost_hint: 0.15
+
+- id: oncall.lookup
+  kind: tool
+  name: oncall_lookup
+  namespace: oncall
+  description: Look up who is on call for a team or service
+  tags: [oncall, lookup]
+  side_effects: false
+  cost_hint: 0.10
+- id: oncall.page
+  kind: tool
+  name: oncall_page
+  namespace: oncall
+  description: Page the on-call engineer for a service
+  tags: [oncall, page]
+  side_effects: true
+  cost_hint: 0.40
+- id: oncall.escalate
+  kind: tool
+  name: oncall_escalate
+  namespace: oncall
+  description: Escalate an incident to the next tier
+  tags: [oncall, escalate]
+  side_effects: true
+  cost_hint: 0.40
+- id: oncall.ack
+  kind: tool
+  name: oncall_ack
+  namespace: oncall
+  description: Acknowledge an active page
+  tags: [oncall, ack]
+  side_effects: true
+  cost_hint: 0.10
+- id: oncall.schedule
+  kind: tool
+  name: oncall_schedule
+  namespace: oncall
+  description: Show the current on-call schedule
+  tags: [oncall, schedule]
+  side_effects: false
+  cost_hint: 0.10
+
+- id: alerts.list
+  kind: tool
+  name: alerts_list
+  namespace: alerts
+  description: List active alerts filtered by service or severity
+  tags: [alerts, list]
+  side_effects: false
+  cost_hint: 0.15
+- id: alerts.silence
+  kind: tool
+  name: alerts_silence
+  namespace: alerts
+  description: Silence an alert for a fixed window
+  tags: [alerts, silence]
+  side_effects: true
+  cost_hint: 0.20
+- id: alerts.ack
+  kind: tool
+  name: alerts_ack
+  namespace: alerts
+  description: Acknowledge an alert without silencing
+  tags: [alerts, ack]
+  side_effects: true
+  cost_hint: 0.10
+- id: alerts.mute
+  kind: tool
+  name: alerts_mute
+  namespace: alerts
+  description: Mute alerts for a service during a maintenance window
+  tags: [alerts, mute]
+  side_effects: true
+  cost_hint: 0.20
+- id: alerts.history
+  kind: tool
+  name: alerts_history
+  namespace: alerts
+  description: Show recent alert history for a service
+  tags: [alerts, history]
+  side_effects: false
+  cost_hint: 0.15
+
+- id: tickets.lookup
+  kind: tool
+  name: tickets_lookup
+  namespace: tickets
+  description: Look up a ticket by ID
+  tags: [tickets, lookup]
+  side_effects: false
+  cost_hint: 0.10
+- id: tickets.search
+  kind: tool
+  name: tickets_search
+  namespace: tickets
+  description: Search tickets by query string
+  tags: [tickets, search]
+  side_effects: false
+  cost_hint: 0.20
+- id: tickets.create
+  kind: tool
+  name: tickets_create
+  namespace: tickets
+  description: Open a new ticket
+  tags: [tickets, create]
+  side_effects: true
+  cost_hint: 0.30
+- id: tickets.update
+  kind: tool
+  name: tickets_update
+  namespace: tickets
+  description: Update a ticket's status or assignee
+  tags: [tickets, update]
+  side_effects: true
+  cost_hint: 0.20
+- id: tickets.comment
+  kind: tool
+  name: tickets_comment
+  namespace: tickets
+  description: Add a comment to a ticket
+  tags: [tickets, comment]
+  side_effects: true
+  cost_hint: 0.15
+- id: tickets.link
+  kind: tool
+  name: tickets_link
+  namespace: tickets
+  description: Link a ticket to a related deploy, alert, or incident
+  tags: [tickets, link]
+  side_effects: true
+  cost_hint: 0.15
+
+- id: metrics.query
+  kind: tool
+  name: metrics_query
+  namespace: metrics
+  description: Run a Prometheus-style query over a metric
+  tags: [metrics, query]
+  side_effects: false
+  cost_hint: 0.25
+- id: metrics.dashboard
+  kind: tool
+  name: metrics_dashboard
+  namespace: metrics
+  description: Open a saved dashboard for a service
+  tags: [metrics, dashboard]
+  side_effects: false
+  cost_hint: 0.10
+- id: metrics.slo
+  kind: tool
+  name: metrics_slo
+  namespace: metrics
+  description: Show current SLO compliance for a service
+  tags: [metrics, slo]
+  side_effects: false
+  cost_hint: 0.15
+- id: metrics.error_budget
+  kind: tool
+  name: metrics_error_budget
+  namespace: metrics
+  description: Show remaining error budget for a service
+  tags: [metrics, error_budget]
+  side_effects: false
+  cost_hint: 0.15
+
+- id: identity.user_lookup
+  kind: tool
+  name: identity_user_lookup
+  namespace: identity
+  description: Look up a user by email or handle
+  tags: [identity, user]
+  side_effects: false
+  cost_hint: 0.10
+- id: identity.role_lookup
+  kind: tool
+  name: identity_role_lookup
+  namespace: identity
+  description: Look up a role and its permissions
+  tags: [identity, role]
+  side_effects: false
+  cost_hint: 0.10
+- id: identity.group_members
+  kind: tool
+  name: identity_group_members
+  namespace: identity
+  description: List members of a group
+  tags: [identity, group]
+  side_effects: false
+  cost_hint: 0.10
+- id: identity.audit
+  kind: tool
+  name: identity_audit
+  namespace: identity
+  description: Show recent access events for a user
+  tags: [identity, audit]
+  side_effects: false
+  cost_hint: 0.20
+
+- id: infra.restart
+  kind: tool
+  name: infra_restart
+  namespace: infra
+  description: Restart a service's pods or workers
+  tags: [infra, restart]
+  side_effects: true
+  cost_hint: 0.40
+- id: infra.scale
+  kind: tool
+  name: infra_scale
+  namespace: infra
+  description: Scale a service's worker count
+  tags: [infra, scale]
+  side_effects: true
+  cost_hint: 0.40
+- id: infra.drain
+  kind: tool
+  name: infra_drain
+  namespace: infra
+  description: Drain traffic from a host or zone
+  tags: [infra, drain]
+  side_effects: true
+  cost_hint: 0.40
+- id: infra.status
+  kind: tool
+  name: infra_status
+  namespace: infra
+  description: Show infrastructure status by region
+  tags: [infra, status]
+  side_effects: false
+  cost_hint: 0.15
+- id: infra.host_lookup
+  kind: tool
+  name: infra_host_lookup
+  namespace: infra
+  description: Look up host metadata by hostname
+  tags: [infra, host]
+  side_effects: false
+  cost_hint: 0.10
+
+- id: feature.list
+  kind: tool
+  name: feature_list
+  namespace: feature
+  description: List feature flags in a project
+  tags: [feature, list]
+  side_effects: false
+  cost_hint: 0.10
+- id: feature.set
+  kind: tool
+  name: feature_set
+  namespace: feature
+  description: Set a feature flag value or rollout percent
+  tags: [feature, set]
+  side_effects: true
+  cost_hint: 0.30
+- id: feature.kill
+  kind: tool
+  name: feature_kill
+  namespace: feature
+  description: Trigger the kill switch for a feature flag
+  tags: [feature, kill]
+  side_effects: true
+  cost_hint: 0.40
+- id: feature.history
+  kind: tool
+  name: feature_history
+  namespace: feature
+  description: Show the change history of a feature flag
+  tags: [feature, history]
+  side_effects: false
+  cost_hint: 0.15
+- id: feature.rollout
+  kind: tool
+  name: feature_rollout
+  namespace: feature
+  description: Show the current rollout percent of a feature flag
+  tags: [feature, rollout]
+  side_effects: false
+  cost_hint: 0.10
+
+- id: logs.ingest_status
+  kind: tool
+  name: logs_ingest_status
+  namespace: logs
+  description: Show log ingest pipeline status
+  tags: [logs, ingest]
+  side_effects: false
+  cost_hint: 0.10
+- id: logs.archive
+  kind: tool
+  name: logs_archive
+  namespace: logs
+  description: Archive logs older than a retention window
+  tags: [logs, archive]
+  side_effects: true
+  cost_hint: 0.30
+- id: metrics.alert_history
+  kind: tool
+  name: metrics_alert_history
+  namespace: metrics
+  description: Show metric alert history for a service
+  tags: [metrics, alerts, history]
+  side_effects: false
+  cost_hint: 0.15
