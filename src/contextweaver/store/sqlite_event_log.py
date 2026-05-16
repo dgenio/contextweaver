@@ -26,7 +26,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
-from contextweaver.exceptions import DuplicateItemError, ItemNotFoundError
+from contextweaver.exceptions import DuplicateItemError, ItemNotFoundError, StoreClosedError
 from contextweaver.store._sqlite_base import Migration, apply_migrations, connect
 from contextweaver.types import ContextItem, ItemKind
 
@@ -135,7 +135,8 @@ class SqliteEventLog:
         """Release the underlying SQLite connection.
 
         Idempotent — calling :meth:`close` twice is a no-op.  After
-        :meth:`close`, every other method raises :class:`RuntimeError`.
+        :meth:`close`, every other method raises
+        :class:`~contextweaver.exceptions.StoreClosedError`.
         """
         if self._conn is not None:
             self._conn.close()
@@ -155,7 +156,7 @@ class SqliteEventLog:
 
     def _require_conn(self) -> sqlite3.Connection:
         if self._conn is None:
-            raise RuntimeError("SqliteEventLog is closed")
+            raise StoreClosedError("SqliteEventLog is closed")
         return self._conn
 
     # ------------------------------------------------------------------
@@ -258,30 +259,30 @@ class SqliteEventLog:
     ) -> list[ContextItem]:
         """Flexible query over the event log.
 
+        Matches the in-memory backend's filter order exactly: ``since`` is
+        a positional slice over the **full insertion-ordered log**, applied
+        *before* the ``kinds`` filter. Applying ``kinds`` first (the
+        natural SQL path) would give different results on mixed-kind logs
+        — e.g. ``kinds=[B], since=2`` over ``[A, A, B, A, B]`` must yield
+        ``[B]`` (drop first 2 of full list → ``[B, A, B]`` → kind filter
+        → ``[B, B]``), not the empty list.
+
         Args:
             kinds: If given, only include items whose kind is in this list.
             since: If given, only include items at or after this positional
-                index (zero-based insertion order, matching the in-memory
-                semantics).
+                index (zero-based, insertion order over the full log).
             limit: If given, return at most this many items.
         """
+        if kinds is not None and not kinds:
+            return []
         conn = self._require_conn()
-        clauses: list[str] = []
-        params: list[Any] = []
-        if kinds is not None:
-            if not kinds:
-                return []
-            placeholders = ",".join("?" for _ in kinds)
-            clauses.append(f"kind IN ({placeholders})")
-            params.extend(k.value for k in kinds)
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        rows = conn.execute(
-            f"SELECT * FROM event_log {where} ORDER BY ordinal ASC",
-            tuple(params),
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM event_log ORDER BY ordinal ASC").fetchall()
         items = [_row_to_item(r) for r in rows]
         if since is not None:
             items = items[since:]
+        if kinds is not None:
+            kind_set = set(kinds)
+            items = [i for i in items if i.kind in kind_set]
         if limit is not None:
             items = items[:limit]
         return items

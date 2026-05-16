@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from contextweaver.exceptions import DuplicateItemError, ItemNotFoundError
+from contextweaver.exceptions import (
+    ContextWeaverError,
+    DuplicateItemError,
+    ItemNotFoundError,
+    StoreClosedError,
+)
 from contextweaver.store._sqlite_base import schema_version
 from contextweaver.store.sqlite_event_log import MIGRATIONS, SqliteEventLog
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind, Sensitivity
@@ -52,8 +57,13 @@ def test_close_is_idempotent(tmp_path: Path) -> None:
 def test_use_after_close_raises(tmp_path: Path) -> None:
     log = SqliteEventLog(tmp_path / "x.db")
     log.close()
-    with pytest.raises(RuntimeError, match="closed"):
+    # Use-after-close must raise the contextweaver-family exception so callers
+    # can catch the ContextWeaverError hierarchy uniformly (per AGENTS.md).
+    with pytest.raises(StoreClosedError, match="closed"):
         log.append(_make_item("i1"))
+    # And it must remain catchable as ContextWeaverError for cross-family code.
+    with pytest.raises(ContextWeaverError):
+        log.append(_make_item("i2"))
 
 
 def test_context_manager(tmp_path: Path) -> None:
@@ -243,6 +253,15 @@ def test_query_with_limit(tmp_path: Path) -> None:
 
 
 def test_query_combined_filters(tmp_path: Path) -> None:
+    """Combined ``kinds`` + ``since`` + ``limit`` matches the in-memory backend.
+
+    For ``[u1, t1, u2, t2, u3]`` and ``kinds=[user_turn], since=2, limit=1``:
+    ``since=2`` slices the full log to ``[u2, t2, u3]``, the kind filter then
+    reduces to ``[u2, u3]``, and ``limit=1`` returns ``[u2]``. Earlier the
+    SQLite path filtered by kind in SQL *before* applying ``since`` over the
+    filtered list, which gave ``[u3]`` — diverging from InMemoryEventLog and
+    flagged in PR #232 review.
+    """
     with SqliteEventLog(tmp_path / "x.db") as log:
         log.append(_make_item("u1", ItemKind.user_turn))
         log.append(_make_item("t1", ItemKind.tool_call))
@@ -250,7 +269,43 @@ def test_query_combined_filters(tmp_path: Path) -> None:
         log.append(_make_item("t2", ItemKind.tool_call))
         log.append(_make_item("u3", ItemKind.user_turn))
         results = log.query(kinds=[ItemKind.user_turn], since=2, limit=1)
-    assert [r.id for r in results] == ["u3"]
+    assert [r.id for r in results] == ["u2"]
+
+
+def test_query_kinds_since_matches_in_memory_semantics(tmp_path: Path) -> None:
+    """Regression: ``since`` is applied to the *full* log before ``kinds`` filters.
+
+    Mirror of ``tests/test_store_event_log.py::test_query_combined_filters``
+    so the two backends are pinned to byte-identical outputs.
+    """
+    from contextweaver.store.event_log import InMemoryEventLog
+
+    in_mem = InMemoryEventLog()
+    sqlite_log = SqliteEventLog(tmp_path / "parity.db")
+    try:
+        for iid, kind in [
+            ("u1", ItemKind.user_turn),
+            ("t1", ItemKind.tool_call),
+            ("u2", ItemKind.user_turn),
+            ("t2", ItemKind.tool_call),
+            ("u3", ItemKind.user_turn),
+        ]:
+            item = _make_item(iid, kind)
+            in_mem.append(item)
+            sqlite_log.append(item)
+
+        cases = [
+            {"kinds": [ItemKind.user_turn], "since": 2, "limit": 1},
+            {"kinds": [ItemKind.user_turn], "since": 2},
+            {"kinds": [ItemKind.tool_call], "since": 1, "limit": 1},
+            {"since": 3},
+        ]
+        for kwargs in cases:
+            in_ids = [i.id for i in in_mem.query(**kwargs)]  # type: ignore[arg-type]
+            sq_ids = [i.id for i in sqlite_log.query(**kwargs)]  # type: ignore[arg-type]
+            assert in_ids == sq_ids, f"parity broken for {kwargs}: {in_ids} vs {sq_ids}"
+    finally:
+        sqlite_log.close()
 
 
 def test_count_and_len(tmp_path: Path) -> None:

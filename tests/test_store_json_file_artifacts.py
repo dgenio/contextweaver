@@ -165,6 +165,50 @@ def test_put_rejects_unsafe_handles(tmp_path: Path, bad: str) -> None:
         store.put(bad, b"data")
 
 
+@pytest.mark.parametrize(
+    "bad",
+    ["foo/bar", "..", ".", "a\\b", "x\x00y", ""],
+)
+@pytest.mark.parametrize("method", ["get", "ref", "exists", "delete", "metadata"])
+def test_read_path_methods_reject_unsafe_handles(tmp_path: Path, bad: str, method: str) -> None:
+    """Path-traversal handles must be rejected by every public read/mutate method.
+
+    Regression for PR #232 audit: previously only ``put()`` validated handles,
+    so ``store.get("../secret")`` could resolve outside ``base_dir``.
+    """
+    store = JsonFileArtifactStore(tmp_path)
+    fn = getattr(store, method)
+    with pytest.raises(ContextWeaverError):
+        fn(bad)
+
+
+def test_drilldown_rejects_unsafe_handle(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path)
+    with pytest.raises(ContextWeaverError):
+        store.drilldown("../secret", {"type": "head", "chars": 5})
+
+
+def test_list_refs_skips_non_mapping_json(tmp_path: Path) -> None:
+    """Regression: ``list_refs`` must catch ``TypeError`` from ``ArtifactRef.from_dict``.
+
+    A ``.json`` file whose contents are valid JSON of the wrong shape
+    (e.g. ``[]``, ``null``, a bare string) used to crash ``list_refs``
+    with ``TypeError`` rather than skipping the entry (PR #232 review).
+    """
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("good", b"data")
+    # Plant three malformed metadata files whose JSON parses but whose shape
+    # is not a mapping. ArtifactRef.from_dict raises TypeError for each.
+    (tmp_path / "list_shape.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "null_shape.json").write_text("null", encoding="utf-8")
+    (tmp_path / "str_shape.json").write_text('"not a mapping"', encoding="utf-8")
+
+    refs = store.list_refs()
+    # Only the well-formed "good" ref survives; the three bad shapes are
+    # silently skipped (debug-logged) rather than raising.
+    assert [r.handle for r in refs] == ["good"]
+
+
 # ---------------------------------------------------------------------------
 # Drilldown (matches InMemoryArtifactStore byte-for-byte)
 # ---------------------------------------------------------------------------

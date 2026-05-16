@@ -81,9 +81,14 @@ class JsonFileArtifactStore:
     # ------------------------------------------------------------------
 
     def _meta_path(self, handle: str) -> Path:
+        # Centralised validation keeps every public method that resolves a
+        # handle (put/get/ref/list_refs/delete/exists/drilldown/metadata)
+        # safe against path-traversal — see _validate_handle docstring.
+        _validate_handle(handle)
         return self._base_dir / f"{handle}{_META_SUFFIX}"
 
     def _data_path(self, handle: str) -> Path:
+        _validate_handle(handle)
         return self._base_dir / f"{handle}{_DATA_SUFFIX}"
 
     # ------------------------------------------------------------------
@@ -108,7 +113,7 @@ class JsonFileArtifactStore:
             ContextWeaverError: If *handle* contains a path separator,
                 ``..``, ``.``, or a null byte.
         """
-        _validate_handle(handle)
+        # Validation runs via the _data_path / _meta_path helpers below.
         ref = ArtifactRef(
             handle=handle,
             media_type=media_type,
@@ -151,13 +156,20 @@ class JsonFileArtifactStore:
         Scans the directory for ``*.json`` files; entries whose JSON does not
         decode into an :class:`ArtifactRef` are skipped silently (logged at
         ``DEBUG``).  Use :meth:`ref` if you need a per-handle error.
+
+        Skipped failure modes include ``json.JSONDecodeError`` (file is not
+        valid JSON), ``KeyError`` / ``ValueError`` (missing required field or
+        invalid value), and ``TypeError`` (JSON is valid but the top-level
+        shape is wrong — e.g. ``[]``, ``null``, or a bare string instead of
+        a mapping; ``ArtifactRef.from_dict`` raises ``TypeError`` in that
+        case).
         """
         refs: list[ArtifactRef] = []
         for meta in sorted(self._base_dir.glob(f"*{_META_SUFFIX}")):
             try:
                 raw = json.loads(meta.read_text(encoding="utf-8"))
                 refs.append(ArtifactRef.from_dict(raw))
-            except (json.JSONDecodeError, KeyError, ValueError) as exc:
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
                 logger.debug("json_file_artifacts.list_refs: skip %s (%s)", meta.name, exc)
         return refs
 
