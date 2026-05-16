@@ -23,3 +23,12 @@ Fixes # <!-- issue number, if applicable -->
 ## Notes for reviewers
 
 <!-- Anything the reviewer should pay special attention to, known limitations, follow-up work, etc. -->
+
+## Reproducibility (scoring / context-pipeline changes)
+
+<!-- Encouraged but not required (issue #211, Round 2 Q3=B). When the PR
+     touches routing, scoring, tokenisation, or the context pipeline, paste
+     the auto-generated benchmark-delta comment summary here and call out any
+     matrix cells with a ⚠️ marker. Run `make benchmark-matrix && make
+     scorecard` locally when possible; CI will post the sticky delta comment
+     regardless. -->

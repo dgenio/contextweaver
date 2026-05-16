@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark scorecard scorecard-check architectures llms llms-check weaver-conformance
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -43,11 +43,17 @@ docs-serve:
 benchmark:
 	python benchmarks/benchmark.py
 
+benchmark-matrix:
+	python benchmarks/benchmark.py --matrix
+
 scorecard:
 	python scripts/render_scorecard.py
 
 scorecard-check:
 	python scripts/render_scorecard.py --check
+
+sweep-scoring:
+	python scripts/sweep_scoring.py
 
 ci: fmt lint type test example demo
 

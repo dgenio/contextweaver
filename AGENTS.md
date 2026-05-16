@@ -107,9 +107,11 @@ make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo
 make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
-make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
-make scorecard   # render benchmarks/scorecard.md from benchmarks/results/latest.json
+make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
+make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
+make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter (CI gating, fetches schemas)
@@ -190,6 +192,10 @@ See [docs/agent-context/invariants.md](docs/agent-context/invariants.md) for the
 2. Run `make ci` to verify (all 6 targets must pass).
 3. Update `CHANGELOG.md` and add docstrings to new public APIs.
 4. Update agent-facing docs and examples if the pipeline or public API changed.
+5. **If the feature can move recall@k / drops / dedup / token counts**: follow
+   [`.github/prompts/add-eval.prompt.md`](.github/prompts/add-eval.prompt.md)
+   to extend the gold set or scenarios and run `make benchmark-matrix &&
+   make scorecard`. CI will post a sticky benchmark-delta comment on the PR.
 
 For the full workflow and definition of done, see [docs/agent-context/workflows.md](docs/agent-context/workflows.md).
 

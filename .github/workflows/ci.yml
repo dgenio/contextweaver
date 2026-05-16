@@ -36,10 +36,10 @@ jobs:
         run: pip install -e ".[dev,langchain]"
 
       - name: Format check
-        run: ruff format --check src/ tests/ examples/
+        run: ruff format --check src/ tests/ examples/ scripts/
 
       - name: Lint
-        run: ruff check src/ tests/ examples/
+        run: ruff check src/ tests/ examples/ scripts/
 
       - name: Type check
         run: mypy src/
@@ -75,3 +75,57 @@ jobs:
       - name: Benchmark (informational, non-gating)
         continue-on-error: true
         run: python benchmarks/benchmark.py
+
+  benchmark-comment:
+    # Sticky regression-feedback comment (issue #211). Runs on a single
+    # Python version after the matrix test job so we only post one comment
+    # per PR push, not one per matrix cell. Continues on error: comment
+    # failure must not gate the PR.
+    name: Post benchmark delta PR comment
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      pull-requests: write
+      contents: read
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Generate delta
+        id: delta
+        continue-on-error: true
+        run: |
+          python benchmarks/benchmark.py --matrix --output benchmarks/results/head.json
+          cp benchmarks/results/latest.json benchmarks/results/base.json
+          python scripts/benchmark_delta.py \
+            --base benchmarks/results/base.json \
+            --head benchmarks/results/head.json \
+            --output benchmarks/results/delta.md
+      - name: Find existing comment
+        # ``peter-evans/find-comment`` scans the PR's comments for ours via
+        # the HTML marker the delta renderer plants at the top of the body
+        # (``scripts/benchmark_delta.py:COMMENT_MARKER``). Returns the
+        # comment id when found, empty otherwise.
+        id: find
+        if: ${{ steps.delta.outcome == 'success' }}
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: "github-actions[bot]"
+          body-includes: "<!-- contextweaver:benchmark-delta -->"
+      - name: Post or update sticky comment
+        # Sticky semantics (#211): one comment per PR, updated in place on
+        # every push. Falls through silently if the delta step failed —
+        # benchmark feedback never gates the PR.
+        if: ${{ steps.delta.outcome == 'success' && hashFiles('benchmarks/results/delta.md') != '' }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: benchmarks/results/delta.md
+          edit-mode: replace
