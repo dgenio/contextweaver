@@ -7,6 +7,24 @@
 contextweaver is structured around two cooperating engines that together solve
 the "context window problem" for tool-using AI agents.
 
+## Why context engineering matters
+
+The discipline of **context engineering** — deciding *what* goes into a model's
+context window, *when*, and *at what cost* — has emerged as the lever that
+moves quality and latency once tool-use agents reach production scale. Even
+with 200K-token windows, dumping every tool schema and conversation turn into
+the prompt is expensive, slows latency, and degrades output quality as the
+model's effective attention thins. The lever is selective compilation
+(per-phase budgets, tool shortlisting, oversized-output firewalling), not raw
+window size.
+
+contextweaver implements that lever as two cooperating engines — the Context
+Engine (eight-stage pipeline) and the Routing Engine (bounded DAG + beam
+search) — and treats determinism, dependency closure, and sensitivity filters
+as load-bearing invariants rather than nice-to-haves. For background on the
+term itself, see Atlan's
+[*What Is Context Engineering*](https://atlan.com/know/what-is-context-engineering/).
+
 ## High-level overview
 
 ```

@@ -169,6 +169,19 @@ cd contextweaver
 pip install -e ".[dev]"
 ```
 
+### Adopting in 5 lines from an existing OpenAI / Anthropic / Gemini agent
+
+```python
+from contextweaver.adapters.openai_messages import from_openai_messages
+mgr = ContextManager()
+from_openai_messages(messages, into=mgr)   # also: from_anthropic_messages / from_gemini_contents
+pack = mgr.build_sync(phase=Phase.answer, query="...")
+```
+
+See [Adopting from an existing chat history](docs/quickstart.md#adopting-from-an-existing-chat-history-5-line-drop-in)
+for the full snippet (including the `to_*` inverse adapters for round-tripping
+back into the provider SDK).
+
 ## 10-Minute Quickstart
 
 For a guided setup with prerequisites, three runnable examples, expected output,
@@ -607,6 +620,24 @@ Apache-2.0
 contextweaver is structured around two cooperating engines that together solve
 the "context window problem" for tool-using AI agents.
 
+## Why context engineering matters
+
+The discipline of **context engineering** — deciding *what* goes into a model's
+context window, *when*, and *at what cost* — has emerged as the lever that
+moves quality and latency once tool-use agents reach production scale. Even
+with 200K-token windows, dumping every tool schema and conversation turn into
+the prompt is expensive, slows latency, and degrades output quality as the
+model's effective attention thins. The lever is selective compilation
+(per-phase budgets, tool shortlisting, oversized-output firewalling), not raw
+window size.
+
+contextweaver implements that lever as two cooperating engines — the Context
+Engine (eight-stage pipeline) and the Routing Engine (bounded DAG + beam
+search) — and treats determinism, dependency closure, and sensitivity filters
+as load-bearing invariants rather than nice-to-haves. For background on the
+term itself, see Atlan's
+[*What Is Context Engineering*](https://atlan.com/know/what-is-context-engineering/).
+
 ## High-level overview
 
 ```
@@ -879,6 +910,55 @@ Time budget:
 - Try the context firewall: 4 minutes
 - Try tool routing: 2 minutes
 - What to try next: 1 minute
+
+## Adopting from an existing chat history (5-line drop-in)
+
+> **Already have an OpenAI, Anthropic, or Gemini agent?** You don't need to
+> walk the full quickstart — drop contextweaver in front of your existing
+> message history with one call. The full walkthrough below is for new agents.
+
+If you have an OpenAI Chat Completions session saved as JSON, you can build
+a context pack in five lines (plus imports):
+
+```python
+import json
+from contextweaver.adapters.openai_messages import from_openai_messages
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import Phase
+
+mgr = ContextManager()
+from_openai_messages(json.load(open("session.json")), into=mgr)
+pack = mgr.build_sync(phase=Phase.answer, query="What did we decide?")
+print(pack.prompt)
+```
+
+The adapter handles every OpenAI Chat Completions role — `system`, `user`,
+`assistant` (with optional `tool_calls`), `tool` — and threads
+`tool_call_id` ↔ `ContextItem.id` so `to_openai_messages(...)` is the exact
+inverse for round-tripping back into the OpenAI SDK.
+
+Anthropic and Google Gemini have sibling adapters with the same shape:
+
+```python
+from contextweaver.adapters.anthropic_messages import from_anthropic_messages
+from contextweaver.adapters.gemini_contents import from_gemini_contents
+
+# Anthropic Messages API: content blocks (text / tool_use / tool_result)
+from_anthropic_messages(anthropic_messages, into=mgr)
+
+# Google Gemini: contents[].parts[] (text / functionCall / functionResponse)
+from_gemini_contents(gemini_contents, into=mgr)
+```
+
+All three adapters are pure stateless converters — they accept plain `dict`s
+and never import a provider SDK at module load time. Session payloads may
+contain sensitive prompt content; the adapters do not log message bodies
+above `DEBUG` level.
+
+> **Want to keep working with the provider SDK after building a pack?** Each
+> adapter ships an inverse: `to_openai_messages`, `to_anthropic_messages`,
+> `to_gemini_contents`. Round-trip equality holds for the representative
+> fixtures in `tests/test_adapters_*.py`.
 
 ## 1. Prerequisites (30 seconds)
 
@@ -1328,6 +1408,71 @@ print(pack.prompt)
 ```
 
 See `examples/mcp_adapter_demo.py` for the full runnable demo.
+
+## Prompt-caching compatibility
+
+Anthropic (90%), OpenAI (50%), and Google (75%) all discount the prompt-token
+cost of tool definitions when the same prefix is reused across requests.
+contextweaver's
+[`make_choice_cards`](../src/contextweaver/routing/cards.py) function is
+**deterministic and byte-stable** for identical inputs (sorted descending by
+score, ascending by `id` for ties — see issue #218 for the regression test
+that locks this guarantee), so the cards array your downstream prompt
+assembler renders is suitable for placement *before* a cache breakpoint.
+
+The repo guarantees this via `tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`,
+which asserts `bytes(card1) == bytes(card2)` across two consecutive calls
+on identical inputs. The invariant survives across the full
+`SelectableItem → ChoiceCard → cache prefix` chain.
+
+### Worked example: Anthropic `cache_control`
+
+```python
+import anthropic
+from contextweaver.routing.cards import make_choice_cards
+from contextweaver.routing.catalog import Catalog
+
+catalog = Catalog()  # populated elsewhere with stable IDs
+cards = make_choice_cards(
+    catalog.all(),
+    scores={item.id: 0.5 for item in catalog.all()},   # deterministic scoring
+    max_cards=20,
+)
+
+# Render cards into Anthropic's `tools` array (cacheable prefix).
+tools = [
+    {
+        "name": c.name,
+        "description": c.description,
+        "input_schema": {"type": "object"},  # hydrate per-call when selected
+    }
+    for c in cards
+]
+
+# Place the cache breakpoint on the LAST tool definition. As long as the
+# `cards` array is stable, every request reuses the cache prefix and only
+# the trailing user turn varies.
+if tools:
+    tools[-1]["cache_control"] = {"type": "ephemeral"}
+
+client = anthropic.Anthropic()
+client.messages.create(
+    model="claude-3-5-sonnet-latest",
+    max_tokens=1024,
+    tools=tools,
+    messages=[{"role": "user", "content": "..."}],
+)
+```
+
+> **Practical guidance for multi-turn navigation.** When the cards array
+> *naturally* changes between turns (e.g., user navigated into a sub-tree),
+> the cache prefix invalidates — that's expected. To keep the prefix stable
+> across navigation, sort hydrated cards by ID once and append newly-discovered
+> cards after the breakpoint. The
+> [Webfuse MCP cheat sheet](https://www.webfuse.com/mcp-cheat-sheet)
+> documents the canonical "append after cache breakpoint" pattern. A
+> first-class `cache_stable` runtime flag on `ProxyRuntime` is tracked as a
+> follow-up.
 
 ## Security Considerations
 

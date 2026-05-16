@@ -1,0 +1,382 @@
+"""Anthropic Messages-API message-array adapter for contextweaver.
+
+Bridges the Anthropic Messages API ``messages`` schema and contextweaver's
+:class:`~contextweaver.types.ContextItem` event log:
+
+.. code-block:: python
+
+    from contextweaver.context.manager import ContextManager
+    from contextweaver.adapters.anthropic_messages import from_anthropic_messages
+
+    mgr = ContextManager()
+    from_anthropic_messages(messages, into=mgr)
+
+The adapter is a pure stateless converter — no provider SDK is imported
+at module load time (per the ``adapters/`` path convention).  Operate
+on plain ``dict``s following the documented Anthropic Messages JSON
+schema; SDK callers should convert via ``.model_dump()`` first.
+
+Anthropic messages differ from OpenAI's flat shape in two ways that the
+adapter handles explicitly:
+
+- ``content`` is **always a list of content blocks** (``text``,
+  ``tool_use``, ``tool_result``), even for simple string messages —
+  Anthropic accepts ``content: "..."`` as a shorthand but the API
+  normalises it to ``[{"type": "text", "text": "..."}]``.  We preserve
+  whichever shape the caller used so the round-trip is exact.
+- The IDs that thread tool calls and tool results live **inside** the
+  content blocks (``tool_use.id`` ↔ ``tool_result.tool_use_id``), not as
+  top-level fields like OpenAI's ``tool_call_id``.
+
+Mapping rules:
+
+- ``role="user"`` with text-only content → :data:`ItemKind.user_turn`
+- ``role="assistant"`` with text-only content → :data:`ItemKind.agent_msg`
+- ``role="assistant"`` with ``tool_use`` blocks → one
+  :data:`ItemKind.agent_msg` (text portion) followed by one
+  :data:`ItemKind.tool_call` per ``tool_use`` block
+- ``role="user"`` with ``tool_result`` blocks → one
+  :data:`ItemKind.tool_result` per block, with ``parent_id`` set to the
+  matching ``tool_use.id`` on the prior assistant turn.
+
+System prompts in the Anthropic API are passed as a separate top-level
+``system`` parameter (not a message); they are out of scope here. Users
+with a system prompt should append it manually as an
+:data:`ItemKind.policy` item if needed.
+
+Issue #222 (closes #194 together with the OpenAI slice #219).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import TYPE_CHECKING, Any
+
+from contextweaver.exceptions import CatalogError
+from contextweaver.types import ContextItem, ItemKind
+
+if TYPE_CHECKING:
+    from contextweaver.context.manager import ContextManager
+
+logger = logging.getLogger("contextweaver.adapters")
+
+
+_PREFIX_USER = "anthropic:user:"
+_PREFIX_ASSISTANT = "anthropic:assistant:"
+_PREFIX_TOOL_USE = "anthropic:tool_use:"
+_PREFIX_TOOL_RESULT = "anthropic:tool_result:"
+
+
+# ---------------------------------------------------------------------------
+# Public: from_anthropic_messages
+# ---------------------------------------------------------------------------
+
+
+def from_anthropic_messages(
+    messages: list[dict[str, Any]],
+    into: ContextManager | None = None,
+) -> list[ContextItem]:
+    """Convert an Anthropic Messages API ``messages`` array into ContextItems.
+
+    Args:
+        messages: A list of Anthropic message dicts. Each must have ``role``
+            (``"user"`` or ``"assistant"``) and ``content`` (either a plain
+            string or a list of content-block dicts).
+        into: Optional :class:`~contextweaver.context.manager.ContextManager`.
+            When provided, each returned item is appended via
+            :meth:`ContextManager.ingest` in order.
+
+    Returns:
+        A list of :class:`ContextItem` in input message order. Multi-block
+        messages expand into multiple items (one per block); the block
+        index is preserved in ``metadata["block_index"]`` so the inverse
+        adapter can rebuild the original block order.
+
+    Raises:
+        CatalogError: On unknown role, unknown block ``type``, malformed
+            input, or missing ``tool_use_id`` on a ``tool_result`` block.
+    """
+    if not isinstance(messages, list):
+        raise CatalogError(f"from_anthropic_messages expects a list, got {type(messages).__name__}")
+
+    items: list[ContextItem] = []
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            raise CatalogError(
+                f"Anthropic message at index {idx} is not a dict: {type(msg).__name__}"
+            )
+        role = msg.get("role")
+        if role not in ("user", "assistant"):
+            raise CatalogError(f"Anthropic message at index {idx} has unknown role: {role!r}")
+        blocks = _normalise_content(msg.get("content"), idx, role)
+        original_is_string = isinstance(msg.get("content"), str)
+        items.extend(_blocks_to_items(blocks, idx, role, original_is_string))
+
+    if into is not None:
+        for item in items:
+            into.ingest(item)
+
+    logger.debug(
+        "from_anthropic_messages: messages_in=%d, items_out=%d",
+        len(messages),
+        len(items),
+    )
+    return items
+
+
+# ---------------------------------------------------------------------------
+# Public: to_anthropic_messages
+# ---------------------------------------------------------------------------
+
+
+def to_anthropic_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
+    """Inverse of :func:`from_anthropic_messages`.
+
+    Re-groups ``ContextItem``s carrying the same ``metadata["msg_index"]``
+    back into a single Anthropic message and emits their original content
+    blocks in original ``block_index`` order. If a message was originally
+    a string shorthand, the inverse re-emits it as a string.
+
+    Args:
+        items: Items produced by :func:`from_anthropic_messages` (or any
+            sequence carrying the same metadata).
+
+    Returns:
+        A list of Anthropic message dicts.
+
+    Raises:
+        CatalogError: If items are missing the round-trip metadata
+            (``msg_index``, ``block_index``, ``role``).
+    """
+    # Group items by their original message index.
+    groups: dict[int, list[ContextItem]] = {}
+    for item in items:
+        meta = item.metadata or {}
+        msg_idx = meta.get("msg_index")
+        if msg_idx is None:
+            raise CatalogError(
+                f"ContextItem {item.id!r} missing 'msg_index' metadata; cannot "
+                "round-trip back to Anthropic messages"
+            )
+        groups.setdefault(int(msg_idx), []).append(item)
+
+    out: list[dict[str, Any]] = []
+    for msg_idx in sorted(groups):
+        group = sorted(groups[msg_idx], key=_block_index_sort_key)
+        first_meta = group[0].metadata or {}
+        role = first_meta.get("role")
+        if role not in ("user", "assistant"):
+            raise CatalogError(f"ContextItem group msg_index={msg_idx} has invalid role={role!r}")
+        blocks = [_item_to_block(item) for item in group]
+        was_string_shorthand = bool(first_meta.get("was_string_shorthand", False))
+        if was_string_shorthand and len(blocks) == 1 and blocks[0].get("type") == "text":
+            out.append({"role": role, "content": blocks[0]["text"]})
+        else:
+            out.append({"role": role, "content": blocks})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Decoding (messages → items)
+# ---------------------------------------------------------------------------
+
+
+def _normalise_content(
+    content: Any,  # noqa: ANN401 — content is opaque provider JSON
+    idx: int,
+    role: str,
+) -> list[dict[str, Any]]:
+    """Coerce the ``content`` field to a list of content blocks."""
+    if content is None:
+        return []
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    if isinstance(content, list):
+        normalised: list[dict[str, Any]] = []
+        for b_idx, block in enumerate(content):
+            if not isinstance(block, dict):
+                raise CatalogError(
+                    f"Anthropic content block [{idx}][{b_idx}] is not a dict: "
+                    f"{type(block).__name__}"
+                )
+            normalised.append(block)
+        return normalised
+    raise CatalogError(
+        f"Anthropic {role} message at index {idx} has unsupported content type: "
+        f"{type(content).__name__}"
+    )
+
+
+def _blocks_to_items(
+    blocks: list[dict[str, Any]],
+    msg_idx: int,
+    role: str,
+    was_string_shorthand: bool,
+) -> list[ContextItem]:
+    """Convert a normalised content-block list into one or more items."""
+    out: list[ContextItem] = []
+    for b_idx, block in enumerate(blocks):
+        block_type = block.get("type")
+        base_meta: dict[str, Any] = {
+            "role": role,
+            "msg_index": msg_idx,
+            "block_index": b_idx,
+            "block_type": block_type,
+            # Only meaningful when this group has a single text block; we
+            # tag every block so the inverse adapter sees it on group[0].
+            "was_string_shorthand": was_string_shorthand,
+        }
+        if block_type == "text":
+            text = str(block.get("text", ""))
+            kind = ItemKind.user_turn if role == "user" else ItemKind.agent_msg
+            prefix = _PREFIX_USER if role == "user" else _PREFIX_ASSISTANT
+            out.append(
+                ContextItem(
+                    id=f"{prefix}{msg_idx}:{b_idx}",
+                    kind=kind,
+                    text=text,
+                    metadata=base_meta,
+                )
+            )
+        elif block_type == "tool_use":
+            if role != "assistant":
+                raise CatalogError(
+                    f"tool_use block at [{msg_idx}][{b_idx}] must be on an "
+                    f"assistant message, got role={role!r}"
+                )
+            tool_use_id = block.get("id")
+            if not tool_use_id:
+                raise CatalogError(f"Anthropic tool_use block at [{msg_idx}][{b_idx}] missing 'id'")
+            tool_name = block.get("name", "")
+            input_payload = block.get("input", {})
+            try:
+                args_str = json.dumps(input_payload, sort_keys=True)
+            except (TypeError, ValueError) as exc:
+                raise CatalogError(
+                    f"Anthropic tool_use.input at [{msg_idx}][{b_idx}] is not JSON-"
+                    f"serialisable: {exc}"
+                ) from exc
+            meta = {
+                **base_meta,
+                "tool_use_id": tool_use_id,
+                "function_name": tool_name,
+                "input": input_payload,
+            }
+            out.append(
+                ContextItem(
+                    id=f"{_PREFIX_TOOL_USE}{tool_use_id}",
+                    kind=ItemKind.tool_call,
+                    text=args_str,
+                    metadata=meta,
+                )
+            )
+        elif block_type == "tool_result":
+            if role != "user":
+                raise CatalogError(
+                    f"tool_result block at [{msg_idx}][{b_idx}] must be on a "
+                    f"user message, got role={role!r}"
+                )
+            tool_use_id = block.get("tool_use_id")
+            if not tool_use_id:
+                raise CatalogError(
+                    f"Anthropic tool_result block at [{msg_idx}][{b_idx}] missing 'tool_use_id'"
+                )
+            text, content_for_meta = _stringify_tool_result_content(block.get("content"))
+            meta = {
+                **base_meta,
+                "tool_use_id": tool_use_id,
+                "is_error": bool(block.get("is_error", False)),
+                "content_payload": content_for_meta,
+            }
+            out.append(
+                ContextItem(
+                    id=f"{_PREFIX_TOOL_RESULT}{tool_use_id}",
+                    kind=ItemKind.tool_result,
+                    text=text,
+                    metadata=meta,
+                    parent_id=f"{_PREFIX_TOOL_USE}{tool_use_id}",
+                )
+            )
+        else:
+            raise CatalogError(
+                f"Anthropic content block at [{msg_idx}][{b_idx}] has unsupported "
+                f"type: {block_type!r}"
+            )
+    return out
+
+
+def _stringify_tool_result_content(
+    content: Any,  # noqa: ANN401 — content is opaque provider JSON
+) -> tuple[str, Any]:
+    """Reduce a tool_result.content payload to a string for ``ContextItem.text``.
+
+    Returns a ``(text, original_content)`` tuple — the original is stashed
+    in metadata so the inverse adapter can re-emit the exact same shape.
+    """
+    if content is None:
+        return "", None
+    if isinstance(content, str):
+        return content, content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(str(part.get("text", "")))
+            else:
+                text_parts.append(json.dumps(part, sort_keys=True))
+        return "\n".join(text_parts), content
+    # Numbers, bools — coerce to string and store the original for round-trip.
+    return str(content), content
+
+
+# ---------------------------------------------------------------------------
+# Encoding (items → messages)
+# ---------------------------------------------------------------------------
+
+
+def _block_index_sort_key(item: ContextItem) -> int:
+    """Return the original block index (or 0) for stable per-group ordering."""
+    meta = item.metadata or {}
+    block_idx = meta.get("block_index", 0)
+    try:
+        return int(block_idx)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _item_to_block(item: ContextItem) -> dict[str, Any]:
+    """Convert a single ContextItem back into an Anthropic content block."""
+    meta = item.metadata or {}
+    block_type = meta.get("block_type")
+    if block_type == "text":
+        return {"type": "text", "text": item.text}
+    if block_type == "tool_use":
+        tool_use_id = meta.get("tool_use_id")
+        if not tool_use_id:
+            raise CatalogError(f"tool_call item {item.id!r} missing 'tool_use_id' metadata")
+        return {
+            "type": "tool_use",
+            "id": tool_use_id,
+            "name": meta.get("function_name", ""),
+            "input": meta.get("input", {}),
+        }
+    if block_type == "tool_result":
+        tool_use_id = meta.get("tool_use_id")
+        if not tool_use_id:
+            raise CatalogError(f"tool_result item {item.id!r} missing 'tool_use_id' metadata")
+        block: dict[str, Any] = {
+            "type": "tool_result",
+            "tool_use_id": tool_use_id,
+        }
+        # Preserve the original content shape: string vs list vs missing.
+        content_payload = meta.get("content_payload")
+        if content_payload is not None:
+            block["content"] = content_payload
+        if meta.get("is_error"):
+            block["is_error"] = True
+        return block
+    # Fallback for items that were assembled without the round-trip metadata
+    # (e.g., constructed by hand). Emit as a plain text block carrying the
+    # item's text so the message remains valid Anthropic input.
+    return {"type": "text", "text": item.text}
