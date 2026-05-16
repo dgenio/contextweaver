@@ -358,9 +358,7 @@ def _tool_call_payload(item: ContextItem) -> dict[str, Any]:
 # --- Shared helpers ---
 
 
-def _restore_assistant_content(
-    item: ContextItem, meta: dict[str, Any]
-) -> Any:  # noqa: ANN401 — provider-shaped JSON
+def _restore_assistant_content(item: ContextItem, meta: dict[str, Any]) -> Any:  # noqa: ANN401 — provider-shaped JSON
     """Reconstruct assistant ``content``: None / list / string (PR #230)."""
     if meta.get("content_is_null"):
         return None
