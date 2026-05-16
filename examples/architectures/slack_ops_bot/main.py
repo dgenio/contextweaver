@@ -30,6 +30,7 @@ Or via ``make example`` (the ``architectures`` umbrella target).
 
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 
@@ -59,49 +60,58 @@ TRANSCRIPT: list[tuple[str, str]] = [
 
 # Canned tool results. The api-gateway log dump is intentionally large so the
 # firewall kicks in (>2000 chars) and the prompt only sees a compact summary.
-_LARGE_LOG_DUMP = json.dumps(
-    {
-        "service": "api-gateway",
-        "window": "2026-05-15T18:00Z..2026-05-15T19:00Z",
-        "total_events": 240,
-        "errors": 47,
-        "warnings": 12,
-        "events": [
-            {
-                "ts": f"2026-05-15T18:{i // 5:02d}:{(i % 5) * 12:02d}Z",
-                "level": "ERROR" if i % 5 == 0 else "INFO",
-                "msg": (
-                    f"upstream timeout against payments-svc after {120 + (i % 60)}ms"
-                    if i % 5 == 0
-                    else f"request {i} handled in {15 + (i % 30)}ms"
-                ),
-                "trace_id": f"trace-{i:04d}",
-                "deploy_sha": "9f12abc" if i < 180 else "8a01def",
-            }
-            for i in range(240)
-        ],
-    },
-    indent=None,
-)
+# Built lazily so importing this module (e.g. from the test smoke harness)
+# does not pay the ~34 KB JSON construction cost up front.
+@functools.cache
+def _large_log_dump() -> str:
+    return json.dumps(
+        {
+            "service": "api-gateway",
+            "window": "2026-05-15T18:00Z..2026-05-15T19:00Z",
+            "total_events": 240,
+            "errors": 47,
+            "warnings": 12,
+            "events": [
+                {
+                    "ts": f"2026-05-15T18:{i // 5:02d}:{(i % 5) * 12:02d}Z",
+                    "level": "ERROR" if i % 5 == 0 else "INFO",
+                    "msg": (
+                        f"upstream timeout against payments-svc after {120 + (i % 60)}ms"
+                        if i % 5 == 0
+                        else f"request {i} handled in {15 + (i % 30)}ms"
+                    ),
+                    "trace_id": f"trace-{i:04d}",
+                    "deploy_sha": "9f12abc" if i < 180 else "8a01def",
+                }
+                for i in range(240)
+            ],
+        },
+        indent=None,
+    )
 
-_TOOL_RESPONSES: dict[str, str] = {
-    "oncall.lookup": "primary on-call for api-gateway: alice@example.com (US/PT)",
-    "logs.tail": _LARGE_LOG_DUMP,
-    "deploy.status": (
-        "api-gateway deploy status:\n"
-        "  current   = 9f12abc (live since 2026-05-15T17:42Z)\n"
-        "  previous  = 8a01def (replaced at 2026-05-15T17:42Z)\n"
-        "  health    = degraded (47 errors in the last hour)\n"
-    ),
-    "deploy.rollback": ("deploy.rollback ok — api-gateway reverted from 9f12abc to 8a01def"),
-    "tickets.create": "ticket OPS-4821 opened; linked to deploy 9f12abc",
-    "oncall.schedule": (
-        "on-call schedule (next 24h):\n"
-        "  2026-05-15 18:00..2026-05-16 02:00 — alice@example.com\n"
-        "  2026-05-16 02:00..2026-05-16 10:00 — bob@example.com\n"
-        "  2026-05-16 10:00..2026-05-16 18:00 — carol@example.com\n"
-    ),
-}
+
+@functools.cache
+def _tool_responses() -> dict[str, str]:
+    """Return the canned tool-response map. Lazy so ``logs.tail`` is only built on demand."""
+    return {
+        "oncall.lookup": "primary on-call for api-gateway: alice@example.com (US/PT)",
+        "logs.tail": _large_log_dump(),
+        "deploy.status": (
+            "api-gateway deploy status:\n"
+            "  current   = 9f12abc (live since 2026-05-15T17:42Z)\n"
+            "  previous  = 8a01def (replaced at 2026-05-15T17:42Z)\n"
+            "  health    = degraded (47 errors in the last hour)\n"
+        ),
+        "deploy.rollback": ("deploy.rollback ok — api-gateway reverted from 9f12abc to 8a01def"),
+        "tickets.create": "ticket OPS-4821 opened; linked to deploy 9f12abc",
+        "oncall.schedule": (
+            "on-call schedule (next 24h):\n"
+            "  2026-05-15 18:00..2026-05-16 02:00 — alice@example.com\n"
+            "  2026-05-16 02:00..2026-05-16 10:00 — bob@example.com\n"
+            "  2026-05-16 10:00..2026-05-16 18:00 — carol@example.com\n"
+        ),
+    }
+
 
 CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
 
@@ -188,7 +198,7 @@ def main() -> None:
                 parent_id=u_id,
             )
         )
-        raw_output = _TOOL_RESPONSES.get(chosen, f"{chosen} returned ok")
+        raw_output = _tool_responses().get(chosen, f"{chosen} returned ok")
         item, envelope = mgr.ingest_tool_result_sync(
             tool_call_id=tc_id,
             raw_output=raw_output,

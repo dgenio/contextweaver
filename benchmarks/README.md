@@ -61,7 +61,7 @@ and calling `ContextManager.build_sync(phase=Phase.answer)`.
 | `short_conversation.jsonl` | 5 | 4 (notifications.send, email.draft, email.send, deployments.status) | Infra freeze-prep workflow |
 | `long_conversation.jsonl` | 20 | 10+ | Complex CRM/billing/infra workflow; includes large invoice search result |
 | `large_catalog.jsonl` | 15 | 10+ (all 8 namespaces) | Research catalog workflow; exercises routing breadth |
-| `stress_conversation.jsonl` | 30+ | 25+ | SEV2 incident-response transcript with 3 large tool results (firewall fires), 4 near-duplicate pairs (dedup fires), and total token volume that pushes the 6000-token answer budget into drop territory (#181) |
+| `stress_conversation.jsonl` | 30+ | 25+ | SEV2 incident-response transcript with 3 large tool results (firewall fires), 4 near-duplicate pairs (dedup fires), and total token volume that pushes the 6000-token answer budget into drop territory (#181). Hand-authored to hit specific firewall/dedup/drop targets; if it needs to be regenerated, see the `#181` acceptance criteria for the invariants the new fixture must satisfy. |
 
 ## Baseline metrics (seed=42, k=5)
 

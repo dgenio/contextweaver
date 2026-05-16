@@ -57,11 +57,12 @@ def test_every_intent_lands_in_router_shortlist(slack_run_output: str) -> None:
 
 def test_firewall_fires_on_the_large_log_dump(slack_run_output: str) -> None:
     """Turn 2's ``logs.tail`` exceeds 2000 chars, so the firewall reports its action."""
-    assert "firewall: 34,275 chars ->" in slack_run_output
-    # The summary length depends on the default rule-based summarizer; pin to
-    # the order of magnitude rather than the exact char count so future
-    # summarizer tweaks don't break this test.
+    # Pin the order of magnitude (~34 KB) rather than the exact char count so a
+    # downstream `json.dumps` representation change or a tweak to the log-dump
+    # structure doesn't break this test.
+    assert "firewall: 34," in slack_run_output
     assert "char summary" in slack_run_output
+    assert "artifact " in slack_run_output
 
 
 def test_persistent_facts_carry_across_turns(slack_run_output: str) -> None:

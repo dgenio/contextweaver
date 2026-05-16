@@ -137,6 +137,15 @@ def render(payload: dict[str, Any]) -> str:
     k = int(payload["k"])
     seed = int(payload["seed"])
     benchmark_version = str(payload["benchmark_version"])
+    # Derive the answer-phase budget from the context rows so the scorecard
+    # narrative tracks the harness rather than drifting against a hard-coded
+    # literal. All scenarios run under the same budget; assert that to make
+    # the invariant explicit.
+    context_rows = list(payload["context"])
+    budgets = {int(r["budget_tokens"]) for r in context_rows} if context_rows else {0}
+    if len(budgets) != 1:
+        raise ValueError(f"context rows must share a single budget_tokens; got {sorted(budgets)}")
+    answer_budget = next(iter(budgets))
 
     parts = [
         "# contextweaver — Benchmark Scorecard",
@@ -148,7 +157,7 @@ def render(payload: dict[str, Any]) -> str:
         f"- Seed: `{seed}`",
         f"- Rank cutoff `k`: `{k}`",
         "- Token estimator: `CharDivFourEstimator` (deterministic, no model dependency)",
-        "- Answer-phase budget: `6000` tokens",
+        f"- Answer-phase budget: `{answer_budget}` tokens",
         "",
         "All numbers below are reproducible deterministically by running",
         "`make benchmark && make scorecard` from a clean checkout. Hardware and",
