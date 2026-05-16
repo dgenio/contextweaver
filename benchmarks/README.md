@@ -117,15 +117,47 @@ cp benchmarks/results/latest.json benchmarks/results/$(date +%Y%m%d).json
 Edit `benchmarks/routing_gold.json`.  Each entry:
 
 ```json
-{"query": "natural language query", "expected": ["tool.id.one", "tool.id.two"], "tags": ["namespace"]}
+{"query": "natural language query", "expected": ["tool.id.one", "tool.id.two"], "tags": ["namespace"], "namespace": "billing"}
 ```
 
 - `expected`: IDs from `examples/sample_catalog.json`.  At least one must be present in
   every catalog size you want to evaluate against.
 - `tags`: informational only; used for future filtering.
+- `namespace`: explicit namespace label used for `routing_per_namespace`
+  aggregation (#209). Derived from `expected[0].split(".", 1)[0]` for legacy
+  entries that omit it.
+
+The current committed gold set has **200 queries, 25 per namespace** (#209
+landed in this cycle, expanded from the prior 50).
+
+## Per-backend × per-size matrix (issue #208)
+
+`python benchmarks/benchmark.py --matrix` (or `make benchmark-matrix`) emits
+two additive top-level keys alongside the legacy `routing` summary:
+
+- `routing_matrix`: one row per `(backend, catalog_size)` cell (default
+  `tfidf,bm25,fuzzy` × `100,500,1000`). Cells with the `[retrieval]` extra
+  missing record an explicit `status: skipped: missing rapidfuzz` row.
+- `routing_per_namespace`: one row per `(backend, catalog_size, namespace)`
+  giving the per-namespace `recall@k`.
+
+Override the grid with `--backends tfidf,bm25` or `--sizes 100,500`.
+
+## Naïve-concat baseline (issue #215)
+
+`naive_delta` blocks are emitted into each `context` row of `latest.json` —
+`{naive_tokens, cw_tokens, pct_reduction, coverage_pct}`. The naïve total is
+`tiktoken.cl100k_base.encode(catalog_schemas + scenario_text)`; the coverage
+proxy is `items_included / event_count`. Disable with `--no-naive-delta` for
+strict back-compat output.
 
 ## CI integration
 
 The benchmark step runs with `continue-on-error: true` in `.github/workflows/ci.yml`.
 It is **informational only** — failures do not block merges.  This is intentional:
 baseline drift is expected and should be reviewed manually, not treated as a hard error.
+
+On every pull request the dedicated `benchmark-comment` job posts a sticky
+delta comment via `scripts/benchmark_delta.py` (issue #211) and the
+`scorecard-weekly.yml` cron opens a PR with refreshed numbers each Monday
+(issue #207).

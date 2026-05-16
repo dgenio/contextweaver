@@ -26,7 +26,7 @@ identical inputs must produce byte-identical scorecard output.
 ## What is measured
 
 **Routing.** Precision\@k, recall\@k, MRR, and p50/p95/p99 latency at catalog
-sizes 50 / 83 / 1000 against a fixed gold dataset of 50 hand-curated queries
+sizes 50 / 83 / 1000 against a fixed gold dataset of 200 hand-curated queries
 covering all 8 catalog namespaces (`benchmarks/routing_gold.json`). The
 1000-item catalog is the natural 83-item pool extended with synthetic
 variants so beam search has to work harder; the gold queries only match the

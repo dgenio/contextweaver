@@ -13,9 +13,11 @@ make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + example + demo  (6 targets)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
-make benchmark   # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
-make scorecard   # render benchmarks/scorecard.md from benchmarks/results/latest.json
+make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
+make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits non-zero on drift)
+make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
@@ -38,6 +40,9 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 | Build docs site | `make docs` |
 | Live docs preview | `make docs-serve` |
 | Run benchmark harness | `make benchmark` (non-gating; writes `benchmarks/results/latest.json`) |
+| Run full per-backend × per-size matrix | `make benchmark-matrix` (#208 + #209) |
+| Run scoring-weight sweep | `make sweep-scoring` (#214; writes `benchmarks/sweep_scoring.md`) |
+| Add an eval for a feature | follow [`.github/prompts/add-eval.prompt.md`](../../.github/prompts/add-eval.prompt.md) (#216) |
 | Regenerate llms.txt / llms-full.txt | `make llms` (after editing canonical docs) |
 | Check llms.txt / llms-full.txt for drift | `make llms-check` (exits non-zero if regeneration needed) |
 
@@ -63,6 +68,12 @@ Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks 
 7. Add Google-style docstrings to any new public APIs.
 8. Update examples/demos if the feature is user-facing.
 9. Update agent-facing docs if the pipeline or public API changed.
+10. **If the feature can move `recall@k` / `dropped` / `dedup_removed` /
+    `prompt_tokens`**, follow
+    [`.github/prompts/add-eval.prompt.md`](../../.github/prompts/add-eval.prompt.md)
+    (#216) to extend the gold set or scenarios and regenerate
+    `benchmarks/scorecard.md`. The sticky CI benchmark-delta comment
+    (#211) surfaces any matrix-cell ⚠️ markers on the PR.
 
 ## Definition of Done
 

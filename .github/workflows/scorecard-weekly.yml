@@ -1,0 +1,70 @@
+name: Weekly Scorecard Regeneration
+
+# Runs `make benchmark && make scorecard` on a deterministic seed once a week
+# and opens a PR when ``benchmarks/results/latest.json`` or
+# ``benchmarks/scorecard.md`` change. The committed files are the source of
+# truth for the published numbers (see ``benchmarks/scorecard.md`` reproducibility
+# footer); without this workflow they only refresh when a human happens to
+# rerun the harness locally. Issue #207.
+
+on:
+  schedule:
+    # Monday 06:00 UTC. Off-hours, low contention with the main CI job.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Today
+        id: date
+        run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        # The matrix benchmark exercises bm25 (core dep) plus, when present,
+        # the [retrieval] extra's fuzzy backend.
+        run: pip install -e ".[dev,retrieval]"
+
+      - name: Regenerate latest.json (matrix run)
+        # Matrix run so per-backend cells stay populated alongside the legacy
+        # single-backend summary. Deterministic on the seed; latency lines vary
+        # with the runner.
+        run: python benchmarks/benchmark.py --matrix
+
+      - name: Regenerate scorecard.md
+        run: make scorecard
+
+      - name: Open PR on drift
+        # The committed pair (latest.json + scorecard.md) is the canonical
+        # weekly snapshot. peter-evans/create-pull-request creates a fresh
+        # branch each week so historical scorecards are preserved in PR history.
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(eval): weekly scorecard regen ${{ steps.date.outputs.today }}"
+          title: "chore(eval): weekly scorecard update ${{ steps.date.outputs.today }}"
+          body: |
+            Automated weekly regeneration of `benchmarks/results/latest.json`
+            and `benchmarks/scorecard.md` per issue #207.
+
+            Latency numbers reflect this week's runner; recall / drops / dedup
+            / token counts are environment-independent and should be
+            byte-identical to the previous run unless an upstream code change
+            altered the deterministic outputs.
+
+            Hardware: `ubuntu-latest` (GitHub Actions hosted runner).
+            Python: 3.12. Seed: 42.
+          branch: chore/weekly-scorecard
+          labels: |
+            area/eval
+            automated
+          delete-branch: true

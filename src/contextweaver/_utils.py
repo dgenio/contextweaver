@@ -161,7 +161,20 @@ STOPWORDS: frozenset[str] = frozenset(
 # Tokenisation
 # ---------------------------------------------------------------------------
 
-_SPLIT_RE = re.compile(r"\W+")
+# Outer split: any run of non-alphanumeric characters that is not ``.``,
+# ``-``, or ``/``. Crucially we keep ``_`` as a *non-separator*: underscored
+# names like ``invoices_search`` are emitted as a single token. The empirical
+# justification (issue #213 measurement run) is that the v0.3.0 synthetic
+# benchmark catalog uses underscored names purely as variant suffixes; making
+# ``_`` a separator pulls those suffixes back into the segment vocabulary and
+# inflates cross-talk between unrelated tools. Dotted / hyphenated / slashed
+# compounds, by contrast, *do* carry meaningful namespace structure (tool ids,
+# URL-like paths) so they decompose into segments below.
+_OUTER_SPLIT_RE = re.compile(r"[^a-z0-9_./-]+")
+
+# Inner separators inside a surviving compound: dot / hyphen / slash.
+# Underscore is intentionally absent — see ``_OUTER_SPLIT_RE`` rationale.
+_INNER_SEP_RE = re.compile(r"[./-]+")
 
 
 def tokenize_list(text: str) -> list[str]:
@@ -173,10 +186,26 @@ def tokenize_list(text: str) -> list[str]:
     operations (Jaccard, presence checks), use :func:`tokenize` instead.
 
     Steps:
+
     1. Lower-case the input.
-    2. Split on one or more non-word characters.
-    3. Discard tokens shorter than 2 characters.
-    4. Remove :data:`STOPWORDS`.
+    2. Split on runs of characters that are neither alphanumeric nor one
+       of the namespace-meaningful separators ``.`` ``_`` ``-`` ``/``.
+       Dotted / hyphenated / slashed / underscored compounds survive this
+       first pass intact.
+    3. For each surviving compound, emit:
+
+       a. The compound itself when it contains a *namespace* separator
+          (``.`` ``-`` ``/``) — this is what lets exact-id queries like
+          ``"billing.invoices.search"`` hit the canonical compound form
+          for a high-confidence boost.
+       b. Each per-segment sub-token after splitting on ``.`` ``-`` ``/``.
+
+    4. Discard tokens shorter than 2 characters.
+    5. Remove :data:`STOPWORDS` from every emitted token.
+
+    Underscored compounds (e.g. ``invoices_search``) are emitted as a single
+    token by design — see ``_OUTER_SPLIT_RE`` for the empirical rationale
+    captured during issue #213.
 
     Args:
         text: Raw input string.
@@ -185,26 +214,39 @@ def tokenize_list(text: str) -> list[str]:
         A ``list[str]`` of normalised, stop-word-filtered tokens in
         occurrence order. Duplicate tokens are preserved.
     """
-    tokens = _SPLIT_RE.split(text.lower())
-    return [t for t in tokens if len(t) >= 2 and t not in STOPWORDS]
+    out: list[str] = []
+    for compound in _OUTER_SPLIT_RE.split(text.lower()):
+        # Trim leading/trailing namespace separators so ``".search."`` behaves
+        # like ``"search"`` rather than producing an empty segment.
+        compound = compound.strip("./-")
+        if not compound:
+            continue
+        if _INNER_SEP_RE.search(compound):
+            if len(compound) >= 2 and compound not in STOPWORDS:
+                out.append(compound)
+            for sub in _INNER_SEP_RE.split(compound):
+                if len(sub) >= 2 and sub not in STOPWORDS:
+                    out.append(sub)
+        else:
+            if len(compound) >= 2 and compound not in STOPWORDS:
+                out.append(compound)
+    return out
 
 
 def tokenize(text: str) -> set[str]:
     """Normalise *text* and return a set of meaningful tokens.
 
-    Steps:
-    1. Lower-case the input.
-    2. Split on one or more non-word characters.
-    3. Discard tokens shorter than 2 characters.
-    4. Remove :data:`STOPWORDS`.
+    Set-form wrapper around :func:`tokenize_list`. See :func:`tokenize_list`
+    for the full normalisation pipeline. Duplicate tokens are collapsed;
+    use :func:`tokenize_list` when term frequency matters (e.g. BM25 scoring).
 
     Args:
         text: Raw input string.
 
     Returns:
-        A ``set[str]`` of normalised, stop-word-filtered tokens. Duplicate
-        tokens are collapsed; use :func:`tokenize_list` when term frequency
-        matters (e.g. BM25 scoring).
+        A ``set[str]`` of normalised, stop-word-filtered tokens, including
+        any dotted / hyphenated / slashed compound (``crm.deals.search``) plus
+        its per-segment sub-tokens (``crm``, ``deals``, ``search``).
     """
     return set(tokenize_list(text))
 

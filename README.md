@@ -53,8 +53,16 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
-Cost:         70% lower  ·  Latency: sub-second  ·  Quality: relevant context only
+Cost:         42–75% lower [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
 ```
+
+[^naive-baseline]: Measured against the "concatenate all tool schemas + full
+    conversation history" baseline using `tiktoken.cl100k_base` on the four
+    committed benchmark scenarios. Range 41.6 %–74.5 %, average 55.8 %.
+    Reproducible via `make benchmark-matrix && make scorecard` — see the
+    *vs. naïve concat baseline* section of
+    [`benchmarks/scorecard.md`](benchmarks/scorecard.md) and the
+    methodology in [`scripts/baseline_naive.py`](scripts/baseline_naive.py).
 
 See [`examples/before_after.py`](examples/before_after.py) for a runnable side-by-side comparison.
 

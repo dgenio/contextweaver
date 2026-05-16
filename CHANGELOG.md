@@ -11,6 +11,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Namespace-aware tokenizer** (#213). `_utils.tokenize` is now the single
+  source of truth for splitting dotted / hyphenated / slashed tool ids
+  (`crm.deals.search` → `{"crm.deals.search", "crm", "deals", "search"}`)
+  plus colon-separated alternates (`admin:users:create`). Underscored
+  compounds are intentionally kept as single tokens — empirical measurement
+  on the v0.3.0 benchmark showed splitting them inflates cross-talk with
+  synthetic catalog variants (rationale captured in
+  `_OUTER_SPLIT_RE` docstring). Retires the per-call
+  `replace(":"/"_"/"/" ) ` workaround in `routing/router.py`.
+- **Per-backend × per-size benchmark matrix** (#208). New `--matrix`,
+  `--backends`, `--sizes` flags on `benchmarks/benchmark.py`. Emits
+  additive `routing_matrix` rows (`tfidf` / `bm25` / `fuzzy` × 100 / 500 /
+  1000 by default) without disturbing the legacy `routing` single-backend
+  summary. Missing backends record an explicit `status: skipped: missing
+  rapidfuzz` row. New `make benchmark-matrix` target.
+- **Expanded routing gold set 50 → 200** (#209). `benchmarks/routing_gold.json`
+  now carries 200 naturalistic queries (25 per namespace), with an explicit
+  `namespace` field on every entry. Drives the new
+  `routing_per_namespace` aggregation in `latest.json`. Every `expected`
+  id is catalog-validated before commit.
+- **Naïve-concat baseline** (#215). New `scripts/baseline_naive.py` (stdlib
+  + `tiktoken`) computes a "dump all tool schemas + history" baseline and
+  emits an additive `naive_delta` block per `context` row in `latest.json`.
+  Coverage proxy is `items_included / event_count` — documented,
+  deterministic, no LLM judge required.
+- **Sticky benchmark-delta PR comment** (#211). New
+  `scripts/benchmark_delta.py` renders a head-vs-base markdown delta with
+  shared ✅/⚠️ marker conventions. CI job `benchmark-comment` posts a
+  sticky comment (one per PR, updated in place) using `peter-evans/`
+  `find-comment` + `create-or-update-comment`. Adds an encouraged
+  "Reproducibility" subsection to the PR template.
+- **`ScoringConfig` weight sweep** (#214). New `scripts/sweep_scoring.py`
+  + `make sweep-scoring`. Grid-searches 243 configurations against the
+  committed scenarios, ranks them by a documented composite, and emits
+  `benchmarks/sweep_scoring.md`. The current `ScoringConfig` defaults are
+  **not** changed by this PR — Pareto-dominating configs (if any) are
+  flagged for a deliberately-scoped follow-up.
+- **Weekly scorecard regeneration cron** (#207). New
+  `.github/workflows/scorecard-weekly.yml` runs `make benchmark-matrix &&
+  make scorecard` Monday 06:00 UTC and opens a `chore/weekly-scorecard`
+  PR on drift via `peter-evans/create-pull-request`. Independent of the
+  main CI; never gates other workflows.
+- **`add-eval.prompt.md`** (#216). New agent prompt at
+  `.github/prompts/add-eval.prompt.md` matching the structure of the
+  existing three prompts. Cross-linked from `AGENTS.md` and
+  `docs/agent-context/workflows.md`. Codifies the
+  matrix → scorecard → regression-comment workflow for new evals.
+- **Scorecard renderer** gains additive matrix, per-namespace, and
+  naïve-delta sections (`scripts/render_scorecard.py`). Empty when the
+  underlying JSON keys are absent — keeps PR #203's baseline scorecard
+  valid until the matrix and naïve numbers are wired in.
+
+### Earlier in the Unreleased cycle
+
 - **Discoverability polish** (#200). Six small README/PyPI metadata changes
   that together make contextweaver easier to find and to evaluate from
   outside the repo: README badge row (CI, PyPI version, Python versions,
