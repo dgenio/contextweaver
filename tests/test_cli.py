@@ -28,8 +28,14 @@ def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]
 
 def test_no_args_prints_help() -> None:
     result = _run()
-    assert result.returncode == 0
-    assert "contextweaver" in result.stdout.lower() or "usage" in result.stdout.lower()
+    # Typer exits with code 2 when invoked without a subcommand (Click's
+    # ``UsageError`` convention) while still printing the help banner.  The
+    # argparse predecessor exited 0; the v0.5 CLI rewrite (#221) adopts
+    # Typer's convention.  Accept either to keep the test useful as a
+    # smoke check regardless of which framework is in use.
+    assert result.returncode in (0, 2)
+    output = (result.stdout + result.stderr).lower()
+    assert "contextweaver" in output or "usage" in output
 
 
 # ------------------------------------------------------------------
@@ -245,3 +251,43 @@ def test_replay_budget(tmp_path: Path) -> None:
     result = _run("replay", "--session", str(ingested_path), "--budget", "500")
     assert result.returncode == 0
     assert "500" in result.stdout
+
+
+# ------------------------------------------------------------------
+# stats (issue #106)
+# ------------------------------------------------------------------
+
+
+def test_stats_subcommand_renders_report(tmp_path: Path) -> None:
+    """End-to-end: ingest a JSONL session, then run ``stats`` against it."""
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "stats",
+        "--session",
+        str(ingested_path),
+        "--phase",
+        "answer",
+        "--budget",
+        "1000",
+        "--format",
+        "text",
+    )
+    assert result.returncode == 0
+    assert "Context Build Report" in result.stdout
+    assert "answer" in result.stdout
+    assert "Candidates" in result.stdout
+
+
+def test_stats_subcommand_rich_format(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run("stats", "--session", str(ingested_path), "--budget", "1000", "--format", "rich")
+    assert result.returncode == 0
+    # Rich-rendered output strips markup but keeps the headers.
+    assert "Context Build Report" in result.stdout
+    assert "Candidates" in result.stdout

@@ -21,7 +21,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal, overload
 
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard, tokenize
 from contextweaver.envelope import RoutingDecision
@@ -29,6 +29,7 @@ from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import Retriever
 from contextweaver.routing.cards import make_choice_cards
+from contextweaver.routing.explanation import explain_route, explain_route_dict
 from contextweaver.routing.filters import (
     augment_query,
     filter_items,
@@ -120,6 +121,38 @@ class RouteResult:
     def debug_trace(self) -> list[dict[str, Any]]:
         """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape."""
         return self.trace.to_legacy_dicts()
+
+    @overload
+    def explanation(self, format: Literal["md"] = "md") -> str: ...  # noqa: A002
+    @overload
+    def explanation(self, format: Literal["dict"]) -> dict[str, Any]: ...  # noqa: A002
+
+    def explanation(
+        self,
+        format: Literal["md", "dict"] = "md",  # noqa: A002 — public API kwarg
+    ) -> str | dict[str, Any]:
+        """Render a human-readable rationale of the routing decision (issue #226).
+
+        Surfaces top-k candidates with scores, the rank-1/rank-2 confidence
+        gap, ambiguity + clarifying question, applied context hints, and the
+        excluded/gated filter counts.
+
+        Args:
+            format: ``"md"`` for a paste-friendly Markdown string (default);
+                ``"dict"`` for the versioned structured payload.
+
+        Returns:
+            A markdown string when ``format == "md"``, a dict otherwise.
+
+        Privacy: the explanation surfaces item ids + scores + the original
+        query.  It does **not** include ``args_schema`` content or full item
+        descriptions.  Use the dict form when attaching to span attributes on
+        :class:`~contextweaver.extras.otel.OTelEventHook` and similar
+        observability surfaces.
+        """
+        if format == "dict":
+            return explain_route_dict(self)
+        return explain_route(self, format="md")
 
     def to_routing_decision(
         self,

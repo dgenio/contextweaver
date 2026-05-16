@@ -1,6 +1,6 @@
 """Command-line interface for contextweaver.
 
-Provides seven sub-commands:
+Provides eight sub-commands:
 
 demo        Run a built-in demonstration of both engines.
 build       Build a routing graph from a catalog JSON file.
@@ -9,28 +9,28 @@ print-tree  Pretty-print the routing tree for a graph.
 init        Scaffold contextweaver config + sample catalog in cwd.
 ingest      Ingest a JSONL session into a serialised session file.
 replay      Replay a session and build context for a given phase.
+stats       Render a human-readable :class:`BuildStats` diagnostic report
+            from an ingested session (issue #106).
 
 Invocable as ``python -m contextweaver`` or ``contextweaver`` (via
-``[project.scripts]``).  Exempt from 300-line module limit.
+``[project.scripts]``).  Exempt from the 300-line module limit.
+
+Built on `Typer <https://typer.tiangolo.com>`_ + `Rich <https://rich.readthedocs.io>`_
+(both core dependencies as of v0.5; the legacy ``[cli]`` extra is kept as an
+empty alias for one cycle).  Issue #221.
 """
 
 from __future__ import annotations
 
-import argparse
-
-# `[cli]` extra adds rich-formatted output. Guarded import keeps the CLI
-# fully functional with stdlib-only argparse when the extra is absent.
-try:
-    from rich.console import Console as _RichConsole
-    from rich.tree import Tree as _RichTree
-
-    _HAS_RICH = True
-except ImportError:  # pragma: no cover - exercised only when extra is missing
-    _HAS_RICH = False
 import json
 import sys
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+import typer
+from rich.console import Console
+from rich.tree import Tree as RichTree
 
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
@@ -40,6 +40,37 @@ from contextweaver.routing.graph_io import load_graph, save_graph
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem
+
+# ---------------------------------------------------------------------------
+# Typer app + global console
+# ---------------------------------------------------------------------------
+
+app = typer.Typer(
+    name="contextweaver",
+    help="Dynamic context management for tool-using AI agents.",
+    no_args_is_help=True,
+    add_completion=False,
+    rich_markup_mode="rich",
+)
+
+_console = Console()
+
+
+# Typer prefers ``str`` Enums for ``--phase``-style choice flags over Click's
+# ``Choice`` because the Enum members produce typed values inside the handler
+# (and Typer auto-renders them as ``--phase [route|call|interpret|answer]``
+# in ``--help`` output).
+class _PhaseChoice(str, Enum):
+    route = "route"
+    call = "call"
+    interpret = "interpret"
+    answer = "answer"
+
+
+class _StatsFormatChoice(str, Enum):
+    rich = "rich"
+    text = "text"
+
 
 # ---------------------------------------------------------------------------
 # JSON-L session helpers
@@ -84,12 +115,34 @@ def _load_jsonl(path: str) -> list[ContextItem]:
     return items
 
 
+def _restore_manager_from_session(session_path: str, budget_tokens: int) -> ContextManager:
+    """Rebuild a :class:`ContextManager` from a session JSON written by ``ingest``."""
+    session: dict[str, Any] = json.loads(Path(session_path).read_text(encoding="utf-8"))
+    mgr = ContextManager(
+        budget=ContextBudget(
+            route=budget_tokens,
+            call=budget_tokens,
+            interpret=budget_tokens,
+            answer=budget_tokens,
+        )
+    )
+    for raw_event in session.get("events", []):
+        item = ContextItem.from_dict(raw_event)
+        mgr.ingest(item)
+    for key, value in session.get("facts", {}).items():
+        mgr.add_fact(key, value)
+    for ep in session.get("episodes", []):
+        mgr.add_episode(ep["episode_id"], ep["summary"])
+    return mgr
+
+
 # ---------------------------------------------------------------------------
-# Command handlers
+# Subcommands
 # ---------------------------------------------------------------------------
 
 
-def _cmd_demo(args: argparse.Namespace) -> int:  # noqa: ARG001
+@app.command()
+def demo() -> None:
     """Run a built-in demonstration of both engines."""
     print("=" * 60)
     print("contextweaver demo — end-to-end demonstration")
@@ -169,44 +222,42 @@ def _cmd_demo(args: argparse.Namespace) -> int:  # noqa: ARG001
 
     print("\n" + "=" * 60)
     print("Demo complete.")
-    return 0
 
 
-def _cmd_build(args: argparse.Namespace) -> int:
+@app.command()
+def build(
+    catalog: Annotated[Path, typer.Option(..., help="Path to the tool catalog JSON file.")],
+    out: Annotated[Path, typer.Option(..., help="Output path for the graph JSON file.")],
+    max_children: Annotated[
+        int, typer.Option("--max-children", help="Max children per node.")
+    ] = 20,
+) -> None:
     """Build a routing graph from a catalog JSON file."""
-    catalog_path: str = args.catalog
-    out_path: str = args.out
-    max_children: int = args.max_children
-
-    items = load_catalog_json(catalog_path)
-    print(f"Loaded {len(items)} items from {catalog_path}")
-
+    items = load_catalog_json(str(catalog))
+    print(f"Loaded {len(items)} items from {catalog}")
     builder = TreeBuilder(max_children=max_children)
     graph = builder.build(items)
-
-    save_graph(graph, out_path)
+    save_graph(graph, str(out))
     stats = graph.stats()
-    print(f"Graph saved to {out_path}")
+    print(f"Graph saved to {out}")
     print(f"Stats: {json.dumps(stats, indent=2)}")
-    return 0
 
 
-def _cmd_route(args: argparse.Namespace) -> int:
-    """Route a query over a pre-built graph."""
-    graph_path: str = args.graph
-    catalog_path: str = args.catalog
-    query: str = args.query
-    top_k: int = args.top_k
-    beam_width: int = args.beam_width
-
-    graph = load_graph(graph_path)
-    all_items = load_catalog_json(catalog_path)
-
-    # Keep only items present in the graph
-    graph_item_ids = set(graph.items())
+@app.command()
+def route(
+    graph: Annotated[Path, typer.Option(..., help="Path to the graph JSON file.")],
+    catalog: Annotated[Path, typer.Option(..., help="Path to the catalog JSON file.")],
+    query: Annotated[str, typer.Option(..., help="The user query to route.")],
+    top_k: Annotated[int, typer.Option("--top-k", help="Max results.")] = 10,
+    beam_width: Annotated[int, typer.Option("--beam-width", help="Beam width.")] = 3,
+) -> None:
+    """Route a query over a pre-built routing graph."""
+    graph_obj = load_graph(str(graph))
+    all_items = load_catalog_json(str(catalog))
+    graph_item_ids = set(graph_obj.items())
     items_list = [it for it in all_items if it.id in graph_item_ids]
 
-    router = Router(graph, items=items_list, beam_width=beam_width, top_k=top_k)
+    router = Router(graph_obj, items=items_list, beam_width=beam_width, top_k=top_k)
     result = router.route(query)
 
     print(f"Query: {query!r}")
@@ -216,79 +267,47 @@ def _cmd_route(args: argparse.Namespace) -> int:
         scores=dict(zip(result.candidate_ids, result.scores, strict=False)),
     )
     print(render_cards_text(cards))
-    return 0
 
 
-def _cmd_print_tree(args: argparse.Namespace) -> int:
-    """Pretty-print the routing tree for a graph.
+@app.command("print-tree")
+def print_tree(
+    graph: Annotated[Path, typer.Option(..., help="Path to the graph JSON file.")],
+    depth: Annotated[int, typer.Option(help="Max depth to display.")] = 3,
+) -> None:
+    """Pretty-print the routing tree for a graph (Rich-formatted)."""
+    graph_obj = load_graph(str(graph))
+    items_set = set(graph_obj.items())
 
-    Uses ``rich.tree`` for coloured output when the ``[cli]`` extra is
-    installed; falls back to plain ASCII otherwise.
-    """
-    graph_path: str = args.graph
-    max_depth: int = args.depth
-
-    graph = load_graph(graph_path)
-    items_set = set(graph.items())
-
-    if _HAS_RICH:
-        console = _RichConsole()
-
-        def _build_rich(node_id: str, depth: int) -> _RichTree:
-            node = graph.get_node(node_id)
-            is_item = node_id in items_set
-            label = node.label or node_id
-            if is_item:
-                rendered = f"[bold green]* {label}[/bold green]"
-            else:
-                hint = f"  [dim]({node.routing_hint})[/dim]" if node.routing_hint else ""
-                rendered = f"[bold cyan]> {label}[/bold cyan]{hint}"
-            tree = _RichTree(rendered)
-            if depth < max_depth:
-                for child in graph.successors(node_id):
-                    tree.add(_build_rich(child, depth + 1))
-            return tree
-
-        console.print(f"[bold]Routing tree (depth={max_depth}):[/bold]")
-        console.print(_build_rich(graph.root_id, 0))
-        stats = graph.stats()
-        console.print(
-            f"\n[dim]Stats: {stats['total_nodes']} nodes,"
-            f" {stats['total_items']} items,"
-            f" depth={stats['max_depth']}[/dim]"
-        )
-        return 0
-
-    # Stdlib fallback (existing behaviour, byte-for-byte compatible).
-    def _print_node(node_id: str, depth: int, prefix: str = "") -> None:
-        if depth > max_depth:
-            return
-        node = graph.get_node(node_id)
+    def _build(node_id: str, cur_depth: int) -> RichTree:
+        node = graph_obj.get_node(node_id)
         is_item = node_id in items_set
-        marker = "*" if is_item else ">"
         label = node.label or node_id
-        hint = f" - {node.routing_hint}" if node.routing_hint and not is_item else ""
-        print(f"{prefix}{marker} {label}{hint}")
-        children = graph.successors(node_id)
-        for i, child in enumerate(children):
-            last = i == len(children) - 1
-            child_prefix = prefix + ("    " if last else "|   ")
-            _print_node(child, depth + 1, child_prefix)
+        if is_item:
+            rendered = f"[bold green]* {label}[/bold green]"
+        else:
+            hint = f"  [dim]({node.routing_hint})[/dim]" if node.routing_hint else ""
+            rendered = f"[bold cyan]> {label}[/bold cyan]{hint}"
+        tree = RichTree(rendered)
+        if cur_depth < depth:
+            for child in graph_obj.successors(node_id):
+                tree.add(_build(child, cur_depth + 1))
+        return tree
 
-    print(f"Routing tree (depth={max_depth}):")
-    _print_node(graph.root_id, 0)
-    stats = graph.stats()
-    print(
-        f"\nStats: {stats['total_nodes']} nodes,"
+    _console.print(f"[bold]Routing tree (depth={depth}):[/bold]")
+    _console.print(_build(graph_obj.root_id, 0))
+    stats = graph_obj.stats()
+    _console.print(
+        f"\n[dim]Stats: {stats['total_nodes']} nodes,"
         f" {stats['total_items']} items,"
-        f" depth={stats['max_depth']}"
+        f" depth={stats['max_depth']}[/dim]"
     )
-    return 0
 
 
-def _cmd_init(args: argparse.Namespace) -> int:
+@app.command()
+def init(
+    force: Annotated[bool, typer.Option(help="Overwrite existing files.")] = False,
+) -> None:
     """Scaffold contextweaver config + sample catalog in cwd."""
-    force: bool = args.force
     config_path = Path("contextweaver.json")
     catalog_path = Path("sample_catalog.json")
 
@@ -296,7 +315,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     if existing and not force:
         names = ", ".join(str(p) for p in existing)
         print(f"Error: {names} already exist. Use --force to overwrite.", file=sys.stderr)
-        return 1
+        raise typer.Exit(1)
 
     config = {
         "version": "0.1.0",
@@ -316,15 +335,15 @@ def _cmd_init(args: argparse.Namespace) -> int:
     raw_items = generate_sample_catalog(n=40, seed=42)
     catalog_path.write_text(json.dumps(raw_items, indent=2) + "\n", encoding="utf-8")
     print(f"Created {catalog_path} ({len(raw_items)} items)")
-    return 0
 
 
-def _cmd_ingest(args: argparse.Namespace) -> int:
+@app.command()
+def ingest(
+    events: Annotated[Path, typer.Option(..., help="Path to the JSONL session file.")],
+    out: Annotated[Path, typer.Option(..., help="Output path for the session JSON file.")],
+) -> None:
     """Ingest a JSONL session into a serialised session file."""
-    events_path: str = args.events
-    out_path: str = args.out
-
-    items = _load_jsonl(events_path)
+    items = _load_jsonl(str(events))
     mgr = ContextManager()
 
     firewall_count = 0
@@ -343,7 +362,6 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         else:
             mgr.ingest(item)
 
-    # Serialize session
     session: dict[str, Any] = {
         "event_count": len(items),
         "events": [it.to_dict() for it in mgr.event_log.all()],
@@ -360,50 +378,27 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
             {"episode_id": ep.episode_id, "summary": ep.summary} for ep in mgr.episodic_store.all()
         ],
     }
-    Path(out_path).write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
+    Path(out).write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
 
-    print(f"Ingested {len(items)} events from {events_path}")
+    print(f"Ingested {len(items)} events from {events}")
     print(f"Event counts: {json.dumps(kind_counts)}")
     print(f"Firewall triggers: {firewall_count}")
     print(f"Artifacts stored: {len(session['artifacts'])}")
-    print(f"Session saved to {out_path}")
-    return 0
+    print(f"Session saved to {out}")
 
 
-def _cmd_replay(args: argparse.Namespace) -> int:
+@app.command()
+def replay(
+    session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
+    phase: Annotated[_PhaseChoice, typer.Option(help="Phase to render.")] = _PhaseChoice.answer,
+    budget: Annotated[int, typer.Option(help="Token budget.")] = 4000,
+    full: Annotated[bool, typer.Option(help="Show full prompt instead of preview.")] = False,
+) -> None:
     """Replay a session and build context for a given phase."""
-    session_path: str = args.session
-    phase_str: str = args.phase
-    budget_tokens: int = args.budget
-    preview: bool = not args.full
+    mgr = _restore_manager_from_session(str(session), budget)
+    pack = mgr.build_sync(phase=Phase(phase.value), query="replay", budget_tokens=budget)
 
-    session: dict[str, Any] = json.loads(Path(session_path).read_text(encoding="utf-8"))
-
-    # Re-ingest events
-    mgr = ContextManager(
-        budget=ContextBudget(
-            route=budget_tokens,
-            call=budget_tokens,
-            interpret=budget_tokens,
-            answer=budget_tokens,
-        )
-    )
-    for raw_event in session.get("events", []):
-        item = ContextItem.from_dict(raw_event)
-        mgr.ingest(item)
-
-    # Restore facts
-    for key, value in session.get("facts", {}).items():
-        mgr.add_fact(key, value)
-
-    # Restore episodes
-    for ep in session.get("episodes", []):
-        mgr.add_episode(ep["episode_id"], ep["summary"])
-
-    phase = Phase(phase_str)
-    pack = mgr.build_sync(phase=phase, query="replay", budget_tokens=budget_tokens)
-
-    print(f"=== Context Build: phase={phase.value}, budget={budget_tokens} ===")
+    print(f"=== Context Build: phase={phase.value}, budget={budget} ===")
     print(
         f"Stats: total_candidates={pack.stats.total_candidates}, "
         f"included={pack.stats.included_count}, "
@@ -412,114 +407,58 @@ def _cmd_replay(args: argparse.Namespace) -> int:
         f"closures={pack.stats.dependency_closures}"
     )
     print(f"Token breakdown: {pack.stats.tokens_per_section}")
-    total_tokens = sum(pack.stats.tokens_per_section.values()) + pack.stats.header_footer_tokens
-    print(f"Total tokens: {total_tokens} / {budget_tokens}")
+    print(f"Total tokens: {pack.stats.prompt_tokens} / {budget}")
 
-    artifacts = session.get("artifacts", {})
+    raw_session: dict[str, Any] = json.loads(Path(session).read_text(encoding="utf-8"))
+    artifacts = raw_session.get("artifacts", {})
     if artifacts:
         print(f"Artifacts available: {list(artifacts.keys())}")
-
-    facts = session.get("facts", {})
+    facts = raw_session.get("facts", {})
     if facts:
-        fact_strs = [f"{k}={v}" for k, v in facts.items()]
-        print(f"Facts: {fact_strs}")
+        print(f"Facts: {[f'{k}={v}' for k, v in facts.items()]}")
 
     print("--- Rendered prompt ---")
-    if preview:
+    if full:
+        print(pack.prompt)
+    else:
         print(pack.prompt[:500])
         if len(pack.prompt) > 500:
             print(f"... ({len(pack.prompt) - 500} more chars, use --full to see all)")
+
+
+@app.command()
+def stats(
+    session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
+    phase: Annotated[
+        _PhaseChoice, typer.Option(help="Phase to render the report for.")
+    ] = _PhaseChoice.answer,
+    budget: Annotated[int, typer.Option(help="Token budget for the build.")] = 4000,
+    format: Annotated[  # noqa: A002 — Typer CLI flag name
+        _StatsFormatChoice,
+        typer.Option(
+            "--format",
+            help="Output format: rich renders panels and tables; text is grep-friendly.",
+        ),
+    ] = _StatsFormatChoice.rich,
+) -> None:
+    """Render a human-readable :class:`BuildStats` diagnostic report (issue #106)."""
+    mgr = _restore_manager_from_session(str(session), budget)
+    pack = mgr.build_sync(phase=Phase(phase.value), query="stats", budget_tokens=budget)
+    if format == _StatsFormatChoice.rich:
+        _console.print(pack.stats.report(format="rich", phase=phase.value, budget=budget))
     else:
-        print(pack.prompt)
-    return 0
+        print(pack.stats.report(format="text", phase=phase.value, budget=budget))
 
 
 # ---------------------------------------------------------------------------
-# Parser
+# Entry point
 # ---------------------------------------------------------------------------
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="contextweaver",
-        description="Dynamic context management for tool-using AI agents.",
-    )
-    sub = parser.add_subparsers(dest="command", metavar="COMMAND")
-
-    # demo
-    sub.add_parser("demo", help="Run a built-in demonstration of both engines.")
-
-    # build
-    p_build = sub.add_parser("build", help="Build a routing graph from a catalog.")
-    p_build.add_argument("--catalog", required=True, help="Path to the tool catalog JSON file.")
-    p_build.add_argument("--out", required=True, help="Output path for the graph JSON file.")
-    p_build.add_argument(
-        "--max-children", type=int, default=20, help="Max children per node (default: 20)."
-    )
-
-    # route
-    p_route = sub.add_parser("route", help="Route a query over a pre-built graph.")
-    p_route.add_argument("--graph", required=True, help="Path to the graph JSON file.")
-    p_route.add_argument("--catalog", required=True, help="Path to the catalog JSON file.")
-    p_route.add_argument("--query", required=True, help="The user query to route.")
-    p_route.add_argument("--top-k", type=int, default=10, help="Max results (default: 10).")
-    p_route.add_argument("--beam-width", type=int, default=3, help="Beam width (default: 3).")
-
-    # print-tree
-    p_tree = sub.add_parser("print-tree", help="Pretty-print the routing tree.")
-    p_tree.add_argument("--graph", required=True, help="Path to the graph JSON file.")
-    p_tree.add_argument("--depth", type=int, default=3, help="Max depth to display (default: 3).")
-
-    # init
-    p_init = sub.add_parser("init", help="Scaffold contextweaver config + sample catalog in cwd.")
-    p_init.add_argument(
-        "--force", action="store_true", default=False, help="Overwrite existing files."
-    )
-
-    # ingest
-    p_ingest = sub.add_parser("ingest", help="Ingest a JSONL session file.")
-    p_ingest.add_argument("--events", required=True, help="Path to the JSONL session file.")
-    p_ingest.add_argument("--out", required=True, help="Output path for the session JSON file.")
-
-    # replay
-    p_replay = sub.add_parser("replay", help="Replay a session and build context.")
-    p_replay.add_argument("--session", required=True, help="Path to the session JSON file.")
-    p_replay.add_argument(
-        "--phase",
-        default="answer",
-        choices=["route", "call", "interpret", "answer"],
-        help="Phase (default: answer).",
-    )
-    p_replay.add_argument("--budget", type=int, default=4000, help="Token budget (default: 4000).")
-    p_replay.add_argument("--full", action="store_true", default=False, help="Show full prompt.")
-
-    return parser
-
-
-_HANDLERS = {
-    "demo": _cmd_demo,
-    "build": _cmd_build,
-    "route": _cmd_route,
-    "print-tree": _cmd_print_tree,
-    "init": _cmd_init,
-    "ingest": _cmd_ingest,
-    "replay": _cmd_replay,
-}
 
 
 def main() -> None:
     """Entry point for the ``contextweaver`` CLI."""
-    parser = _build_parser()
-    args = parser.parse_args()
-    if args.command is None:
-        parser.print_help()
-        sys.exit(0)
-    handler = _HANDLERS.get(args.command)
-    if handler is None:
-        parser.print_help()
-        sys.exit(1)
     try:
-        sys.exit(handler(args))
+        app()
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

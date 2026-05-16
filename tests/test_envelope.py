@@ -106,6 +106,136 @@ def test_build_stats_from_empty_dict() -> None:
 
 
 # ---------------------------------------------------------------------------
+# BuildStats.prompt_tokens (issue #106)
+# ---------------------------------------------------------------------------
+
+
+def test_build_stats_prompt_tokens_property() -> None:
+    bs = BuildStats(
+        tokens_per_section={"system": 200, "history": 400, "facts": 50},
+        header_footer_tokens=42,
+    )
+    # Single source of truth: sum of sections + header/footer.
+    assert bs.prompt_tokens == 200 + 400 + 50 + 42
+
+
+def test_build_stats_prompt_tokens_empty() -> None:
+    assert BuildStats().prompt_tokens == 0
+
+
+# ---------------------------------------------------------------------------
+# BuildStats.report() / report_dict() (issue #106)
+# ---------------------------------------------------------------------------
+
+
+def _sample_stats() -> BuildStats:
+    return BuildStats(
+        tokens_per_section={"facts": 180, "history": 1200, "tool_results": 1800, "episodes": 320},
+        total_candidates=24,
+        included_count=12,
+        dropped_count=8,
+        dropped_reasons={"budget_exceeded": 5, "sensitivity": 2, "dedup": 1},
+        dedup_removed=4,
+        dependency_closures=2,
+        header_footer_tokens=0,
+    )
+
+
+def test_build_stats_report_text_contains_sections() -> None:
+    out = _sample_stats().report(format="text", phase="answer", budget=4000)
+    assert "Context Build Report" in out
+    assert "Phase:  answer" in out
+    assert "Budget: 4000" in out
+    assert "Generated:    24" in out
+    assert "Included:     12" in out
+    assert "Dropped:      8" in out
+    # token-section table row
+    assert "tool_results" in out and "1800" in out
+    # drop reasons section
+    assert "budget_exceeded: 5" in out
+
+
+def test_build_stats_report_deterministic() -> None:
+    stats = _sample_stats()
+    a = stats.report(format="text", phase="answer", budget=4000)
+    b = stats.report(format="text", phase="answer", budget=4000)
+    assert a == b
+    # Sorted section order — independent of insertion order — yields stable bytes
+    # even when ``tokens_per_section`` is built from a different insertion order.
+    shuffled = BuildStats(
+        tokens_per_section={"tool_results": 1800, "facts": 180, "episodes": 320, "history": 1200},
+        total_candidates=stats.total_candidates,
+        included_count=stats.included_count,
+        dropped_count=stats.dropped_count,
+        dropped_reasons=stats.dropped_reasons,
+        dedup_removed=stats.dedup_removed,
+        dependency_closures=stats.dependency_closures,
+        header_footer_tokens=stats.header_footer_tokens,
+    )
+    assert shuffled.report(format="text", phase="answer", budget=4000) == a
+
+
+def test_build_stats_report_recommends_when_section_over_budget() -> None:
+    stats = BuildStats(
+        tokens_per_section={"history": 2500},  # 62.5 % of 4000 budget
+        total_candidates=10,
+        included_count=8,
+    )
+    out = stats.report(format="text", phase="answer", budget=4000)
+    assert "history" in out
+    assert "lowering firewall threshold" in out
+
+
+def test_build_stats_report_recommends_headroom_when_efficient() -> None:
+    stats = BuildStats(tokens_per_section={"facts": 1000}, included_count=5, total_candidates=5)
+    out = stats.report(format="text", phase="answer", budget=4000)
+    assert "budget headroom" in out
+
+
+def test_build_stats_report_warns_when_over_budget() -> None:
+    stats = BuildStats(tokens_per_section={"history": 5000})
+    out = stats.report(format="text", phase="answer", budget=4000)
+    assert "over budget" in out
+
+
+def test_build_stats_report_no_budget_skips_percentages() -> None:
+    out = _sample_stats().report(format="text", phase="answer", budget=None)
+    assert "% Budget" not in out
+    # Section table still present without percentage columns.
+    assert "1800" in out
+
+
+def test_build_stats_report_rich_has_markup() -> None:
+    out = _sample_stats().report(format="rich", phase="answer", budget=4000)
+    assert "[bold cyan]Context Build Report[/bold cyan]" in out
+    assert "[bold]Candidates[/bold]" in out
+    # Determinism applies to rich format too
+    assert out == _sample_stats().report(format="rich", phase="answer", budget=4000)
+
+
+def test_build_stats_report_dict_versioned() -> None:
+    payload = _sample_stats().report_dict(phase="answer", budget=4000)
+    assert payload["version"] == 1
+    assert payload["phase"] == "answer"
+    assert payload["budget"] == 4000
+    assert payload["prompt_tokens"] == 180 + 1200 + 1800 + 320
+    assert payload["candidates"] == {
+        "total": 24,
+        "included": 12,
+        "dropped": 8,
+        "deduplicated": 4,
+        "dependency_closures": 2,
+    }
+    # dropped_reasons sorted deterministically
+    assert list(payload["dropped_reasons"].keys()) == ["budget_exceeded", "dedup", "sensitivity"]
+
+
+def test_build_stats_report_dict_empty_recommendations_without_budget() -> None:
+    payload = _sample_stats().report_dict(phase="answer", budget=None)
+    assert payload["recommendations"] == []
+
+
+# ---------------------------------------------------------------------------
 # ContextPack
 # ---------------------------------------------------------------------------
 

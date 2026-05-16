@@ -38,6 +38,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
+| `routing/explanation.py` | `RouteResult.explanation()` Markdown / dict rendering (issue #226) |
+| `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
 | `adapters/` | MCP, FastMCP, A2A, and weaver-spec protocol adapters + MCP proxy / gateway runtime (issues #13, #28, #29, #34) |
@@ -48,7 +50,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `adapters/mcp_gateway_server.py` | Bind `mcp_gateway` onto `mcp.server.Server` over stdio (issue #28) |
 | `adapters/mcp_proxy_server.py` | Bind `mcp_proxy` onto `mcp.server.Server` over stdio (issue #13) |
 | `adapters/gateway_error.py` | Structured `GatewayError` (codes + §3.4 wire shape) |
-| `__main__.py` | CLI: 7 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) |
+| `__main__.py` | CLI: 8 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`). Typer + Rich (both core deps as of v0.5, issue #221). |
 
 ## Pipelines (summary)
 
@@ -111,6 +113,8 @@ make benchmark        # run benchmark harness (non-gating; writes benchmarks/res
 make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
 make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
+make schemas         # regenerate schemas/ + docs/schemas/v0/ (issue #225)
+make schemas-check    # verify published schemas match dataclasses (gating, in `make ci`)
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)

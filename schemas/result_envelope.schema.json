@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "A lightweight reference to an out-of-band artifact stored in an ArtifactStore.",
+      "properties": {
+        "content_hash": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "handle",
+        "media_type",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "ViewSpec": {
+      "additionalProperties": false,
+      "description": "Specifies a named view (a filtered/projected representation) of an artifact.",
+      "properties": {
+        "artifact_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "selector": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "view_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "view_id"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://dgenio.github.io/contextweaver/schemas/v0/result_envelope.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Wraps the output of a tool call with LLM-friendly summaries and structured data.",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "type": "array"
+    },
+    "facts": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "provenance": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "partial",
+        "error"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "views": {
+      "items": {
+        "$ref": "#/$defs/ViewSpec"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "summary"
+  ],
+  "title": "ResultEnvelope",
+  "type": "object"
+}
