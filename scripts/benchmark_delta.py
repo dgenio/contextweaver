@@ -136,6 +136,16 @@ def _render_matrix_section(base: dict[str, Any], head: dict[str, Any]) -> str:
     for backend, size in keys:
         b = base_idx.get((backend, size), {})
         h = head_idx.get((backend, size), b)
+        # Skip-cells carry zeroed metrics by design (e.g. fuzzy with no
+        # rapidfuzz). Treating them as accuracy/latency regressions would
+        # produce false-positive ⚠️ markers on every PR; emit a single
+        # "skipped" row that surfaces the reason text instead.
+        head_status = str(h.get("status", ""))
+        base_status = str(b.get("status", ""))
+        if head_status or base_status:
+            reason = head_status or base_status
+            lines.append(f"| {backend} | {size} | _skipped_ ({reason}) | — | — |")
+            continue
         br = float(b.get("recall_at_k", 0.0))
         hr = float(h.get("recall_at_k", 0.0))
         bm = float(b.get("mrr", 0.0))

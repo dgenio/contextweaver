@@ -551,6 +551,7 @@ def _print_matrix_table(cells: list[MatrixCell], k: int) -> None:
 
 
 _DEFAULT_MATRIX_BACKENDS = "tfidf,bm25,fuzzy"
+_SUPPORTED_BACKENDS = frozenset({"tfidf", "bm25", "fuzzy"})
 _DEFAULT_MATRIX_SIZES = "100,500,1000"
 
 
@@ -619,7 +620,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Default is enabled; the naive_delta block is additive to each context row."
         ),
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    # Fail fast on typos like `--backends tifdf,bm25` rather than letting the
+    # bad name reach Router init and surface as a ConfigError traceback.
+    requested = set(_csv_str_list(args.backends))
+    unknown = sorted(requested - _SUPPORTED_BACKENDS)
+    if unknown:
+        parser.error(
+            f"unsupported --backends value(s): {', '.join(unknown)}. "
+            f"Choose from: {', '.join(sorted(_SUPPORTED_BACKENDS))}."
+        )
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
