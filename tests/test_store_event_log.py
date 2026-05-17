@@ -168,3 +168,19 @@ def test_count() -> None:
     log.append(_make_item("i1"))
     log.append(_make_item("i2"))
     assert log.count() == 2
+
+
+def test_close_is_noop_and_idempotent() -> None:
+    log = InMemoryEventLog()
+    log.append(_make_item("i1"))
+    log.close()
+    log.close()  # idempotent
+    # State is preserved — close() is a no-op for in-memory backends.
+    assert log.get("i1").text == "text"
+
+
+def test_context_manager_closes_and_preserves_state() -> None:
+    with InMemoryEventLog() as log:
+        log.append(_make_item("i1"))
+    # State survives __exit__ because close() is a no-op.
+    assert log.get("i1").id == "i1"

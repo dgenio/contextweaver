@@ -29,6 +29,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` |
 | `store/` | In-memory data stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`, `StoreBundle` |
+| `store/_sqlite_base.py` | Shared SQLite connection + migration scaffolding (WAL, `foreign_keys=ON`, `_contextweaver_schema_version` table). Reused by every SQLite-backed store (issue #174). |
+| `store/sqlite_event_log.py` | `SqliteEventLog` — first persistent `EventLog` backend; single-process, sync, append-only, schema-versioned (issue #223). |
+| `store/json_file_artifacts.py` | `JsonFileArtifactStore` — filesystem `ArtifactStore` backend; `{handle}.data` + `{handle}.json` per artifact, re-instantiable against an existing directory (issue #42). |
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
 | `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline) |
