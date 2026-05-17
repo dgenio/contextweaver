@@ -142,6 +142,53 @@ def test_make_choice_cards_score_desc_id_asc_ordering() -> None:
     assert [c.id for c in cards] == ["t_aaa", "t_mmm", "t_zzz"]
 
 
+def test_make_choice_cards_byte_identical_stable_order() -> None:
+    """Issue #218: identical inputs produce byte-identical JSON across calls.
+
+    Adopters using Anthropic / OpenAI / Google prompt-caching depend on the
+    tool-definition prefix being byte-stable across requests. This regression
+    test locks the ``make_choice_cards`` invariant: same input items + same
+    scores + same tuning ⇒ same serialised bytes.
+    """
+    import json
+
+    # Inputs are constructed in a non-trivial order to exercise the sort.
+    items = [
+        _item("z_tool", description="last alphabetical"),
+        _item("a_tool", description="first alphabetical"),
+        _item("m_tool", description="middle alphabetical"),
+        _item("tied_a", description="tied score, lower id"),
+        _item("tied_b", description="tied score, higher id"),
+    ]
+    scores = {
+        "z_tool": 0.7,
+        "a_tool": 0.9,
+        "m_tool": 0.5,
+        "tied_a": 0.3,
+        "tied_b": 0.3,
+    }
+
+    cards1 = make_choice_cards(items, scores=scores)
+    cards2 = make_choice_cards(items, scores=scores)
+
+    # Structural equality of the full list.
+    assert [c.to_dict() for c in cards1] == [c.to_dict() for c in cards2]
+
+    # Byte-identical serialisation — what prompt-cache prefix relies on.
+    bytes1 = json.dumps([c.to_dict() for c in cards1], sort_keys=True).encode("utf-8")
+    bytes2 = json.dumps([c.to_dict() for c in cards2], sort_keys=True).encode("utf-8")
+    assert bytes1 == bytes2
+
+    # Expected ordering: score desc, id asc (ties: tied_a before tied_b).
+    assert [c.id for c in cards1] == [
+        "a_tool",
+        "z_tool",
+        "m_tool",
+        "tied_a",
+        "tied_b",
+    ]
+
+
 def test_make_choice_cards_no_schemas_in_output() -> None:
     items = [_item("t1", args_schema={"type": "object", "properties": {"x": {"type": "int"}}})]
     cards = make_choice_cards(items)

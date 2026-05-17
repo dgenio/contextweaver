@@ -125,6 +125,20 @@ composed FastMCP servers.
 
 ---
 
+## "I already have an OpenAI / Anthropic / Gemini agent and want to drop contextweaver in."
+
+**Use the provider-message adapters.** They take your existing chat history
+(plain dicts, no SDK import required) and produce a populated
+`ContextManager` in one call — five lines including imports.
+
+Concrete next step:
+[Adopting from an existing chat history](quickstart.md#adopting-from-an-existing-chat-history-5-line-drop-in)
+shows the OpenAI, Anthropic, and Gemini variants side-by-side. The adapters
+ship inverse functions so you can hand the rebuilt array back to the
+provider SDK without changing the rest of your loop.
+
+---
+
 ## "I need to wrap my existing Python callables — no protocol."
 
 **Use the bring-your-own-tools recipe.** It's the canonical adapter shape:

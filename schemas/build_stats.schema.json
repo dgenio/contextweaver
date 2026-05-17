@@ -1,0 +1,40 @@
+{
+  "$id": "https://dgenio.github.io/contextweaver/schemas/v0/build_stats.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Diagnostic statistics produced by a context build pass.",
+  "properties": {
+    "dedup_removed": {
+      "type": "integer"
+    },
+    "dependency_closures": {
+      "type": "integer"
+    },
+    "dropped_count": {
+      "type": "integer"
+    },
+    "dropped_reasons": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "header_footer_tokens": {
+      "type": "integer"
+    },
+    "included_count": {
+      "type": "integer"
+    },
+    "tokens_per_section": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "total_candidates": {
+      "type": "integer"
+    }
+  },
+  "title": "BuildStats",
+  "type": "object"
+}

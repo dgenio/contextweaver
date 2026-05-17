@@ -60,6 +60,13 @@ jobs:
         # numbers, which would otherwise make the check non-portable.
         run: python scripts/render_scorecard.py --check
 
+      - name: Schema drift check (gating, issue #225)
+        # Regenerates schemas from dataclasses and fails the build if the
+        # committed files differ.  This is the contract gate that catches
+        # dataclass-field changes that forget to update schemas/ and
+        # docs/schemas/v0/.
+        run: python scripts/gen_schemas.py --check
+
       - name: Weaver-spec conformance
         # Round-trip + JSON-Schema validation against the canonical contracts
         # published at https://weaver-spec.dev/contracts/v0/. Gating because

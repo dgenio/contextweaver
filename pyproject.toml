@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.4.0"
+version = "0.5.0"
 description = "Dynamic context management for tool-using AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,14 +43,19 @@ classifiers = [
 # gating them behind extras forced every caller through a guarded-import
 # dance.  ``tiktoken``, ``PyYAML``, ``rank-bm25`` are broadly used in GenAI
 # stacks (often already pulled in transitively) and unblock default behaviour
-# the library would otherwise have to approximate.  Other heavy or
-# runtime-specific packages remain under [project.optional-dependencies].
+# the library would otherwise have to approximate.  ``typer`` and ``rich``
+# moved into core in v0.5 alongside the Typer CLI rewrite (#221) — the CLI
+# is one of the project's primary user touchpoints and the ``_HAS_RICH``
+# guarded-import dance had become its own maintenance burden.  Other heavy
+# or runtime-specific packages remain under [project.optional-dependencies].
 dependencies = [
     "tiktoken>=0.5",
     "PyYAML>=6.0",
     "rank-bm25>=0.2",
     "mcp>=1.0",
     "jsonschema>=4.0",
+    "typer>=0.9",
+    "rich>=13.0",
 ]
 
 [project.urls]
@@ -100,12 +105,11 @@ docs = [
     "mkdocs-literate-nav>=0.6",
     "mkdocs-section-index>=0.3",
 ]
-# Enhanced CLI: rich-formatted output (tree, tables) for the existing argparse CLI.
-# A typer-based rewrite of __main__.py is tracked separately under the v0.6 milestone;
-# do not add typer here until that work lands so the extra reflects what users actually get.
-cli = [
-    "rich>=13.0",
-]
+# Deprecated empty alias.  Typer + Rich became core deps in v0.5 (#221), so
+# ``pip install 'contextweaver[cli]'`` is now equivalent to a plain install.
+# Kept as a no-op for one cycle so existing requirements pins do not break;
+# scheduled for removal in v0.6.
+cli = []
 # Fuzzy lexical retrieval backend (rapidfuzz) — supplements the default BM25
 # scorer for typo / abbreviation tolerance.
 retrieval = [
@@ -123,10 +127,14 @@ ann = [
 # purpose — the contract is "if you want the SQLite stores, install this
 # extra" even though it currently adds no third-party deps.
 sqlite = []
-# OpenTelemetry tracing + metrics export.
+# OpenTelemetry tracing + metrics export with native GenAI semantic
+# conventions (#224).  Pinned at >=1.27 because the
+# ``opentelemetry.semconv.attributes.gen_ai_attributes`` module landed in
+# that release — older floors require hand-typing the attribute strings.
 otel = [
-    "opentelemetry-api>=1.20",
-    "opentelemetry-sdk>=1.20",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-semantic-conventions>=0.48b0",
 ]
 # NetworkX-backed graph ops. Reserved; no functional code references these yet.
 graph = [
@@ -134,7 +142,6 @@ graph = [
 ]
 # Convenience: install every optional capability at once.
 all = [
-    "contextweaver[cli]",
     "contextweaver[retrieval]",
     "contextweaver[ann]",
     "contextweaver[otel]",
@@ -197,6 +204,14 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "typer.*"
 ignore_missing_imports = true
+
+# Typer's ``@app.command()`` decorator is typed as a generic callable in 0.9-
+# 0.12, which trips ``disallow_untyped_decorators`` under strict mypy.
+# Carve out ``__main__`` (the only Typer consumer) rather than disable the
+# strictness globally.
+[[tool.mypy.overrides]]
+module = "contextweaver.__main__"
+disallow_untyped_decorators = false
 
 # weaver_contracts does not ship a py.typed marker; treat as untyped for mypy
 # while still being a real installed package the adapter can import.

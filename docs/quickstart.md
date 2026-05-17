@@ -12,6 +12,55 @@ Time budget:
 - Try tool routing: 2 minutes
 - What to try next: 1 minute
 
+## Adopting from an existing chat history (5-line drop-in)
+
+> **Already have an OpenAI, Anthropic, or Gemini agent?** You don't need to
+> walk the full quickstart — drop contextweaver in front of your existing
+> message history with one call. The full walkthrough below is for new agents.
+
+If you have an OpenAI Chat Completions session saved as JSON, you can build
+a context pack in five lines (plus imports):
+
+```python
+import json
+from contextweaver.adapters.openai_messages import from_openai_messages
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import Phase
+
+mgr = ContextManager()
+from_openai_messages(json.load(open("session.json")), into=mgr)
+pack = mgr.build_sync(phase=Phase.answer, query="What did we decide?")
+print(pack.prompt)
+```
+
+The adapter handles every OpenAI Chat Completions role — `system`, `user`,
+`assistant` (with optional `tool_calls`), `tool` — and threads
+`tool_call_id` ↔ `ContextItem.id` so `to_openai_messages(...)` is the exact
+inverse for round-tripping back into the OpenAI SDK.
+
+Anthropic and Google Gemini have sibling adapters with the same shape:
+
+```python
+from contextweaver.adapters.anthropic_messages import from_anthropic_messages
+from contextweaver.adapters.gemini_contents import from_gemini_contents
+
+# Anthropic Messages API: content blocks (text / tool_use / tool_result)
+from_anthropic_messages(anthropic_messages, into=mgr)
+
+# Google Gemini: contents[].parts[] (text / functionCall / functionResponse)
+from_gemini_contents(gemini_contents, into=mgr)
+```
+
+All three adapters are pure stateless converters — they accept plain `dict`s
+and never import a provider SDK at module load time. Session payloads may
+contain sensitive prompt content; the adapters do not log message bodies
+above `DEBUG` level.
+
+> **Want to keep working with the provider SDK after building a pack?** Each
+> adapter ships an inverse: `to_openai_messages`, `to_anthropic_messages`,
+> `to_gemini_contents`. Round-trip equality holds for the representative
+> fixtures in `tests/test_adapters_*.py`.
+
 ## 1. Prerequisites (30 seconds)
 
 `contextweaver` requires Python 3.10 or newer.

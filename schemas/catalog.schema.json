@@ -1,0 +1,80 @@
+{
+  "$id": "https://dgenio.github.io/contextweaver/schemas/v0/catalog.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "additionalProperties": false,
+    "description": "A unified representation of a tool, agent, skill, or internal function.",
+    "properties": {
+      "args_schema": {
+        "additionalProperties": {},
+        "type": "object"
+      },
+      "constraints": {
+        "additionalProperties": {},
+        "type": "object"
+      },
+      "cost_hint": {
+        "type": "number"
+      },
+      "description": {
+        "type": "string"
+      },
+      "examples": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": [
+          "tool",
+          "agent",
+          "skill",
+          "internal"
+        ]
+      },
+      "metadata": {
+        "additionalProperties": {},
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "namespace": {
+        "type": "string"
+      },
+      "output_schema": {
+        "anyOf": [
+          {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "side_effects": {
+        "type": "boolean"
+      },
+      "tags": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "description",
+      "id",
+      "kind",
+      "name"
+    ],
+    "type": "object"
+  },
+  "title": "contextweaver catalog (SelectableItem[])",
+  "type": "array"
+}
