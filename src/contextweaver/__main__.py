@@ -126,8 +126,11 @@ def _restore_manager_from_session(session_path: str, budget_tokens: int) -> Cont
             answer=budget_tokens,
         )
     )
-    for raw_event in session.get("events", []):
-        item = ContextItem.from_dict(raw_event)
+    for idx, raw_event in enumerate(session.get("events", []), 1):
+        try:
+            item = ContextItem.from_dict(raw_event)
+        except Exception as exc:
+            raise ValueError(f"{session_path}: session event {idx}: {exc}") from exc
         mgr.ingest(item)
     for key, value in session.get("facts", {}).items():
         mgr.add_fact(key, value)

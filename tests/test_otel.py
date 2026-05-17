@@ -200,9 +200,42 @@ def test_experimental_flag_defaults_off() -> None:
 
     hook = OTelEventHook(service_name="cw-test")
     assert hook._emit_experimental is False
-    # Calling with the flag flips the bit but doesn't (yet) change emission shape.
     enabled = OTelEventHook(service_name="cw-test", otel_emit_experimental=True)
     assert enabled._emit_experimental is True
+
+
+@pytest.mark.skipif(not HAS_OTEL, reason="opentelemetry not installed ([otel] extra)")
+def test_experimental_flag_gates_prompt_in_span(span_exporter: InMemorySpanExporter) -> None:
+    """``otel_emit_experimental=True`` must include prompt text; ``False`` must not."""
+    from contextweaver.envelope import BuildStats, ContextPack
+    from contextweaver.extras.otel import OTelEventHook
+    from contextweaver.types import Phase
+
+    prompt_text = "find all overdue invoices for ACME Corp"
+    pack = ContextPack(
+        prompt=prompt_text,
+        stats=BuildStats(total_candidates=1, included_count=1),
+        phase=Phase.answer,
+    )
+
+    # Default (experimental off) → prompt must NOT appear.
+    OTelEventHook(service_name="cw-test").on_context_built(pack)
+    spans_off = span_exporter.get_finished_spans()
+    for span in spans_off:
+        assert "contextweaver.prompt.rendered" not in (span.attributes or {})
+
+    span_exporter.clear()
+
+    # Experimental on → prompt MUST appear.
+    OTelEventHook(service_name="cw-test", otel_emit_experimental=True).on_context_built(pack)
+    spans_on = span_exporter.get_finished_spans()
+    found = False
+    for span in spans_on:
+        attrs = dict(span.attributes or {})
+        if "contextweaver.prompt.rendered" in attrs:
+            assert attrs["contextweaver.prompt.rendered"] == prompt_text
+            found = True
+    assert found, "experimental span must include contextweaver.prompt.rendered"
 
 
 @pytest.mark.skipif(not HAS_OTEL, reason="opentelemetry not installed ([otel] extra)")

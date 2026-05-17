@@ -67,6 +67,12 @@ if TYPE_CHECKING:
 try:
     from opentelemetry import metrics as _otel_metrics
     from opentelemetry import trace as _otel_trace
+
+    # GenAI SemConv lives under ``_incubating`` while upstream status is
+    # "Development".  Pinned via ``opentelemetry-semantic-conventions-ai``
+    # or ``opentelemetry-semantic-conventions>=0.48b0`` in pyproject.toml
+    # ``[otel]`` extra.  If upstream graduates to stable, only this import
+    # path changes — emitted attribute *names* are already spec-stable.
     from opentelemetry.semconv._incubating.attributes import gen_ai_attributes as _ga
     from opentelemetry.semconv._incubating.metrics import gen_ai_metrics as _gm
 except ImportError as _otel_import_err:  # pragma: no cover - exercised only when extra is missing
@@ -163,6 +169,10 @@ class OTelEventHook:
             "contextweaver.candidates.dropped": stats.dropped_count,
             "contextweaver.candidates.dedup_removed": stats.dedup_removed,
         }
+        if self._emit_experimental:
+            # Experimental: include the rendered prompt.  PII-prone — only
+            # enable when the observability backend is trusted.
+            attrs["contextweaver.prompt.rendered"] = pack.prompt
         with self._tracer.start_as_current_span(GEN_AI_OPERATION_INVOKE_AGENT, attributes=attrs):
             pass
         # Histogram per SemConv: tag with operation.name + token.type.

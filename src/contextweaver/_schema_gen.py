@@ -19,6 +19,13 @@ subset of Python typing used by contextweaver's public envelope types:
 Anything outside this subset raises :class:`TypeError` so unsupported field
 types fail loud during ``make schemas`` rather than producing a vague /
 silently-wrong schema.
+
+.. note::
+   This module exceeds the 300-line soft cap (~360 lines).  The generator's
+   ``_python_type_to_schema`` dispatch and the ``$defs``-collection logic are
+   tightly coupled — splitting into two files would scatter the type→schema
+   mapping without a clean module boundary.  Exempt per ``AGENTS.md`` §Coding
+   Style (alongside ``types.py``, ``envelope.py``, ``__main__.py``).
 """
 
 from __future__ import annotations
