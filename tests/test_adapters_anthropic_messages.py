@@ -301,7 +301,28 @@ def test_roundtrip_preserves_unknown_block_fields_like_cache_control() -> None:
 
 
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
-    """No provider SDK leaked into sys.modules through the adapter import."""
-    assert "anthropic" not in sys.modules
-    assert "openai" not in sys.modules
-    assert "google.generativeai" not in sys.modules
+    """No provider SDK leaked into sys.modules through the adapter import.
+
+    Runs in a fresh subprocess so the invariant is independent of whatever
+    other tests in the session may have pulled into ``sys.modules``
+    transitively.
+    """
+    import subprocess
+
+    script = (
+        "import sys\n"
+        "import contextweaver.adapters.anthropic_messages  # noqa: F401\n"
+        "assert 'anthropic' not in sys.modules\n"
+        "assert 'openai' not in sys.modules\n"
+        "assert 'google.generativeai' not in sys.modules\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"anthropic_messages leaked a provider SDK at import time: "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )

@@ -45,7 +45,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
-| `adapters/` | MCP, FastMCP, A2A, weaver-spec protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #194, #219, #222) |
+| `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #193, #194, #219, #222) |
+| `adapters/crewai.py` | CrewAI `BaseTool` (or equivalent plain-dict shape) ↔ `SelectableItem` (`crewai_tool_to_selectable`, `crewai_tools_to_catalog`, `infer_crewai_namespace`, `load_crewai_catalog`, issue #193) |
 | `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
 | `adapters/mcp_gateway.py` | Two-tool gateway dispatch (`tool_browse` + `tool_execute` + `tool_view`, issues #28 / #34) |
 | `adapters/mcp_proxy.py` | Transparent proxy dispatch (stripped `tools/list` + `tool_hydrate` + `tool_execute`, issue #13) |
@@ -56,6 +57,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | `adapters/openai_messages.py` | OpenAI Chat Completions `messages` ↔ `ContextItem` round-trip (`from_/to_openai_messages`, issue #219) |
 | `adapters/anthropic_messages.py` | Anthropic Messages API `messages` ↔ `ContextItem` round-trip (`from_/to_anthropic_messages`, issue #222) |
 | `adapters/gemini_contents.py` | Google Gemini `contents[]` ↔ `ContextItem` round-trip (`from_/to_gemini_contents`, issue #222) |
+| `extras/otel.py` | OpenTelemetry GenAI integration (`OTelEventHook` — `invoke_agent` / `execute_tool` spans + GenAI SemConv attributes, gated behind the `[otel]` extra, issue #224). |
+| `extras/memory/` | External-memory backend adapters that implement `EpisodicStore` / `FactStore` against an existing long-lived memory deployment without widening the Protocols (issue #195). |
+| `extras/memory/mem0.py` | `Mem0EpisodicStore` + `Mem0FactStore` — wrap a `mem0.Memory` instance scoped by `user_id`; writes go through `Memory.add(infer=False)` and items are stamped with `cw_episode_id` / `cw_fact_id` metadata for canonical-ID resolution. Gated behind the `[mem0]` extra (issue #195). |
 | `__main__.py` | CLI: 8 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`). Typer + Rich (both core deps as of v0.5, issue #221). |
 
 ## Pipelines (summary)

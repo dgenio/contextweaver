@@ -79,6 +79,8 @@ nav:
       - OpenAI Agents SDK: integration_openai_adk.md
       - Google ADK / Vertex AI: integration_google_adk.md
       - Pipecat: integration_pipecat.md
+      - CrewAI: integration_crewai.md
+      - External Memory: integration_memory.md
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md
   - Contracts: contracts.md

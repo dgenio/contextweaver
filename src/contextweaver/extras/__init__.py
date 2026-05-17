@@ -9,6 +9,10 @@ Currently shipped:
 
 - :mod:`contextweaver.extras.otel` — OpenTelemetry tracing + metrics
   (``contextweaver[otel]``).
+- :mod:`contextweaver.extras.memory.mem0` — Mem0 ``EpisodicStore`` /
+  ``FactStore`` implementations (``contextweaver[mem0]``).  See
+  :mod:`contextweaver.extras.memory` for the external-memory backend
+  sub-package layout (issue #195).
 """
 
 from __future__ import annotations

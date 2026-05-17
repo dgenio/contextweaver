@@ -213,6 +213,28 @@ def test_two_function_calls_with_same_name_get_distinct_ids() -> None:
 
 
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
-    assert "google.generativeai" not in sys.modules
-    assert "openai" not in sys.modules
-    assert "anthropic" not in sys.modules
+    """Issue #222 design constraint: no provider SDK import at module level.
+
+    Runs in a fresh subprocess so the invariant is independent of whatever
+    other tests in the session may have pulled into ``sys.modules``
+    transitively.
+    """
+    import subprocess
+
+    script = (
+        "import sys\n"
+        "import contextweaver.adapters.gemini_contents  # noqa: F401\n"
+        "assert 'google.generativeai' not in sys.modules\n"
+        "assert 'openai' not in sys.modules\n"
+        "assert 'anthropic' not in sys.modules\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"gemini_contents leaked a provider SDK at import time: "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )

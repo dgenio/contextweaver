@@ -4,8 +4,8 @@ Provides thin, pure stateless adapters across three responsibility groups:
 
 1. **Protocol adapters** — convert external protocol data into
    contextweaver-native types and back: MCP (:mod:`.mcp`),
-   FastMCP (:mod:`.fastmcp`), A2A (:mod:`.a2a`), and weaver-spec
-   (:mod:`.weaver_contracts`).
+   FastMCP (:mod:`.fastmcp`), A2A (:mod:`.a2a`), weaver-spec
+   (:mod:`.weaver_contracts`), and CrewAI (:mod:`.crewai`).
 2. **Runtime modes** — front upstream MCP servers as a transparent
    proxy or two-tool gateway: :mod:`.proxy_runtime`, :mod:`.mcp_proxy`,
    :mod:`.mcp_gateway`, :mod:`.mcp_proxy_server`,
@@ -30,6 +30,12 @@ from contextweaver.adapters.a2a import (
 from contextweaver.adapters.anthropic_messages import (
     from_anthropic_messages,
     to_anthropic_messages,
+)
+from contextweaver.adapters.crewai import (
+    crewai_tool_to_selectable,
+    crewai_tools_to_catalog,
+    infer_crewai_namespace,
+    load_crewai_catalog,
 )
 from contextweaver.adapters.fastmcp import (
     fastmcp_tool_to_selectable,
@@ -94,6 +100,8 @@ __all__ = [
     "UpstreamCall",
     "a2a_agent_to_selectable",
     "a2a_result_to_envelope",
+    "crewai_tool_to_selectable",
+    "crewai_tools_to_catalog",
     "dispatch_meta_tool",
     "dispatch_proxy_request",
     "fastmcp_tool_to_selectable",
@@ -106,9 +114,11 @@ __all__ = [
     "from_weaver_frame",
     "from_weaver_routing_decision",
     "from_weaver_selectable_item",
+    "infer_crewai_namespace",
     "infer_fastmcp_namespace",
     "infer_namespace",
     "load_a2a_session_jsonl",
+    "load_crewai_catalog",
     "load_fastmcp_catalog",
     "load_mcp_session_jsonl",
     "make_gateway_meta_tools",

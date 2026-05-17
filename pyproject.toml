@@ -69,7 +69,9 @@ Discussions = "https://github.com/dgenio/contextweaver/discussions"
 [project.optional-dependencies]
 # Dev / test toolchain. Includes weaver_contracts + jsonschema so the
 # weaver-spec adapter (#143) and CI conformance check (#145) run on every PR
-# without requiring the [weaver-spec] runtime extra.
+# without requiring the [weaver-spec] runtime extra.  ``crewai`` and ``mem0ai``
+# are pulled in so the CrewAI adapter (#193) and Mem0 external-memory backend
+# (#195) are exercised against real upstream wire shapes on every CI run.
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -81,6 +83,8 @@ dev = [
     # 4.18 ships ``referencing`` — the conformance script's local $ref
     # resolver depends on it (PR #201 review).
     "jsonschema>=4.18",
+    "crewai>=0.80",
+    "mem0ai>=0.1",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -91,6 +95,14 @@ weaver-spec = [
 # FastMCP adapter integration.
 fastmcp = [
     "fastmcp>=2.0",
+]
+# CrewAI adapter integration (issue #193).  Pulls the CrewAI runtime so user
+# applications can import the live-discovery helper
+# (``contextweaver.adapters.crewai.load_crewai_catalog``).  The plain-dict
+# conversion path (``crewai_tool_to_selectable`` / ``crewai_tools_to_catalog``)
+# works without this extra installed.
+crewai = [
+    "crewai>=0.80",
 ]
 # LangChain integration examples.
 langchain = [
@@ -127,6 +139,15 @@ ann = [
 # purpose — the contract is "if you want the SQLite stores, install this
 # extra" even though it currently adds no third-party deps.
 sqlite = []
+# External-memory backend interop (issue #195).  Each backend implements the
+# existing ``EpisodicStore`` / ``FactStore`` protocols from
+# ``contextweaver.store.protocols`` without widening them.  Adapters live
+# under ``contextweaver.extras.memory.*``.  Only Mem0 is shipped today; Zep
+# and LangMem rows are listed in ``docs/integration_memory.md`` as
+# follow-ups against the same protocol surface.
+mem0 = [
+    "mem0ai>=0.1",
+]
 # OpenTelemetry tracing + metrics export with native GenAI semantic
 # conventions (#224).  Pinned at >=1.27 because the
 # ``opentelemetry.semconv.attributes.gen_ai_attributes`` module landed in
@@ -179,6 +200,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "fastmcp"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "crewai.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mem0.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

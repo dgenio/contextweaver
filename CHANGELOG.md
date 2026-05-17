@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CrewAI adapter — `adapters/crewai.py`** (#193, Phase 1).  New
+  thin stateless converter that turns CrewAI tool definitions (live
+  `crewai.tools.BaseTool` instances or the equivalent plain-dict
+  shape returned by `BaseTool.model_dump()`) into
+  `SelectableItem`s.  Ships `crewai_tool_to_selectable`,
+  `crewai_tools_to_catalog`, `infer_crewai_namespace`, and
+  `load_crewai_catalog`.  The dict-conversion path works without
+  the `[crewai]` extra installed; `load_crewai_catalog` consumes
+  live `BaseTool` instances when the extra is available.  New
+  `[crewai]` optional-dependency group + `crewai>=0.80` added to
+  `[dev]` so CI exercises the real upstream wire shape.  New
+  `docs/integration_crewai.md` integration guide and
+  `examples/crewai_adapter_demo.py` (wired into `make example`).
+  Follow-ups for Pydantic AI / smolagents / Agno tracked on the
+  same issue.
+- **Mem0 external-memory backend — `extras/memory/mem0.py`** (#195,
+  Phase 1).  `Mem0EpisodicStore` + `Mem0FactStore` implement the
+  existing `store.protocols.EpisodicStore` / `FactStore` Protocols
+  verbatim (no Protocol widening — see
+  `docs/agent-context/invariants.md`).  Writes go through
+  `mem0.Memory.add(infer=False)` so the raw text is stored as-is;
+  every record is stamped with `cw_episode_id` / `cw_fact_id` in
+  its metadata so canonical-ID resolution survives mem0's UUID
+  generation.  New `[mem0]` optional-dependency group + `mem0ai>=0.1`
+  added to `[dev]`.  New `docs/integration_memory.md` decision
+  matrix covering Mem0 / Zep / LangMem (the latter two follow-ups
+  against the same Protocol shape).  Documented in
+  `docs/cookbook.md` §6 and `docs/interop.md` interop matrix.
+
+### Changed
+
+- **Provider-SDK leak invariant tests run in a subprocess.**
+  `test_module_does_not_import_provider_sdk_at_load_time` in
+  `tests/test_adapters_openai_messages.py`,
+  `tests/test_adapters_anthropic_messages.py`, and
+  `tests/test_adapters_gemini_contents.py` previously asserted
+  the absence of `openai` / `anthropic` / `google.generativeai`
+  from `sys.modules` in the running session — which made the
+  assertion sensitive to whatever any other test (in our case
+  `tests/test_adapters_crewai.py`'s live `BaseTool` test, since
+  `crewai` transitively pulls `openai`) had already imported.
+  The tests now spawn a fresh interpreter, import only the
+  contextweaver adapter under test, and assert against that
+  process's `sys.modules`.  The invariant they check is now
+  independent of test ordering and other installed extras.
+
 ## [0.6.0] - 2026-05-17
 
 ### Fixed

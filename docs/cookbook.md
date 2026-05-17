@@ -10,6 +10,8 @@ The recipes:
 2. [A2A multi-agent session](#2-a2a-multi-agent-session)
 3. [Bring-your-own-tools](#3-bring-your-own-tools)
 4. [Firewall + drilldown for large tool outputs](#4-firewall-drilldown-for-large-tool-outputs)
+5. [CrewAI routing — bounded tool shortlists for crews](#5-crewai-routing-bounded-tool-shortlists-for-crews)
+6. [External memory backend — Mem0 / Zep / LangMem](#6-external-memory-backend)
 
 If you are evaluating where contextweaver fits in your runtime, start with
 the [How contextweaver Fits](interop.md) page first; come back here for
@@ -264,6 +266,59 @@ This is tracked as a known sharp edge — see the recipe's module docstring.
 
 ---
 
+## 5. CrewAI routing — bounded tool shortlists for crews
+
+**Goal.** Take a crew's full tool registry, convert it into a
+contextweaver `Catalog`, route each task to a top-`k` shortlist, and
+hand only that shortlist to the agent's `BaseTool` list — so the LLM's
+system prompt never carries every tool's schema.
+
+**Use this when:** your crew has 10+ tools and you see prompts ballooning
+past 4 K tokens before any reasoning happens.
+
+The repo already ships a runnable demo:
+
+```bash
+python examples/crewai_adapter_demo.py
+```
+
+Full walkthrough (including the firewall-wrap pattern for `_run`):
+[CrewAI Integration](integration_crewai.md).
+
+---
+
+## 6. External memory backend
+
+**Goal.** Plug an existing [Mem0](https://docs.mem0.ai/) deployment as
+the backing `EpisodicStore` / `FactStore` so contextweaver compiles
+per-turn prompts over memory you've already invested in — instead of
+the bundled in-memory or SQLite stores.
+
+**Use this when:** your agent already maintains long-lived memory in
+Mem0 (or [Zep](https://www.getzep.com/) / [LangMem](https://langchain-ai.github.io/langmem/)
+when those adapters land) and you don't want a second persistence
+layer to keep in sync.
+
+```python
+from mem0 import Memory
+
+from contextweaver.extras.memory.mem0 import Mem0EpisodicStore, Mem0FactStore
+from contextweaver.context.manager import ContextManager
+from contextweaver.store import StoreBundle
+
+memory = Memory()  # your existing mem0 client
+bundle = StoreBundle(
+    episodic=Mem0EpisodicStore(memory, user_id="agent:support-bot"),
+    facts=Mem0FactStore(memory, user_id="agent:support-bot"),
+)
+ctx_mgr = ContextManager(store_bundle=bundle)
+```
+
+Full walkthrough, decision matrix, and the Zep / LangMem follow-up
+status: [External Memory Backends](integration_memory.md).
+
+---
+
 ## See also
 
 - [How contextweaver Fits](interop.md) — boundary, hook points, non-goals
@@ -274,5 +329,7 @@ This is tracked as a known sharp edge — see the recipe's module docstring.
   [LangChain + LangGraph](integration_langchain.md) ·
   [OpenAI ADK](integration_openai_adk.md) ·
   [Google ADK](integration_google_adk.md) ·
-  [Pipecat](integration_pipecat.md)
+  [Pipecat](integration_pipecat.md) ·
+  [CrewAI](integration_crewai.md) ·
+  [External Memory](integration_memory.md)
 - Existing examples directory: [`examples/`](https://github.com/dgenio/contextweaver/tree/main/examples)
