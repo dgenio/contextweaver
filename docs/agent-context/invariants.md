@@ -11,9 +11,9 @@ These cause automatic rejection in review. No engineering judgment — they are 
 
 ## Must-Preserve Constraints
 
-### Zero runtime dependencies
+### Minimal core dependencies
 
-Core `install_requires` must remain empty. The library is stdlib-only for Python ≥ 3.10. Optional dependency groups via extras (e.g., `[dev]`, future `[llm]`) are acceptable.
+Core dependencies (`pyproject.toml` `dependencies`) must stay small, audited, and broadly used. Current core set: `tiktoken`, `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, `rich` — each justified inline in `pyproject.toml` (lines 39–50). A new core dep requires the same explicit justification: load-bearing for a primary user-facing surface (e.g. MCP for the gateway, Typer for the CLI) or so widely used in the ecosystem that it is effectively already installed. Heavy or runtime-specific packages (embedding backends, cloud SDKs, vector DBs) must remain under `[project.optional-dependencies]`. The original "zero runtime dependencies" invariant was relaxed in v0.4 (MCP / `jsonschema`) and v0.5 (`typer` / `rich`) when the guarded-import dance for load-bearing surfaces became its own maintenance burden; the discipline above replaces it.
 
 ### Async/sync boundary
 

@@ -7,10 +7,14 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
 
-> Phase-specific, budget-aware **context engineering** for tool-using AI agents
-> — context compilation with a context firewall plus bounded-choice tool routing.
+> **A context firewall and tool router for tool-heavy AI agents** — drop it
+> in front of your MCP servers; prompts stop drowning in tool schemas and
+> raw tool output.
+>
+> Under the hood: phase-specific, budget-aware **context engineering** —
+> context compilation with a context firewall plus bounded-choice tool routing.
 
-**600+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
+**1100+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 
 Install:
 
@@ -270,7 +274,7 @@ techniques, and performance optimisation tips.
 
 contextweaver is built for production use with comprehensive quality gates:
 
-- **600+ passing tests** across all modules — context pipeline, routing engine, firewall,
+- **1100+ passing tests** across all modules — context pipeline, routing engine, firewall,
   adapters, stores, CLI, sensitivity enforcement
 - **mypy strict** type checking — zero errors across all source files
 - **ruff clean** linting — zero warnings
@@ -302,7 +306,7 @@ Every architectural choice was made for a reason:
 
 | Decision | Reason |
 |---|---|
-| **Zero runtime dependencies** | No version conflicts, no supply-chain risks, no bloat. Works in any Python 3.10+ environment. |
+| **Minimal core dependencies** | A small, audited set of widely-used deps (`tiktoken`, `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, `rich`); no heavy ML / cloud-SDK packages pulled in by default. |
 | **Protocol-based interfaces** | `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` are `typing.Protocol` — swap backends without forking. |
 | **Async-first context engine** | Async-compatible compilation API for real-time integrations; `build_sync()` wrappers for synchronous callers, with room for future non-blocking execution. |
 | **Phase-specific token budgets** | Route / call / interpret / answer phases each get their own budget — no one-size-fits-all truncation. |
@@ -310,8 +314,8 @@ Every architectural choice was made for a reason:
 | **Dependency closure** | `parent_id` chains keep tool results coherent — tool calls are never separated from their results. |
 
 > These aren't accidental features. They are design decisions optimized for reliability,
-> extensibility, and production use. Zero dependencies means you can adopt contextweaver
-> without disrupting your existing stack.
+> extensibility, and production use. A minimal, audited core-dependency set means you
+> can adopt contextweaver without disrupting your existing stack.
 
 See [docs/architecture.md](docs/architecture.md) for full pipeline detail and design rationale.
 
@@ -439,7 +443,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 - Routing Engine: Catalog, DAG builder, beam-search router, choice cards
 - Protocol adapters: MCP (full content types, structured content, output schemas) and A2A
 - Stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` with protocol-based interfaces
-- 600+ passing tests, mypy strict, ruff clean, minimal core dependencies
+- 1100+ passing tests, mypy strict, ruff clean, minimal core dependencies
 
 **v0.2 (🚧 In Progress — Q2 2026)**
 
