@@ -7,22 +7,56 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
 
-> **A context firewall and tool router for tool-heavy AI agents** — drop it
-> in front of your MCP servers; prompts stop drowning in tool schemas and
-> raw tool output.
->
-> Under the hood: phase-specific, budget-aware **context engineering** —
-> context compilation with a context firewall plus bounded-choice tool routing.
+> **A context firewall and tool router for tool-heavy AI agents.**
 
-**1100+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
+contextweaver stops your agent from sending every tool schema, every old
+turn, and every raw tool result to the model. It compiles only the context
+needed for the current phase — `route`, `call`, `interpret`, or `answer`.
 
-Install:
+**Per-phase context compilation:**
+
+- **Route** → compact tool cards (`ChoiceCards`), no full schemas.
+- **Call** → just the schema for the chosen tool.
+- **Interpret** → tool result, with raw blobs firewalled out-of-band and summarised or drilled into on demand.
+- **Answer** → phase-relevant history + dependency closure (tool calls stay paired with their results), packed to a configurable token budget.
+
+**Benchmark proof:** **41.6 % – 74.5 % token reduction** (average 55.8 %)
+versus a naïve concatenate-everything baseline (`tiktoken.cl100k_base`),
+measured across the four committed benchmark scenarios. Reproducible with
+`make benchmark-matrix && make scorecard` — full methodology in
+[`benchmarks/scorecard.md`](benchmarks/scorecard.md) and
+[`scripts/baseline_naive.py`](scripts/baseline_naive.py).
+
+### Try it in 30 seconds
 
 ```bash
 pip install contextweaver
+contextweaver demo                  # end-to-end demo of both engines
+python examples/before_after.py     # side-by-side token comparison (≈70 % reduction)
 ```
 
-[📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md)
+[📖 Docs](https://dgenio.github.io/contextweaver) · [📊 Benchmark scorecard](benchmarks/scorecard.md) · [📦 Examples](examples/) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md)
+
+**1100+ tests · minimal core dependencies · deterministic by default · Python ≥ 3.10**
+
+---
+
+## What contextweaver is — and isn't
+
+contextweaver is a layer that sits **beside** your agent framework, your MCP
+servers, and your retrieval stack — not a replacement for any of them.
+
+| It is | It is not |
+|---|---|
+| A **context-compilation** layer for the four agent phases (`route` / `call` / `interpret` / `answer`) | An agent framework (use LangGraph, CrewAI, Pydantic AI, OpenAI Agents SDK, …) |
+| A **context firewall** for raw tool outputs — large blobs stored out-of-band, summarised or drilled into on demand | A memory database (use Mem0, Zep, LangMem, …) |
+| A **tool router** producing `ChoiceCards` — compact tool descriptors with no full schemas | An LLM wrapper or client SDK (use the official OpenAI / Anthropic / Gemini SDKs) |
+| A composable layer that interoperates with MCP, LangChain, LlamaIndex, FastMCP, A2A | A generic RAG / vector-search library |
+
+Events and tools go in; a bounded, phase-specific prompt comes out. See
+[Which pattern fits?](docs/which_pattern.md) for when contextweaver helps
+and when another tool is a better fit, and [Cookbook](docs/cookbook.md)
+for end-to-end recipes (FastMCP routing, firewall + drilldown, BYO tools).
 
 ---
 
@@ -245,8 +279,6 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based agent crews with bounded tool shortlists |
-| External memory (Mem0) | [Guide](docs/integration_memory.md) | Plug an existing Mem0 deployment as the `EpisodicStore` / `FactStore` |
 
 ---
 
@@ -377,8 +409,6 @@ contextweaver works with any LLM provider and any agent framework:
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based agent crews with bounded tool shortlists |
-| External memory (Mem0) | [Guide](docs/integration_memory.md) | Plug an existing Mem0 deployment as the `EpisodicStore` / `FactStore` |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -481,7 +511,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 | **LangChain ConversationBufferMemory** | ❌ No | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
 | **LangChain ConversationSummaryMemory** | ⚠️ LLM-based | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
 | **LlamaIndex ContextManager** | ⚠️ Partial | ❌ No | ❌ No | ❌ No (LlamaIndex only) | Many |
-| **contextweaver** | ✅ Yes (phase-specific budgets) | ✅ Yes (bounded DAG) | ✅ Yes (out-of-band storage) | ✅ Yes | None |
+| **contextweaver** | ✅ Yes (phase-specific budgets) | ✅ Yes (bounded DAG) | ✅ Yes (out-of-band storage) | ✅ Yes | Minimal core |
 
 > Most frameworks offer memory classes, but they don't enforce token budgets, route tools, or
 > handle large outputs. contextweaver provides all three as a composable, framework-agnostic layer.
@@ -500,8 +530,6 @@ contextweaver route --graph g.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
-contextweaver stats --session session.json --format text
-contextweaver budget-check --session session.json --phase answer --max-tokens 4000
 ```
 
 ## Examples
@@ -549,12 +577,8 @@ to any LLM or framework. See dedicated guides for
 [LlamaIndex](docs/integration_llamaindex.md),
 [LangChain + LangGraph](docs/integration_langchain.md),
 [OpenAI Agents SDK](docs/integration_openai_adk.md),
-[Google ADK / Vertex AI](docs/integration_google_adk.md),
-[Pipecat](docs/integration_pipecat.md), and
-[CrewAI](docs/integration_crewai.md).  Already running a long-lived
-memory layer? Adapt
-[Mem0](docs/integration_memory.md) onto the `EpisodicStore` / `FactStore`
-protocols.  If your runtime isn't listed, the
+[Google ADK / Vertex AI](docs/integration_google_adk.md), and
+[Pipecat](docs/integration_pipecat.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 
