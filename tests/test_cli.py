@@ -7,17 +7,21 @@ temp files on the fly.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
 def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
         [sys.executable, "-m", "contextweaver", *args],
         capture_output=True,
         text=True,
         cwd=cwd,
+        env=env,
     )
 
 
@@ -34,7 +38,7 @@ def test_no_args_prints_help() -> None:
     # Typer's convention.  Accept either to keep the test useful as a
     # smoke check regardless of which framework is in use.
     assert result.returncode in (0, 2)
-    output = (result.stdout + result.stderr).lower()
+    output = ((result.stdout or "") + (result.stderr or "")).lower()
     assert "contextweaver" in output or "usage" in output
 
 
