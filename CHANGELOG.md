@@ -60,6 +60,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and PII-safety guidance. Default emission is PII-safe; experimental
   attributes gated behind `otel_emit_experimental=False`. Tests use
   `InMemorySpanExporter` for deterministic SemConv-name assertions.
+- **One-shot provider-message ingestion adapters** (#194, #219, #222). Three
+  new sibling modules under `src/contextweaver/adapters/` —
+  `openai_messages.py`, `anthropic_messages.py`, `gemini_contents.py` — each
+  shipping a `from_*` decoder (plain provider dicts → `ContextItem`s with
+  `parent_id` chains, optional `into=ContextManager` for direct ingestion)
+  and a `to_*` inverse for round-tripping back into the provider SDK. Users
+  with existing OpenAI / Anthropic / Gemini agents can now drop contextweaver
+  in with 5 lines (excluding imports). No provider SDKs are imported at
+  module load time; adapters operate on plain `dict`s per the `adapters/`
+  path convention. Round-trip equality is enforced by parametrised fixture
+  tests for every provider (`tests/test_adapters_*_messages.py`,
+  `tests/test_adapters_gemini_contents.py`).
+- **Quickstart "Adopting from an existing chat history" section** (#220).
+  `docs/quickstart.md` now leads with a 5-line drop-in snippet for adopters
+  arriving with an existing OpenAI / Anthropic / Gemini session. `README.md`
+  Quickstart and `docs/which_pattern.md` cross-link to it.
+- **`make_choice_cards` byte-stable ordering contract** (#218). The existing
+  `(-score, +id)` ordering is now an explicit guarantee in the docstring and
+  is locked by a regression test
+  (`test_make_choice_cards_byte_identical_stable_order`) that asserts
+  byte-identical JSON across two consecutive calls on the same input. New
+  "Prompt-caching compatibility" section in `docs/integration_mcp.md`
+  documents how to leverage this for Anthropic `cache_control` prefixes
+  (and the OpenAI / Google equivalents).
+- **"Context engineering" positioning in docs landing** (#217). The
+  `docs/index.md` tagline and a new "Why context engineering matters"
+  callout in `docs/architecture.md` establish the discipline framing
+  alongside the existing README headline (already updated in 0.4.0) and the
+  `context-engineering` keyword in `pyproject.toml`.
 
 ### Changed
 
