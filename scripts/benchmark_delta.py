@@ -137,13 +137,16 @@ def _render_matrix_section(base: dict[str, Any], head: dict[str, Any]) -> str:
         b = base_idx.get((backend, size), {})
         h = head_idx.get((backend, size), b)
         # Skip-cells carry zeroed metrics by design (e.g. fuzzy with no
-        # rapidfuzz). Treating them as accuracy/latency regressions would
-        # produce false-positive ⚠️ markers on every PR; emit a single
-        # "skipped" row that surfaces the reason text instead.
-        head_status = str(h.get("status", ""))
-        base_status = str(b.get("status", ""))
-        if head_status or base_status:
-            reason = head_status or base_status
+        # rapidfuzz, status="skipped: ..."). Treating them as accuracy/
+        # latency regressions would produce false-positive ⚠️ markers on
+        # every PR; emit a single "skipped" row that surfaces the reason
+        # instead. Real cells carry status="ok" (the MatrixCell default in
+        # benchmarks/benchmark.py), so the gate is status != "ok",
+        # aligning with scripts/render_scorecard.py's existing convention.
+        head_status = str(h.get("status", "ok"))
+        base_status = str(b.get("status", "ok"))
+        if head_status != "ok" or base_status != "ok":
+            reason = head_status if head_status != "ok" else base_status
             lines.append(f"| {backend} | {size} | _skipped_ ({reason}) | — | — |")
             continue
         br = float(b.get("recall_at_k", 0.0))

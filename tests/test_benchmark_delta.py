@@ -52,8 +52,16 @@ def test_matrix_delta_renders_skipped_row_for_status_bearing_cell() -> None:
     assert "⚠️" not in out
 
 
-def test_matrix_delta_real_cells_still_render_metrics() -> None:
-    """Status-less cells still produce a full recall/MRR/latency row."""
+def test_matrix_delta_ok_cells_render_metrics() -> None:
+    """Cells with the canonical ``status="ok"`` must render full metrics.
+
+    Regression: an earlier version of `_render_matrix_section` checked
+    `if head_status or base_status`, which matched every real cell
+    (``MatrixCell.status`` defaults to ``"ok"``) and suppressed every
+    metric row. The benchmark-delta bot comment on PR #235 caught this
+    in production. The gate is now `status != "ok"`, aligned with
+    `scripts/render_scorecard.py`.
+    """
     base = _payload(
         [
             {
@@ -62,6 +70,7 @@ def test_matrix_delta_real_cells_still_render_metrics() -> None:
                 "recall_at_k": 0.5,
                 "mrr": 0.4,
                 "latency_ms_p99": 1.0,
+                "status": "ok",
             }
         ]
     )
@@ -73,13 +82,43 @@ def test_matrix_delta_real_cells_still_render_metrics() -> None:
                 "recall_at_k": 0.5,
                 "mrr": 0.4,
                 "latency_ms_p99": 1.0,
+                "status": "ok",
             }
         ]
     )
     out = _render_matrix_section(base, head)
-    # Numeric markers present, no skipped marker, no regression marker.
+    # Numeric markers present; no skipped marker for "ok" cells.
     assert "_skipped_" not in out
     assert "0.5000" in out
+
+
+def test_matrix_delta_missing_status_treated_as_ok() -> None:
+    """Backwards-compatibility: a cell with no `status` field still renders metrics."""
+    base = _payload(
+        [
+            {
+                "backend": "bm25",
+                "catalog_size": 100,
+                "recall_at_k": 0.3,
+                "mrr": 0.2,
+                "latency_ms_p99": 5.0,
+            }
+        ]
+    )
+    head = _payload(
+        [
+            {
+                "backend": "bm25",
+                "catalog_size": 100,
+                "recall_at_k": 0.3,
+                "mrr": 0.2,
+                "latency_ms_p99": 5.0,
+            }
+        ]
+    )
+    out = _render_matrix_section(base, head)
+    assert "_skipped_" not in out
+    assert "0.3000" in out
 
 
 def test_matrix_delta_empty_payload_returns_empty_string() -> None:
