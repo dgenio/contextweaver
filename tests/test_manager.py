@@ -438,6 +438,104 @@ def test_build_route_prompt_sync_alias() -> None:
 
 
 # ---------------------------------------------------------------------------
+# build_route_prompt history-aware (issue #27)
+# ---------------------------------------------------------------------------
+
+
+def test_build_route_prompt_with_no_tool_results_produces_no_history_adjustments() -> None:
+    """First routing call in a session: log has no tool results → no history."""
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    router = Router(graph, items=items)
+
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="read database"))
+    mgr = ContextManager(event_log=log)
+    _, _, result = mgr.build_route_prompt(
+        goal="Find data tools", query="read database", router=router
+    )
+    assert result.history_adjustments == {}
+
+
+def test_build_route_prompt_auto_constructs_history_from_event_log() -> None:
+    """When the event log has a prior tool_result, the router sees a RouteHistory."""
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    router = Router(graph, items=items, top_k=5)
+
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="read database"))
+    log.append(
+        ContextItem(
+            id="tc1",
+            parent_id=None,
+            kind=ItemKind.tool_call,
+            text="db_read invoked",
+        )
+    )
+    # The tool_result.parent_id is the tool call's id but we expose called
+    # tool ids via that — see the _build_route_history_from_log helper.
+    log.append(
+        ContextItem(
+            id="tr1",
+            parent_id="db_read",
+            kind=ItemKind.tool_result,
+            text="rows: id, name, email",
+        )
+    )
+
+    mgr = ContextManager(event_log=log)
+    _, _, result = mgr.build_route_prompt(
+        goal="Find next tool", query="read database again", router=router
+    )
+    # db_read was already called → it should get a negative adjustment
+    assert result.history_adjustments.get("db_read", 0.0) < 0.0
+
+
+def test_build_route_prompt_history_from_log_can_be_disabled() -> None:
+    """Setting history_from_log=False preserves stateless pre-#27 behaviour."""
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    router = Router(graph, items=items, top_k=5)
+
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="tr1", parent_id="db_read", kind=ItemKind.tool_result, text="rows"))
+    mgr = ContextManager(event_log=log)
+    _, _, result = mgr.build_route_prompt(
+        goal="g",
+        query="read database",
+        router=router,
+        history_from_log=False,
+    )
+    assert result.history_adjustments == {}
+
+
+def test_build_route_prompt_explicit_history_overrides_event_log_construction() -> None:
+    """An explicit ``history=`` wins over the auto-built one."""
+    from contextweaver.routing.history import RouteHistory
+
+    items = _make_selectable_items()
+    graph = TreeBuilder(max_children=10).build(items)
+    # beam_width has to be wide enough that send_email is one of the candidates
+    # for the query we send, otherwise it never reaches the history-adjustment
+    # phase.
+    router = Router(graph, items=items, beam_width=5, top_k=5)
+
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="tr1", parent_id="db_read", kind=ItemKind.tool_result, text="rows"))
+    mgr = ContextManager(event_log=log)
+    explicit = RouteHistory(called_tool_ids=["send_email"], repeat_penalty=0.1)
+    _, _, result = mgr.build_route_prompt(
+        goal="g", query="send email notification", router=router, history=explicit
+    )
+    # The explicit history names send_email, so we expect send_email to get the
+    # adjustment.  db_read is not in the explicit called list so it must NOT
+    # receive a repeat penalty even though the log mentions db_read.
+    assert "send_email" in result.history_adjustments
+    assert "db_read" not in result.history_adjustments
+
+
+# ---------------------------------------------------------------------------
 # build_call_prompt
 # ---------------------------------------------------------------------------
 

@@ -51,6 +51,60 @@ def test_selectable_item_roundtrip() -> None:
     assert restored.cost_hint == item.cost_hint
 
 
+def test_selectable_item_dependency_fields_default_to_none(  # issue #27 phase 2
+) -> None:
+    """``depends_on`` / ``provides`` / ``requires`` default to ``None``."""
+    item = SelectableItem(id="t1", kind="tool", name="t1", description="d")
+    assert item.depends_on is None
+    assert item.provides is None
+    assert item.requires is None
+
+
+def test_selectable_item_to_dict_omits_unset_dependency_fields() -> None:
+    """Default ``None`` fields are omitted from the serialised payload."""
+    item = SelectableItem(id="t1", kind="tool", name="t1", description="d")
+    payload = item.to_dict()
+    assert "depends_on" not in payload
+    assert "provides" not in payload
+    assert "requires" not in payload
+
+
+def test_selectable_item_dependency_fields_roundtrip() -> None:
+    """All three #27-phase-2 fields survive a to_dict / from_dict pass."""
+    item = SelectableItem(
+        id="send_email",
+        kind="tool",
+        name="send_email",
+        description="Send email",
+        depends_on=["auth_login"],
+        provides=["message_id"],
+        requires=["contact_id", "draft"],
+    )
+    payload = item.to_dict()
+    assert payload["depends_on"] == ["auth_login"]
+    assert payload["provides"] == ["message_id"]
+    assert payload["requires"] == ["contact_id", "draft"]
+    restored = SelectableItem.from_dict(payload)
+    assert restored.depends_on == ["auth_login"]
+    assert restored.provides == ["message_id"]
+    assert restored.requires == ["contact_id", "draft"]
+
+
+def test_selectable_item_from_dict_tolerates_missing_dependency_keys() -> None:
+    """Old catalogs that pre-date #27 phase 2 deserialise to ``None``."""
+    restored = SelectableItem.from_dict(
+        {
+            "id": "t1",
+            "kind": "tool",
+            "name": "t1",
+            "description": "d",
+        }
+    )
+    assert restored.depends_on is None
+    assert restored.provides is None
+    assert restored.requires is None
+
+
 def test_artifact_ref_roundtrip() -> None:
     ref = ArtifactRef(handle="h1", media_type="text/plain", size_bytes=100, label="test")
     assert ArtifactRef.from_dict(ref.to_dict()).handle == "h1"

@@ -16,6 +16,19 @@
       "cost_hint": {
         "type": "number"
       },
+      "depends_on": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "description": {
         "type": "string"
       },
@@ -51,6 +64,32 @@
           {
             "additionalProperties": {},
             "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "provides": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "requires": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           {
             "type": "null"

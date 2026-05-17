@@ -56,6 +56,7 @@ _MAX_FACT_CHARS: int = 2000
 if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
     from contextweaver.routing.catalog import Catalog
+    from contextweaver.routing.history import RouteHistory
     from contextweaver.routing.router import Router, RouteResult
 
 logger = logging.getLogger("contextweaver.context")
@@ -689,6 +690,9 @@ class ContextManager:
         query: str,
         router: Router,
         budget_tokens: int | None = None,
+        *,
+        history: RouteHistory | None = None,
+        history_from_log: bool = True,
     ) -> tuple[ContextPack, list[ChoiceCard], RouteResult]:
         """Route, build context, and assemble a prompt with choice cards.
 
@@ -701,13 +705,25 @@ class ContextManager:
             query: User query string.
             router: The :class:`Router` to use for tool routing.
             budget_tokens: Optional budget override.
+            history: Optional pre-built :class:`RouteHistory` (issue #27).
+                When ``None`` and *history_from_log* is ``True``, the
+                manager auto-constructs one from its event log.
+            history_from_log: When ``True`` (default) and *history* is
+                ``None``, build a :class:`RouteHistory` from the event log
+                — already-called tools are deprioritised on subsequent
+                routing calls in the same session.  Set to ``False`` to
+                preserve pre-#27 stateless routing.
 
         Returns:
             A 3-tuple ``(pack, cards, route_result)``.
         """
         from contextweaver.routing.cards import make_choice_cards, render_cards_text
 
-        route_result = router.route(query)
+        if history is None and history_from_log:
+            history = self._build_route_history_from_log()
+        route_result = (
+            router.route(query, history=history) if history is not None else router.route(query)
+        )
 
         # Build choice cards from route results
         cards = make_choice_cards(
@@ -741,9 +757,54 @@ class ContextManager:
         query: str,
         router: Router,
         budget_tokens: int | None = None,
+        *,
+        history: RouteHistory | None = None,
+        history_from_log: bool = True,
     ) -> tuple[ContextPack, list[ChoiceCard], RouteResult]:
         """Synchronous alias for :meth:`build_route_prompt`."""
-        return self.build_route_prompt(goal, query, router, budget_tokens)
+        return self.build_route_prompt(
+            goal,
+            query,
+            router,
+            budget_tokens,
+            history=history,
+            history_from_log=history_from_log,
+        )
+
+    def _build_route_history_from_log(self) -> RouteHistory | None:
+        """Construct a :class:`RouteHistory` from the event log (issue #27).
+
+        Returns ``None`` when the log contains no ``tool_result`` entries
+        (the very first routing call in a session) so the router runs in
+        pre-#27 stateless mode.
+
+        The summary is the most recent ``tool_result`` body truncated to
+        500 characters — the same heuristic suggested in the issue body.
+        ``called_tool_ids`` is the union of every ``tool_result``'s
+        ``parent_id`` (the originating tool call) so the history reads as
+        "tools whose result we already have", not "events in the log".
+        """
+        from contextweaver.routing.history import RouteHistory as _RouteHistory
+
+        items = self._event_log.all()
+        tool_results = [i for i in items if i.kind == ItemKind.tool_result]
+        if not tool_results:
+            return None
+        called_ids: list[str] = []
+        seen: set[str] = set()
+        for item in tool_results:
+            tid = item.parent_id or item.id
+            if tid in seen:
+                continue
+            seen.add(tid)
+            called_ids.append(tid)
+        last = tool_results[-1]
+        summary = (last.text or "")[:500] or None
+        return _RouteHistory(
+            called_tool_ids=called_ids,
+            last_result_summary=summary,
+            step_number=len(called_ids) + 1,
+        )
 
     # ------------------------------------------------------------------
     # Call-phase prompt (schema injection)

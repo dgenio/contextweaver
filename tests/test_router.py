@@ -772,3 +772,175 @@ def test_route_result_explanation_surfaces_context_hints() -> None:
     md = router.route("send notification", context_hints=["email"]).explanation()
     assert "Context hints applied" in md
     assert "email" in md
+
+
+# ------------------------------------------------------------------
+# Pipeline-level public surface (issue #56)
+# ------------------------------------------------------------------
+
+
+def test_router_exposes_pipeline_property() -> None:
+    """The Router holds the RoutingPipeline it delegates to (issue #56)."""
+    from contextweaver.routing.pipeline import RoutingPipeline
+
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items)
+    assert isinstance(router.pipeline, RoutingPipeline)
+    # Same retriever instance — single source of truth for the fitted corpus.
+    assert router.pipeline.retriever is router._retriever  # type: ignore[attr-defined]
+
+
+def test_router_results_unchanged_after_pipeline_refactor_for_a_handful_of_queries() -> None:
+    """Spot-check regression gate: known queries return their known top item."""
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=1)
+    assert router.route("read database").candidate_ids[0] == "db_read"
+    assert router.route("send email to user").candidate_ids[0] == "send_email"
+    assert router.route("search documentation").candidate_ids[0] == "search_docs"
+
+
+# ------------------------------------------------------------------
+# History-aware routing (issue #27)
+# ------------------------------------------------------------------
+
+
+def test_route_without_history_kwarg_is_identical_to_pre_27() -> None:
+    """Backward-compat: omitting history= must reproduce the prior shape."""
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=3)
+    result = router.route("read database")
+    assert result.history_adjustments == {}
+    assert "history_adjustments" not in result.trace.extra
+
+
+def test_route_with_history_deprioritises_called_tool() -> None:
+    from contextweaver.routing.history import RouteHistory
+
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=5)
+
+    # Without history: db_read leads.
+    fresh = router.route("read database")
+    assert fresh.candidate_ids[0] == "db_read"
+
+    # With history saying db_read already ran: the penalty pushes it down.
+    history = RouteHistory(
+        called_tool_ids=["db_read"],
+        last_result_summary=None,
+        repeat_penalty=0.1,
+    )
+    rerouted = router.route("read database", history=history)
+    # db_read must no longer be the top pick after a strong penalty.
+    assert rerouted.candidate_ids[0] != "db_read"
+    # The score delta is reported on the result.
+    assert rerouted.history_adjustments.get("db_read", 0.0) < 0.0
+
+
+def test_route_history_adjustments_surface_on_trace_extra() -> None:
+    from contextweaver.routing.history import RouteHistory
+
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=5)
+    history = RouteHistory(called_tool_ids=["db_read"], repeat_penalty=0.5)
+    result = router.route("read database", history=history)
+    assert "history_adjustments" in result.trace.extra
+    assert result.trace.extra["history_adjustments"] == result.history_adjustments
+
+
+def test_route_history_with_unsatisfied_depends_on_penalises_dependent_tool() -> None:
+    """Phase 2: depends_on referencing an uncalled tool subtracts the penalty."""
+    from contextweaver.routing.history import RouteHistory
+    from contextweaver.types import SelectableItem
+
+    items = [
+        SelectableItem(
+            id="auth_login",
+            kind="tool",
+            name="auth_login",
+            description="Authenticate the user",
+            tags=["auth"],
+        ),
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="Send email",
+            tags=["comm"],
+            depends_on=["auth_login"],
+        ),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=2)
+    # Empty history — auth_login has not run yet, so send_email should be
+    # penalised.  We assert the delta is negative; absolute ranking depends
+    # on other terms.
+    history = RouteHistory(called_tool_ids=[])
+    result = router.route("send the email", history=history)
+    assert result.history_adjustments.get("send_email", 0.0) < 0.0
+
+
+def test_route_history_with_provides_requires_boosts_satisfied_tool() -> None:
+    """Phase 2: requires fully satisfied by called tools' provides adds the boost."""
+    from contextweaver.routing.history import RouteHistory
+    from contextweaver.types import SelectableItem
+
+    items = [
+        SelectableItem(
+            id="search_contacts",
+            kind="tool",
+            name="search_contacts",
+            description="Search the contacts directory",
+            tags=["contacts"],
+            provides=["contact_id"],
+        ),
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="Send email to a contact",
+            tags=["comm"],
+            requires=["contact_id"],
+        ),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=2)
+    history = RouteHistory(called_tool_ids=["search_contacts"])
+    result = router.route("send email", history=history)
+    assert result.history_adjustments.get("send_email", 0.0) > 0.0
+
+
+def test_route_history_result_summary_boost_threads_through_retriever() -> None:
+    """``last_result_summary`` is scored via the router's fitted retriever."""
+    from contextweaver.routing.history import RouteHistory
+
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=5)
+    history = RouteHistory(
+        called_tool_ids=[],
+        last_result_summary="user requested an email to be sent",
+        result_boost_weight=1.0,
+    )
+    result = router.route("notify", history=history)
+    # send_email should have a positive delta because the result summary
+    # mentions "email".
+    assert result.history_adjustments.get("send_email", 0.0) > 0.0
+
+
+def test_route_history_is_byte_identical_to_no_history_when_history_empty() -> None:
+    """An all-default RouteHistory must not move any score."""
+    from contextweaver.routing.history import RouteHistory
+
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=5)
+    a = router.route("read database")
+    b = router.route("read database", history=RouteHistory())
+    assert a.candidate_ids == b.candidate_ids
+    assert a.scores == b.scores
+    assert b.history_adjustments == {}

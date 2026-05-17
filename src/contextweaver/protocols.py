@@ -13,6 +13,7 @@ prefer the historical path.
 from __future__ import annotations
 
 import logging as _logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import tiktoken as _tiktoken
@@ -23,7 +24,8 @@ from contextweaver.store.protocols import EventLog as EventLog
 from contextweaver.store.protocols import FactStore as FactStore
 
 if TYPE_CHECKING:
-    from contextweaver.envelope import ContextPack
+    from contextweaver.envelope import ChoiceCard, ContextPack
+    from contextweaver.routing.graph import ChoiceGraph
     from contextweaver.types import ContextItem, SelectableItem
 
 
@@ -298,5 +300,164 @@ class ClusteringEngine(Protocol):
         ``"cluster_000"``) and values are the items assigned to that
         cluster.  Implementations may return fewer than *k* clusters
         when the data is degenerate.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Navigator (issue #56)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class Navigator(Protocol):
+    """Pluggable graph-navigation stage of the routing pipeline.
+
+    A navigator walks a :class:`~contextweaver.routing.graph.ChoiceGraph`
+    and returns scored leaf items.  The bundled default
+    :class:`~contextweaver.routing.navigator.BeamSearchNavigator` performs
+    bounded beam search with a per-node :class:`Retriever` scorer; alternative
+    implementations may use exhaustive search, A*, learned policies, or skip
+    navigation entirely (single-level catalogs).
+
+    Implementations must be deterministic in
+    :class:`~contextweaver.profiles.Mode` ``strict``: identical inputs
+    must yield identical outputs.  Tie-break by ID, never by insertion order.
+    """
+
+    def navigate(
+        self,
+        query: str,
+        graph: ChoiceGraph,
+        active_items: dict[str, SelectableItem],
+        scorer: Retriever,
+        doc_id_to_idx: dict[str, int],
+        *,
+        all_item_ids: set[str] | None = None,
+        debug: bool = False,
+    ) -> NavigationResult:
+        """Walk *graph* and return scored ``(item_id, score, path)`` tuples.
+
+        Args:
+            query: The scoring query (already augmented by context hints).
+            graph: The choice graph to walk.
+            active_items: Post-filter catalog (``exclude_*`` / ``allowed_*``
+                applied upstream).  Only IDs in this dict are eligible for
+                collection.
+            scorer: The :class:`Retriever` used to score individual nodes.
+            doc_id_to_idx: Map of doc id → index in *scorer*'s fitted
+                corpus.  Nodes outside this map fall back to id-token
+                Jaccard inside the navigator (see ``BeamSearchNavigator``).
+            all_item_ids: Optional full pre-filter set of catalog item IDs.
+                Used to distinguish leaves (catalog items) from internal
+                graph nodes — preserves the issue #112 / #22 pre-filter
+                behaviour exactly.  ``None`` falls back to ``set(active_items)``.
+            debug: When ``True``, the returned
+                :class:`NavigationResult` populates ``steps`` with per-depth
+                beam expansions (for ``RouteTrace``).
+
+        Returns:
+            A :class:`NavigationResult` carrying the collected item map
+            (``id -> (score, path)``) plus optional debug trace steps.
+        """
+        ...
+
+
+@dataclass
+class NavigationResult:
+    """Output of a :class:`Navigator`.
+
+    Attributes:
+        collected: Map of ``item_id`` → ``(score, path)``.  Untrimmed —
+            ranking and ``top_k`` truncation happen in the pipeline.
+        steps: Per-depth beam-expansion records.  Empty unless the caller
+            passed ``debug=True``.
+    """
+
+    collected: dict[str, tuple[float, list[str]]] = field(default_factory=dict)
+    steps: list[Any] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# CardPacker (issue #56)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class CardPacker(Protocol):
+    """Pluggable card-rendering stage of the routing pipeline.
+
+    A packer turns a ranked list of items into :class:`ChoiceCard` instances
+    (and optionally a rendered text block) within a token budget.  The
+    bundled default :class:`~contextweaver.routing.packer.DefaultCardPacker`
+    wraps :func:`contextweaver.routing.cards.make_choice_cards` +
+    :func:`contextweaver.routing.cards.render_cards_text`.
+    """
+
+    def pack(
+        self,
+        items: list[SelectableItem],
+        scores: dict[str, float],
+        *,
+        budget_tokens: int | None = None,
+    ) -> list[ChoiceCard]:
+        """Render *items* as :class:`ChoiceCard` instances within budget.
+
+        Args:
+            items: Ranked items (best first).
+            scores: Map of ``item_id`` → score.  Used to populate
+                :attr:`ChoiceCard.score`.
+            budget_tokens: Optional soft budget.  Implementations may
+                truncate the list when the cumulative card token estimate
+                would exceed *budget_tokens*; ``None`` disables the cap.
+
+        Returns:
+            A list of :class:`ChoiceCard` in ranked order.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# EmbeddingBackend (issue #8)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class EmbeddingBackend(Protocol):
+    """Pluggable embedding backend for similarity-based routing.
+
+    Activated by passing an ``embedding_backend`` to
+    :class:`~contextweaver.routing.router.Router` (or by registering an
+    embedding-backed :class:`Retriever` in the
+    :class:`~contextweaver.routing.registry.EngineRegistry`).  The default
+    install ships TF-IDF + BM25 only and has no embedding dependency —
+    embedding backends arrive via the ``contextweaver[embeddings]`` extra.
+
+    Embedding backends may be non-deterministic across runtime/hardware
+    boundaries (e.g. GPU vs CPU sentence-transformers); callers that need
+    bit-exact reproducibility should pin the backend's model version and
+    embedding cache.  The routing engine's deterministic-by-default
+    guarantee applies only when an embedding backend is **not** supplied.
+    """
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Return a unit-norm-ish embedding for each text in *texts*.
+
+        Implementations should batch internally where possible.  Vectors
+        do not need to be exactly L2-normalised — :meth:`similarity` is
+        responsible for any normalisation it relies on.
+        """
+        ...
+
+    def similarity(
+        self,
+        query_vec: list[float],
+        corpus_vecs: list[list[float]],
+    ) -> list[float]:
+        """Return one similarity score per corpus vector.
+
+        Higher means more similar.  Cosine similarity is the canonical
+        choice; implementations may use dot product when vectors are
+        already L2-normalised.
         """
         ...
