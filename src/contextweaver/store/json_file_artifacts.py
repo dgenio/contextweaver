@@ -176,9 +176,9 @@ class JsonFileArtifactStore:
     def delete(self, handle: str) -> None:
         """Remove the artifact identified by *handle*.
 
-        Both the metadata and data files are removed.  If either is missing
-        the operation raises :class:`ArtifactNotFoundError` — both files must
-        exist for the artifact to count as present.
+        Both the metadata and data files are removed.  If neither file
+        exists the operation raises :class:`ArtifactNotFoundError`; if only
+        one is present (e.g. after a crash) both are cleaned up silently.
 
         Raises:
             ArtifactNotFoundError: If *handle* is not in the store.

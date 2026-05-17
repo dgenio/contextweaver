@@ -17,6 +17,7 @@ intentionally carries no business logic — concrete stores own their schema.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sqlite3
 from collections.abc import Callable
@@ -102,7 +103,8 @@ def apply_migrations(conn: sqlite3.Connection, migrations: list[Migration]) -> i
             )
             conn.execute("COMMIT")
         except sqlite3.DatabaseError:
-            conn.execute("ROLLBACK")
+            with contextlib.suppress(sqlite3.DatabaseError):
+                conn.execute("ROLLBACK")
             raise
         current = version
     return current
