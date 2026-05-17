@@ -17,7 +17,8 @@ Three tools cover the majority of debugging scenarios:
   beam-search path taken for each query.
 
 If a problem is framework-specific, check the integration guides in `docs/`:
-[MCP](integration_mcp.md) · [A2A](integration_a2a.md).
+[MCP](integration_mcp.md) · [A2A](integration_a2a.md) ·
+[OpenTelemetry GenAI](integration_otel.md).
 
 ---
 
@@ -125,6 +126,46 @@ for step in result.debug_trace:
     print(step)
 # Shows each beam expansion, node scores, and why items were (de-)prioritised
 ```
+
+**Solution D — render an explanation of the decision surface (`RouteResult.explanation()`):**
+
+`RouteResult.explanation()` (issue #226) produces a paste-friendly Markdown
+rationale of why the router ranked the candidates the way it did — top-k
+table, confidence gap, ambiguity flag, applied context hints, filter counts.
+Useful in GitHub issues, Slack threads, and PR descriptions when reporting
+unexpected routing behaviour:
+
+```python
+result = router.route("send an email")
+print(result.explanation())                # default Markdown form
+payload = result.explanation(format="dict")  # versioned structured payload
+```
+
+Sample Markdown output:
+
+```markdown
+### Routing explanation for query `send an email`
+
+_Retriever engine: `tfidf`._
+
+**Top candidates**
+
+| Rank | Tool id | Score |
+|---:|:---|---:|
+| 1 | `comms.email.send` | 0.8421 |
+| 2 | `comms.sms.send` | 0.6105 |
+| 3 | `crm.tickets.create` | 0.4988 |
+
+**Confidence gap**: `comms.email.send` (0.8421) vs runner-up `comms.sms.send` (0.6105) = **+0.2316**.
+
+✅ Result is **not** ambiguous (gap above threshold).
+```
+
+The dict form (`format="dict"`) returns a versioned schema
+(`{"version": 1, ...}`) that is safe for programmatic consumers (observability
+spans, automated test assertions). Privacy: the explanation surfaces item ids,
+scores, and the original query — it never includes `args_schema` content or
+full item descriptions.
 
 ---
 

@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`BuildStats.report()` and `BuildStats.report_dict()`** (#106). New
+  diagnostic-report surface on `BuildStats`: pure-data string rendering
+  (`"text"` or `"rich"` Rich-markup format) plus a versioned dict for
+  programmatic consumers. Includes phase, budget, candidate counts,
+  per-section token breakdown, drop reasons, and budget-utilisation
+  recommendations. Output is deterministic (sorted keys, stable
+  spacing).
+- **`BuildStats.prompt_tokens` property** (#106). Single source of
+  truth for `sum(tokens_per_section.values()) + header_footer_tokens`
+  — replaces six inline computations across `extras/otel.py`,
+  `__main__.py`, `metrics.py`, and example scripts.
+- **`contextweaver stats` CLI subcommand** (#106). Renders the
+  `BuildStats` report from an ingested session JSON. Supports
+  `--phase` / `--budget` / `--format {rich,text}`.
+- **`RouteResult.explanation()`** (#226). New pure-data method on
+  `RouteResult` that renders a paste-friendly Markdown rationale of
+  the routing decision — top-k table, confidence gap, ambiguity flag,
+  applied context hints, excluded/gated filter counts. `format="dict"`
+  returns a versioned (`{"version": 1, ...}`) structured payload for
+  programmatic consumers. Logic lives in the new
+  `src/contextweaver/routing/explanation.py` module to keep `router.py`
+  under the soft 300-line cap. `docs/troubleshooting.md` gains a
+  paste-ready example.
+- **JSON Schemas + drift gate** (#225, closes #196). Six committed
+  schemas under `schemas/` and `docs/schemas/v0/`:
+  `catalog.schema.json`, `choice_card.schema.json`,
+  `result_envelope.schema.json`, `route_trace.schema.json`,
+  `build_stats.schema.json`, `graph_manifest.schema.json`. Stable `$id`
+  URLs (`https://dgenio.github.io/contextweaver/schemas/v0/...`).
+  Generator (`src/contextweaver/_schema_gen.py`, stdlib-only) is
+  deterministic; `make schemas` regenerates; `make schemas-check`
+  fails on drift and is wired into `make ci` and
+  `.github/workflows/ci.yml`. `ChoiceCard` size bounds from
+  `docs/gateway_spec.md` §2 round-trip into the schema as `maxLength`
+  / `maxItems` and are also enforced at construction time via
+  `__post_init__`. `examples/sample_catalog.yaml` gains a
+  `# yaml-language-server: $schema=...` header. New
+  `docs/contracts.md`.
+- **OpenTelemetry GenAI semantic conventions** (#224). Rewrite of
+  `extras/otel.py` to emit `invoke_agent`-shaped spans for
+  `ContextManager.build()` and `execute_tool`-shaped spans for
+  `Router.route()`, populating the stable subset of `gen_ai.*`
+  attributes (`gen_ai.system="contextweaver"`,
+  `gen_ai.operation.name`, `gen_ai.usage.input_tokens`,
+  `gen_ai.tool.name`) plus an engine-specific `contextweaver.*`
+  namespace for routing-candidate detail. Token-usage histogram now
+  uses the canonical `gen_ai.client.token.usage` metric name. New
+  `docs/integration_otel.md` with Laminar + Phoenix worked examples
+  and PII-safety guidance. Default emission is PII-safe; experimental
+  attributes gated behind `otel_emit_experimental=False`. Tests use
+  `InMemorySpanExporter` for deterministic SemConv-name assertions.
 - **One-shot provider-message ingestion adapters** (#194, #219, #222). Three
   new sibling modules under `src/contextweaver/adapters/` —
   `openai_messages.py`, `anthropic_messages.py`, `gemini_contents.py` — each
@@ -38,6 +89,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callout in `docs/architecture.md` establish the discipline framing
   alongside the existing README headline (already updated in 0.4.0) and the
   `context-engineering` keyword in `pyproject.toml`.
+
+### Changed
+
+- **CLI: argparse → Typer + Rich** (#221).
+  `src/contextweaver/__main__.py` rewritten on top of
+  [Typer](https://typer.tiangolo.com) with Rich-formatted help,
+  panels, and tables. All seven existing subcommands (`demo`,
+  `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) keep
+  their flag names — `tests/test_cli.py` still exercises every one.
+  New `stats` subcommand from #106 is wired on the same host.
+  Running `python -m contextweaver` without a subcommand now exits
+  with code 2 (Typer/Click convention) instead of 0; the no-args
+  smoke test was updated to accept either.
+- **Core dependencies**: `typer>=0.9` and `rich>=13.0` move from the
+  `[cli]` extra into core. The `[cli]` extra is kept as an empty alias
+  for one cycle (scheduled for removal in v0.6). The `_HAS_RICH`
+  guarded-import dance in `__main__.py` is gone.
+- **`ChoiceCard.kind`** tightened from `str` to
+  `Literal["tool", "agent", "skill", "internal"]` so the published
+  `choice_card.schema.json` carries the kind enumeration directly.
+  Construction-time validation (`__post_init__`) enforces the
+  gateway-spec §2 size bounds (`name` ≤ 64 chars, ≤ 5 tags each
+  ≤ 24 chars) on every path including `ChoiceCard.from_dict`.
+- **`opentelemetry-api`/`-sdk` floor bumped** from `>=1.20` to `>=1.27`
+  in the `[otel]` extra so the
+  `opentelemetry.semconv._incubating.attributes.gen_ai_attributes`
+  module is available; `opentelemetry-semantic-conventions>=0.48b0`
+  added as a direct extra dep.
+
+### Removed
+
+- **Old OTel span names**: `contextweaver.context.build` and
+  `contextweaver.routing.route` no longer emit. Dashboards keyed on
+  those names need to be re-keyed to `invoke_agent` and
+  `execute_tool`. The engine-specific
+  `contextweaver.context.firewall` and `contextweaver.context.exclude`
+  spans are preserved (no SemConv equivalent yet).
+- **Old OTel metric name**: `contextweaver.tokens.used` histogram
+  renamed to the canonical `gen_ai.client.token.usage`. The
+  engine-specific counter / histogram names
+  (`contextweaver.firewall.interceptions`,
+  `contextweaver.items.excluded`, `contextweaver.budget.exceeded`,
+  `contextweaver.routing.candidates`) are preserved.
+- **`OTelEventHook` attribute-key prefix**: engine-specific span
+  attributes moved from bare names (`phase`, `tokens`, `reason`) to
+  the `contextweaver.*` namespace to avoid colliding with future
+  SemConv additions.
 
 ## [0.4.0] - 2026-05-16
 

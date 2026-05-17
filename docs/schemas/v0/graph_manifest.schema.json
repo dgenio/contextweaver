@@ -1,0 +1,48 @@
+{
+  "$id": "https://dgenio.github.io/contextweaver/schemas/v0/graph_manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Formal build metadata for a :class:`ChoiceGraph`.",
+  "properties": {
+    "build_hash": {
+      "type": "string"
+    },
+    "engine_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "extra": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "item_count": {
+      "type": "integer"
+    },
+    "manifest_version": {
+      "type": "integer"
+    },
+    "max_depth": {
+      "type": "integer"
+    },
+    "seed": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "strategy": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "number"
+    }
+  },
+  "title": "GraphManifest",
+  "type": "object"
+}
