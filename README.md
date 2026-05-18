@@ -102,7 +102,7 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
-Cost:         42–75% lower [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
+Cost:         41.6%–74.5% fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
 ```
 
 [^naive-baseline]: Measured against the "concatenate all tool schemas + full

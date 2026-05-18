@@ -50,6 +50,60 @@ The current scenarios:
 | `large_catalog.jsonl` | 15 user turns | Routing breadth across all 8 namespaces |
 | `stress_conversation.jsonl` | 50+ user turns | Stresses budget-driven drop + dedup + multi-result compaction (#181) |
 
+## How to read these numbers
+
+The scorecard reports four distinct kinds of measurement; each one means
+something different and degrades under different conditions:
+
+| Metric | What it measures | What's stable | What isn't |
+|---|---|---|---|
+| `recall@k`, `precision@k`, `MRR` | Whether the **default lexical scorer** (`tfidf` baseline, `bm25` optional) puts the gold-set tool inside the top-`k` shortlist | Reproducible across machines for a given seed and gold set | A **floor**, not a ceiling — the scorer is pluggable via `Router(scorer_backend=...)`; embedding-based and LLM-rerank backends are out of scope for this baseline scorecard |
+| `p50` / `p95` / `p99` latency (ms) | Wall-clock cost of one `Router.route(query)` call | **Relative ordering** (50 < 83 < 1000 always) | **Absolute microseconds** vary with hardware, Python build, and other load on the runner; the docs explicitly call this out |
+| `prompt_tokens`, `budget_utilization_pct` | Output of the Context Engine for a fixed scenario log | Reproducible across machines (`CharDivFourEstimator`, no `tiktoken` state dependency) | The scenarios are illustrative — your event log will produce different numbers |
+| `avg_compaction_ratio`, `artifacts_created` | Firewall behaviour: how much raw tool output is intercepted | Reproducible | Driven by the **scenarios' tool outputs**, not by a property of contextweaver — if your real tool calls return tiny payloads, compaction is `1.0×` |
+
+Two practical reading rules:
+
+1. **Treat `recall@5` at catalog_size 1000 as a baseline number, not a ceiling.** The default `tfidf` and `bm25` scorers are lexical; they trade recall for transparency and zero-network determinism. A retriever-first shortlist (embedding ANN or LLM rerank) is the documented way to recover recall at scale — tracked under issue [#8](https://github.com/dgenio/contextweaver/issues/8).
+2. **Token-reduction percentages are scenario-bound.** "41.6%–74.5%" is the *range across the four committed scenarios*, not a guarantee for any specific workload. The right number for your agent is whatever you measure on your own event logs using `scripts/baseline_naive.py`.
+
+## Known limits and honest framing
+
+The numbers above describe what the **default** contextweaver
+configuration does on the **default** benchmark fixtures. The
+following are deliberate, documented gaps — not bugs:
+
+- **Routing recall degrades with catalog size.** At catalog_size 50, `recall@5` is ~0.56. At 1000, it falls to ~0.15 with both `tfidf` and `bm25`. This is the well-known lexical-retrieval ceiling on large tool catalogs. contextweaver's response is to make the scorer **pluggable** (see `Router(scorer_backend=...)` and the `Retriever` protocol on the `EngineRegistry`), not to claim the default scorer is sufficient at scale. The scorecard exists so you can see this drop yourself, swap in a stronger backend, and re-measure.
+- **Token reduction is scenario-driven.** All percentages above are measured against the four committed scenarios under `benchmarks/scenarios/`. If your real conversations or tool outputs differ materially in shape (much shorter turns, much larger results, very different namespace distribution), expect different percentages.
+- **Latency is informational.** Treat the latency numbers as ordering between catalog sizes, not as a service-level objective for production deployments.
+- **No claim is made** about end-to-end agent cost, answer quality, or accuracy — those depend on the model and the agent loop, not on contextweaver alone.
+
+If you find a regime where the default backends underperform, file an issue with your gold set and catalog — the harness is designed to absorb new scenarios.
+
+## Single-call gateway scenario
+
+The [MCP Context Gateway reference architecture](architectures/mcp_context_gateway.md) (`examples/architectures/mcp_context_gateway/`) is a deterministic, network-free, LLM-free single-turn run that exercises the launch narrative end-to-end. Captured metrics from that run:
+
+| Metric | Value | What it measures |
+|---|---:|---|
+| `catalog_tools` | 60 | Pool the agent could route against |
+| `exposed_choice_cards` | 5 | Cards actually emitted to the model at the route phase |
+| `hydrated_schema_chars` | 854 | Full JSON Schema for the **selected** tool only |
+| `raw_result_chars` | 16,507 | Mocked BigQuery rowset (MCP wire shape) |
+| `injected_summary_chars` | 194 | What the firewall leaves on the prompt side |
+| `firewall_reduction_pct` | 98.8 % | (1 − 194 / 16,507) × 100 for this single tool result |
+| `final_prompt_tokens` | 120 | Answer-phase prompt budget consumed |
+
+> **Reading this honestly:** this is **one scripted scenario with one tool call**, not a benchmark over many scenarios. The 98.8% number reflects the specific shape of one rowset; your raw tool outputs will be different sizes and the per-call reduction will vary accordingly. The point of the scenario is to show all six load-bearing primitives (routing → cards → hydration → firewall → artifact → answer-phase build) interacting in one transcript, not to claim a generalizable reduction percentage.
+
+The architecture run is reproducible byte-for-byte via:
+
+```bash
+python examples/architectures/mcp_context_gateway/main.py
+```
+
+Full captured run: [`examples/architectures/mcp_context_gateway/OUTPUT.md`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/OUTPUT.md).
+
 ## Why this exists
 
 Pre-scorecard, the README compared "70% lower cost" and "sub-second latency"
