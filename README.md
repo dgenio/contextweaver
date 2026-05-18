@@ -40,7 +40,7 @@ contextweaver demo --scenario mcp-gateway           # MCP gateway meta-tools end
 All four scenarios are deterministic, network-free, and run in under a
 second each. See `contextweaver demo --help` for the full list.
 
-[📖 Docs](https://dgenio.github.io/contextweaver) · [📊 Benchmark scorecard](benchmarks/scorecard.md) · [📦 Examples](examples/) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md)
+[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md)
 
 **1100+ tests · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 

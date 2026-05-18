@@ -62,9 +62,12 @@ plugins:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Showcase: showcase.md
+  - Where it fits: comparison.md
+  - FAQ: faq.md
   - Which pattern fits?: which_pattern.md
   - Concepts: concepts.md
-  - How contextweaver Fits: interop.md
+  - How contextweaver Fits (deeper): interop.md
   - Cookbook: cookbook.md
   - Architectures:
       - Overview: architectures/index.md
