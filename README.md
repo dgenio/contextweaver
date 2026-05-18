@@ -468,7 +468,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 ### Comparison
 
 | Approach | Token Control | Tool Routing | Firewall | Framework Agnostic | Dependencies |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | **Naive concatenation** | ❌ No | ❌ No | ❌ No | ✅ Yes | None |
 | **LangChain ConversationBufferMemory** | ❌ No | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
 | **LangChain ConversationSummaryMemory** | ⚠️ LLM-based | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
