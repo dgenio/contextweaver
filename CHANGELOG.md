@@ -261,6 +261,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `contextweaver.*` namespace to avoid colliding with future
   SemConv additions.
 
+### Fixed
+
+- **`--backends` typo validation in benchmark harness** (PR #235). Typos
+  like `--backends tifdf` now exit via `parser.error()` (code 2) instead of
+  propagating to `Router` init as a `ConfigError` traceback.
+- **Skipped-row rendering in benchmark delta script** (PR #235). Matrix
+  cells with `status != "ok"` (e.g. `"skipped: rapidfuzz not installed"`)
+  now render as `_skipped_ (reason)` instead of being treated as a
+  zero-metric regression with false-positive ⚠️ markers.
+
 ## [0.4.0] - 2026-05-16
 
 ### Added
