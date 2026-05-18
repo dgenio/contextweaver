@@ -12,6 +12,12 @@
 
 **600+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 
+Install:
+
+```bash
+pip install contextweaver
+```
+
 [📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md)
 
 ---
@@ -462,7 +468,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 ### Comparison
 
 | Approach | Token Control | Tool Routing | Firewall | Framework Agnostic | Dependencies |
-|---|---|---|---|---|---|
+|---|---|---|---|---|
 | **Naive concatenation** | ❌ No | ❌ No | ❌ No | ✅ Yes | None |
 | **LangChain ConversationBufferMemory** | ❌ No | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
 | **LangChain ConversationSummaryMemory** | ⚠️ LLM-based | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
