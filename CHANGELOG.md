@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `CODE_OF_CONDUCT.md` — Contributor Covenant v2.1, linked from `CONTRIBUTING.md` (#249).
+
 ## [0.6.0] - 2026-05-17
 
 ### Fixed

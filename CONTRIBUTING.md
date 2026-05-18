@@ -67,3 +67,7 @@ All CI checks must pass before a PR can be merged.
 2. Export it from `src/contextweaver/store/__init__.py`.
 3. Add tests in `tests/test_store_<name>.py`.
 4. Update `StoreBundle` in `store/__init__.py` if appropriate.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold it.
