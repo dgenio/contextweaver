@@ -31,6 +31,7 @@ example:
 	$(MAKE) architectures
 
 architectures:
+	python examples/architectures/mcp_context_gateway/main.py
 	python examples/architectures/slack_ops_bot/main.py
 	python examples/architectures/code_review_bot/main.py
 	python examples/architectures/voice_agent/main.py

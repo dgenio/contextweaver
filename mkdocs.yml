@@ -68,6 +68,7 @@ nav:
   - Cookbook: cookbook.md
   - Architectures:
       - Overview: architectures/index.md
+      - MCP Context Gateway: architectures/mcp_context_gateway.md
       - Slack ops bot: architectures/slack_ops_bot.md
       - Code-review bot: architectures/code_review_bot.md
       - Voice agent: architectures/voice_agent.md
