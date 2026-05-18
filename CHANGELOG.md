@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **FastMCP CodeMode hooks** (#87). New
+  `contextweaver.adapters.fastmcp.make_discovery_tool(router, catalog)`
+  and `make_context_hook(context_manager)` factories return plain
+  callables suitable for FastMCP CodeMode's custom-discovery-tool and
+  context hooks (or any runtime with the same shape — LangChain,
+  LlamaIndex, hand-rolled agent loops). Neither hook imports `fastmcp`
+  at runtime; the callable contract is framework-agnostic.
+  `examples/fastmcp_discovery_demo.py` demonstrates a 22-tool catalog
+  shrinking to a 3-tool shortlist (86% token reduction). `fastmcp>=2.0`
+  is now part of the `[dev]` extra so a real in-memory FastMCP server
+  integration test (`tests/test_adapters_fastmcp_discovery.py`) runs on
+  every CI matrix cell. Reference:
+  https://github.com/PrefectHQ/fastmcp/discussions/3365
+- **Code-review bot reference architecture** (#204). New
+  `examples/architectures/code_review_bot/` walks a six-step pull-request
+  review against a 24-tool catalog (grep / git / lint / typecheck /
+  test / review). The firewall is the load-bearing pattern: a synthetic
+  ~28 KB diff dump and ~2.5 KB grep result both compact to ~500-char
+  summaries while raw bytes stay addressable via the artifact store.
+  Linked from `docs/architectures/index.md` and runnable under
+  `make architectures`.
+- **Voice agent reference architecture** (#205). New
+  `examples/architectures/voice_agent/` is the canonical worked example
+  for `docs/integration_pipecat.md`. Walks a five-turn customer-service
+  call against an 18-tool catalog, demonstrating the
+  `asyncio.to_thread(mgr.build_sync, …)` pattern and tight per-phase
+  budgets (`ContextBudget(route=200, call=500, interpret=400,
+  answer=1000)`) for sub-300 ms TTS. Pipecat is optional via the new
+  `[voice]` extra; the example runs end-to-end without it.
+
+### Fixed
+
+- **FastMCP CodeMode hook factories use `ConfigError`** (PR #233 review).
+  `make_discovery_tool` and `make_context_hook` now raise
+  `contextweaver.exceptions.ConfigError` (a `ContextWeaverError` subclass)
+  on negative `top_k` / `firewall_threshold`, replacing the previous bare
+  `ValueError` per the AGENTS.md custom-exception convention.
+- **`make_discovery_tool` `top_k` counts hydratable tools, not slots**
+  (PR #233 review). The discovery hook used to slice
+  `result.candidate_ids` to `top_k` *before* hydration, so a graph-only
+  candidate appearing early in the list silently shrank the shortlist by
+  one. The hook now iterates the full candidate list, skips non-hydratable
+  IDs, and stops after `top_k` real tools have been appended.
+- **`make_discovery_tool` returns deep-copied `input_schema`** (PR #233
+  review). `dict(hydrated.args_schema)` was a shallow copy that left
+  nested dicts / lists aliased with the catalog item, so an external
+  runtime mutating the returned schema could silently corrupt subsequent
+  `discover()` calls. The schema is now `copy.deepcopy`-ed before
+  handing it to callers.
+- **`make_context_hook` docstring matches implementation** (PR #233
+  review). The "parent user-turn id for dependency closure" wording is
+  replaced with the actual behaviour — the query is stamped onto
+  `item.metadata["codemode_query"]`, no synthetic user_turn item is
+  ingested, matching the inline rationale that the hook is intentionally
+  stateless w.r.t. conversation history.
+- **`make_context_hook` accepts `tool_name`** (PR #233 audit). The
+  factory previously hardcoded `tool_name="codemode.discovery"` on every
+  firewalled `ContextItem`, which was both semantically wrong (this is a
+  context / firewall hook, not a discovery hook) and lossy for multi-tool
+  agents whose traces could no longer be sliced by underlying tool. The
+  factory now accepts `tool_name: str = "codemode.tool_result"` and stamps
+  the configured value into the event log. The docstring also pins the
+  timing of the `codemode_query` metadata stamp (post-firewall;
+  visible to event-log reads and `on_context_built` callbacks but
+  *not* to `on_firewall_triggered`).
+- **FastMCP CodeMode test coverage** (PR #233 audit). Added a real
+  FastMCP integration test that exercises `make_context_hook` end-to-end
+  against an in-memory `fastmcp.FastMCP` server (`tests/test_adapters_
+  fastmcp_discovery.py::test_context_hook_compacts_real_fastmcp_tool_call`),
+  a `top_k=0` boundary test for `make_discovery_tool`, and a post-hook
+  metadata-consumability pin for the `codemode_query` contract.
+
 ## [0.6.0] - 2026-05-17
 
 ### Fixed

@@ -1,0 +1,157 @@
+# Voice agent — 18 customer-service tools (mocked).
+#
+# Loaded via contextweaver.routing.catalog.load_catalog_yaml(). The file is the
+# canonical catalog for the architecture; main.py reads it and registers each
+# entry into a Catalog before building the routing graph.
+#
+# Namespaces:
+#   support     — kb lookup, FAQ, agent transfer, status checks
+#   orders      — order lookup, order status, order modify
+#   shipping    — tracking, address change, delivery slot
+#   account     — account lookup, profile update, subscription
+#   callback    — schedule callback, cancel callback, list slots
+
+- id: support.faq_lookup
+  kind: tool
+  name: faq_lookup
+  namespace: support
+  description: Look up an FAQ answer for a customer question
+  tags: [support, faq, search]
+  side_effects: false
+  cost_hint: 0.10
+- id: support.kb_search
+  kind: tool
+  name: kb_search
+  namespace: support
+  description: Search the support knowledge base for an article
+  tags: [support, kb, search]
+  side_effects: false
+  cost_hint: 0.20
+- id: support.transfer_agent
+  kind: tool
+  name: transfer_agent
+  namespace: support
+  description: Transfer the call to a human support agent
+  tags: [support, transfer, write]
+  side_effects: true
+  cost_hint: 0.10
+- id: support.status
+  kind: tool
+  name: support_status
+  namespace: support
+  description: Check the status of a previously raised support case
+  tags: [support, status]
+  side_effects: false
+  cost_hint: 0.10
+- id: orders.lookup
+  kind: tool
+  name: order_lookup
+  namespace: orders
+  description: Look up an order by its order number
+  tags: [orders, lookup, search]
+  side_effects: false
+  cost_hint: 0.20
+- id: orders.status
+  kind: tool
+  name: order_status
+  namespace: orders
+  description: Check the status of a customer order
+  tags: [orders, status]
+  side_effects: false
+  cost_hint: 0.10
+- id: orders.modify
+  kind: tool
+  name: order_modify
+  namespace: orders
+  description: Modify quantity or items in a placed order
+  tags: [orders, write]
+  side_effects: true
+  cost_hint: 0.30
+- id: orders.cancel
+  kind: tool
+  name: order_cancel
+  namespace: orders
+  description: Cancel a placed order
+  tags: [orders, write]
+  side_effects: true
+  cost_hint: 0.20
+- id: shipping.tracking
+  kind: tool
+  name: shipping_tracking
+  namespace: shipping
+  description: Get tracking information for an order delivery
+  tags: [shipping, tracking]
+  side_effects: false
+  cost_hint: 0.10
+- id: shipping.update_address
+  kind: tool
+  name: update_address
+  namespace: shipping
+  description: Update the delivery shipping address for an order
+  tags: [shipping, address, write]
+  side_effects: true
+  cost_hint: 0.30
+- id: shipping.delivery_slot
+  kind: tool
+  name: delivery_slot
+  namespace: shipping
+  description: Get available delivery slots for a shipping zone
+  tags: [shipping, slot]
+  side_effects: false
+  cost_hint: 0.20
+- id: account.lookup
+  kind: tool
+  name: account_lookup
+  namespace: account
+  description: Look up a customer account by email or phone
+  tags: [account, lookup, search]
+  side_effects: false
+  cost_hint: 0.20
+- id: account.update_profile
+  kind: tool
+  name: update_profile
+  namespace: account
+  description: Update the customer profile contact details
+  tags: [account, write]
+  side_effects: true
+  cost_hint: 0.20
+- id: account.subscription
+  kind: tool
+  name: subscription_lookup
+  namespace: account
+  description: Look up the customer's active subscription plan
+  tags: [account, subscription]
+  side_effects: false
+  cost_hint: 0.10
+- id: account.upgrade
+  kind: tool
+  name: account_upgrade
+  namespace: account
+  description: Upgrade the customer to a premium subscription tier
+  tags: [account, upgrade, write]
+  side_effects: true
+  cost_hint: 0.40
+- id: callback.schedule
+  kind: tool
+  name: schedule_callback
+  namespace: callback
+  description: Schedule a callback for the customer at a chosen time
+  tags: [callback, schedule, write]
+  side_effects: true
+  cost_hint: 0.20
+- id: callback.cancel
+  kind: tool
+  name: cancel_callback
+  namespace: callback
+  description: Cancel a previously scheduled callback
+  tags: [callback, write]
+  side_effects: true
+  cost_hint: 0.10
+- id: callback.list_slots
+  kind: tool
+  name: list_callback_slots
+  namespace: callback
+  description: List available callback time slots for the customer
+  tags: [callback, slot]
+  side_effects: false
+  cost_hint: 0.10
