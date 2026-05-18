@@ -9,9 +9,9 @@
       "precision_at_k": 0.1191,
       "recall_at_k": 0.5649,
       "mrr": 0.4978,
-      "latency_ms_p50": 0.328,
-      "latency_ms_p95": 0.398,
-      "latency_ms_p99": 0.463
+      "latency_ms_p50": 0.372,
+      "latency_ms_p95": 0.419,
+      "latency_ms_p99": 0.437
     },
     {
       "catalog_size": 83,
@@ -19,9 +19,9 @@
       "precision_at_k": 0.08,
       "recall_at_k": 0.3825,
       "mrr": 0.3242,
-      "latency_ms_p50": 0.521,
-      "latency_ms_p95": 0.608,
-      "latency_ms_p99": 0.876
+      "latency_ms_p50": 0.61,
+      "latency_ms_p95": 0.668,
+      "latency_ms_p99": 0.687
     },
     {
       "catalog_size": 1000,
@@ -29,9 +29,9 @@
       "precision_at_k": 0.031,
       "recall_at_k": 0.1475,
       "mrr": 0.1456,
-      "latency_ms_p50": 28.015,
-      "latency_ms_p95": 29.769,
-      "latency_ms_p99": 31.897
+      "latency_ms_p50": 31.151,
+      "latency_ms_p95": 32.25,
+      "latency_ms_p99": 34.594
     }
   ],
   "context": [
@@ -47,9 +47,9 @@
       "artifacts_created": 15,
       "avg_compaction_ratio": 1.0,
       "naive_delta": {
-        "naive_tokens": 2767,
+        "naive_tokens": 2756,
         "cw_tokens": 1514,
-        "pct_reduction": 45.28,
+        "pct_reduction": 45.07,
         "coverage_pct": 100.0
       }
     },
@@ -65,9 +65,9 @@
       "artifacts_created": 21,
       "avg_compaction_ratio": 1.41,
       "naive_delta": {
-        "naive_tokens": 4365,
+        "naive_tokens": 4868,
         "cw_tokens": 2548,
-        "pct_reduction": 41.63,
+        "pct_reduction": 47.66,
         "coverage_pct": 100.0
       }
     },
@@ -83,9 +83,9 @@
       "artifacts_created": 4,
       "avg_compaction_ratio": 1.0,
       "naive_delta": {
-        "naive_tokens": 1946,
+        "naive_tokens": 1872,
         "cw_tokens": 496,
-        "pct_reduction": 74.51,
+        "pct_reduction": 73.5,
         "coverage_pct": 100.0
       }
     },
@@ -101,9 +101,9 @@
       "artifacts_created": 32,
       "avg_compaction_ratio": 3.29,
       "naive_delta": {
-        "naive_tokens": 17482,
+        "naive_tokens": 21295,
         "cw_tokens": 6651,
-        "pct_reduction": 61.96,
+        "pct_reduction": 68.77,
         "coverage_pct": 92.52
       }
     }
@@ -116,9 +116,9 @@
       "precision_at_k": 0.08,
       "recall_at_k": 0.3825,
       "mrr": 0.3399,
-      "latency_ms_p50": 3.543,
-      "latency_ms_p95": 5.02,
-      "latency_ms_p99": 5.642,
+      "latency_ms_p50": 3.729,
+      "latency_ms_p95": 5.126,
+      "latency_ms_p99": 5.859,
       "status": "ok"
     },
     {
@@ -128,9 +128,9 @@
       "precision_at_k": 0.047,
       "recall_at_k": 0.225,
       "mrr": 0.2165,
-      "latency_ms_p50": 20.384,
-      "latency_ms_p95": 26.091,
-      "latency_ms_p99": 27.538,
+      "latency_ms_p50": 21.688,
+      "latency_ms_p95": 27.134,
+      "latency_ms_p99": 28.943,
       "status": "ok"
     },
     {
@@ -140,46 +140,46 @@
       "precision_at_k": 0.033,
       "recall_at_k": 0.1575,
       "mrr": 0.1525,
-      "latency_ms_p50": 50.757,
-      "latency_ms_p95": 61.891,
-      "latency_ms_p99": 78.368,
+      "latency_ms_p50": 57.367,
+      "latency_ms_p95": 68.276,
+      "latency_ms_p99": 84.955,
       "status": "ok"
     },
     {
       "backend": "fuzzy",
       "catalog_size": 100,
-      "queries_evaluated": 0,
-      "precision_at_k": 0.0,
-      "recall_at_k": 0.0,
-      "mrr": 0.0,
-      "latency_ms_p50": 0.0,
-      "latency_ms_p95": 0.0,
-      "latency_ms_p99": 0.0,
-      "status": "skipped: missing rapidfuzz"
+      "queries_evaluated": 200,
+      "precision_at_k": 0.107,
+      "recall_at_k": 0.5175,
+      "mrr": 0.3889,
+      "latency_ms_p50": 0.582,
+      "latency_ms_p95": 0.625,
+      "latency_ms_p99": 0.646,
+      "status": "ok"
     },
     {
       "backend": "fuzzy",
       "catalog_size": 500,
-      "queries_evaluated": 0,
-      "precision_at_k": 0.0,
-      "recall_at_k": 0.0,
-      "mrr": 0.0,
-      "latency_ms_p50": 0.0,
-      "latency_ms_p95": 0.0,
-      "latency_ms_p99": 0.0,
-      "status": "skipped: missing rapidfuzz"
+      "queries_evaluated": 200,
+      "precision_at_k": 0.047,
+      "recall_at_k": 0.23,
+      "mrr": 0.2212,
+      "latency_ms_p50": 7.937,
+      "latency_ms_p95": 8.367,
+      "latency_ms_p99": 8.822,
+      "status": "ok"
     },
     {
       "backend": "fuzzy",
       "catalog_size": 1000,
-      "queries_evaluated": 0,
-      "precision_at_k": 0.0,
-      "recall_at_k": 0.0,
-      "mrr": 0.0,
-      "latency_ms_p50": 0.0,
-      "latency_ms_p95": 0.0,
-      "latency_ms_p99": 0.0,
-      "status": "skipped: missing rapidfuzz"
+      "queries_evaluated": 200,
+      "precision_at_k": 0.031,
+      "recall_at_k": 0.1525,
+      "mrr": 0.1472,
+      "latency_ms_p50": 31.656,
+      "latency_ms_p95": 32.57,
+      "latency_ms_p99": 35.974,
+      "status": "ok"
     },
     {
       "backend": "tfidf",
@@ -188,9 +188,9 @@
       "precision_at_k": 0.08,
       "recall_at_k": 0.3825,
       "mrr": 0.322,
-      "latency_ms_p50": 0.74,
-      "latency_ms_p95": 0.835,
-      "latency_ms_p99": 0.872,
+      "latency_ms_p50": 0.832,
+      "latency_ms_p95": 0.911,
+      "latency_ms_p99": 0.945,
       "status": "ok"
     },
     {
@@ -200,9 +200,9 @@
       "precision_at_k": 0.049,
       "recall_at_k": 0.2325,
       "mrr": 0.2314,
-      "latency_ms_p50": 7.453,
-      "latency_ms_p95": 7.728,
-      "latency_ms_p99": 8.66,
+      "latency_ms_p50": 8.339,
+      "latency_ms_p95": 8.771,
+      "latency_ms_p99": 10.224,
       "status": "ok"
     },
     {
@@ -212,9 +212,9 @@
       "precision_at_k": 0.031,
       "recall_at_k": 0.1475,
       "mrr": 0.1456,
-      "latency_ms_p50": 27.636,
-      "latency_ms_p95": 28.58,
-      "latency_ms_p99": 30.071,
+      "latency_ms_p50": 30.901,
+      "latency_ms_p95": 31.947,
+      "latency_ms_p99": 33.03,
       "status": "ok"
     }
   ],
@@ -386,6 +386,174 @@
       "namespace": "search",
       "queries_evaluated": 25,
       "recall_at_k": 0.0
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "admin",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.68
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "analytics",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.44
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "billing",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.32
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "comms",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.52
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "crm",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.48
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "docs",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.44
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "infra",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.64
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 100,
+      "namespace": "search",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.62
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "admin",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.26
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "analytics",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.36
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "billing",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.54
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "comms",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.28
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "crm",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "docs",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.08
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "infra",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.16
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "namespace": "search",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.16
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "admin",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.3
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "analytics",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.44
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "billing",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.32
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "comms",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "crm",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.08
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "docs",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "infra",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 1000,
+      "namespace": "search",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.08
     },
     {
       "backend": "tfidf",
