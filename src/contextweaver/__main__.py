@@ -1,6 +1,6 @@
 """Command-line interface for contextweaver.
 
-Provides eight sub-commands:
+Provides nine sub-commands:
 
 demo        Run a built-in demonstration of both engines.
 build       Build a routing graph from a catalog JSON file.
@@ -11,6 +11,9 @@ ingest      Ingest a JSONL session into a serialised session file.
 replay      Replay a session and build context for a given phase.
 stats       Render a human-readable :class:`BuildStats` diagnostic report
             from an ingested session (issue #106).
+budget-check
+            Assert an ingested session's rendered prompt stays under a
+            token ceiling for CI regression checks (issue #276).
 
 Invocable as ``python -m contextweaver`` or ``contextweaver`` (via
 ``[project.scripts]``).  Exempt from the 300-line module limit.
@@ -115,17 +118,22 @@ def _load_jsonl(path: str) -> list[ContextItem]:
     return items
 
 
-def _restore_manager_from_session(session_path: str, budget_tokens: int) -> ContextManager:
+def _restore_manager_from_session(
+    session_path: str, budget_tokens: int | None = None
+) -> ContextManager:
     """Rebuild a :class:`ContextManager` from a session JSON written by ``ingest``."""
     session: dict[str, Any] = json.loads(Path(session_path).read_text(encoding="utf-8"))
-    mgr = ContextManager(
-        budget=ContextBudget(
-            route=budget_tokens,
-            call=budget_tokens,
-            interpret=budget_tokens,
-            answer=budget_tokens,
+    if budget_tokens is None:
+        mgr = ContextManager()
+    else:
+        mgr = ContextManager(
+            budget=ContextBudget(
+                route=budget_tokens,
+                call=budget_tokens,
+                interpret=budget_tokens,
+                answer=budget_tokens,
+            )
         )
-    )
     for idx, raw_event in enumerate(session.get("events", []), 1):
         try:
             item = ContextItem.from_dict(raw_event)
@@ -137,6 +145,27 @@ def _restore_manager_from_session(session_path: str, budget_tokens: int) -> Cont
     for ep in session.get("episodes", []):
         mgr.add_episode(ep["episode_id"], ep["summary"])
     return mgr
+
+
+def _write_budget_baseline(
+    path: Path,
+    *,
+    phase: str,
+    query: str,
+    max_tokens: int,
+    prompt_tokens: int,
+    tokens_per_section: dict[str, int],
+) -> None:
+    """Write a deterministic budget baseline payload for ``budget-check --ratchet``."""
+    payload = {
+        "version": 1,
+        "phase": phase,
+        "query": query,
+        "max_tokens": max_tokens,
+        "prompt_tokens": prompt_tokens,
+        "tokens_per_section": dict(sorted(tokens_per_section.items())),
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -451,6 +480,115 @@ def stats(
         _console.print(pack.stats.report(format="rich", phase=phase.value, budget=budget))
     else:
         print(pack.stats.report(format="text", phase=phase.value, budget=budget))
+
+
+@app.command("budget-check")
+def budget_check(
+    session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
+    max_tokens: Annotated[
+        int, typer.Option("--max-tokens", help="Maximum allowed rendered prompt tokens.")
+    ],
+    phase: Annotated[
+        _PhaseChoice, typer.Option(help="Phase to build before checking.")
+    ] = _PhaseChoice.answer,
+    query: Annotated[
+        str, typer.Option(help="Query passed to ContextManager.build_sync().")
+    ] = "budget-check",
+    breakdown: Annotated[
+        bool, typer.Option("--breakdown", help="Print per-section token usage.")
+    ] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+    ratchet: Annotated[
+        bool,
+        typer.Option(
+            "--ratchet",
+            help=(
+                "Read/write a baseline JSON file and fail if prompt token usage grows "
+                "above the stored baseline."
+            ),
+        ),
+    ] = False,
+    ratchet_path: Annotated[
+        Path,
+        typer.Option(
+            "--ratchet-path",
+            help="Baseline JSON path used by --ratchet.",
+        ),
+    ] = Path(".budget-baseline.json"),
+) -> None:
+    """Fail CI when a rendered context build exceeds a token ceiling (issue #276)."""
+    if max_tokens < 1:
+        raise typer.BadParameter("--max-tokens must be greater than 0", param_hint="--max-tokens")
+    if not session.exists():
+        raise typer.BadParameter(f"session file not found: {session}", param_hint="--session")
+
+    mgr = _restore_manager_from_session(str(session))
+    pack = mgr.build_sync(phase=Phase(phase.value), query=query)
+    total = pack.stats.prompt_tokens
+    over = max(total - max_tokens, 0)
+    utilization = total / max_tokens
+    budget_ok = total <= max_tokens
+
+    ratchet_ok = True
+    ratchet_baseline: int | None = None
+    ratchet_path_output: str | None = None
+    ratchet_written = False
+    if ratchet:
+        ratchet_file = ratchet_path
+        ratchet_path_output = str(ratchet_file)
+        if ratchet_file.exists():
+            baseline: dict[str, Any] = json.loads(ratchet_file.read_text(encoding="utf-8"))
+            ratchet_baseline = int(baseline.get("prompt_tokens", 0))
+            ratchet_ok = total <= ratchet_baseline
+        if budget_ok and ratchet_ok:
+            _write_budget_baseline(
+                ratchet_file,
+                phase=phase.value,
+                query=query,
+                max_tokens=max_tokens,
+                prompt_tokens=total,
+                tokens_per_section=pack.stats.tokens_per_section,
+            )
+            ratchet_written = True
+
+    ok = budget_ok and ratchet_ok
+    payload: dict[str, Any] = {
+        "ok": ok,
+        "phase": phase.value,
+        "query": query,
+        "prompt_tokens": total,
+        "max_tokens": max_tokens,
+        "utilization": round(utilization, 4),
+        "over": over,
+        "tokens_per_section": dict(sorted(pack.stats.tokens_per_section.items())),
+        "ratchet": {
+            "path": ratchet_path_output,
+            "baseline_prompt_tokens": ratchet_baseline,
+            "written": ratchet_written,
+            "ok": ratchet_ok,
+        },
+    }
+
+    if json_output:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        if budget_ok:
+            print(f"OK total={total} budget={max_tokens} utilization={utilization:.1%}")
+        else:
+            print(f"FAIL total={total} budget={max_tokens} over={over}")
+        if ratchet:
+            if ratchet_baseline is not None and not ratchet_ok:
+                print(f"Ratchet failed: total={total} baseline={ratchet_baseline}")
+            elif ratchet_written:
+                print(f"Ratchet baseline written: {ratchet_path}")
+        if breakdown:
+            print("Token breakdown:")
+            for name, tokens in sorted(pack.stats.tokens_per_section.items()):
+                print(f"  {name}: {tokens}")
+
+    raise typer.Exit(0 if ok else 1)
 
 
 # ---------------------------------------------------------------------------

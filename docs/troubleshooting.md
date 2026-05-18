@@ -334,6 +334,24 @@ total_estimated_tokens = (
 mgr = ContextManager(token_estimator=TiktokenEstimator(model="gpt-4"))
 ```
 
+**CI regression check:** after serialising a session with `contextweaver ingest`,
+pin a ceiling with `budget-check` so prompt-size regressions fail before they
+reach production:
+
+```bash
+contextweaver budget-check \
+  --session session.json \
+  --phase answer \
+  --query "current user task" \
+  --max-tokens 4000 \
+  --breakdown
+```
+
+The command exits 0 when the rendered prompt is within the ceiling and exits 1
+when it is over. Add `--json` for CI parsers, or `--ratchet` to write the
+default `.budget-baseline.json` baseline and fail future runs that grow beyond
+it. Use `--ratchet-path path/to/baseline.json` when CI needs a different file.
+
 ---
 
 ### Issue 9: Graph Build Fails (`GraphBuildError`)

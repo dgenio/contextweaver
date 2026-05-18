@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CLI budget regression checks** (#276). New `contextweaver budget-check`
+  command rebuilds an ingested session for a selected phase, compares the
+  rendered prompt token count against `--max-tokens`, exits 1 on budget
+  overruns, and supports `--breakdown`, `--json`, and `--ratchet` baseline
+  workflows for CI.
+
 ## [0.8.0] - 2026-05-19
 
 ### Added
