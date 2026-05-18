@@ -69,6 +69,8 @@ nav:
   - Architectures:
       - Overview: architectures/index.md
       - Slack ops bot: architectures/slack_ops_bot.md
+      - Code-review bot: architectures/code_review_bot.md
+      - Voice agent: architectures/voice_agent.md
   - Gateway Spec: gateway_spec.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md

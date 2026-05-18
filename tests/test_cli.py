@@ -20,6 +20,7 @@ def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]
         [sys.executable, "-m", "contextweaver", *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         cwd=cwd,
         env=env,
     )

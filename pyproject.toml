@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.5.0"
+version = "0.6.0"
 description = "Dynamic context management for tool-using AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -81,6 +81,12 @@ dev = [
     # 4.18 ships ``referencing`` — the conformance script's local $ref
     # resolver depends on it (PR #201 review).
     "jsonschema>=4.18",
+    # FastMCP is pulled into [dev] so the CodeMode discovery-tool integration
+    # test (``tests/test_adapters_fastmcp_discovery.py``) — which spins up a
+    # real in-memory FastMCP server — runs on every CI matrix cell.  The
+    # ``[fastmcp]`` runtime extra below stays for end users who don't want
+    # the dev toolchain.
+    "fastmcp>=2.0",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -95,6 +101,16 @@ fastmcp = [
 # LangChain integration examples.
 langchain = [
     "langchain-core>=0.3",
+]
+# Real-time voice agents: Pipecat frame processors composed with the
+# contextweaver context engine.  Optional because pipecat-ai pulls heavy
+# transitive deps (audio codecs, VAD models) — the
+# ``examples/architectures/voice_agent`` script runs end-to-end without
+# this extra installed; install only when you want to wire contextweaver
+# into a real Pipecat ``FrameProcessor`` (see
+# ``docs/integration_pipecat.md`` for the worked code).
+voice = [
+    "pipecat-ai>=0.0.50",
 ]
 # Docs site (mkdocs).
 docs = [
@@ -129,6 +145,13 @@ ann = [
 embeddings = [
     "sentence-transformers>=2.0",
 ]
+# Persistent SQLite-backed stores (issues #174 / #223).  The implementations
+# rely only on stdlib ``sqlite3``; this extras group exists so installs can
+# opt into a future ``aiosqlite``-based async variant or schema-migration
+# tooling without changing the public install surface.  Empty today on
+# purpose — the contract is "if you want the SQLite stores, install this
+# extra" even though it currently adds no third-party deps.
+sqlite = []
 # OpenTelemetry tracing + metrics export with native GenAI semantic
 # conventions (#224).  Pinned at >=1.27 because the
 # ``opentelemetry.semconv.attributes.gen_ai_attributes`` module landed in
@@ -150,6 +173,7 @@ all = [
     "contextweaver[otel]",
     "contextweaver[graph]",
     "contextweaver[weaver-spec]",
+    "contextweaver[voice]",
 ]
 
 [project.scripts]

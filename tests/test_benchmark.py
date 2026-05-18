@@ -14,7 +14,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "benchmarks"))
 
-from benchmark import _make_catalog, _precision_at_k, _recall_at_k, _reciprocal_rank
+from benchmark import (
+    _make_catalog,
+    _parse_args,
+    _precision_at_k,
+    _recall_at_k,
+    _reciprocal_rank,
+)
 
 # Synthetic variant IDs always end with .vN (e.g. billing.charge_customer.v2).
 # Natural IDs never match this pattern (billing.invoices.void contains .v but not .vN at end).
@@ -70,3 +76,22 @@ def test_make_catalog_size_1000_has_synthetic() -> None:
     items = _make_catalog(1000)
     assert len(items) == 1000
     assert any(_SYNTHETIC_PAT.search(item.id) for item in items)
+
+
+def test_parse_args_rejects_unknown_backend() -> None:
+    """Typos in --backends should exit code 2 (argparse convention), not crash later."""
+    with pytest.raises(SystemExit) as exc_info:
+        _parse_args(["--matrix", "--backends", "tfidf,tifdf"])
+    assert exc_info.value.code == 2
+
+
+def test_parse_args_accepts_all_supported_backends() -> None:
+    """All three documented backends pass validation."""
+    args = _parse_args(["--matrix", "--backends", "tfidf,bm25,fuzzy"])
+    assert args.backends == "tfidf,bm25,fuzzy"
+
+
+def test_parse_args_accepts_subset_of_backends() -> None:
+    """A subset of supported backends is also valid."""
+    args = _parse_args(["--matrix", "--backends", "tfidf"])
+    assert args.backends == "tfidf"

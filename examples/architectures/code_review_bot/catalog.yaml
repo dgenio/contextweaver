@@ -1,0 +1,206 @@
+# Code-review bot — 24 analysis tools (mocked, names mirror common code-review surfaces).
+#
+# Loaded via contextweaver.routing.catalog.load_catalog_yaml(). The file is the
+# canonical catalog for the architecture; main.py reads it and registers each
+# entry into a Catalog before building the routing graph.
+#
+# Namespaces:
+#   grep       — code search by symbol / regex / file
+#   git        — git blame, git log, git show, git diff
+#   lint       — ruff / eslint-style style + bug analysis
+#   typecheck  — mypy / pyright-style static type analysis
+#   test       — pytest / unittest discovery + execution
+#   review     — PR diff inspection, comment posting
+
+- id: grep.symbol
+  kind: tool
+  name: grep_symbol
+  namespace: grep
+  description: Search for a symbol across the repository codebase
+  tags: [grep, search, code]
+  side_effects: false
+  cost_hint: 0.20
+- id: grep.regex
+  kind: tool
+  name: grep_regex
+  namespace: grep
+  description: Run a regex search across the codebase
+  tags: [grep, search, regex, code]
+  side_effects: false
+  cost_hint: 0.20
+- id: grep.file
+  kind: tool
+  name: grep_file
+  namespace: grep
+  description: Read a single source file with line numbers
+  tags: [grep, file, code]
+  side_effects: false
+  cost_hint: 0.10
+- id: grep.list_files
+  kind: tool
+  name: grep_list_files
+  namespace: grep
+  description: List source files matching a path pattern
+  tags: [grep, file, code]
+  side_effects: false
+  cost_hint: 0.10
+- id: git.blame
+  kind: tool
+  name: git_blame
+  namespace: git
+  description: Show git blame for a file showing who last touched each line
+  tags: [git, blame, vcs]
+  side_effects: false
+  cost_hint: 0.25
+- id: git.log
+  kind: tool
+  name: git_log
+  namespace: git
+  description: Show git log of commits touching a file or path
+  tags: [git, log, vcs]
+  side_effects: false
+  cost_hint: 0.20
+- id: git.show
+  kind: tool
+  name: git_show
+  namespace: git
+  description: Show the diff and metadata of a git commit
+  tags: [git, vcs]
+  side_effects: false
+  cost_hint: 0.20
+- id: git.diff
+  kind: tool
+  name: git_diff
+  namespace: git
+  description: Show the diff of a pull request branch against main
+  tags: [git, diff, vcs, pull request]
+  side_effects: false
+  cost_hint: 0.30
+- id: git.diff_files
+  kind: tool
+  name: git_diff_files
+  namespace: git
+  description: List files changed in the pull request diff
+  tags: [git, diff, vcs, pull request]
+  side_effects: false
+  cost_hint: 0.10
+- id: lint.run
+  kind: tool
+  name: lint_run
+  namespace: lint
+  description: Run ruff lint on the codebase and report style violations
+  tags: [lint, style, ruff]
+  side_effects: false
+  cost_hint: 0.40
+- id: lint.fix
+  kind: tool
+  name: lint_fix
+  namespace: lint
+  description: Auto-apply linter fixes to the working tree
+  tags: [lint, fix, write]
+  side_effects: true
+  cost_hint: 0.30
+- id: lint.format_check
+  kind: tool
+  name: lint_format_check
+  namespace: lint
+  description: Check that files are formatted per the project style
+  tags: [lint, format, style]
+  side_effects: false
+  cost_hint: 0.20
+- id: typecheck.run
+  kind: tool
+  name: typecheck_run
+  namespace: typecheck
+  description: Run the static type checker and report type errors
+  tags: [typecheck, mypy, types]
+  side_effects: false
+  cost_hint: 0.50
+- id: typecheck.module
+  kind: tool
+  name: typecheck_module
+  namespace: typecheck
+  description: Type-check a single module and report errors
+  tags: [typecheck, mypy, types]
+  side_effects: false
+  cost_hint: 0.30
+- id: typecheck.stubs
+  kind: tool
+  name: typecheck_stubs
+  namespace: typecheck
+  description: Check that third-party type stubs are present and current
+  tags: [typecheck, stubs]
+  side_effects: false
+  cost_hint: 0.20
+- id: test.run
+  kind: tool
+  name: test_run
+  namespace: test
+  description: Run the test suite and report passes / failures
+  tags: [test, pytest, ci]
+  side_effects: false
+  cost_hint: 0.60
+- id: test.run_module
+  kind: tool
+  name: test_run_module
+  namespace: test
+  description: Run pytest against a single test module
+  tags: [test, pytest]
+  side_effects: false
+  cost_hint: 0.40
+- id: test.coverage
+  kind: tool
+  name: test_coverage
+  namespace: test
+  description: Report test coverage for the changed files in the pull request
+  tags: [test, coverage]
+  side_effects: false
+  cost_hint: 0.50
+- id: test.discover
+  kind: tool
+  name: test_discover
+  namespace: test
+  description: Discover test files matching a path pattern
+  tags: [test, discover]
+  side_effects: false
+  cost_hint: 0.20
+- id: review.summarize_diff
+  kind: tool
+  name: review_summarize_diff
+  namespace: review
+  description: Summarise a pull request diff into a short review brief
+  tags: [review, summary, pull request]
+  side_effects: false
+  cost_hint: 0.30
+- id: review.fetch_pr
+  kind: tool
+  name: review_fetch_pr
+  namespace: review
+  description: Fetch a pull request's metadata, description, and labels
+  tags: [review, pull request, vcs]
+  side_effects: false
+  cost_hint: 0.20
+- id: review.post_comment
+  kind: tool
+  name: review_post_comment
+  namespace: review
+  description: Post an inline review comment on a pull request line
+  tags: [review, comment, write, pull request]
+  side_effects: true
+  cost_hint: 0.20
+- id: review.request_changes
+  kind: tool
+  name: review_request_changes
+  namespace: review
+  description: Submit a request-changes review on a pull request
+  tags: [review, write, pull request]
+  side_effects: true
+  cost_hint: 0.10
+- id: review.approve
+  kind: tool
+  name: review_approve
+  namespace: review
+  description: Approve a pull request review
+  tags: [review, approve, write, pull request]
+  side_effects: true
+  cost_hint: 0.10

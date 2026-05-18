@@ -57,3 +57,9 @@ class PathNotFoundError(CatalogError):
 
 class UpstreamError(ContextWeaverError):
     """Raised when an upstream MCP tool call fails for transport/protocol reasons."""
+
+
+class StoreClosedError(ContextWeaverError):
+    """Raised when an operation is attempted on a store whose backing
+    resource (e.g. a SQLite connection) has been released via ``close()``.
+    """

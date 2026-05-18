@@ -15,7 +15,56 @@ from contextweaver.types import ArtifactRef
 
 logger = logging.getLogger("contextweaver.store")
 
-# FUTURE: FileArtifactStore backed by local filesystem for persistent storage.
+
+def _apply_selector(raw: str, selector: dict[str, Any]) -> str:
+    """Apply a drilldown *selector* to decoded artifact *raw* text.
+
+    Shared by every :class:`~contextweaver.store.protocols.ArtifactStore`
+    implementation so the four selector dialects (``head``, ``lines``,
+    ``json_keys``, ``rows``) stay byte-for-byte identical across backends.
+
+    Args:
+        raw: The artifact's bytes, decoded as UTF-8 (errors replaced).
+        selector: A dict whose ``type`` key picks one of the supported
+            dialects; remaining keys are dialect-specific.
+
+    Returns:
+        The selected subset of *raw* as a string.
+
+    Raises:
+        ContextWeaverError: If ``selector["type"]`` is not recognised.
+    """
+    sel_type = selector.get("type", "")
+
+    if sel_type == "head":
+        chars = selector.get("chars", 500)
+        return raw[:chars]
+
+    if sel_type == "lines":
+        lines = raw.splitlines()
+        start = selector.get("start", 0)
+        end = selector.get("end", len(lines))
+        return "\n".join(lines[start:end])
+
+    if sel_type == "json_keys":
+        keys: list[str] = selector.get("keys", [])
+        try:
+            obj = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return ""
+        if isinstance(obj, dict):
+            return json.dumps({k: obj[k] for k in keys if k in obj}, indent=2, sort_keys=True)
+        return ""
+
+    if sel_type == "rows":
+        # FUTURE: CSV/TSV-aware parsing — detect delimiter, preserve header,
+        # and support column filtering.  Currently identical to "lines".
+        lines = raw.splitlines()
+        start = selector.get("start", 0)
+        end = selector.get("end", len(lines))
+        return "\n".join(lines[start:end])
+
+    raise ContextWeaverError(f"Unknown drilldown selector type: {sel_type!r}")
 
 
 class InMemoryArtifactStore:
@@ -155,37 +204,7 @@ class InMemoryArtifactStore:
             ContextWeaverError: If the selector type is unknown.
         """
         raw = self.get(handle).decode("utf-8", errors="replace")
-        sel_type = selector.get("type", "")
-
-        if sel_type == "head":
-            chars = selector.get("chars", 500)
-            return raw[:chars]
-
-        if sel_type == "lines":
-            lines = raw.splitlines()
-            start = selector.get("start", 0)
-            end = selector.get("end", len(lines))
-            return "\n".join(lines[start:end])
-
-        if sel_type == "json_keys":
-            keys: list[str] = selector.get("keys", [])
-            try:
-                obj = json.loads(raw)
-            except (json.JSONDecodeError, ValueError):
-                return ""
-            if isinstance(obj, dict):
-                return json.dumps({k: obj[k] for k in keys if k in obj}, indent=2, sort_keys=True)
-            return ""
-
-        if sel_type == "rows":
-            # FUTURE: CSV/TSV-aware parsing — detect delimiter, preserve header,
-            # and support column filtering.  Currently identical to "lines".
-            lines = raw.splitlines()
-            start = selector.get("start", 0)
-            end = selector.get("end", len(lines))
-            return "\n".join(lines[start:end])
-
-        raise ContextWeaverError(f"Unknown drilldown selector type: {sel_type!r}")
+        return _apply_selector(raw, selector)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the store's metadata index to a JSON-compatible dict."""

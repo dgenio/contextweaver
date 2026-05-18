@@ -43,6 +43,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-trip unchanged.  `Catalog.validate_dependencies()` returns
   human-readable warnings for `depends_on` references to unknown
   tool ids.  `schemas/catalog.schema.json` regenerated.
+- **FastMCP CodeMode hooks** (#87). New
+  `contextweaver.adapters.fastmcp.make_discovery_tool(router, catalog)`
+  and `make_context_hook(context_manager)` factories return plain
+  callables suitable for FastMCP CodeMode's custom-discovery-tool and
+  context hooks (or any runtime with the same shape — LangChain,
+  LlamaIndex, hand-rolled agent loops). Neither hook imports `fastmcp`
+  at runtime; the callable contract is framework-agnostic.
+  `examples/fastmcp_discovery_demo.py` demonstrates a 22-tool catalog
+  shrinking to a 3-tool shortlist (86% token reduction). `fastmcp>=2.0`
+  is now part of the `[dev]` extra so a real in-memory FastMCP server
+  integration test (`tests/test_adapters_fastmcp_discovery.py`) runs on
+  every CI matrix cell. Reference:
+  https://github.com/PrefectHQ/fastmcp/discussions/3365
+- **Code-review bot reference architecture** (#204). New
+  `examples/architectures/code_review_bot/` walks a six-step pull-request
+  review against a 24-tool catalog (grep / git / lint / typecheck /
+  test / review). The firewall is the load-bearing pattern: a synthetic
+  ~28 KB diff dump and ~2.5 KB grep result both compact to ~500-char
+  summaries while raw bytes stay addressable via the artifact store.
+  Linked from `docs/architectures/index.md` and runnable under
+  `make architectures`.
+- **Voice agent reference architecture** (#205). New
+  `examples/architectures/voice_agent/` is the canonical worked example
+  for `docs/integration_pipecat.md`. Walks a five-turn customer-service
+  call against an 18-tool catalog, demonstrating the
+  `asyncio.to_thread(mgr.build_sync, …)` pattern and tight per-phase
+  budgets (`ContextBudget(route=200, call=500, interpret=400,
+  answer=1000)`) for sub-300 ms TTS. Pipecat is optional via the new
+  `[voice]` extra; the example runs end-to-end without it.
+
+### Fixed
+
+- **FastMCP CodeMode hook factories use `ConfigError`** (PR #233 review).
+  `make_discovery_tool` and `make_context_hook` now raise
+  `contextweaver.exceptions.ConfigError` (a `ContextWeaverError` subclass)
+  on negative `top_k` / `firewall_threshold`, replacing the previous bare
+  `ValueError` per the AGENTS.md custom-exception convention.
+- **`make_discovery_tool` `top_k` counts hydratable tools, not slots**
+  (PR #233 review). The discovery hook used to slice
+  `result.candidate_ids` to `top_k` *before* hydration, so a graph-only
+  candidate appearing early in the list silently shrank the shortlist by
+  one. The hook now iterates the full candidate list, skips non-hydratable
+  IDs, and stops after `top_k` real tools have been appended.
+- **`make_discovery_tool` returns deep-copied `input_schema`** (PR #233
+  review). `dict(hydrated.args_schema)` was a shallow copy that left
+  nested dicts / lists aliased with the catalog item, so an external
+  runtime mutating the returned schema could silently corrupt subsequent
+  `discover()` calls. The schema is now `copy.deepcopy`-ed before
+  handing it to callers.
+- **`make_context_hook` docstring matches implementation** (PR #233
+  review). The "parent user-turn id for dependency closure" wording is
+  replaced with the actual behaviour — the query is stamped onto
+  `item.metadata["codemode_query"]`, no synthetic user_turn item is
+  ingested, matching the inline rationale that the hook is intentionally
+  stateless w.r.t. conversation history.
+- **`make_context_hook` accepts `tool_name`** (PR #233 audit). The
+  factory previously hardcoded `tool_name="codemode.discovery"` on every
+  firewalled `ContextItem`, which was both semantically wrong (this is a
+  context / firewall hook, not a discovery hook) and lossy for multi-tool
+  agents whose traces could no longer be sliced by underlying tool. The
+  factory now accepts `tool_name: str = "codemode.tool_result"` and stamps
+  the configured value into the event log. The docstring also pins the
+  timing of the `codemode_query` metadata stamp (post-firewall;
+  visible to event-log reads and `on_context_built` callbacks but
+  *not* to `on_firewall_triggered`).
+- **FastMCP CodeMode test coverage** (PR #233 audit). Added a real
+  FastMCP integration test that exercises `make_context_hook` end-to-end
+  against an in-memory `fastmcp.FastMCP` server (`tests/test_adapters_
+  fastmcp_discovery.py::test_context_hook_compacts_real_fastmcp_tool_call`),
+  a `top_k=0` boundary test for `make_discovery_tool`, and a post-hook
+  metadata-consumability pin for the `codemode_query` contract.
+
+## [0.6.0] - 2026-05-17
+
+### Fixed
+
+- **`SqliteEventLog.query()` filter order matches `InMemoryEventLog`**
+  (PR #232 review). `since` is now applied to the full insertion-ordered
+  log *before* the `kinds` filter, mirroring the in-memory semantics.
+  Previously the SQL path filtered by kind first, which gave different
+  results on mixed-kind logs for the same `(kinds, since, limit)` triple.
+- **`JsonFileArtifactStore` path-traversal hardening** (PR #232 review).
+  Handle validation moved into `_meta_path` / `_data_path` so every
+  public method that resolves a handle (`get` / `ref` / `exists` /
+  `delete` / `metadata` / `drilldown`) rejects path separators, `..`,
+  `.`, and null bytes — not just `put`.
+- **`SqliteEventLog` use-after-close raises `StoreClosedError`** (PR
+  #232 review). The bare `RuntimeError` previously raised by
+  `_require_conn` is replaced by a new
+  `contextweaver.exceptions.StoreClosedError` (subclass of
+  `ContextWeaverError`) so callers can catch the contextweaver-family
+  consistently per `AGENTS.md`.
+- **`JsonFileArtifactStore.list_refs()` skips wrong-shape JSON** (PR
+  #232 review). The error-handling clause now also catches `TypeError`
+  raised by `ArtifactRef.from_dict` when a `.json` file is valid JSON
+  but the top level is not a mapping (e.g. `[]`, `null`, a bare string).
+
+### Added
+
+- **`SqliteEventLog` + shared `_sqlite_base.py`** (#174, #223). First
+  persistent `EventLog` backend, layered on a small connection +
+  migration helper that the rest of the SQLite-stores epic will reuse.
+  Sets `PRAGMA journal_mode=WAL` and `PRAGMA foreign_keys=ON` on open,
+  versions schema migrations through a `_contextweaver_schema_version`
+  table, and round-trips every `ContextItem` field (including JSON
+  `metadata` and nested `ArtifactRef`). Constructor accepts a filesystem
+  path or `":memory:"`; the parent directory is created automatically.
+  Single-process; sync only. New `[sqlite]` extras-group placeholder.
+- **`JsonFileArtifactStore`** (#42). Filesystem-backed
+  `ArtifactStore` implementation that stores each artifact as a
+  `{base_dir}/{handle}.data` byte file plus a `{base_dir}/{handle}.json`
+  metadata file. Re-instantiating against the same directory recovers
+  the metadata index automatically. Handles containing path separators,
+  `..`, `.`, or null bytes are rejected at write time. Drilldown
+  selectors (`head` / `lines` / `json_keys` / `rows`) match
+  `InMemoryArtifactStore` byte-for-byte via a shared module-private
+  helper `_apply_selector` in `store/artifacts.py`.
+- **`EventLog` lifecycle methods** (#223). The `EventLog` protocol now
+  requires `close()`, `__enter__`, and `__exit__` so persistent backends
+  fit the contract cleanly. `InMemoryEventLog.close()` is a no-op so
+  existing callers are unaffected; the methods make
+  `with SqliteEventLog(path) as log:` the recommended idiom for the new
+  backend.
+
 - **`BuildStats.report()` and `BuildStats.report_dict()`** (#106). New
   diagnostic-report surface on `BuildStats`: pure-data string rendering
   (`"text"` or `"rich"` Rich-markup format) plus a versioned dict for
@@ -170,6 +294,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attributes moved from bare names (`phase`, `tokens`, `reason`) to
   the `contextweaver.*` namespace to avoid colliding with future
   SemConv additions.
+
+### Fixed
+
+- **`--backends` typo validation in benchmark harness** (PR #235). Typos
+  like `--backends tifdf` now exit via `parser.error()` (code 2) instead of
+  propagating to `Router` init as a `ConfigError` traceback.
+- **Skipped-row rendering in benchmark delta script** (PR #235). Matrix
+  cells with `status != "ok"` (e.g. `"skipped: rapidfuzz not installed"`)
+  now render as `_skipped_ (reason)` instead of being treated as a
+  zero-metric regression with false-positive ⚠️ markers.
 
 ## [0.4.0] - 2026-05-16
 

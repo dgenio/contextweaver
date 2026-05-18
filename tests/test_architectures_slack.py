@@ -14,19 +14,23 @@ exception".
 
 from __future__ import annotations
 
+import importlib.util
 import io
-import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
 
-# The architecture lives in examples/, not under src/. Add it to sys.path
-# for direct import.
+# The architecture lives in examples/, not under src/.  Load it under a
+# unique module name so test_architectures_<name>.py files can coexist
+# in the same pytest run — a bare ``import main`` from sys.path collides
+# across the three architectures.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "examples" / "architectures" / "slack_ops_bot"))
-
-import main as slack_ops_bot  # noqa: E402  (import after sys.path manipulation)
+_MAIN_PATH = _REPO_ROOT / "examples" / "architectures" / "slack_ops_bot" / "main.py"
+_spec = importlib.util.spec_from_file_location("slack_ops_bot_main", _MAIN_PATH)
+assert _spec is not None and _spec.loader is not None
+slack_ops_bot = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(slack_ops_bot)
 
 
 @pytest.fixture
