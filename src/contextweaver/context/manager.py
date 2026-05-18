@@ -780,9 +780,17 @@ class ContextManager:
 
         The summary is the most recent ``tool_result`` body truncated to
         500 characters — the same heuristic suggested in the issue body.
-        ``called_tool_ids`` is the union of every ``tool_result``'s
-        ``parent_id`` (the originating tool call) so the history reads as
-        "tools whose result we already have", not "events in the log".
+        ``called_tool_ids`` is derived from each ``tool_result``'s
+        originating tool call's ``function_name`` metadata — the canonical
+        catalog item id.  Resolution order:
+
+        1. ``tool_result.metadata["function_name"]`` (Gemini adapter sets
+           this directly on the result).
+        2. Resolve the parent ``tool_call`` item via
+           ``event_log.get(parent_id)`` and read its
+           ``metadata["function_name"]`` (OpenAI / Anthropic adapters).
+        3. Fallback: use ``parent_id`` verbatim (backward-compatible for
+           simple event logs where ``parent_id`` *is* the tool id).
         """
         from contextweaver.routing.history import RouteHistory as _RouteHistory
 
@@ -793,7 +801,7 @@ class ContextManager:
         called_ids: list[str] = []
         seen: set[str] = set()
         for item in tool_results:
-            tid = item.parent_id or item.id
+            tid = self._resolve_tool_id_from_result(item)
             if tid in seen:
                 continue
             seen.add(tid)
@@ -805,6 +813,29 @@ class ContextManager:
             last_result_summary=summary,
             step_number=len(called_ids) + 1,
         )
+
+    def _resolve_tool_id_from_result(self, item: ContextItem) -> str:
+        """Derive the catalog tool id from a tool_result ContextItem.
+
+        Resolution order:
+        1. item.metadata["function_name"] (set by Gemini adapter)
+        2. Parent tool_call item's metadata["function_name"] (OpenAI/Anthropic)
+        3. Fallback to parent_id (backward-compat for simple logs)
+        """
+        meta = item.metadata or {}
+        fn = meta.get("function_name")
+        if isinstance(fn, str) and fn:
+            return fn
+        parent_id = item.parent_id or item.id
+        try:
+            parent = self._event_log.get(parent_id)
+            parent_meta = parent.metadata or {}
+            parent_fn = parent_meta.get("function_name")
+            if isinstance(parent_fn, str) and parent_fn:
+                return parent_fn
+        except Exception:  # noqa: BLE001 — ItemNotFoundError or any store issue
+            pass
+        return parent_id
 
     # ------------------------------------------------------------------
     # Call-phase prompt (schema injection)

@@ -9,8 +9,9 @@ Gated behind the ``contextweaver[embeddings]`` extra:
 The default install never imports this module; it is loaded lazily by
 :class:`~contextweaver.routing.router.Router` only when an
 ``embedding_backend=`` argument is supplied.  Importing this module
-without the ``sentence-transformers`` dependency raises ``ImportError``
-with the exact install hint above — matching the convention used by
+succeeds without ``sentence-transformers``; only instantiating
+:class:`SentenceTransformerBackend` raises ``ImportError`` with the
+exact install hint above — matching the convention used by
 :mod:`contextweaver.extras.otel`.
 
 What is shipped here:
@@ -158,13 +159,20 @@ class HybridEmbeddingRetriever:
         embedding_weight: float = 0.7,
     ) -> None:
         if not 0.0 <= embedding_weight <= 1.0:
-            raise ValueError(f"embedding_weight must be in [0.0, 1.0], got {embedding_weight}")
+            from contextweaver.exceptions import ConfigError
+
+            raise ConfigError(f"embedding_weight must be in [0.0, 1.0], got {embedding_weight}")
         self._backend = backend
         self._embedding_weight = embedding_weight
         self._tfidf_weight = 1.0 - embedding_weight
         self._corpus_size = 0
         self._corpus_vecs: list[list[float]] = []
         self._tfidf = TfIdfScorer()
+        # LRU-1 cache: avoid re-embedding the same query when score_one is
+        # called repeatedly with the same query (e.g., _result_similarity_map
+        # in Router).  Keyed by query string; invalidated on new query.
+        self._cached_query: str | None = None
+        self._cached_emb_scores: list[float] = []
 
     @property
     def backend(self) -> EmbeddingBackend:
@@ -180,6 +188,9 @@ class HybridEmbeddingRetriever:
         self._corpus_size = len(corpus)
         self._corpus_vecs = self._backend.embed(corpus)
         self._tfidf.fit(corpus)
+        # Invalidate embedding score cache on corpus change.
+        self._cached_query = None
+        self._cached_emb_scores = []
 
     def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
         """Return up to *top_k* ``(index, hybrid_score)`` pairs sorted by score desc."""
@@ -203,13 +214,24 @@ class HybridEmbeddingRetriever:
         return self._embedding_weight * emb + self._tfidf_weight * tfidf
 
     def _embedding_scores(self, query: str) -> list[float]:
-        """Per-corpus-document similarity to *query* using :attr:`backend`."""
+        """Per-corpus-document similarity to *query* using :attr:`backend`.
+
+        Uses an LRU-1 cache so repeated calls with the same query (the
+        common case in :meth:`score_one` loops) pay only one embedding
+        pass.
+        """
+        if query == self._cached_query:
+            return self._cached_emb_scores
         if not self._corpus_vecs:
             return []
         q_vec = self._backend.embed([query])
         if not q_vec:
-            return [0.0] * self._corpus_size
-        return self._backend.similarity(q_vec[0], self._corpus_vecs)
+            scores = [0.0] * self._corpus_size
+        else:
+            scores = self._backend.similarity(q_vec[0], self._corpus_vecs)
+        self._cached_query = query
+        self._cached_emb_scores = scores
+        return scores
 
 
 def _dot(a: list[float], b: list[float]) -> float:

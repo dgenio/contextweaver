@@ -15,8 +15,8 @@ Stages:
 1. ``retrieve`` — :class:`~contextweaver.protocols.Retriever` fits the
    item + node corpus (idempotent via internal flag).
 2. ``rerank`` — :class:`~contextweaver.protocols.Reranker` re-orders the
-   shortlist.  Defaults to :class:`NoOpReranker` which leaves order
-   unchanged.
+   shortlist.  Defaults to ``None`` (no rerank stage); callers wanting a
+   reranker pass one explicitly to the dataclass constructor.
 3. ``navigate`` — :class:`~contextweaver.protocols.Navigator` walks the
    :class:`~contextweaver.routing.graph.ChoiceGraph` and returns scored
    ``(item_id, score, path)`` tuples.

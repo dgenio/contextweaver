@@ -11,6 +11,7 @@ import math
 
 import pytest
 
+from contextweaver.exceptions import ConfigError
 from contextweaver.extras.embeddings import HybridEmbeddingRetriever
 from contextweaver.protocols import EmbeddingBackend
 from contextweaver.routing.router import Router
@@ -122,9 +123,9 @@ def test_hybrid_retriever_score_one_returns_zero_for_out_of_range_index() -> Non
 
 def test_hybrid_retriever_rejects_out_of_range_embedding_weight() -> None:
     backend = HashEmbeddingBackend()
-    with pytest.raises(ValueError, match="embedding_weight"):
+    with pytest.raises(ConfigError, match="embedding_weight"):
         HybridEmbeddingRetriever(backend, embedding_weight=1.5)
-    with pytest.raises(ValueError, match="embedding_weight"):
+    with pytest.raises(ConfigError, match="embedding_weight"):
         HybridEmbeddingRetriever(backend, embedding_weight=-0.1)
 
 

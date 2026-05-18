@@ -341,11 +341,15 @@ class Router:
             need finer control.
         pipeline: Keyword-only.  Optional pre-built
             :class:`~contextweaver.routing.pipeline.RoutingPipeline`.
-            When supplied, the navigator / packer / reranker stages on
-            the pipeline replace the router's bundled defaults; the
+            When supplied, the navigator and reranker stages on the
+            pipeline replace the router's bundled defaults; the
             retriever on the pipeline is overridden by the one resolved
             from the other constructor args (so corpus indexing stays a
-            single source of truth).  Issue #56.
+            single source of truth).  The packer stage is available for
+            callers to invoke via ``router.pipeline.pack(...)`` but is
+            not called by :meth:`route` itself — cards are produced
+            externally by :meth:`RouteResult.to_routing_decision`.
+            Issue #56.
 
     Raises:
         ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]`` or
@@ -574,6 +578,16 @@ class Router:
         collected = nav_result.collected
         steps = nav_result.steps
         all_sorted = rank_collected(collected, active_items)
+
+        # Rerank stage (issue #56): apply the pipeline reranker after
+        # navigation scoring.  When reranker is None this is a no-op copy.
+        if self._pipeline.reranker is not None and all_sorted:
+            id_to_path = {iid: path for iid, (_, path) in all_sorted}
+            reranked = self._pipeline.rerank(
+                scoring_query,
+                [(iid, score) for iid, (score, _) in all_sorted],
+            )
+            all_sorted = [(iid, (score, id_to_path[iid])) for iid, score in reranked]
 
         history_adjustments: dict[str, float] = {}
         if history is not None and all_sorted:

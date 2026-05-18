@@ -388,10 +388,11 @@ class CardPacker(Protocol):
     """Pluggable card-rendering stage of the routing pipeline.
 
     A packer turns a ranked list of items into :class:`ChoiceCard` instances
-    (and optionally a rendered text block) within a token budget.  The
-    bundled default :class:`~contextweaver.routing.packer.DefaultCardPacker`
-    wraps :func:`contextweaver.routing.cards.make_choice_cards` +
-    :func:`contextweaver.routing.cards.render_cards_text`.
+    within a token budget.  The bundled default
+    :class:`~contextweaver.routing.packer.DefaultCardPacker` wraps
+    :func:`contextweaver.routing.cards.make_choice_cards`.  Text rendering
+    is a separate concern handled by callers (e.g.,
+    :func:`~contextweaver.routing.cards.render_cards_text`).
     """
 
     def pack(

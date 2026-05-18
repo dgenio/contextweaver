@@ -471,14 +471,16 @@ def test_build_route_prompt_auto_constructs_history_from_event_log() -> None:
             parent_id=None,
             kind=ItemKind.tool_call,
             text="db_read invoked",
+            metadata={"function_name": "db_read"},
         )
     )
-    # The tool_result.parent_id is the tool call's id but we expose called
-    # tool ids via that — see the _build_route_history_from_log helper.
+    # In production, tool_result.parent_id points to the tool_call item id
+    # ("tc1"), not the tool catalog id ("db_read"). The resolver derives the
+    # catalog id via the tool_call's metadata["function_name"].
     log.append(
         ContextItem(
             id="tr1",
-            parent_id="db_read",
+            parent_id="tc1",
             kind=ItemKind.tool_result,
             text="rows: id, name, email",
         )
@@ -499,7 +501,15 @@ def test_build_route_prompt_history_from_log_can_be_disabled() -> None:
     router = Router(graph, items=items, top_k=5)
 
     log = InMemoryEventLog()
-    log.append(ContextItem(id="tr1", parent_id="db_read", kind=ItemKind.tool_result, text="rows"))
+    log.append(
+        ContextItem(
+            id="tc1",
+            kind=ItemKind.tool_call,
+            text="db_read",
+            metadata={"function_name": "db_read"},
+        )
+    )
+    log.append(ContextItem(id="tr1", parent_id="tc1", kind=ItemKind.tool_result, text="rows"))
     mgr = ContextManager(event_log=log)
     _, _, result = mgr.build_route_prompt(
         goal="g",
