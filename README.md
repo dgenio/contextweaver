@@ -31,9 +31,14 @@ measured across the four committed benchmark scenarios. Reproducible with
 
 ```bash
 pip install contextweaver
-contextweaver demo                  # end-to-end demo of both engines
-python examples/before_after.py     # side-by-side token comparison (≈70 % reduction)
+contextweaver demo                                  # friendly walkthrough
+contextweaver demo --scenario large-catalog         # 1,000 tools → 5 compact ChoiceCards
+contextweaver demo --scenario huge-tool-output      # context firewall on a ~10 KB tool result
+contextweaver demo --scenario mcp-gateway           # MCP gateway meta-tools end-to-end (no network)
 ```
+
+All four scenarios are deterministic, network-free, and run in under a
+second each. See `contextweaver demo --help` for the full list.
 
 [📖 Docs](https://dgenio.github.io/contextweaver) · [📊 Benchmark scorecard](benchmarks/scorecard.md) · [📦 Examples](examples/) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md)
 
