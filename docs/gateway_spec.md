@@ -391,7 +391,72 @@ semantics are implementation-defined per backend but MUST honour the
 errors return `{"error": "ARGS_INVALID", ...}` per §3.4 and MUST NOT
 reach the upstream server.
 
-## 5. Implementation dependencies (recommended)
+## 5. Cache-stable tool browsing (`cache_stable=True`)
+
+The default §2.5 ordering (score desc, id asc) maximises agent-side
+ranking quality. When a downstream client uses prompt caching, that
+default sacrifices cache hits: a later browse with a different query
+re-ranks the same items, producing different prompt bytes for the same
+ids and invalidating any prefix-cached state on the model side.
+
+`ProxyRuntime(cache_stable=True)` opts into a **byte-stable prefix
+ordering** for repeated browses in the same runtime/session.
+
+### 5.1 Behaviour
+
+When `cache_stable=True`:
+
+1. The runtime tracks the set of `tool_id`s that have been **browsed**
+   or **hydrated** during the session.
+2. On every `tool_browse(query|path)` call:
+   - Cards whose id is already in the session's seen-set are emitted
+     **first**, sorted **ascending by `id`**.
+   - A single internal `ChoiceCard` with id
+     `__cache_breakpoint__` and `kind="internal"` is emitted **only if
+     both the seen-prefix and the new-suffix are non-empty**. The
+     marker is the explicit boundary downstream serialisers should
+     insert their cache breakpoint at (e.g. Anthropic
+     `cache_control: {"type": "ephemeral"}` or OpenAI prompt-cache
+     keys).
+   - Newly-discovered cards are emitted **after** the marker, also
+     sorted ascending by `id`.
+3. The content of every card in the seen-prefix is **frozen on first
+   sighting**. Subsequent browses re-emit the cached content even if
+   the router would have produced a different `score` value for the
+   same item under a different query. This is what makes the prefix
+   byte-stable.
+
+### 5.2 Ranking metadata is preserved
+
+`ChoiceCard.score` is preserved on every card. **Important caveat:**
+when `cache_stable=True`, the first emitted card is not necessarily
+the highest-ranked card — ranking must be read from
+`ChoiceCard.score`, not inferred from position. Consumers that want
+to display tools in rank order can sort by `score` after receiving
+the response; the cache-stable ordering is for the wire / prompt
+representation, not the UI.
+
+### 5.3 Marker is suppressed when there is no boundary
+
+- First browse in a session → all cards are new → **no marker**.
+- A browse whose ids are entirely already-seen → **no marker** (the
+  whole response is the stable prefix).
+- A browse whose ids are entirely new → **no marker**.
+
+### 5.4 MCP compliance
+
+The marker is a real `ChoiceCard` (`kind="internal"`); it satisfies
+every existing serialisation that already handles `internal` cards
+(path-browse cluster nodes, §3.3 Examples). MCP-format tool-list
+output is unaffected because the marker only appears in
+`tool_browse` response payloads, not in `tools/list` (§4.1).
+
+### 5.5 Failed hydrations are not recorded
+
+`hydrate(tool_id)` only enters the seen-set when it succeeds.
+`GatewayError(code="HYDRATE_FAILED")` is a no-op for the cache state.
+
+## 6. Implementation dependencies (recommended)
 
 These are **suggestions** for [#13][i13] / [#28][i28] / [#29][i29] /
 [#34][i34], not requirements of this spec. Each goes under
@@ -409,7 +474,7 @@ Core (`pyproject.toml.dependencies`) does **not** change as part of this
 spec. The runtime PRs decide for themselves whether to take these
 extras.
 
-## 6. Invariants captured by this spec
+## 7. Invariants captured by this spec
 
 The two assertions below are added to
 [`docs/agent-context/invariants.md`](https://github.com/dgenio/contextweaver/blob/main/docs/agent-context/invariants.md) when
@@ -425,7 +490,7 @@ adapter or routing surfaces:
   [#29][i29], string-formatted ids elsewhere in the codebase are a
   review blocker.
 
-## 7. References
+## 8. References
 
 - [`envelope.py:134`](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/envelope.py#L134)
   — `ChoiceCard` definition (the schema-free fact that §2 codifies).

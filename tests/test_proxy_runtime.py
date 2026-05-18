@@ -11,7 +11,7 @@ from typing import Any
 
 from contextweaver.adapters.gateway_error import GatewayError
 from contextweaver.adapters.mcp_upstream import StubUpstream
-from contextweaver.adapters.proxy_runtime import ProxyRuntime
+from contextweaver.adapters.proxy_runtime import CACHE_BREAKPOINT_ID, ProxyRuntime
 from contextweaver.envelope import ChoiceCard, HydrationResult, ResultEnvelope
 
 # ---------------------------------------------------------------------------
@@ -252,3 +252,232 @@ def test_strip_tools_list_emits_sentinel_input_schema() -> None:
         # No banned fields per §2.2.
         for banned in ("args_schema", "outputSchema", "output_schema", "annotations", "_meta"):
             assert banned not in entry
+
+
+# ---------------------------------------------------------------------------
+# cache_stable browse — §5
+# ---------------------------------------------------------------------------
+
+
+def _make_cache_stable_runtime() -> ProxyRuntime:
+    """Like ``_make_runtime`` but with ``cache_stable=True``."""
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), cache_stable=True)
+    runtime.register_tool_defs_sync(_tool_defs())
+    return runtime
+
+
+def _ids(cards: object) -> list[str]:
+    """Extract the ``id`` of every card; assert the response was not an error."""
+    assert isinstance(cards, list), f"expected list[ChoiceCard], got {cards!r}"
+    return [c.id for c in cards]
+
+
+def test_cache_stable_default_is_off() -> None:
+    """Default behavior is unchanged: no flag, no tracking, no marker."""
+    runtime = _make_runtime()
+    assert runtime.cache_stable is False
+    assert runtime.browsed_tool_ids == frozenset()
+
+    cards_a = runtime.browse(query="open a github issue")
+    cards_b = runtime.browse(query="open a github issue")
+    # The session never tracks ids when cache_stable is off.
+    assert runtime.browsed_tool_ids == frozenset()
+    # No marker is emitted.
+    assert CACHE_BREAKPOINT_ID not in _ids(cards_a)
+    assert CACHE_BREAKPOINT_ID not in _ids(cards_b)
+    # Order is the existing score-desc / id-asc ordering — identical across calls.
+    assert _ids(cards_a) == _ids(cards_b)
+
+
+def test_cache_stable_browsed_tool_ids_returns_frozenset() -> None:
+    """The session-tracking accessor returns an immutable snapshot."""
+    runtime = _make_cache_stable_runtime()
+    runtime.browse(query="open a github issue")
+    snap = runtime.browsed_tool_ids
+    assert isinstance(snap, frozenset)
+    # Mutation of the snapshot would corrupt runtime state; frozenset has
+    # no ``add`` method, which is exactly the protection we want.
+    assert not hasattr(snap, "add")
+
+
+def test_cache_stable_first_browse_has_no_marker() -> None:
+    """Before any ids are recorded, the response has nothing to mark."""
+    runtime = _make_cache_stable_runtime()
+    cards = runtime.browse(query="open a github issue")
+    assert CACHE_BREAKPOINT_ID not in _ids(cards)
+    # All emitted ids are recorded for the next browse.
+    assert runtime.browsed_tool_ids == frozenset(_ids(cards))
+
+
+def test_cache_stable_repeated_same_query_has_no_marker_either() -> None:
+    """If the second browse returns exactly the same id set, the response is
+    all-seen — no new tools, so no marker."""
+    runtime = _make_cache_stable_runtime()
+    cards1 = runtime.browse(query="open a github issue")
+    cards2 = runtime.browse(query="open a github issue")
+    # Both runs return cards from the same id set.
+    assert set(_ids(cards1)) == set(_ids(cards2)) - {CACHE_BREAKPOINT_ID} - set(_ids(cards1)) | set(
+        _ids(cards1)
+    )
+    assert CACHE_BREAKPOINT_ID not in _ids(cards2), "all-seen response should not emit a marker"
+
+
+def test_cache_stable_same_query_response_byte_identical() -> None:
+    """The strongest byte-stability guarantee: the same query produces the
+    same byte sequence on every call. This is what prompt caches hash on."""
+    import json as _json
+
+    runtime = _make_cache_stable_runtime()
+    # Two browses of the same query — second call has every id in the seen
+    # set, so the response goes entirely through the cache-stable prefix.
+    cards_a = runtime.browse(query="open a github issue")
+    cards_b = runtime.browse(query="open a github issue")
+    assert isinstance(cards_a, list) and isinstance(cards_b, list)
+    bytes_a = _json.dumps([c.to_dict() for c in cards_a], sort_keys=True).encode("utf-8")
+    bytes_b = _json.dumps([c.to_dict() for c in cards_b], sort_keys=True).encode("utf-8")
+    assert bytes_a == bytes_b, "repeated same-query browse is not byte-identical"
+
+
+def test_cache_stable_overlapping_cards_have_identical_bytes_across_queries() -> None:
+    """For ids that appear in two browse responses under different queries,
+    the cached frozen content must be byte-identical — this is the
+    prompt-cache-hit guarantee for cards in the common prefix."""
+    import json as _json
+
+    runtime = _make_cache_stable_runtime()
+    cards_a = runtime.browse(query="open a github issue")
+    cards_b = runtime.browse(query="post a slack message")
+    assert isinstance(cards_a, list) and isinstance(cards_b, list)
+
+    by_id_a = {c.id: c for c in cards_a if c.id != CACHE_BREAKPOINT_ID}
+    by_id_b = {c.id: c for c in cards_b if c.id != CACHE_BREAKPOINT_ID}
+    overlap = set(by_id_a) & set(by_id_b)
+    assert overlap, "test setup needs overlapping tools across queries"
+    for cid in overlap:
+        # Card content must be byte-identical despite the router having scored
+        # the item differently under the two queries — the cache freezes the
+        # first-sighting content, including score, so the cache prefix is
+        # genuinely stable.
+        a_bytes = _json.dumps(by_id_a[cid].to_dict(), sort_keys=True).encode("utf-8")
+        b_bytes = _json.dumps(by_id_b[cid].to_dict(), sort_keys=True).encode("utf-8")
+        assert a_bytes == b_bytes, f"id={cid!r}: cache-stable card content drifted between browses"
+
+
+def test_cache_stable_prefix_is_id_asc_for_seen_set() -> None:
+    """Once cards are in the seen set, they appear in ascending-id order in
+    the prefix — never the score-desc order that the default produces."""
+    runtime = _make_cache_stable_runtime()
+    # First browse seeds the seen set.
+    runtime.browse(query="open a github issue")
+    # Second browse with a query that surfaces the same ids — the response is
+    # all-seen and must be ascending-id.
+    cards = runtime.browse(query="open a github issue")
+    ids = [c.id for c in cards if c.id != CACHE_BREAKPOINT_ID]
+    assert ids == sorted(ids), f"cache-stable seen prefix is not id-asc: {ids}"
+
+
+def test_cache_stable_new_tools_appended_after_marker() -> None:
+    """Tools that appear in a browse but were not previously seen must land
+    AFTER the marker, in ascending-id order."""
+    runtime = _make_cache_stable_runtime()
+    tool_ids = sorted(runtime.list_tool_ids())
+    # Pin one tool as "seen" by hydrating it directly.
+    seeded_id = tool_ids[0]
+    runtime.hydrate(seeded_id)
+    assert runtime.browsed_tool_ids == frozenset({seeded_id})
+
+    cards = runtime.browse(query="open a github issue")
+    ids = _ids(cards)
+    assert CACHE_BREAKPOINT_ID in ids, "marker missing when both seen and new are present"
+    marker_idx = ids.index(CACHE_BREAKPOINT_ID)
+
+    seen_half = ids[:marker_idx]
+    new_half = ids[marker_idx + 1 :]
+    # Seen half: just the one seeded id, no marker.
+    assert seen_half == [seeded_id]
+    # New half: all other emitted ids, sorted ascending.
+    assert new_half == sorted(new_half), "new-half is not deterministic-by-id-asc"
+    # Marker is internal-kind.
+    marker = cards[marker_idx]
+    assert isinstance(marker, ChoiceCard)
+    assert marker.kind == "internal"
+
+
+def test_cache_stable_marker_only_when_both_sides_present() -> None:
+    """Marker is suppressed when seen-half OR new-half is empty (no boundary)."""
+    runtime = _make_cache_stable_runtime()
+    # First browse → all-new, no marker.
+    cards1 = runtime.browse(query="open a github issue")
+    assert CACHE_BREAKPOINT_ID not in _ids(cards1)
+    # Same browse again → all-seen, no marker.
+    cards2 = runtime.browse(query="open a github issue")
+    assert CACHE_BREAKPOINT_ID not in _ids(cards2)
+
+
+def test_cache_stable_hydrate_updates_seen_set() -> None:
+    """A successful hydrate() records the id so the next browse surfaces it
+    in the byte-stable prefix."""
+    runtime = _make_cache_stable_runtime()
+    tool_ids = sorted(runtime.list_tool_ids())
+    target = tool_ids[2]  # slack
+    assert target not in runtime.browsed_tool_ids
+
+    result = runtime.hydrate(target)
+    assert not isinstance(result, GatewayError)
+    assert target in runtime.browsed_tool_ids
+
+    # A subsequent browse that includes `target` must put it in the prefix.
+    cards = runtime.browse(query="post a slack message")
+    ids = _ids(cards)
+    if target in ids:
+        marker_idx = ids.index(CACHE_BREAKPOINT_ID) if CACHE_BREAKPOINT_ID in ids else len(ids)
+        assert target in ids[:marker_idx], "hydrated tool did not land in cache-stable prefix"
+
+
+def test_cache_stable_failed_hydrate_does_not_pollute_seen_set() -> None:
+    """An unknown tool_id returns GatewayError and does NOT enter the seen set."""
+    runtime = _make_cache_stable_runtime()
+    result = runtime.hydrate("does:not:exist")
+    assert isinstance(result, GatewayError)
+    assert result.code == "HYDRATE_FAILED"
+    assert "does:not:exist" not in runtime.browsed_tool_ids
+
+
+def test_cache_stable_preserves_score_metadata() -> None:
+    """Reordering must preserve ChoiceCard.score so consumers can re-rank."""
+    runtime = _make_cache_stable_runtime()
+    tool_ids = sorted(runtime.list_tool_ids())
+    runtime.hydrate(tool_ids[0])
+
+    cards = runtime.browse(query="open a github issue")
+    assert isinstance(cards, list)
+    # At least one of the real (non-marker) cards must carry a score from the
+    # router; cache_stable reorders but does not overwrite scoring metadata.
+    real_cards = [c for c in cards if c.id != CACHE_BREAKPOINT_ID]
+    assert any(c.score is not None for c in real_cards), (
+        "ChoiceCard.score lost during cache-stable reordering"
+    )
+
+
+def test_cache_stable_does_not_break_path_browse() -> None:
+    """Path-browsing produces the same cards either way, just reordered."""
+    runtime = _make_cache_stable_runtime()
+    by_path = runtime.browse(path="/")
+    assert isinstance(by_path, list)
+    # First call: all-new, no marker.
+    assert CACHE_BREAKPOINT_ID not in _ids(by_path)
+    # Re-browse the same path: all-seen, sorted by id, no marker.
+    by_path_again = runtime.browse(path="/")
+    assert isinstance(by_path_again, list)
+    ids_again = _ids(by_path_again)
+    assert CACHE_BREAKPOINT_ID not in ids_again
+    assert ids_again == sorted(ids_again), "path-browse seen-prefix not id-asc"
+
+
+def test_cache_stable_browse_propagates_gateway_errors() -> None:
+    """A GatewayError must pass through untouched — no marker injection."""
+    runtime = _make_cache_stable_runtime()
+    # Pass neither query nor path → ARGS_INVALID.
+    err = runtime.browse()
+    assert isinstance(err, GatewayError)
+    assert err.code == "ARGS_INVALID"
