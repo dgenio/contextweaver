@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Explicit routing pipeline** (#56). The monolithic `Router.route()` is
+  refactored into four named, swappable stages: *retrieve* → *rerank* →
+  *navigate* → *pack*.  New `RoutingPipeline` composer
+  (`routing/pipeline.py`) plus `Navigator` (`routing/navigator.py`) and
+  `CardPacker` (`routing/packer.py`) protocols + bundled defaults
+  (`BeamSearchNavigator`, `DefaultCardPacker`).  `Router` continues to
+  expose its full public API unchanged and now delegates internally via
+  the new `Router.pipeline` property.  Default pipeline output is
+  byte-identical to the pre-refactor implementation (verified by the
+  existing 50+ `tests/test_router.py` regression gate and
+  `make scorecard-check`).
+- **Optional embedding-based retrieval backend** (#8). New
+  `EmbeddingBackend` protocol in `protocols.py`; new
+  `[embeddings]` extra (`pip install 'contextweaver[embeddings]'`)
+  wires `SentenceTransformerBackend` and `HybridEmbeddingRetriever` in
+  `contextweaver/extras/embeddings.py`.  `Router(embedding_backend=...)`
+  combines the embedding signal with TF-IDF (70/30 weighted sum by
+  default) so exact-id / exact-tag lexical hits keep their floor.
+  Zero-dependency default path is unchanged.
+- **History-aware re-routing** (#27 Phase 1).  `Router.route(...,
+  history=RouteHistory(...))` deprioritises already-called tools
+  (repeat-penalty multiplier), boosts candidates whose `description`
+  resembles the most recent tool-result summary, and surfaces per-item
+  score deltas on the new `RouteResult.history_adjustments` field.
+  `ContextManager.build_route_prompt` auto-constructs the history from
+  the event log unless `history_from_log=False` is set.
+- **Tool-dependency metadata on `SelectableItem`** (#27 Phase 2).  New
+  optional `depends_on` / `provides` / `requires` fields drive a
+  dependency-satisfaction boost and an unsatisfied-`depends_on`
+  penalty in history-aware routing.  All three default to `None` and
+  are omitted from `to_dict()` when unset, so existing catalogs
+  round-trip unchanged.  `Catalog.validate_dependencies()` returns
+  human-readable warnings for `depends_on` references to unknown
+  tool ids.  `schemas/catalog.schema.json` regenerated.
 - **FastMCP CodeMode hooks** (#87). New
   `contextweaver.adapters.fastmcp.make_discovery_tool(router, catalog)`
   and `make_context_hook(context_manager)` factories return plain

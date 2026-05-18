@@ -9,6 +9,9 @@ Currently shipped:
 
 - :mod:`contextweaver.extras.otel` — OpenTelemetry tracing + metrics
   (``contextweaver[otel]``).
+- :mod:`contextweaver.extras.embeddings` — sentence-transformers embedding
+  backend + hybrid embedding/TF-IDF retriever (``contextweaver[embeddings]``,
+  issue #8).
 """
 
 from __future__ import annotations

@@ -98,6 +98,27 @@ class Catalog:
             key=lambda i: i.id,
         )
 
+    def validate_dependencies(self) -> list[str]:
+        """Return human-readable warnings about ``depends_on`` references (issue #27).
+
+        Returns one warning per item whose ``depends_on`` references a tool
+        id that is not registered in this catalog.  An empty list means the
+        dependency graph closes within the catalog.
+
+        Returns:
+            Sorted list of warning strings.  Empty when no issues found.
+        """
+        warnings: list[str] = []
+        known = set(self._items)
+        for item_id in sorted(self._items):
+            item = self._items[item_id]
+            if not item.depends_on:
+                continue
+            for dep in item.depends_on:
+                if dep not in known:
+                    warnings.append(f"Item {item_id!r} depends_on unknown tool id {dep!r}")
+        return warnings
+
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
         return {"items": [item.to_dict() for item in self.all()]}

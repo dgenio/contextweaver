@@ -42,6 +42,11 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
 | `routing/explanation.py` | `RouteResult.explanation()` Markdown / dict rendering (issue #226) |
+| `routing/pipeline.py` | `RoutingPipeline` composer — explicit retrieve → rerank → navigate → pack stages (issue #56) |
+| `routing/navigator.py` | `BeamSearchNavigator` (lifted from `router.py`) + `rank_collected` (issue #56) |
+| `routing/packer.py` | `DefaultCardPacker` wrapping `make_choice_cards` for the pipeline pack stage (issue #56) |
+| `routing/history.py` | `RouteHistory` dataclass + `adjust_scores` (history-aware re-routing, issue #27) |
+| `extras/embeddings.py` | `SentenceTransformerBackend` + `HybridEmbeddingRetriever` behind the `[embeddings]` extra (issue #8) |
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
@@ -69,6 +74,14 @@ It prepares context and routes tools but never calls models or executes tools.
 **Routing Engine** — 4 stages:
 
 1. `Catalog` → 2. `TreeBuilder` → 3. `Router` (beam search) → 4. `ChoiceCards`
+
+The `Router` itself composes a four-stage `RoutingPipeline` internally
+(retrieve → rerank → navigate → pack, issue #56).  Each stage is
+swappable via the `EngineRegistry` or by passing a custom
+`RoutingPipeline` to `Router(pipeline=...)`.  History-aware re-routing
+(`Router.route(history=...)`, issue #27) and the optional embedding
+retriever (`Router(embedding_backend=...)`, issue #8) plug into this
+same pipeline contract.
 
 For full pipeline descriptions and design rationale, see [docs/agent-context/architecture.md](docs/agent-context/architecture.md).
 

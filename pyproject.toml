@@ -131,10 +131,19 @@ cli = []
 retrieval = [
     "rapidfuzz>=3.0",
 ]
-# Approximate-nearest-neighbour backends. Reserved for future embedding-based
-# routing (#8). No functional code references these yet.
+# Approximate-nearest-neighbour backends. Reserved; the in-tree embedding
+# retriever (#8) does an exhaustive O(N) similarity scan and is enough for
+# catalogs under ~10k items.  Wire hnswlib in via a follow-up issue when the
+# fitted-corpus size justifies an indexed search.
 ann = [
     "hnswlib>=0.8",
+]
+# Embedding-based retrieval backend (#8). Activates
+# :class:`contextweaver.extras.embeddings.SentenceTransformerBackend` and the
+# Router's ``embedding_backend=`` kwarg.  Heavy: pulls torch via
+# sentence-transformers, so it stays optional.
+embeddings = [
+    "sentence-transformers>=2.0",
 ]
 # Persistent SQLite-backed stores (issues #174 / #223).  The implementations
 # rely only on stdlib ``sqlite3``; this extras group exists so installs can
@@ -160,6 +169,7 @@ graph = [
 all = [
     "contextweaver[retrieval]",
     "contextweaver[ann]",
+    "contextweaver[embeddings]",
     "contextweaver[otel]",
     "contextweaver[graph]",
     "contextweaver[weaver-spec]",
@@ -212,6 +222,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "opentelemetry.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sentence_transformers"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
