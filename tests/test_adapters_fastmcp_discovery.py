@@ -28,8 +28,10 @@ fastmcp = pytest.importorskip("fastmcp")
 
 from contextweaver.adapters.fastmcp import (  # noqa: E402  — import-after-skip is intentional
     load_fastmcp_catalog,
+    make_context_hook,
     make_discovery_tool,
 )
+from contextweaver.context.manager import ContextManager  # noqa: E402
 from contextweaver.routing.router import Router  # noqa: E402
 from contextweaver.routing.tree import TreeBuilder  # noqa: E402
 
@@ -108,3 +110,47 @@ async def test_discovery_tool_input_schema_matches_fastmcp_wire_shape(
     assert schema.get("type") == "object"
     properties = schema.get("properties", {})
     assert "query" in properties
+
+
+async def test_context_hook_compacts_real_fastmcp_tool_call() -> None:
+    """End-to-end: invoke a FastMCP tool, feed its result to make_context_hook, verify firewall."""
+    # Spin up a tiny in-memory server with a tool that returns a chunky payload.
+    server = fastmcp.FastMCP(name="contextweaver-context-hook-test-server")
+
+    @server.tool
+    def fetch_logs(service: str) -> str:
+        """Return a synthetic large log payload."""
+        # ~5 KB — well above the firewall_threshold below.
+        return "\n".join(
+            f'service={service} ts=2026-05-18T06:{i:02d}:00Z level=INFO msg="event {i}"'
+            for i in range(80)
+        )
+
+    # Drive the tool through fastmcp's in-memory client to make sure the wire
+    # format round-trips through the real FastMCP runtime, not just our adapter.
+    async with fastmcp.Client(server) as client:
+        result = await client.call_tool("fetch_logs", {"service": "payments"})
+        # FastMCP wraps tool outputs in a `content` list of typed blocks.  We
+        # only care about the textual payload here.
+        raw_result = "\n".join(
+            block.text for block in result.content if getattr(block, "text", None) is not None
+        )
+
+    # raw_result is the actual on-wire string the LLM would otherwise see.
+    assert len(raw_result) > 2000  # confirm we're above the firewall threshold
+
+    mgr = ContextManager()
+    hook = make_context_hook(mgr, firewall_threshold=2000, tool_name="logs.fetch_logs")
+    summary = hook("what failed in payments?", raw_result)
+
+    # Firewall fires: prompt-side summary is bounded, raw bytes parked.
+    assert len(summary) < len(raw_result)
+    assert len(list(mgr.artifact_store.list_refs())) == 1
+
+    # The configured tool_name and the query metadata both reach the event log
+    # via the ContextItem metadata bag (post-audit-fix M-1, where `tool_name`
+    # became a hook parameter and stops being hardcoded).
+    events = mgr.event_log.all()
+    tool_result = events[-1]
+    assert tool_result.metadata.get("tool_name") == "logs.fetch_logs"
+    assert tool_result.metadata.get("codemode_query") == "what failed in payments?"

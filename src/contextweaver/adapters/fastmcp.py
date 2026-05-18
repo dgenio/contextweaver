@@ -385,6 +385,7 @@ def make_context_hook(
     context_manager: ContextManager,
     *,
     firewall_threshold: int = 2000,
+    tool_name: str = "codemode.tool_result",
 ) -> Callable[[str, str], str]:
     """Wrap a :class:`ContextManager` firewall as a (query, raw_result) → summary callable.
 
@@ -401,17 +402,35 @@ def make_context_hook(
         firewall_threshold: Character threshold above which the firewall
             kicks in; below it the raw text is returned unchanged.  Matches
             :meth:`ContextManager.ingest_tool_result_sync`'s default.
+        tool_name: The ``tool_name`` stamped onto the firewalled
+            :class:`~contextweaver.types.ContextItem`.  Defaults to
+            ``"codemode.tool_result"`` — override per tool when wiring the
+            hook into a multi-tool agent so traces / metrics can distinguish
+            callers (e.g. ``make_context_hook(mgr, tool_name="github.search_repos")``).
 
     Returns:
         A pure callable ``(query, raw_result) -> str``.  *query* is stamped
         onto ``item.metadata["codemode_query"]`` on the firewalled
-        :class:`~contextweaver.types.ContextItem` so traces can correlate the
-        hook call back to the user turn that triggered it; *raw_result* is
-        the verbatim tool output.  No synthetic ``user_turn`` item is
-        ingested — the hook is intentionally stateless w.r.t. conversation
-        history; only the firewall side-effect (raw bytes parked in the
-        artifact store) is intentional.  Returns the firewall summary (or
-        the raw result if below threshold).
+        :class:`~contextweaver.types.ContextItem` so downstream consumers
+        (event-log readers, post-build
+        :meth:`~contextweaver.protocols.EventHook.on_context_built`
+        callbacks, metric exporters) can correlate the hook call back to
+        the user turn that triggered it; *raw_result* is the verbatim tool
+        output.
+
+        Timing note: the metadata stamp lands *after* the firewall stage
+        runs, so an
+        :meth:`~contextweaver.protocols.EventHook.on_firewall_triggered`
+        callback does NOT see ``codemode_query`` during that callback —
+        tracers that need the query at firewall time should either read
+        the event log on a follow-up callback or subscribe to
+        ``on_context_built`` instead.
+
+        No synthetic ``user_turn`` item is ingested — the hook is
+        intentionally stateless w.r.t. conversation history; only the
+        firewall side-effect (raw bytes parked in the artifact store) is
+        intentional.  Returns the firewall summary (or the raw result if
+        below threshold).
 
     Raises:
         ConfigError: If *firewall_threshold* is negative.
@@ -426,13 +445,14 @@ def make_context_hook(
         item, _envelope = context_manager.ingest_tool_result_sync(
             tool_call_id=call_id,
             raw_output=raw_result,
-            tool_name="codemode.discovery",
+            tool_name=tool_name,
             firewall_threshold=firewall_threshold,
         )
-        # Record the query as metadata so traces can correlate the hook call
-        # back to the user turn that triggered it.  Don't ingest it as a
-        # user_turn ContextItem — the hook is stateless w.r.t. conversation
-        # history; only the firewall side-effect is intentional.
+        # Record the query as metadata so EventHook / metric / trace
+        # consumers can correlate the hook call back to the user turn that
+        # triggered it.  Don't ingest it as a user_turn ContextItem — the
+        # hook is stateless w.r.t. conversation history; only the firewall
+        # side-effect is intentional.
         item.metadata.setdefault("codemode_query", query)
         return item.text
 

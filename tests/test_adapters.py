@@ -1358,6 +1358,69 @@ def test_context_hook_negative_threshold_raises() -> None:
         make_context_hook(mgr, firewall_threshold=-1)
 
 
+def test_context_hook_uses_configured_tool_name() -> None:
+    """The configured tool_name is stamped onto the firewalled ContextItem's metadata."""
+    mgr = ContextManager()
+    hook = make_context_hook(mgr, tool_name="github.search_repos")
+    raw = "x" * 5000
+    hook("look up the payments service", raw)
+
+    # The last event is the firewalled tool result; tool_name lives in
+    # ``metadata["tool_name"]`` per the contextweaver ingest convention and
+    # must match the factory-time override, not the hardcoded default.
+    events = mgr.event_log.all()
+    tool_result = events[-1]
+    assert tool_result.metadata.get("tool_name") == "github.search_repos"
+
+
+def test_context_hook_default_tool_name_is_codemode_tool_result() -> None:
+    """The default tool_name is the conceptually-correct 'codemode.tool_result'."""
+    mgr = ContextManager()
+    hook = make_context_hook(mgr)
+    hook("any query", "x" * 5000)
+
+    events = mgr.event_log.all()
+    tool_result = events[-1]
+    assert tool_result.metadata.get("tool_name") == "codemode.tool_result"
+
+
+def test_codemode_query_metadata_consumable_post_hook() -> None:
+    """`codemode_query` is reachable by downstream consumers via the event log.
+
+    Note on timing (relevant for tracer integrations): both ``tool_name`` and
+    ``codemode_query`` end up on ``item.metadata`` after the hook returns, so:
+
+    - Reads via :attr:`ContextManager.event_log` see the full metadata bag.
+    - Subsequent :class:`~contextweaver.protocols.EventHook.on_context_built`
+      callbacks (fired by :meth:`ContextManager.build_sync`) see it too.
+    - :meth:`EventHook.on_firewall_triggered` runs *during* the firewall stage
+      — i.e. before the adapter stamps ``codemode_query`` — so a single-pass
+      tracer keyed off that callback alone would miss the query.  The
+      docstring on :func:`make_context_hook` calls this out; this test pins
+      the post-hook event-log read as the canonical consumer contract.
+    """
+    mgr = ContextManager()
+    factory = make_context_hook(mgr, tool_name="slack.search_messages")
+    factory("find threads about the rollback", "y" * 5000)
+
+    # Post-hook, the event log row carries both ``tool_name`` (from the
+    # M-1 factory parameter) and ``codemode_query`` (from the metadata
+    # stamp) — a downstream tracer reading from the event log sees the
+    # full correlation key without needing adapter-specific glue.
+    events = mgr.event_log.all()
+    md = events[-1].metadata
+    assert md.get("tool_name") == "slack.search_messages"
+    assert md.get("codemode_query") == "find threads about the rollback"
+
+
+def test_discovery_tool_zero_top_k_returns_empty_list() -> None:
+    """`top_k=0` is a valid, non-raising config — the shortlist is empty."""
+    catalog = _build_test_catalog()
+    router = _build_test_router(catalog)
+    discover = make_discovery_tool(router, catalog, top_k=0)
+    assert discover("search github repositories") == []
+
+
 def test_discovery_tool_skips_graph_only_nodes() -> None:
     """Candidate ids not in the catalog (e.g. category labels) are skipped silently."""
     catalog = _build_test_catalog()
