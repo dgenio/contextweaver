@@ -39,6 +39,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   answer=1000)`) for sub-300 ms TTS. Pipecat is optional via the new
   `[voice]` extra; the example runs end-to-end without it.
 
+### Fixed
+
+- **FastMCP CodeMode hook factories use `ConfigError`** (PR #233 review).
+  `make_discovery_tool` and `make_context_hook` now raise
+  `contextweaver.exceptions.ConfigError` (a `ContextWeaverError` subclass)
+  on negative `top_k` / `firewall_threshold`, replacing the previous bare
+  `ValueError` per the AGENTS.md custom-exception convention.
+- **`make_discovery_tool` `top_k` counts hydratable tools, not slots**
+  (PR #233 review). The discovery hook used to slice
+  `result.candidate_ids` to `top_k` *before* hydration, so a graph-only
+  candidate appearing early in the list silently shrank the shortlist by
+  one. The hook now iterates the full candidate list, skips non-hydratable
+  IDs, and stops after `top_k` real tools have been appended.
+- **`make_discovery_tool` returns deep-copied `input_schema`** (PR #233
+  review). `dict(hydrated.args_schema)` was a shallow copy that left
+  nested dicts / lists aliased with the catalog item, so an external
+  runtime mutating the returned schema could silently corrupt subsequent
+  `discover()` calls. The schema is now `copy.deepcopy`-ed before
+  handing it to callers.
+- **`make_context_hook` docstring matches implementation** (PR #233
+  review). The "parent user-turn id for dependency closure" wording is
+  replaced with the actual behaviour — the query is stamped onto
+  `item.metadata["codemode_query"]`, no synthetic user_turn item is
+  ingested, matching the inline rationale that the hook is intentionally
+  stateless w.r.t. conversation history.
+
 ## [0.6.0] - 2026-05-17
 
 ### Fixed

@@ -27,7 +27,7 @@ from contextweaver.adapters.mcp import (
     mcp_tool_to_selectable,
 )
 from contextweaver.context.manager import ContextManager
-from contextweaver.exceptions import CatalogError
+from contextweaver.exceptions import CatalogError, ConfigError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
@@ -1257,23 +1257,35 @@ def test_discovery_tool_negative_top_k_raises() -> None:
     """Negative ceilings are rejected at factory time, not at call time."""
     catalog = _build_test_catalog()
     router = _build_test_router(catalog)
-    with pytest.raises(ValueError, match="top_k must be >= 0"):
+    with pytest.raises(ConfigError, match="top_k must be >= 0"):
         make_discovery_tool(router, catalog, top_k=-1)
 
 
-def test_discovery_tool_input_schema_is_copy() -> None:
-    """The returned input_schema is a copy — mutating it does not affect the catalog."""
+def test_discovery_tool_input_schema_is_deep_copy() -> None:
+    """input_schema is a deep copy — top-level + nested mutations stay isolated."""
     catalog = _build_test_catalog()
     router = _build_test_router(catalog)
     discover = make_discovery_tool(router, catalog)
     out = discover("search github repositories")
 
-    # Mutate the returned dict.
+    # Mutate the top-level dict.
     out[0]["input_schema"]["mutated"] = True
+    # Mutate every nested dict / list reachable from the schema so a shallow
+    # copy would still leak the mutation back to the catalog item.
+    schema = out[0]["input_schema"]
+    for value in schema.values():
+        if isinstance(value, dict):
+            value["mutated_nested"] = True
+        elif isinstance(value, list):
+            value.append("mutated_nested")
 
-    # Re-call: fresh result must not see the mutation.
+    # Re-call: fresh result must not see any of the mutations.
     out2 = discover("search github repositories")
-    assert "mutated" not in out2[0]["input_schema"]
+    schema2 = out2[0]["input_schema"]
+    assert "mutated" not in schema2
+    for value in schema2.values():
+        if isinstance(value, (dict, list)):
+            assert "mutated_nested" not in value
 
 
 def test_discovery_tool_does_not_import_fastmcp() -> None:
@@ -1342,7 +1354,7 @@ def test_context_hook_records_query_as_metadata() -> None:
 def test_context_hook_negative_threshold_raises() -> None:
     """Negative thresholds are rejected at factory time."""
     mgr = ContextManager()
-    with pytest.raises(ValueError, match="firewall_threshold must be >= 0"):
+    with pytest.raises(ConfigError, match="firewall_threshold must be >= 0"):
         make_context_hook(mgr, firewall_threshold=-1)
 
 
@@ -1370,3 +1382,30 @@ def test_discovery_tool_skips_graph_only_nodes() -> None:
     names = [t["name"] for t in out]
     assert "nonexistent.virtual_node" not in names
     assert len(out) >= 1
+
+
+def test_discovery_tool_top_k_skips_graph_only_without_eating_slots() -> None:
+    """`top_k` counts hydratable tools — a virtual node early in the list must not eat a slot."""
+    catalog = _build_test_catalog()
+    items = catalog.all()
+    graph = TreeBuilder(max_children=8).build(items)
+    router = Router(graph, items=items, top_k=5)
+
+    # Prepend a graph-only node to the router output so the hydration loop
+    # has to walk past it before collecting any real tool.
+    real_route = router.route
+
+    def patched_route(query: str, **kwargs: object) -> object:
+        result = real_route(query, **kwargs)
+        result.candidate_ids = ["nonexistent.virtual_node", *result.candidate_ids]
+        return result
+
+    router.route = patched_route  # type: ignore[method-assign]
+
+    discover = make_discovery_tool(router, catalog, top_k=2)
+    out = discover("search github repositories")
+    # `top_k=2` means "2 real tools". With the old slice-first logic, the
+    # virtual node would have consumed a slot and `out` would have length 1.
+    assert len(out) == 2
+    names = [t["name"] for t in out]
+    assert "nonexistent.virtual_node" not in names

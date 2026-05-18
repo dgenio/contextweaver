@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import pytest
 
-# Module-level importorskip: when the optional ``fastmcp`` extra is not
-# installed (matrix runners that only pull ``[dev]``), skip this entire
-# file rather than fail at collection.  The unit tests in test_adapters.py
-# still run, so coverage of the adapter does not regress.
+# Module-level importorskip: skip this whole file when ``fastmcp`` is not
+# importable (a minimal-runtime install where neither ``[dev]`` nor
+# ``[fastmcp]`` was pulled).  ``fastmcp>=2.0`` is part of the ``[dev]``
+# extra so every CI matrix cell runs this file; this guard only protects
+# users running tests against a stripped-down install.  The unit tests in
+# test_adapters.py still run, so coverage of the adapter does not regress.
 fastmcp = pytest.importorskip("fastmcp")
 
 from contextweaver.adapters.fastmcp import (  # noqa: E402  — import-after-skip is intentional

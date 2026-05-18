@@ -22,13 +22,14 @@ FastMCP CodeMode discussion: https://github.com/PrefectHQ/fastmcp/discussions/33
 
 from __future__ import annotations
 
+import copy
 import logging
 import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
-from contextweaver.exceptions import CatalogError, ItemNotFoundError
+from contextweaver.exceptions import CatalogError, ConfigError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.types import SelectableItem
 
@@ -343,31 +344,36 @@ def make_discovery_tool(
         side-effect-free aside from the router's own internal scoring cache.
 
     Raises:
-        ValueError: If *top_k* is negative.
+        ConfigError: If *top_k* is negative.
     """
     if top_k is not None and top_k < 0:
-        raise ValueError(f"top_k must be >= 0, got {top_k}")
+        raise ConfigError(f"top_k must be >= 0, got {top_k}")
 
     def discover(query: str) -> list[dict[str, Any]]:
         result = router.route(query)
-        ids = result.candidate_ids
-        if top_k is not None:
-            ids = ids[:top_k]
         out: list[dict[str, Any]] = []
-        for tid in ids:
+        for tid in result.candidate_ids:
+            if top_k is not None and len(out) >= top_k:
+                break
             try:
                 hydrated = catalog.hydrate(tid)
             except (ItemNotFoundError, CatalogError):
                 # Candidate id not in catalog (graph-only node, e.g. category
                 # label).  Skip rather than fail — the discovery hook must
                 # never reject a valid query just because one node is
-                # virtual.
+                # virtual.  We continue iterating so a virtual node early in
+                # the list does not eat a slot in the ``top_k`` shortlist.
                 continue
+            # ``args_schema`` is shared with the catalog item at the nested
+            # level (Catalog.hydrate makes a shallow copy only).  Deep-copy
+            # before handing it to external runtimes so accidental mutation
+            # of a nested dict / list cannot corrupt catalog state across
+            # subsequent ``discover()`` calls.
             out.append(
                 {
                     "name": hydrated.item.name,
                     "description": hydrated.item.description,
-                    "input_schema": dict(hydrated.args_schema),
+                    "input_schema": copy.deepcopy(hydrated.args_schema),
                 }
             )
         return out
@@ -397,16 +403,21 @@ def make_context_hook(
             :meth:`ContextManager.ingest_tool_result_sync`'s default.
 
     Returns:
-        A pure callable ``(query, raw_result) -> str``.  *query* is recorded
-        as the parent user-turn id for dependency closure; *raw_result* is
-        the verbatim tool output.  Returns the firewall summary (or the raw
-        result if below threshold).
+        A pure callable ``(query, raw_result) -> str``.  *query* is stamped
+        onto ``item.metadata["codemode_query"]`` on the firewalled
+        :class:`~contextweaver.types.ContextItem` so traces can correlate the
+        hook call back to the user turn that triggered it; *raw_result* is
+        the verbatim tool output.  No synthetic ``user_turn`` item is
+        ingested — the hook is intentionally stateless w.r.t. conversation
+        history; only the firewall side-effect (raw bytes parked in the
+        artifact store) is intentional.  Returns the firewall summary (or
+        the raw result if below threshold).
 
     Raises:
-        ValueError: If *firewall_threshold* is negative.
+        ConfigError: If *firewall_threshold* is negative.
     """
     if firewall_threshold < 0:
-        raise ValueError(f"firewall_threshold must be >= 0, got {firewall_threshold}")
+        raise ConfigError(f"firewall_threshold must be >= 0, got {firewall_threshold}")
 
     def hook(query: str, raw_result: str) -> str:
         # Stable, collision-resistant ids: short uuid is plenty since the
