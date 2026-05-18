@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -23,6 +23,7 @@ example:
 	python examples/mcp_gateway_demo.py
 	python examples/mcp_proxy_demo.py
 	python examples/a2a_adapter_demo.py
+	python examples/fastmcp_discovery_demo.py
 	python examples/langchain_memory_demo.py
 	python examples/cookbook/byot_recipe.py
 	python examples/cookbook/firewall_drilldown_recipe.py
@@ -30,6 +31,8 @@ example:
 
 architectures:
 	python examples/architectures/slack_ops_bot/main.py
+	python examples/architectures/code_review_bot/main.py
+	python examples/architectures/voice_agent/main.py
 
 demo:
 	python -m contextweaver demo
@@ -55,13 +58,19 @@ scorecard-check:
 sweep-scoring:
 	python scripts/sweep_scoring.py
 
-ci: fmt lint type test example demo
+ci: fmt lint type test schemas-check example demo
 
 llms:
 	python scripts/gen_llms.py
 
 llms-check:
 	python scripts/gen_llms.py --check
+
+schemas:
+	python scripts/gen_schemas.py
+
+schemas-check:
+	python scripts/gen_schemas.py --check
 
 weaver-conformance:
 	@mkdir -p .weaver-schemas

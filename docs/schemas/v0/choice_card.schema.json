@@ -1,0 +1,63 @@
+{
+  "$id": "https://dgenio.github.io/contextweaver/schemas/v0/choice_card.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A compact, LLM-friendly representation of a :class:`SelectableItem`.",
+  "properties": {
+    "cost_hint": {
+      "type": "number"
+    },
+    "description": {
+      "type": "string"
+    },
+    "has_schema": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "tool",
+        "agent",
+        "skill",
+        "internal"
+      ]
+    },
+    "name": {
+      "maxLength": 64,
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "side_effects": {
+      "type": "boolean"
+    },
+    "tags": {
+      "items": {
+        "maxLength": 24,
+        "type": "string"
+      },
+      "maxItems": 5,
+      "type": "array"
+    }
+  },
+  "required": [
+    "description",
+    "id",
+    "name"
+  ],
+  "title": "ChoiceCard",
+  "type": "object"
+}

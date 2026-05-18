@@ -45,6 +45,7 @@ from contextweaver.exceptions import (
     ItemNotFoundError,
     PolicyViolationError,
     RouteError,
+    StoreClosedError,
 )
 from contextweaver.metrics import MetricsCollector, MetricsHook
 from contextweaver.profiles import Mode, ProfileConfig, RoutingConfig
@@ -90,6 +91,8 @@ from contextweaver.store import (
     InMemoryEpisodicStore,
     InMemoryEventLog,
     InMemoryFactStore,
+    JsonFileArtifactStore,
+    SqliteEventLog,
     StoreBundle,
 )
 from contextweaver.summarize.extract import StructuredExtractor
@@ -164,11 +167,14 @@ __all__ = [
     "ItemNotFoundError",
     "PolicyViolationError",
     "RouteError",
+    "StoreClosedError",
     # stores
     "InMemoryArtifactStore",
     "InMemoryEpisodicStore",
     "InMemoryEventLog",
     "InMemoryFactStore",
+    "JsonFileArtifactStore",
+    "SqliteEventLog",
     "StoreBundle",
     # context engine
     "ContextManager",

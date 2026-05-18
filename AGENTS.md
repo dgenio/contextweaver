@@ -29,6 +29,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` |
 | `store/` | In-memory data stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`, `StoreBundle` |
+| `store/_sqlite_base.py` | Shared SQLite connection + migration scaffolding (WAL, `foreign_keys=ON`, `_contextweaver_schema_version` table). Reused by every SQLite-backed store (issue #174). |
+| `store/sqlite_event_log.py` | `SqliteEventLog` — first persistent `EventLog` backend; single-process, sync, append-only, schema-versioned (issue #223). |
+| `store/json_file_artifacts.py` | `JsonFileArtifactStore` — filesystem `ArtifactStore` backend; `{handle}.data` + `{handle}.json` per artifact, re-instantiable against an existing directory (issue #42). |
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
 | `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline) |
@@ -38,6 +41,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
+| `routing/explanation.py` | `RouteResult.explanation()` Markdown / dict rendering (issue #226) |
+| `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
 | `adapters/` | MCP, FastMCP, A2A, weaver-spec protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #194, #219, #222) |
@@ -51,7 +56,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `adapters/openai_messages.py` | OpenAI Chat Completions `messages` ↔ `ContextItem` round-trip (`from_/to_openai_messages`, issue #219) |
 | `adapters/anthropic_messages.py` | Anthropic Messages API `messages` ↔ `ContextItem` round-trip (`from_/to_anthropic_messages`, issue #222) |
 | `adapters/gemini_contents.py` | Google Gemini `contents[]` ↔ `ContextItem` round-trip (`from_/to_gemini_contents`, issue #222) |
-| `__main__.py` | CLI: 7 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`) |
+| `__main__.py` | CLI: 8 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`). Typer + Rich (both core deps as of v0.5, issue #221). |
 
 ## Pipelines (summary)
 
@@ -114,6 +119,8 @@ make benchmark        # run benchmark harness (non-gating; writes benchmarks/res
 make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
 make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
+make schemas         # regenerate schemas/ + docs/schemas/v0/ (issue #225)
+make schemas-check    # verify published schemas match dataclasses (gating, in `make ci`)
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)

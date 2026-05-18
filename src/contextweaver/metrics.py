@@ -107,7 +107,7 @@ class MetricsCollector:
                 by :meth:`~contextweaver.context.manager.ContextManager.build`.
         """
         stats = pack.stats
-        prompt_tokens = sum(stats.tokens_per_section.values()) + stats.header_footer_tokens
+        prompt_tokens = stats.prompt_tokens
         with self._lock:
             self._c.total_builds += 1
             self._c.total_prompt_tokens += prompt_tokens
