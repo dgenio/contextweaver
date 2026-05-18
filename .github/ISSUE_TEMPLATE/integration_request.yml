@@ -1,0 +1,104 @@
+name: Integration Request
+description: Propose a new framework / SDK / protocol adapter for contextweaver.
+title: "[integration] "
+labels: ["enhancement", "area:integrations"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when you want contextweaver to interoperate
+        with a third-party agent framework, model SDK, tool protocol,
+        or memory system that doesn't have an existing adapter under
+        `src/contextweaver/adapters/`.
+
+        Before filing, please check the existing integration guides
+        under `docs/integration_*.md` and the
+        [Where it fits](https://github.com/dgenio/contextweaver/blob/main/docs/comparison.md)
+        page — the integration may already be supported via composition
+        rather than a dedicated adapter.
+
+  - type: input
+    id: project
+    attributes:
+      label: Project / SDK / protocol
+      description: Name, link, and current version of what you want contextweaver to talk to.
+      placeholder: "e.g. CrewAI 0.55 (https://github.com/crewAIInc/crewAI)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: shape
+    attributes:
+      label: Integration shape
+      description: How would contextweaver typically be used alongside this project?
+      multiple: false
+      options:
+        - Ingest events from this project's session into ContextManager
+        - Wrap this project's tool catalog as SelectableItems
+        - Run this project's executor on the result of Router.route(...)
+        - Hand the ContextPack.prompt to this project's LLM client
+        - Other (explain in "Why")
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this integration?
+      description: |
+        What does the user gain that they cannot already get by composing
+        contextweaver with the existing adapters? If it's a new model SDK,
+        what does it do that OpenAI / Anthropic / Gemini adapters don't?
+    validations:
+      required: true
+
+  - type: textarea
+    id: shape-detail
+    attributes:
+      label: Proposed adapter shape
+      description: |
+        If you have a concrete API in mind, sketch it. e.g.:
+        ```python
+        from contextweaver.adapters.crewai import from_crewai_crew, to_crewai_messages
+
+        crew = ...
+        mgr = ContextManager()
+        from_crewai_crew(crew, into=mgr)
+        pack = mgr.build_sync(phase=Phase.answer, query="...")
+        ```
+        Optional but very helpful.
+    validations:
+      required: false
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example use case
+      description: |
+        Describe a concrete agent / app you would build with this integration.
+        A specific user, a specific task, the specific tools involved.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      description: Check anything you would be willing to do as part of the contribution.
+      options:
+        - label: Write the adapter (`src/contextweaver/adapters/<name>.py` + tests)
+          required: false
+        - label: Write the integration guide (`docs/integration_<name>.md`)
+          required: false
+        - label: Write the example script (`examples/<name>_adapter_demo.py`)
+          required: false
+        - label: Just propose; happy for someone else to implement
+          required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Links, prior art, version compatibility, networking implications, etc.
+    validations:
+      required: false
