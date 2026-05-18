@@ -1,8 +1,23 @@
 """Adapters sub-package for contextweaver.
 
-Provides thin adapters that convert external protocol data (MCP, A2A, FastMCP,
-weaver-spec) into contextweaver-native types and back, and shipping runtime
-modes for fronting upstream MCP servers (proxy + gateway).
+Provides thin, pure stateless adapters across three responsibility groups:
+
+1. **Protocol adapters** — convert external protocol data into
+   contextweaver-native types and back: MCP (:mod:`.mcp`),
+   FastMCP (:mod:`.fastmcp`), A2A (:mod:`.a2a`), and weaver-spec
+   (:mod:`.weaver_contracts`).
+2. **Runtime modes** — front upstream MCP servers as a transparent
+   proxy or two-tool gateway: :mod:`.proxy_runtime`, :mod:`.mcp_proxy`,
+   :mod:`.mcp_gateway`, :mod:`.mcp_proxy_server`,
+   :mod:`.mcp_gateway_server`, :mod:`.mcp_upstream`.
+3. **Provider-message ingestion** — one-call adoption from existing
+   OpenAI / Anthropic / Gemini chat histories (issues #194, #219, #222):
+   :mod:`.openai_messages`, :mod:`.anthropic_messages`,
+   :mod:`.gemini_contents`. Each module ships a ``from_*`` decoder
+   (plain provider dicts → ``ContextItem`` event-log entries) and a
+   ``to_*`` inverse, with no provider SDK imported at module load time.
+
+See ``AGENTS.md`` Module Map for the full per-file responsibility list.
 """
 
 from __future__ import annotations
@@ -11,6 +26,10 @@ from contextweaver.adapters.a2a import (
     a2a_agent_to_selectable,
     a2a_result_to_envelope,
     load_a2a_session_jsonl,
+)
+from contextweaver.adapters.anthropic_messages import (
+    from_anthropic_messages,
+    to_anthropic_messages,
 )
 from contextweaver.adapters.fastmcp import (
     fastmcp_tool_to_selectable,
@@ -21,6 +40,10 @@ from contextweaver.adapters.fastmcp import (
     make_discovery_tool,
 )
 from contextweaver.adapters.gateway_error import GatewayError
+from contextweaver.adapters.gemini_contents import (
+    from_gemini_contents,
+    to_gemini_contents,
+)
 from contextweaver.adapters.mcp import (
     infer_namespace,
     load_mcp_session_jsonl,
@@ -42,6 +65,10 @@ from contextweaver.adapters.mcp_upstream import (
     McpClientUpstream,
     MultiplexUpstream,
     StubUpstream,
+)
+from contextweaver.adapters.openai_messages import (
+    from_openai_messages,
+    to_openai_messages,
 )
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime, UpstreamCall
 from contextweaver.adapters.weaver_contracts import (
@@ -73,6 +100,9 @@ __all__ = [
     "dispatch_proxy_request",
     "fastmcp_tool_to_selectable",
     "fastmcp_tools_to_catalog",
+    "from_anthropic_messages",
+    "from_gemini_contents",
+    "from_openai_messages",
     "from_weaver_choice_card",
     "from_weaver_choice_card_single",
     "from_weaver_frame",
@@ -90,6 +120,9 @@ __all__ = [
     "make_stripped_tools_list",
     "mcp_result_to_envelope",
     "mcp_tool_to_selectable",
+    "to_anthropic_messages",
+    "to_gemini_contents",
+    "to_openai_messages",
     "to_weaver_choice_card",
     "to_weaver_choice_cards",
     "to_weaver_frame",

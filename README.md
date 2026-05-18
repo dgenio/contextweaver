@@ -141,6 +141,22 @@ cd contextweaver
 pip install -e ".[dev]"
 ```
 
+### Adopting in 5 lines from an existing OpenAI / Anthropic / Gemini agent
+
+```python
+from contextweaver.adapters.openai_messages import from_openai_messages
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import Phase
+
+mgr = ContextManager()
+from_openai_messages(messages, into=mgr)   # also: from_anthropic_messages / from_gemini_contents
+pack = mgr.build_sync(phase=Phase.answer, query="...")
+```
+
+See [Adopting from an existing chat history](docs/quickstart.md#adopting-from-an-existing-chat-history-5-line-drop-in)
+for the full snippet (including the `to_*` inverse adapters for round-tripping
+back into the provider SDK).
+
 ## 10-Minute Quickstart
 
 For a guided setup with prerequisites, three runnable examples, expected output,

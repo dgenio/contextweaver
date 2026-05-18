@@ -172,6 +172,77 @@ print(pack.prompt)
 
 See `examples/mcp_adapter_demo.py` for the full runnable demo.
 
+## Prompt-caching compatibility
+
+Anthropic (90%), OpenAI (50%), and Google (75%) all discount the prompt-token
+cost of tool definitions when the same prefix is reused across requests.
+contextweaver's
+[`make_choice_cards`](../src/contextweaver/routing/cards.py) function is
+**deterministic and byte-stable** for identical inputs (sorted descending by
+score, ascending by `id` for ties — see issue #218 for the regression test
+that locks this guarantee), so the cards array your downstream prompt
+assembler renders is suitable for placement *before* a cache breakpoint.
+
+The repo guarantees this via `tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`,
+which asserts `bytes(card1) == bytes(card2)` across two consecutive calls
+on identical inputs. The invariant survives across the full
+`SelectableItem → ChoiceCard → cache prefix` chain.
+
+### Worked example: Anthropic `cache_control`
+
+> **Illustrative — requires the Anthropic SDK.** This snippet imports
+> `anthropic` to show how the byte-stable cards array slots into the
+> provider's cache-control API. contextweaver itself does not depend on
+> the Anthropic SDK; install it separately with `pip install anthropic`
+> to run the example as-is, or read it as a pattern reference.
+
+```python
+import anthropic  # pip install anthropic
+from contextweaver.routing.cards import make_choice_cards
+from contextweaver.routing.catalog import Catalog
+
+catalog = Catalog()  # populated elsewhere with stable IDs
+cards = make_choice_cards(
+    catalog.all(),
+    scores={item.id: 0.5 for item in catalog.all()},   # deterministic scoring
+    max_cards=20,
+)
+
+# Render cards into Anthropic's `tools` array (cacheable prefix).
+tools = [
+    {
+        "name": c.name,
+        "description": c.description,
+        "input_schema": {"type": "object"},  # hydrate per-call when selected
+    }
+    for c in cards
+]
+
+# Place the cache breakpoint on the LAST tool definition. As long as the
+# `cards` array is stable, every request reuses the cache prefix and only
+# the trailing user turn varies.
+if tools:
+    tools[-1]["cache_control"] = {"type": "ephemeral"}
+
+client = anthropic.Anthropic()
+client.messages.create(
+    model="claude-3-5-sonnet-latest",
+    max_tokens=1024,
+    tools=tools,
+    messages=[{"role": "user", "content": "..."}],
+)
+```
+
+> **Practical guidance for multi-turn navigation.** When the cards array
+> *naturally* changes between turns (e.g., user navigated into a sub-tree),
+> the cache prefix invalidates — that's expected. To keep the prefix stable
+> across navigation, sort hydrated cards by ID once and append newly-discovered
+> cards after the breakpoint. The
+> [Webfuse MCP cheat sheet](https://www.webfuse.com/mcp-cheat-sheet)
+> documents the canonical "append after cache breakpoint" pattern. A
+> first-class `cache_stable` runtime flag on `ProxyRuntime` is tracked as a
+> follow-up.
+
 ## Security Considerations
 
 ### MCP annotations are untrusted hints

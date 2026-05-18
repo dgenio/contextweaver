@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "TraceStep": {
+      "additionalProperties": false,
+      "description": "One beam-search expansion in a :class:`RouteTrace`.",
+      "properties": {
+        "depth": {
+          "type": "integer"
+        },
+        "kept": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "node": {
+          "type": "string"
+        },
+        "scored_children": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "id",
+              "score"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "depth",
+        "node"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://dgenio.github.io/contextweaver/schemas/v0/route_trace.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Structured audit record of a single routing call.",
+  "properties": {
+    "clarifying_question": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "confidence_gap": {
+      "type": "number"
+    },
+    "excluded_count": {
+      "type": "integer"
+    },
+    "extra": {
+      "additionalProperties": {},
+      "type": "object"
+    },
+    "gated_count": {
+      "type": "integer"
+    },
+    "is_ambiguous": {
+      "type": "boolean"
+    },
+    "query": {
+      "type": "string"
+    },
+    "retriever_engine": {
+      "type": "string"
+    },
+    "runner_up_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/TraceStep"
+      },
+      "type": "array"
+    },
+    "top_score": {
+      "type": "number"
+    },
+    "trace_version": {
+      "type": "integer"
+    }
+  },
+  "title": "RouteTrace",
+  "type": "object"
+}

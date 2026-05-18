@@ -9,6 +9,7 @@ Re-exported from :mod:`contextweaver.protocols` for backward compatibility.
 
 from __future__ import annotations
 
+from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -80,6 +81,24 @@ class EventLog(Protocol):
         ...
 
     def __len__(self) -> int: ...
+
+    def close(self) -> None:
+        """Release any backend resources held by the log.
+
+        Persistent backends close their connection / file handles here;
+        in-memory backends supply a no-op.  Calling :meth:`close` more than
+        once must be safe.
+        """
+        ...
+
+    def __enter__(self) -> EventLog: ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None: ...
 
 
 # ---------------------------------------------------------------------------

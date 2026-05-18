@@ -289,6 +289,15 @@ def make_choice_cards(
     *target_tokens_per_card* (per §2.4).  Cards are then sorted per
     §2.5 (score desc, ``id`` asc) and capped to *max_cards*.
 
+    **Ordering guarantee (issue #218).** For identical *items*, *scores*,
+    and tuning parameters, the returned list is deterministic and
+    byte-identical across calls — ranked by descending ``score`` with
+    ties broken by ascending ``id``. Downstream prompt-cache assemblers
+    (Anthropic ``cache_control``, OpenAI / Google equivalents) can rely
+    on this invariant when placing a cache breakpoint after the last
+    rendered card. See ``docs/integration_mcp.md`` §"Prompt-caching
+    compatibility" for a worked example.
+
     Args:
         items: Source items.
         max_cards: Maximum number of cards to return.

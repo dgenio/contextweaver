@@ -1,8 +1,12 @@
 # contextweaver
 
-> Phase-specific, budget-aware context compilation for tool-using AI agents.
+> Phase-specific, budget-aware **context engineering** for tool-using AI agents.
 
 **Zero runtime dependencies · deterministic output · Python ≥ 3.10**
+
+> **Context engineering** is the discipline of deciding what goes into a model's
+> context window, when, and at what cost — see the
+> [canonical framing](https://atlan.com/know/what-is-context-engineering/).
 
 ---
 

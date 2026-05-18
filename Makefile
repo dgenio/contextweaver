@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -58,13 +58,19 @@ scorecard-check:
 sweep-scoring:
 	python scripts/sweep_scoring.py
 
-ci: fmt lint type test example demo
+ci: fmt lint type test schemas-check example demo
 
 llms:
 	python scripts/gen_llms.py
 
 llms-check:
 	python scripts/gen_llms.py --check
+
+schemas:
+	python scripts/gen_schemas.py
+
+schemas-check:
+	python scripts/gen_schemas.py --check
 
 weaver-conformance:
 	@mkdir -p .weaver-schemas

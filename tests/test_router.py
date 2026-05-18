@@ -691,3 +691,84 @@ def test_context_hints_surface_on_result_and_trace() -> None:
     restored = type(with_hints.trace).from_dict(with_hints.trace.to_dict())
     assert restored.extra["context_hints"] == ["email"]
     assert restored.extra["context_boost_applied"] is True
+
+
+# ---------------------------------------------------------------------------
+# RouteResult.explanation() — issue #226
+# ---------------------------------------------------------------------------
+
+
+def test_route_result_explanation_md_contains_query_and_table() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=3)
+    result = router.route("read database")
+
+    md = result.explanation()  # default "md"
+
+    assert isinstance(md, str)
+    assert "### Routing explanation for query `read database`" in md
+    # Top-k table header
+    assert "| Rank | Tool id | Score |" in md
+    # At least one rank-1 row referencing one of the items
+    assert any(f"| 1 | `{item.id}` |" in md for item in items)
+    # Either gap text (n>=2 candidates) or top-pick fallback
+    assert "Confidence gap" in md or "Top pick" in md
+
+
+def test_route_result_explanation_dict_versioned_and_shaped() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=3)
+    result = router.route("write database")
+
+    payload = result.explanation(format="dict")
+    assert isinstance(payload, dict)
+    assert payload["version"] == 1
+    # The trace records the query that was actually scored (may be augmented)
+    assert "query" in payload and isinstance(payload["query"], str)
+    assert payload["retriever_engine"] in {"tfidf", "bm25", "fuzzy"}
+    assert isinstance(payload["candidates"], list)
+    assert all({"rank", "id", "score"} <= set(c) for c in payload["candidates"])
+    if payload["candidates"]:
+        assert payload["candidates"][0]["rank"] == 1
+    # Versioned, stable boolean fields
+    assert isinstance(payload["is_ambiguous"], bool)
+    assert isinstance(payload["context_boost_applied"], bool)
+
+
+def test_route_result_explanation_deterministic() -> None:
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=3)
+    result = router.route("send notification")
+    a = result.explanation()
+    b = result.explanation()
+    assert a == b
+    # Determinism extends to the dict form
+    assert result.explanation(format="dict") == result.explanation(format="dict")
+
+
+def test_route_result_explanation_handles_empty() -> None:
+    """An empty :class:`RouteResult` should not blow up on explanation()."""
+    empty = RouteResult()
+    md = empty.explanation()
+    assert "No candidates returned" in md
+    payload = empty.explanation(format="dict")
+    assert payload["candidates"] == []
+    assert payload["top"] is None
+    assert payload["runner_up"] is None
+    assert payload["confidence_gap"] is None
+
+
+def test_route_result_explanation_surfaces_context_hints() -> None:
+    items = [
+        _item("send_email", "send_email", "Send notification", tags=["comm"]),
+        _item("send_sms", "send_sms", "Send notification", tags=["comm"]),
+    ]
+    graph = TreeBuilder().build(items)
+    router = Router(graph, items=items, top_k=2)
+
+    md = router.route("send notification", context_hints=["email"]).explanation()
+    assert "Context hints applied" in md
+    assert "email" in md
