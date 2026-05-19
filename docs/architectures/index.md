@@ -14,7 +14,9 @@ for a production agent, you are in the right place.
 
 | Architecture | What it shows | Size |
 |---|---|---|
-| [Slack ops bot](slack_ops_bot.md) | ~50 internal tools, multi-turn investigations, firewall on log/grep outputs, persistent fact memory across conversations | ~250 lines + YAML catalog |
+| [Slack ops bot](slack_ops_bot.md) | ~48 internal tools, multi-turn investigations, firewall on log/grep outputs, persistent fact memory across conversations | ~280 lines + YAML catalog |
+| [Code-review bot](code_review_bot.md) | ~24 analysis tools, firewall on diff / grep outputs as the load-bearing pattern, tight per-phase budgets for a latency-sensitive review | ~300 lines + YAML catalog |
+| [Voice agent](voice_agent.md) | ~18 customer-service tools, `asyncio.to_thread(mgr.build_sync, …)` async pattern, tight budgets for sub-300 ms TTS — canonical worked example for the [Pipecat guide](../integration_pipecat.md) | ~270 lines + YAML catalog |
 
 ## How each architecture is structured
 
@@ -31,13 +33,3 @@ Every architecture under `examples/architectures/<name>/` contains:
 
 The architectures run under `make example` (via the `make architectures`
 umbrella target) so they cannot bitrot silently as the library evolves.
-
-## Roadmap
-
-Architectures planned as follow-ups (tracked under issue #198):
-
-- **Code-review bot** — firewall on diff / grep outputs, bounded routing
-  across a fixed set of analysis tools, latency-sensitive answer phase.
-- **Real-time voice agent** — Pipecat-backed, demonstrates the
-  `asyncio.to_thread(mgr.build_sync, …)` pattern and tight answer-phase
-  budgets recommended in the [Pipecat guide](../integration_pipecat.md).

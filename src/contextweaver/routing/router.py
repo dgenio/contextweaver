@@ -23,11 +23,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, overload
 
-from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard, tokenize
+from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer
 from contextweaver.envelope import RoutingDecision
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
-from contextweaver.protocols import Retriever
+from contextweaver.protocols import EmbeddingBackend, Retriever
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.explanation import explain_route, explain_route_dict
 from contextweaver.routing.filters import (
@@ -36,8 +36,11 @@ from contextweaver.routing.filters import (
     suggest_clarifying_question,
 )
 from contextweaver.routing.graph import ChoiceGraph
+from contextweaver.routing.history import RouteHistory, adjust_scores
+from contextweaver.routing.navigator import BeamSearchNavigator, rank_collected
+from contextweaver.routing.pipeline import RoutingPipeline
 from contextweaver.routing.registry import EngineRegistry, default_registry
-from contextweaver.routing.trace import RouteTrace, TraceStep
+from contextweaver.routing.trace import RouteTrace
 from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
@@ -100,6 +103,10 @@ class RouteResult:
             were supplied.
         context_boost_applied: ``True`` when *context_hints* contains at
             least one non-blank hint that altered the scoring query.
+        history_adjustments: When a :class:`RouteHistory` is passed to
+            :meth:`Router.route`, this maps each candidate item id to the
+            net score delta the history-aware re-ranking applied (issue #27).
+            Empty dict when no history was supplied or no adjustments fired.
         trace: Structured audit record of the routing call (issue #51).
             Always populated; ``trace.steps`` is non-empty only when
             ``debug=True``.
@@ -115,6 +122,7 @@ class RouteResult:
     gated_count: int = 0
     context_hints: list[str] = field(default_factory=list)
     context_boost_applied: bool = False
+    history_adjustments: dict[str, float] = field(default_factory=dict)
     trace: RouteTrace = field(default_factory=RouteTrace)
 
     @property
@@ -322,10 +330,31 @@ class Router:
             are both ``None`` and *scorer_backend* is the default
             (``"tfidf"``).  Defaults to
             :data:`~contextweaver.routing.registry.default_registry`.
+        embedding_backend: Keyword-only.  Optional
+            :class:`~contextweaver.protocols.EmbeddingBackend` (issue #8).
+            When supplied, the router uses a hybrid embedding + TF-IDF
+            :class:`Retriever` for initial candidate scoring.  Requires
+            the ``contextweaver[embeddings]`` extra at the call site;
+            the core install never imports an embedding library.
+            Mutually exclusive with *retriever* — pass an embedding-aware
+            :class:`Retriever` directly via *retriever* if both routes
+            need finer control.
+        pipeline: Keyword-only.  Optional pre-built
+            :class:`~contextweaver.routing.pipeline.RoutingPipeline`.
+            When supplied, the navigator and reranker stages on the
+            pipeline replace the router's bundled defaults; the
+            retriever on the pipeline is overridden by the one resolved
+            from the other constructor args (so corpus indexing stays a
+            single source of truth).  The packer stage is available for
+            callers to invoke via ``router.pipeline.pack(...)`` but is
+            not called by :meth:`route` itself — cards are produced
+            externally by :meth:`RouteResult.to_routing_decision`.
+            Issue #56.
 
     Raises:
         ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]`` or
-            if *scorer_backend* is not a recognised backend name.
+            if *scorer_backend* is not a recognised backend name, or if
+            both *retriever* and *embedding_backend* are supplied.
     """
 
     def __init__(
@@ -342,6 +371,8 @@ class Router:
         routing_config: RoutingConfig | None = None,
         retriever: Retriever | None = None,
         engine_registry: EngineRegistry | None = None,
+        embedding_backend: EmbeddingBackend | None = None,
+        pipeline: RoutingPipeline | None = None,
     ) -> None:
         if routing_config is not None:
             beam_width = routing_config.beam_width
@@ -355,6 +386,12 @@ class Router:
                 f"Unknown scorer_backend {scorer_backend!r}; "
                 f"valid options: {sorted(_SCORER_BACKENDS)}"
             )
+        if embedding_backend is not None and retriever is not None:
+            raise ConfigError(
+                "Pass either retriever= or embedding_backend=, not both. "
+                "Construct an embedding-aware Retriever and pass it via retriever= "
+                "if you need both signals combined under a custom policy."
+            )
         self._graph = graph
         self._beam_width = beam_width
         self._max_depth = max_depth
@@ -366,6 +403,14 @@ class Router:
         if retriever is not None:
             self._retriever: Retriever = retriever
             self._retriever_engine_name = self._engine_registry.default_for("retriever") or "tfidf"
+        elif embedding_backend is not None:
+            # Late import keeps the core install free of any sentence-
+            # transformers / hnswlib / torch dependency.  Importing the
+            # adapter only happens when a backend is actually supplied.
+            from contextweaver.extras.embeddings import HybridEmbeddingRetriever
+
+            self._retriever = HybridEmbeddingRetriever(embedding_backend)
+            self._retriever_engine_name = "embedding+tfidf"
         elif scorer is not None:
             self._retriever = _ScorerRetriever(scorer)
             self._retriever_engine_name = "tfidf"
@@ -377,8 +422,41 @@ class Router:
             self._retriever_engine_name = self._engine_registry.default_for("retriever") or "tfidf"
         self._indexed = False
         self._doc_id_to_idx: dict[str, int] = {}
+        self._pipeline = self._build_pipeline(pipeline)
         if items is not None:
             self.set_items(items)
+
+    def _build_pipeline(self, override: RoutingPipeline | None) -> RoutingPipeline:
+        """Construct the routing pipeline (issue #56).
+
+        When *override* is supplied, its navigator / packer / reranker
+        replace the bundled defaults; the retriever is always set to the
+        one this :class:`Router` already resolved so corpus indexing has
+        a single source of truth.
+        """
+        navigator = BeamSearchNavigator(
+            beam_width=self._beam_width,
+            max_depth=self._max_depth,
+            top_k=self._top_k,
+            confidence_gap=self._confidence_gap,
+        )
+        if override is None:
+            return RoutingPipeline(
+                retriever=self._retriever,
+                reranker=None,
+                navigator=navigator,
+            )
+        return RoutingPipeline(
+            retriever=self._retriever,
+            reranker=override.reranker,
+            navigator=override.navigator or navigator,
+            packer=override.packer,
+        )
+
+    @property
+    def pipeline(self) -> RoutingPipeline:
+        """The :class:`RoutingPipeline` this router delegates to (issue #56)."""
+        return self._pipeline
 
     def set_items(self, items: list[SelectableItem]) -> None:
         """Register the catalog items for retriever indexing and result lookup.
@@ -413,22 +491,6 @@ class Router:
         self._doc_id_to_idx = {did: i for i, did in enumerate(doc_ids)}
         self._indexed = True
 
-    def _score_node(self, query: str, node_id: str) -> float:
-        """Score a single graph node against *query* via the configured retriever."""
-        self._ensure_index()
-        idx = self._doc_id_to_idx.get(node_id)
-        if idx is not None:
-            return self._retriever.score_one(query, idx)
-
-        # ``tokenize`` now handles ``:`` (outer split), ``_`` ``-`` ``.`` ``/``
-        # (inner-compound split) directly — see issue #213 — so the manual
-        # ``replace(...)`` workarounds that used to live here are no longer
-        # needed: feeding the raw node_id produces both the compound form
-        # (high-confidence exact-id hits) and the per-segment sub-tokens.
-        q_tokens = tokenize(query)
-        n_tokens = tokenize(node_id)
-        return jaccard(q_tokens, n_tokens)
-
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -443,6 +505,7 @@ class Router:
         allowed_namespaces: set[str] | None = None,
         allowed_tags: set[str] | None = None,
         context_hints: list[str] | None = None,
+        history: RouteHistory | None = None,
     ) -> RouteResult:
         """Route *query* through the graph and return ranked results.
 
@@ -464,6 +527,13 @@ class Router:
             context_hints: Optional list of conversation context hints.
                 Hints are appended to the query for scoring purposes
                 (issue #116).  Hints do not change the catalog or graph.
+            history: Optional :class:`RouteHistory` (issue #27).  When
+                supplied, already-called tools are deprioritised, tools
+                semantically related to ``last_result_summary`` are
+                boosted, and ``SelectableItem.depends_on`` / ``provides``
+                / ``requires`` metadata is applied.  Per-candidate score
+                deltas surface on :attr:`RouteResult.history_adjustments`.
+                ``None`` is byte-equivalent to pre-#27 behaviour.
 
         Returns:
             A :class:`RouteResult` with ranked items and a populated
@@ -493,12 +563,44 @@ class Router:
                 "All items were filtered out by exclude_ids / exclude_tags / "
                 "allowed_namespaces / allowed_tags."
             )
-        eligible_internals = self._eligible_internals(active_items)
         applied_hints = [h.strip() for h in (context_hints or []) if h and h.strip()]
         scoring_query = augment_query(query, context_hints)
         boost_applied = scoring_query != query and bool(applied_hints)
-        steps, collected = self._beam_search(scoring_query, active_items, eligible_internals, debug)
-        all_sorted = self._rank_collected(collected, active_items)
+
+        nav_result = self._pipeline.navigate(
+            scoring_query,
+            self._graph,
+            active_items,
+            self._doc_id_to_idx,
+            all_item_ids=set(self._items),
+            debug=debug,
+        )
+        collected = nav_result.collected
+        steps = nav_result.steps
+        all_sorted = rank_collected(collected, active_items)
+
+        # Rerank stage (issue #56): apply the pipeline reranker after
+        # navigation scoring.  When reranker is None this is a no-op copy.
+        if self._pipeline.reranker is not None and all_sorted:
+            id_to_path = {iid: path for iid, (_, path) in all_sorted}
+            reranked = self._pipeline.rerank(
+                scoring_query,
+                [(iid, score) for iid, (score, _) in all_sorted],
+            )
+            all_sorted = [(iid, (score, id_to_path[iid])) for iid, score in reranked]
+
+        history_adjustments: dict[str, float] = {}
+        if history is not None and all_sorted:
+            id_to_path = {iid: path for iid, (_, path) in all_sorted}
+            scored_pairs = [(iid, score) for iid, (score, _) in all_sorted]
+            result_similarity = self._result_similarity_map(history, scored_pairs)
+            adjusted, history_adjustments = adjust_scores(
+                scored_pairs,
+                history,
+                self._items,
+                result_similarity=result_similarity,
+            )
+            all_sorted = [(iid, (score, id_to_path[iid])) for iid, score in adjusted]
         top = all_sorted[: self._top_k]
 
         # Ambiguity reads from the untrimmed sorted view so that callers
@@ -523,6 +625,8 @@ class Router:
         trace.is_ambiguous = is_ambiguous
         trace.extra["context_hints"] = list(applied_hints)
         trace.extra["context_boost_applied"] = boost_applied
+        if history_adjustments:
+            trace.extra["history_adjustments"] = dict(history_adjustments)
         top_items = [active_items[iid] for iid, _ in top if iid in active_items]
         # Clarifying question is rendered from the top of the untrimmed
         # sort so it stays useful when top_k=1.
@@ -541,13 +645,14 @@ class Router:
             gated_count=gated_count,
             context_hints=list(applied_hints),
             context_boost_applied=boost_applied,
+            history_adjustments=dict(history_adjustments),
             trace=trace,
         )
 
         if logger.isEnabledFor(logging.INFO):
             logger.info(
                 "route: query_len=%d, top_k=%d, candidates=%d, scores=%s, "
-                "ambiguous=%s, excluded=%d, gated=%d",
+                "ambiguous=%s, excluded=%d, gated=%d, history_adjustments=%d",
                 len(query),
                 self._top_k,
                 len(result.candidate_ids),
@@ -555,202 +660,29 @@ class Router:
                 is_ambiguous,
                 excluded_count,
                 gated_count,
+                len(history_adjustments),
             )
         return result
 
-    # ------------------------------------------------------------------
-    # Beam search internals
-    # ------------------------------------------------------------------
-
-    def _eligible_internals(self, active_items: dict[str, SelectableItem]) -> set[str]:
-        """Return internal nodes that have at least one descendant in *active_items*.
-
-        Computed via reverse BFS from each active item.  Used by
-        :meth:`_beam_search` and :meth:`_expand_subtree` to skip
-        children whose entire subtree was filtered out before scoring,
-        so exclusions and toolset gating happen pre-search rather than
-        only at collection time (issue #112 / #22).
-        """
-        eligible: set[str] = set()
-        queue: list[str] = list(active_items)
-        while queue:
-            node = queue.pop()
-            for parent in self._graph.predecessors(node):
-                if parent in eligible:
-                    continue
-                eligible.add(parent)
-                queue.append(parent)
-        return eligible
-
-    def _is_eligible_child(
+    def _result_similarity_map(
         self,
-        child: str,
-        active_items: dict[str, SelectableItem],
-        eligible_internals: set[str],
-    ) -> bool:
-        """Return ``True`` if *child* may participate in beam search.
+        history: RouteHistory,
+        scored: list[tuple[str, float]],
+    ) -> dict[str, float] | None:
+        """Per-candidate similarity to ``history.last_result_summary``.
 
-        Leaves must be in *active_items*; internals must reach an
-        active descendant.  Children that fail this gate are skipped
-        before scoring so they cannot consume beam slots.
+        Reuses the router's fitted retriever so the boost is computed in
+        the same scoring space as the primary query.  Returns ``None`` when
+        the history has no summary so :func:`adjust_scores` can skip the
+        boost stage entirely.
         """
-        if child in self._items:
-            return child in active_items
-        return child in eligible_internals
-
-    def _beam_search(
-        self,
-        query: str,
-        active_items: dict[str, SelectableItem],
-        eligible_internals: set[str],
-        debug: bool,
-    ) -> tuple[list[TraceStep], dict[str, tuple[float, list[str]]]]:
-        """Run the beam search and return ``(trace_steps, collected)``.
-
-        *active_items* is the post-filter catalog; only IDs in this dict
-        are eligible for collection.  *eligible_internals* is the set of
-        internal nodes with at least one active descendant — children
-        outside this set (and outside *active_items*) are skipped before
-        scoring (issue #112 / #22).
-        """
-        root = self._graph.root_id
-        beam: list[tuple[float, list[str]]] = [(0.0, [root])]
-        collected: dict[str, tuple[float, list[str]]] = {}
-        unexplored: list[tuple[float, str, list[str]]] = []
-        steps: list[TraceStep] = []
-
-        for depth in range(self._max_depth):
-            if not beam:
-                break
-            next_beam: list[tuple[float, list[str]]] = []
-            for score, path in beam:
-                node_id = path[-1]
-                children = self._graph.successors(node_id)
-                if not children:
-                    if node_id in active_items and node_id not in collected:
-                        collected[node_id] = (score, path[1:])
-                    continue
-
-                scored: list[tuple[float, str]] = []
-                for child in children:
-                    if not self._is_eligible_child(child, active_items, eligible_internals):
-                        continue
-                    s = self._score_node(query, child)
-                    scored.append((s, child))
-                scored.sort(key=lambda x: (-x[0], x[1]))
-
-                keep = self._beam_width
-                if len(scored) >= 2 and scored[0][0] - scored[1][0] < self._confidence_gap:
-                    keep = self._beam_width + 1
-
-                kept_ids: list[str] = []
-                for i, (s, child) in enumerate(scored):
-                    new_path = path + [child]
-                    if i < keep:
-                        kept_ids.append(child)
-                        if child in self._items:
-                            if child in active_items and child not in collected:
-                                collected[child] = (score + s, new_path[1:])
-                        else:
-                            next_beam.append((score + s, new_path))
-                    else:
-                        unexplored.append((score + s, child, new_path))
-
-                if debug:
-                    steps.append(
-                        TraceStep(
-                            depth=depth,
-                            node=node_id,
-                            scored_children=[(cid, cs) for cs, cid in scored],
-                            kept=kept_ids,
-                        )
-                    )
-
-            next_beam.sort(key=lambda x: (-x[0], x[1][-1]))
-            beam = next_beam[: self._beam_width]
-
-        # Collect any remaining beam items.
-        for score, path in beam:
-            node_id = path[-1]
-            if node_id in active_items and node_id not in collected:
-                collected[node_id] = (score, path[1:])
-
-        # Backtrack into unexplored branches if under-filled.
-        unexplored.sort(key=lambda x: (-x[0], x[1]))
-        while len(collected) < self._top_k and unexplored:
-            u_score, u_node, u_path = unexplored.pop(0)
-            if u_node in collected:
+        summary = history.last_result_summary
+        if not summary:
+            return None
+        sims: dict[str, float] = {}
+        for item_id, _ in scored:
+            idx = self._doc_id_to_idx.get(item_id)
+            if idx is None:
                 continue
-            if u_node in active_items:
-                collected[u_node] = (u_score, u_path[1:])
-            else:
-                current_depth = len(u_path) - 1
-                remaining = max(0, self._max_depth - current_depth)
-                sub = self._expand_subtree(
-                    query,
-                    u_node,
-                    u_score,
-                    u_path,
-                    active_items,
-                    eligible_internals,
-                    max_depth=remaining,
-                )
-                for sid, (ss, sp) in sub.items():
-                    if sid in active_items and sid not in collected:
-                        collected[sid] = (ss, sp)
-
-        return steps, collected
-
-    def _rank_collected(
-        self,
-        collected: dict[str, tuple[float, list[str]]],
-        active_items: dict[str, SelectableItem],
-    ) -> list[tuple[str, tuple[float, list[str]]]]:
-        """Return *collected* sorted by ``(-score, id)``, untrimmed.
-
-        Truncation to ``self._top_k`` is the caller's responsibility so
-        ambiguity / runner-up reads can use the full ranking even when
-        ``top_k=1`` (issue #14).
-        """
-        return sorted(
-            (entry for entry in collected.items() if entry[0] in active_items),
-            key=lambda x: (-x[1][0], x[0]),
-        )
-
-    def _expand_subtree(
-        self,
-        query: str,
-        node_id: str,
-        base_score: float,
-        base_path: list[str],
-        active_items: dict[str, SelectableItem],
-        eligible_internals: set[str],
-        *,
-        max_depth: int | None = None,
-    ) -> dict[str, tuple[float, list[str]]]:
-        """Expand children of *node_id* recursively, collecting items.
-
-        Children outside *active_items* (leaves) or *eligible_internals*
-        (internals) are skipped before scoring so excluded subtrees do
-        not consume backtracking work (issue #112 / #22).
-        """
-        depth_limit = max_depth if max_depth is not None else self._max_depth
-        result: dict[str, tuple[float, list[str]]] = {}
-        stack: list[tuple[float, str, list[str], int]] = [(base_score, node_id, base_path, 0)]
-        while stack:
-            score, nid, path, depth = stack.pop()
-            children = self._graph.successors(nid)
-            if not children or depth >= depth_limit:
-                if nid in active_items:
-                    result[nid] = (score, path[1:])
-                continue
-            for child in sorted(children):
-                if not self._is_eligible_child(child, active_items, eligible_internals):
-                    continue
-                s = self._score_node(query, child)
-                new_path = path + [child]
-                if child in self._items:
-                    result[child] = (score + s, new_path[1:])
-                else:
-                    stack.append((score + s, child, new_path, depth + 1))
-        return result
+            sims[item_id] = self._retriever.score_one(summary, idx)
+        return sims

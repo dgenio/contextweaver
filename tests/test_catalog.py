@@ -82,6 +82,58 @@ def test_filter_by_tags() -> None:
     assert [r.id for r in results] == ["t1"]
 
 
+# ------------------------------------------------------------------
+# validate_dependencies (issue #27 phase 2)
+# ------------------------------------------------------------------
+
+
+def test_validate_dependencies_returns_empty_for_consistent_catalog() -> None:
+    catalog = Catalog()
+    catalog.register(_item("auth"))
+    catalog.register(
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="email",
+            depends_on=["auth"],
+        )
+    )
+    assert catalog.validate_dependencies() == []
+
+
+def test_validate_dependencies_warns_on_unknown_reference() -> None:
+    catalog = Catalog()
+    catalog.register(
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="email",
+            depends_on=["does_not_exist"],
+        )
+    )
+    warnings = catalog.validate_dependencies()
+    assert len(warnings) == 1
+    assert "send_email" in warnings[0]
+    assert "does_not_exist" in warnings[0]
+
+
+def test_validate_dependencies_warns_per_missing_reference() -> None:
+    catalog = Catalog()
+    catalog.register(
+        SelectableItem(
+            id="send_email",
+            kind="tool",
+            name="send_email",
+            description="email",
+            depends_on=["missing_a", "missing_b"],
+        )
+    )
+    warnings = catalog.validate_dependencies()
+    assert len(warnings) == 2
+
+
 def test_roundtrip() -> None:
     catalog = Catalog()
     catalog.register(_item("t1", tags=["a"]))

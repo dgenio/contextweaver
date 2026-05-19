@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.6.0"
+version = "0.7.0"
 description = "Dynamic context management for tool-using AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -85,6 +85,12 @@ dev = [
     "jsonschema>=4.18",
     "crewai>=0.80",
     "mem0ai>=0.1",
+    # FastMCP is pulled into [dev] so the CodeMode discovery-tool integration
+    # test (``tests/test_adapters_fastmcp_discovery.py``) — which spins up a
+    # real in-memory FastMCP server — runs on every CI matrix cell.  The
+    # ``[fastmcp]`` runtime extra below stays for end users who don't want
+    # the dev toolchain.
+    "fastmcp>=2.0",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -108,6 +114,16 @@ crewai = [
 langchain = [
     "langchain-core>=0.3",
 ]
+# Real-time voice agents: Pipecat frame processors composed with the
+# contextweaver context engine.  Optional because pipecat-ai pulls heavy
+# transitive deps (audio codecs, VAD models) — the
+# ``examples/architectures/voice_agent`` script runs end-to-end without
+# this extra installed; install only when you want to wire contextweaver
+# into a real Pipecat ``FrameProcessor`` (see
+# ``docs/integration_pipecat.md`` for the worked code).
+voice = [
+    "pipecat-ai>=0.0.50",
+]
 # Docs site (mkdocs).
 docs = [
     "mkdocs>=1.6",
@@ -127,10 +143,19 @@ cli = []
 retrieval = [
     "rapidfuzz>=3.0",
 ]
-# Approximate-nearest-neighbour backends. Reserved for future embedding-based
-# routing (#8). No functional code references these yet.
+# Approximate-nearest-neighbour backends. Reserved; the in-tree embedding
+# retriever (#8) does an exhaustive O(N) similarity scan and is enough for
+# catalogs under ~10k items.  Wire hnswlib in via a follow-up issue when the
+# fitted-corpus size justifies an indexed search.
 ann = [
     "hnswlib>=0.8",
+]
+# Embedding-based retrieval backend (#8). Activates
+# :class:`contextweaver.extras.embeddings.SentenceTransformerBackend` and the
+# Router's ``embedding_backend=`` kwarg.  Heavy: pulls torch via
+# sentence-transformers, so it stays optional.
+embeddings = [
+    "sentence-transformers>=2.0",
 ]
 # Persistent SQLite-backed stores (issues #174 / #223).  The implementations
 # rely only on stdlib ``sqlite3``; this extras group exists so installs can
@@ -165,9 +190,11 @@ graph = [
 all = [
     "contextweaver[retrieval]",
     "contextweaver[ann]",
+    "contextweaver[embeddings]",
     "contextweaver[otel]",
     "contextweaver[graph]",
     "contextweaver[weaver-spec]",
+    "contextweaver[voice]",
 ]
 
 [project.scripts]
@@ -224,6 +251,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "opentelemetry.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sentence_transformers"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

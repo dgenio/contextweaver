@@ -62,6 +62,11 @@ class SelectableItem:
 
     This is the single vocabulary the Routing Engine operates on.  Use the
     :data:`ToolCard` alias when you want to emphasise the tool-card framing.
+
+    The optional ``depends_on`` / ``provides`` / ``requires`` fields (issue
+    #27 Phase 2) carry tool-dependency metadata used by history-aware
+    routing.  All three default to ``None`` so existing catalogs round-trip
+    unchanged.
     """
 
     id: str
@@ -77,10 +82,18 @@ class SelectableItem:
     side_effects: bool = False
     cost_hint: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    depends_on: list[str] | None = None
+    provides: list[str] | None = None
+    requires: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialise to a JSON-compatible dict."""
-        return {
+        """Serialise to a JSON-compatible dict.
+
+        ``depends_on`` / ``provides`` / ``requires`` are omitted from the
+        payload when ``None`` so older consumers see the same shape as
+        before issue #27 Phase 2.
+        """
+        payload: dict[str, Any] = {
             "id": self.id,
             "kind": self.kind,
             "name": self.name,
@@ -95,10 +108,21 @@ class SelectableItem:
             "cost_hint": self.cost_hint,
             "metadata": dict(self.metadata),
         }
+        if self.depends_on is not None:
+            payload["depends_on"] = list(self.depends_on)
+        if self.provides is not None:
+            payload["provides"] = list(self.provides)
+        if self.requires is not None:
+            payload["requires"] = list(self.requires)
+        return payload
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SelectableItem:
-        """Deserialise from a JSON-compatible dict."""
+        """Deserialise from a JSON-compatible dict.
+
+        Missing ``depends_on`` / ``provides`` / ``requires`` keys round-trip
+        to ``None`` (issue #27 Phase 2).
+        """
         return cls(
             id=data["id"],
             kind=data["kind"],
@@ -115,6 +139,9 @@ class SelectableItem:
             side_effects=bool(data.get("side_effects", False)),
             cost_hint=float(data.get("cost_hint", 0.0)),
             metadata=dict(data.get("metadata", {})),
+            depends_on=list(data["depends_on"]) if data.get("depends_on") is not None else None,
+            provides=list(data["provides"]) if data.get("provides") is not None else None,
+            requires=list(data["requires"]) if data.get("requires") is not None else None,
         )
 
 

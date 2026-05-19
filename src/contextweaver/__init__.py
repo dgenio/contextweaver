@@ -50,12 +50,15 @@ from contextweaver.exceptions import (
 from contextweaver.metrics import MetricsCollector, MetricsHook
 from contextweaver.profiles import Mode, ProfileConfig, RoutingConfig
 from contextweaver.protocols import (
+    CardPacker,
     ClusteringEngine,
+    EmbeddingBackend,
     EpisodicStore,
     EventHook,
     Extractor,
     FactStore,
     Labeler,
+    Navigator,
     RedactionHook,
     Reranker,
     Retriever,
@@ -73,9 +76,13 @@ from contextweaver.routing.catalog import (
 )
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.graph_node import ChoiceNode
+from contextweaver.routing.history import RouteHistory
 from contextweaver.routing.labeler import KeywordLabeler
 from contextweaver.routing.manifest import GraphManifest, compute_catalog_hash
+from contextweaver.routing.navigator import BeamSearchNavigator
 from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
+from contextweaver.routing.packer import DefaultCardPacker
+from contextweaver.routing.pipeline import RoutingPipeline
 from contextweaver.routing.registry import (
     EngineRegistry,
     JaccardClusteringEngine,
@@ -108,7 +115,7 @@ from contextweaver.types import (
     ViewSpec,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.7.0"
 __all__ = [
     # sub-modules
     "config",
@@ -145,12 +152,15 @@ __all__ = [
     "RoutingConfig",
     "ScoringConfig",
     # protocols
+    "CardPacker",
     "ClusteringEngine",
+    "EmbeddingBackend",
     "EpisodicStore",
     "EventHook",
     "Extractor",
     "FactStore",
     "Labeler",
+    "Navigator",
     "RedactionHook",
     "Reranker",
     "Retriever",
@@ -187,19 +197,23 @@ __all__ = [
     "MetricsCollector",
     "MetricsHook",
     # routing engine
+    "BeamSearchNavigator",
     "Catalog",
     "CatalogNormalizer",
     "ChoiceGraph",
     "ChoiceNode",
+    "DefaultCardPacker",
     "EngineRegistry",
     "GraphManifest",
     "JaccardClusteringEngine",
     "KeywordLabeler",
     "NoOpReranker",
     "NormalizationReport",
+    "RouteHistory",
     "RouteResult",
     "RouteTrace",
     "Router",
+    "RoutingPipeline",
     "TfIdfRetriever",
     "TraceStep",
     "TreeBuilder",
