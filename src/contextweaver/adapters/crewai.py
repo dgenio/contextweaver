@@ -20,6 +20,7 @@ CrewAI tools docs: https://docs.crewai.com/concepts/tools
 
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any
 
@@ -81,7 +82,7 @@ def _args_schema_dict(raw: object) -> dict[str, Any]:
     if raw is None:
         return {}
     if isinstance(raw, dict):
-        return dict(raw)
+        return copy.deepcopy(raw)
     schema_fn = getattr(raw, "model_json_schema", None)
     if callable(schema_fn):
         try:

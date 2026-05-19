@@ -184,7 +184,17 @@ class Mem0EpisodicStore:
         self._scan_limit = scan_limit
 
     def add(self, episode: Episode) -> None:
-        """Persist *episode* into the mem0 store under the configured scope."""
+        """Persist *episode* into the mem0 store under the configured scope.
+
+        If an episode with the same ``episode_id`` already exists, the
+        existing record is deleted first (upsert semantics) so that
+        :meth:`get` never returns a stale duplicate.
+        """
+        existing = self._record_for_episode(episode.episode_id)
+        if existing is not None:
+            mem_id = _memory_id(existing)
+            if mem_id is not None:
+                self._memory.delete(mem_id)
         metadata: dict[str, Any] = dict(episode.metadata)
         metadata[_CW_EPISODE_KEY] = episode.episode_id
         metadata[_CW_TAGS_FIELD] = list(episode.tags)
