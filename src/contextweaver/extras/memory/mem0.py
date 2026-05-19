@@ -188,9 +188,14 @@ class Mem0EpisodicStore:
 
         If an episode with the same ``episode_id`` already exists, the
         existing record is deleted first (upsert semantics) so that
-        :meth:`get` never returns a stale duplicate.
+        :meth:`get` never returns a stale duplicate.  When the scope
+        exceeds ``scan_limit`` the duplicate check is skipped and the
+        episode is appended unconditionally (append-only fallback).
         """
-        existing = self._record_for_episode(episode.episode_id)
+        try:
+            existing = self._record_for_episode(episode.episode_id)
+        except NotImplementedError:
+            existing = None
         if existing is not None:
             mem_id = _memory_id(existing)
             if mem_id is not None:
