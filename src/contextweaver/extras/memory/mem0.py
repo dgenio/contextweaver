@@ -347,8 +347,11 @@ class Mem0FactStore:
         existing = self._record_for_fact(fact.fact_id)
         if existing is not None:
             mem_id = _memory_id(existing)
-            if mem_id is not None:
-                self._memory.delete(mem_id)
+            if mem_id is None:
+                raise Mem0BackendError(
+                    f"Mem0 record for fact {fact.fact_id!r} is missing an 'id' field."
+                )
+            self._memory.delete(mem_id)
         metadata: dict[str, Any] = dict(fact.metadata)
         metadata[_CW_FACT_KEY] = fact.fact_id
         metadata[_CW_FACT_KEY_FIELD] = fact.key

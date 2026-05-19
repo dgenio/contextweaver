@@ -135,9 +135,10 @@ def firewalled(tool: BaseTool) -> BaseTool:
 
     def _run(*args: object, **kwargs: object) -> object:
         raw = original_run(*args, **kwargs)
-        item = ctx_mgr.ingest_tool_result(
+        item, _envelope = ctx_mgr.ingest_tool_result(
+            tool_call_id=f"{tool.name}:{id(raw)}",
+            raw_output=str(raw),
             tool_name=tool.name,
-            content=str(raw),
         )
         # Return the firewalled summary; the raw bytes stay addressable
         # in ctx_mgr.artifact_store and are accessible via drilldown.
@@ -174,8 +175,9 @@ tool name and a JSON-schema preamble prepended (e.g.
 `Tool Name: search\nTool Arguments: {...}\nTool Description: ...`).
 contextweaver is intentionally faithful to that enriched form so the
 router scores against the same text the LLM eventually sees from CrewAI.
-If you need the original description without the preamble, parse it out
-of `item.metadata` or convert from a plain dict via
+If you need the original description without the preamble, access
+`item.metadata["original_description"]` (populated automatically when
+the preamble is detected) or convert from a plain dict via
 `crewai_tool_to_selectable({...})`.
 
 ## Troubleshooting

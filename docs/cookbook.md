@@ -308,10 +308,10 @@ from contextweaver.store import StoreBundle
 
 memory = Memory()  # your existing mem0 client
 bundle = StoreBundle(
-    episodic=Mem0EpisodicStore(memory, user_id="agent:support-bot"),
-    facts=Mem0FactStore(memory, user_id="agent:support-bot"),
+    episodic_store=Mem0EpisodicStore(memory, user_id="agent:support-bot"),
+    fact_store=Mem0FactStore(memory, user_id="agent:support-bot"),
 )
-ctx_mgr = ContextManager(store_bundle=bundle)
+ctx_mgr = ContextManager(stores=bundle)
 ```
 
 Full walkthrough, decision matrix, and the Zep / LangMem follow-up

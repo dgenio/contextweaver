@@ -114,8 +114,6 @@ def crewai_tool_to_selectable(
       raw return should bypass agent reflection; surfaced as a metadata
       field for downstream consumers and is **not** the same as
       ``side_effects``.
-    - ``cache_function`` (optional): CrewAI cache predicate; preserved in
-      ``metadata`` only — not exercised by contextweaver's routing.
 
     Args:
         tool_def: Raw tool definition dict (typically the result of
@@ -157,6 +155,12 @@ def crewai_tool_to_selectable(
         metadata["result_as_answer"] = bool(tool_def["result_as_answer"])
     if "max_usage_count" in tool_def and tool_def["max_usage_count"] is not None:
         metadata["max_usage_count"] = tool_def["max_usage_count"]
+
+    # Store the preamble-free description when CrewAI's enriched format is
+    # detected (pattern: "Tool Name: ...\nTool Description: <original>").
+    _preamble_marker = "\nTool Description: "
+    if _preamble_marker in raw_description:
+        metadata["original_description"] = raw_description.split(_preamble_marker, 1)[1]
 
     logger.debug(
         "crewai_tool_to_selectable: name=%s, ns=%s, tags=%s",

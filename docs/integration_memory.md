@@ -99,8 +99,8 @@ episodic = Mem0EpisodicStore(memory, user_id="agent:support-bot")
 facts = Mem0FactStore(memory, user_id="agent:support-bot")
 
 # 3. Plug into the StoreBundle the ContextManager uses.
-bundle = StoreBundle(episodic=episodic, facts=facts)
-ctx_mgr = ContextManager(store_bundle=bundle)
+bundle = StoreBundle(episodic_store=episodic, fact_store=facts)
+ctx_mgr = ContextManager(stores=bundle)
 
 # 4. From here on, use the standard contextweaver API.
 episodic.add(Episode("ep-1", "User asked about refund policy for SKU-42"))
