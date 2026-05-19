@@ -293,10 +293,29 @@ def test_roundtrip_preserves_multimodal_assistant_content_list() -> None:
 
 
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
-    """Issue #219 design constraint: no provider SDK import at module level."""
-    # The openai_messages module is already imported by these tests; assert
-    # that neither openai nor any openai_* package leaked into sys.modules
-    # as a transitive import of the adapter.
-    assert "openai" not in sys.modules
-    assert "anthropic" not in sys.modules
-    assert "google.generativeai" not in sys.modules
+    """Issue #219 design constraint: no provider SDK import at module level.
+
+    Runs in a fresh subprocess so the invariant is independent of whatever
+    other tests in the session may have pulled into ``sys.modules``
+    transitively (e.g. ``crewai`` → ``openai`` once the ``[crewai]`` /
+    ``[dev]`` extras are installed).
+    """
+    import subprocess
+
+    script = (
+        "import sys\n"
+        "import contextweaver.adapters.openai_messages  # noqa: F401\n"
+        "assert 'openai' not in sys.modules, sorted(sys.modules)\n"
+        "assert 'anthropic' not in sys.modules\n"
+        "assert 'google.generativeai' not in sys.modules\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"openai_messages leaked a provider SDK at import time: "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )

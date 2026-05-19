@@ -235,6 +235,8 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based agent crews with bounded tool shortlists |
+| External memory (Mem0) | [Guide](docs/integration_memory.md) | Plug an existing Mem0 deployment as the `EpisodicStore` / `FactStore` |
 
 ---
 
@@ -365,6 +367,8 @@ contextweaver works with any LLM provider and any agent framework:
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based agent crews with bounded tool shortlists |
+| External memory (Mem0) | [Guide](docs/integration_memory.md) | Plug an existing Mem0 deployment as the `EpisodicStore` / `FactStore` |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -533,8 +537,12 @@ to any LLM or framework. See dedicated guides for
 [LlamaIndex](docs/integration_llamaindex.md),
 [LangChain + LangGraph](docs/integration_langchain.md),
 [OpenAI Agents SDK](docs/integration_openai_adk.md),
-[Google ADK / Vertex AI](docs/integration_google_adk.md), and
-[Pipecat](docs/integration_pipecat.md).  If your runtime isn't listed, the
+[Google ADK / Vertex AI](docs/integration_google_adk.md),
+[Pipecat](docs/integration_pipecat.md), and
+[CrewAI](docs/integration_crewai.md).  Already running a long-lived
+memory layer? Adapt
+[Mem0](docs/integration_memory.md) onto the `EpisodicStore` / `FactStore`
+protocols.  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 

@@ -12,6 +12,10 @@ Currently shipped:
 - :mod:`contextweaver.extras.embeddings` — sentence-transformers embedding
   backend + hybrid embedding/TF-IDF retriever (``contextweaver[embeddings]``,
   issue #8).
+- :mod:`contextweaver.extras.memory.mem0` — Mem0 ``EpisodicStore`` /
+  ``FactStore`` implementations (``contextweaver[mem0]``).  See
+  :mod:`contextweaver.extras.memory` for the external-memory backend
+  sub-package layout (issue #195).
 """
 
 from __future__ import annotations
