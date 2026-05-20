@@ -28,10 +28,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import platform
 import statistics
 import sys
 import time
-from dataclasses import asdict, dataclass
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -103,18 +106,109 @@ def _make_catalog(n: int, seed: int = 42) -> list[SelectableItem]:
     return sorted(items, key=lambda i: i.id)[:n]
 
 
+# ``_MIXED_NAMESPACE_SHAPE`` defines the head-heavy + long-tail namespace
+# distribution used by :func:`_make_mixed_namespace_catalog` (issue #277).
+# Tuples are ``(namespace_label, item_count)``.  The shape is intentionally
+# asymmetric to contrast with the uniform 8-namespace catalog produced by
+# :func:`_make_catalog`: one head namespace dominates, two mids carry roughly
+# a quarter, four small namespaces share the remainder, and a long-tail of
+# single-item namespaces simulates niche production tools.
+_MIXED_NAMESPACE_HEAD = ("analytics_xl", 200)
+_MIXED_NAMESPACE_MID = (("billing_xl", 60), ("crm_xl", 40))
+_MIXED_NAMESPACE_SMALL = (
+    ("admin_xl", 25),
+    ("comms_xl", 25),
+    ("docs_xl", 25),
+    ("infra_xl", 25),
+)
+_MIXED_NAMESPACE_TAIL_NS_COUNT = 100  # 100 namespaces × 1 item each
+
+
+def _make_mixed_namespace_catalog(
+    n: int = 500, seed: int = 42
+) -> list[SelectableItem]:
+    """Return a catalog of *n* items with a head-heavy + long-tail namespace shape.
+
+    Issue #277.  Real production catalogs are rarely shaped like the uniform
+    8-namespace pool used by :func:`_make_catalog` — they typically have one
+    dominant namespace (analytics / observability), a couple of mid-weight
+    ones (billing / crm), a handful of small operational namespaces, and a
+    long tail of niche single-tool namespaces.
+
+    The natural 83-item gold-pool is kept intact under its original
+    namespaces so the gold-dataset queries still match.  Additional items
+    are synthesised with the head-heavy distribution defined by
+    :data:`_MIXED_NAMESPACE_HEAD` / ``_MID`` / ``_SMALL`` /
+    ``_TAIL_NS_COUNT`` so the routing layer sees a deliberately uneven
+    namespace surface.  Synthetic items carry distinct IDs so they will
+    not match gold-dataset queries — precision/recall remains valid.
+
+    Args:
+        n: Total catalog size.  Default 500 matches the issue's request.
+        seed: RNG seed for the underlying ``generate_sample_catalog`` call.
+
+    Returns:
+        Sorted list of ``SelectableItem`` instances, exactly *n* long.
+    """
+    base_dicts = generate_sample_catalog(n=min(n, 83), seed=seed)
+    base_items = load_catalog_dicts(base_dicts)
+    items: list[SelectableItem] = list(base_items)
+
+    head_label, head_n = _MIXED_NAMESPACE_HEAD
+    plan: list[tuple[str, int]] = [(head_label, head_n)]
+    plan.extend(_MIXED_NAMESPACE_MID)
+    plan.extend(_MIXED_NAMESPACE_SMALL)
+    for i in range(_MIXED_NAMESPACE_TAIL_NS_COUNT):
+        plan.append((f"longtail_{i:03d}", 1))
+
+    # Synthetic prototype text per namespace — deterministic but distinct
+    # so each namespace's items have intra-namespace lexical signal.
+    for ns_label, count in plan:
+        for j in range(count):
+            if len(items) >= n:
+                break
+            item_id = f"{ns_label}.tool_{j:03d}"
+            items.append(
+                SelectableItem(
+                    item_id,
+                    "tool",
+                    f"{ns_label}_tool_{j}",
+                    f"Synthetic {ns_label} operation #{j} for shape diversity benchmark",
+                    tags=[ns_label],
+                    namespace=ns_label,
+                )
+            )
+        if len(items) >= n:
+            break
+
+    return sorted(items, key=lambda i: i.id)[:n]
+
+
 def _build_router(items: list[SelectableItem], scorer_backend: str = "tfidf") -> Router:
     """Compile *items* into a TreeBuilder DAG and wrap with a Router.
 
     Args:
         items: Catalog items to compile into the routing DAG.
-        scorer_backend: One of ``tfidf`` / ``bm25`` / ``fuzzy``. The ``fuzzy``
-            backend requires the ``[retrieval]`` extra and will raise a
-            :class:`~contextweaver.exceptions.ConfigError` when missing — callers
-            that want to skip rather than fail should pre-check
-            :data:`_FUZZY_AVAILABLE`.
+        scorer_backend: One of ``tfidf`` / ``bm25`` / ``fuzzy`` / ``embedding_hashing``
+            / ``embedding_st``.  The ``fuzzy`` backend requires the
+            ``[retrieval]`` extra; ``embedding_st`` requires the
+            ``[embeddings]`` extra.  Both raise a
+            :class:`~contextweaver.exceptions.ConfigError` (or ``ImportError``)
+            when missing — callers that want to skip rather than fail should
+            pre-check :data:`_FUZZY_AVAILABLE` / :data:`_SENTENCE_TRANSFORMERS_AVAILABLE`.
     """
     graph = TreeBuilder().build(items)
+    if scorer_backend == "embedding_hashing":
+        # Stdlib-only embedding backend — always available; provides the
+        # baseline embedding-path row in the scorecard (#266).
+        from contextweaver.extras.embeddings import HashingEmbeddingBackend
+
+        return Router(graph, items=items, embedding_backend=HashingEmbeddingBackend())
+    if scorer_backend == "embedding_st":
+        # Real sentence-transformers backend — requires [embeddings] extra (#266).
+        from contextweaver.extras.embeddings import SentenceTransformerBackend
+
+        return Router(graph, items=items, embedding_backend=SentenceTransformerBackend())
     return Router(graph, items=items, scorer_backend=scorer_backend)
 
 
@@ -122,6 +216,41 @@ def _build_router(items: list[SelectableItem], scorer_backend: str = "tfidf") ->
 # the ``[retrieval]`` extra is missing. The matrix runner uses this to record
 # a ``"status": "skipped: missing rapidfuzz"`` row rather than crash (#208).
 _FUZZY_AVAILABLE: bool = FuzzyScorer is not None
+
+
+def _sentence_transformers_available() -> bool:
+    """Return True iff the ``[embeddings]`` extra is importable (#266).
+
+    Used by the matrix runner to emit a ``"skipped: missing sentence-transformers"``
+    row for the ``embedding_st`` backend rather than crash on a fresh install.
+    Imports are deferred so the default-install benchmark never pays the
+    cost of an attempted ``sentence_transformers`` import unless the user
+    asked for that backend.
+    """
+    try:
+        import sentence_transformers  # noqa: F401, PLC0415
+    except ImportError:
+        return False
+    return True
+
+
+_SENTENCE_TRANSFORMERS_AVAILABLE: bool = _sentence_transformers_available()
+
+
+def _matrix_cell_skip_reason(backend: str) -> str | None:
+    """Return a ``"skipped: ..."`` status string when *backend* cannot run, else ``None``.
+
+    Drives the graceful-skip path in :func:`_run_matrix_cell` for backends
+    whose runtime requires an optional extra (``rapidfuzz`` for the
+    ``fuzzy`` backend, ``sentence-transformers`` for the ``embedding_st``
+    backend).  Centralising the policy here keeps the cell runner short
+    and makes it trivial to extend with future backends (#266, #208).
+    """
+    if backend == "fuzzy" and not _FUZZY_AVAILABLE:
+        return "skipped: missing rapidfuzz"
+    if backend == "embedding_st" and not _SENTENCE_TRANSFORMERS_AVAILABLE:
+        return "skipped: missing sentence-transformers"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -294,9 +423,26 @@ def _run_matrix_cell(
     k: int,
     seed: int,
     n_timing_runs: int,
+    catalog_factory: Callable[[int, int], list[SelectableItem]] = _make_catalog,
 ) -> tuple[MatrixCell, list[NamespaceCell]]:
-    """Run one (backend, catalog_size) cell and return its row + per-namespace rows."""
-    if backend == "fuzzy" and not _FUZZY_AVAILABLE:
+    """Run one (backend, catalog_size) cell and return its row + per-namespace rows.
+
+    Args:
+        gold: The gold dataset rows (see ``benchmarks/routing_gold.json``).
+        backend: One of the entries in :data:`_SUPPORTED_BACKENDS`.
+        catalog_size: Total items in the catalog for this cell.
+        k: Rank cutoff for precision/recall/MRR.
+        seed: RNG seed forwarded to the catalog factory.
+        n_timing_runs: Routing-query repetitions per gold entry (latency
+            stabilisation).
+        catalog_factory: Function ``(n, seed) -> list[SelectableItem]``
+            used to build the catalog for this cell.  Defaults to the
+            uniform 8-namespace pool (:func:`_make_catalog`); the
+            mixed-shape matrix runner (#277) passes
+            :func:`_make_mixed_namespace_catalog`.
+    """
+    skip_reason = _matrix_cell_skip_reason(backend)
+    if skip_reason is not None:
         skipped = MatrixCell(
             backend=backend,
             catalog_size=catalog_size,
@@ -307,11 +453,11 @@ def _run_matrix_cell(
             latency_ms_p50=0.0,
             latency_ms_p95=0.0,
             latency_ms_p99=0.0,
-            status="skipped: missing rapidfuzz",
+            status=skip_reason,
         )
         return skipped, []
 
-    items = _make_catalog(catalog_size, seed=seed)
+    items = catalog_factory(catalog_size, seed)
     item_ids = {it.id for it in items}
     router = _build_router(items, scorer_backend=backend)
 
@@ -402,6 +548,37 @@ def _run_matrix(
             cells.append(cell)
             ns_cells.extend(ns_rows)
     return cells, ns_cells
+
+
+def _run_matrix_mixed_shape(
+    gold: list[dict[str, object]],
+    backends: list[str],
+    k: int,
+    seed: int,
+    n_timing_runs: int,
+) -> list[MatrixCell]:
+    """Run the matrix against the head-heavy mixed-namespace catalog (issue #277).
+
+    Always uses ``catalog_size = 500`` since the mixed-shape distribution
+    is calibrated to that size (the head namespace has 200 items, mids 100,
+    smalls 100, long-tail 100; see :func:`_make_mixed_namespace_catalog`).
+    Per-namespace rows are intentionally not emitted — the long-tail of
+    100 single-item namespaces would dominate the table with zero-recall
+    rows; the gold dataset only covers the natural 8 namespaces.
+    """
+    cells: list[MatrixCell] = []
+    for backend in sorted(backends):
+        cell, _ = _run_matrix_cell(
+            gold=gold,
+            backend=backend,
+            catalog_size=500,
+            k=k,
+            seed=seed,
+            n_timing_runs=n_timing_runs,
+            catalog_factory=_make_mixed_namespace_catalog,
+        )
+        cells.append(cell)
+    return cells
 
 
 # ---------------------------------------------------------------------------
@@ -546,12 +723,338 @@ def _print_matrix_table(cells: list[MatrixCell], k: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Environment capture (issue #267)
+# ---------------------------------------------------------------------------
+
+# Pinned hardware reference rig the scorecard's absolute-latency numbers are
+# meant to be read against.  Chosen to match a stock GitHub Actions
+# ``ubuntu-latest`` runner so any reader can reproduce the order-of-magnitude
+# numbers in cloud CI without owning a specific machine.  When the harness
+# runs on a different host, the renderer emits both the pinned rig and the
+# measured environment so callers can see the divergence (#267).
+_REFERENCE_RIG = {
+    "label": "GitHub Actions ubuntu-latest (2-core x86_64)",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu_logical_cores": 2,
+    "python_version": "3.10+",
+    "notes": (
+        "Absolute latency on other hardware will differ; the *relative* "
+        "cost between catalog sizes and backends is portable."
+    ),
+}
+
+
+@dataclass
+class EnvironmentInfo:
+    """Best-effort metadata about the machine that produced ``latest.json``.
+
+    Captures stdlib-resolvable identifiers only — no third-party probing,
+    no network calls.  The renderer uses this against
+    :data:`_REFERENCE_RIG` to emit the "Measured on" disclosure under the
+    "Hardware reference rig" section (#267).
+    """
+
+    system: str
+    machine: str
+    processor: str
+    python_version: str
+    python_implementation: str
+    cpu_logical_cores: int
+    platform_string: str
+
+
+def _capture_environment() -> EnvironmentInfo:
+    """Return a stdlib snapshot of the host environment (issue #267)."""
+    return EnvironmentInfo(
+        system=platform.system(),
+        machine=platform.machine(),
+        processor=platform.processor() or "unknown",
+        python_version=platform.python_version(),
+        python_implementation=platform.python_implementation(),
+        cpu_logical_cores=os.cpu_count() or 0,
+        platform_string=platform.platform(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tiktoken parity check (issue #268)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TiktokenParityStats:
+    """``CharDivFourEstimator`` vs ``cl100k_base`` drift on the gold corpus.
+
+    Reported metrics:
+
+    * ``mean_abs_error`` — mean ``|cw - tiktoken|`` token-count difference.
+    * ``max_abs_error`` — worst-case absolute drift in a single sample.
+    * ``mean_signed_error`` — mean ``cw - tiktoken``; positive means the
+      stdlib estimator over-counts, negative means it under-counts.
+    * ``mean_ratio`` — mean ``cw / tiktoken``; ``1.0`` means perfect parity.
+    * ``samples`` — number of inputs evaluated.
+    * ``status`` — ``"ok"`` when ``tiktoken`` is importable and the
+      ``cl100k_base`` encoding is reachable, otherwise a ``"skipped: ..."``
+      explanation suitable for the scorecard.
+    """
+
+    samples: int
+    mean_abs_error: float
+    max_abs_error: int
+    mean_signed_error: float
+    mean_ratio: float
+    status: str = "ok"
+
+
+def _gold_corpus_for_parity(gold: list[dict[str, object]]) -> list[str]:
+    """Flatten the gold dataset into one list of strings for token counting.
+
+    Combines query text with the natural-language descriptions of expected
+    tool IDs so the corpus covers both short queries and tool descriptions
+    — the two distributions ``CharDivFourEstimator`` is asked to estimate
+    on in normal pipeline use.
+    """
+    out: list[str] = []
+    for entry in gold:
+        q = entry.get("query")
+        if isinstance(q, str) and q:
+            out.append(q)
+    return out
+
+
+def _run_tiktoken_parity(gold: list[dict[str, object]]) -> TiktokenParityStats:
+    """Quantify ``CharDivFourEstimator`` vs real ``cl100k_base`` drift (#268).
+
+    Returns a :class:`TiktokenParityStats` with ``status='skipped: ...'``
+    when ``tiktoken`` is unavailable or the encoding cannot load (e.g. an
+    offline CI without the cached encoding); callers don't need to guard
+    individually.
+    """
+    try:
+        import tiktoken  # noqa: PLC0415 — optional / lazy import
+
+        encoding = tiktoken.get_encoding("cl100k_base")
+    except Exception as exc:  # pragma: no cover - exercised only when offline
+        return TiktokenParityStats(
+            samples=0,
+            mean_abs_error=0.0,
+            max_abs_error=0,
+            mean_signed_error=0.0,
+            mean_ratio=0.0,
+            status=f"skipped: {type(exc).__name__}",
+        )
+
+    corpus = _gold_corpus_for_parity(gold)
+    if not corpus:
+        return TiktokenParityStats(
+            samples=0,
+            mean_abs_error=0.0,
+            max_abs_error=0,
+            mean_signed_error=0.0,
+            mean_ratio=0.0,
+            status="skipped: empty corpus",
+        )
+
+    abs_errs: list[int] = []
+    signed_errs: list[int] = []
+    ratios: list[float] = []
+    for text in corpus:
+        true_n = len(encoding.encode(text))
+        cw_n = _ESTIMATOR.estimate(text)
+        abs_errs.append(abs(cw_n - true_n))
+        signed_errs.append(cw_n - true_n)
+        ratios.append(cw_n / true_n if true_n > 0 else 0.0)
+
+    return TiktokenParityStats(
+        samples=len(corpus),
+        mean_abs_error=round(statistics.mean(abs_errs), 4),
+        max_abs_error=max(abs_errs),
+        mean_signed_error=round(statistics.mean(signed_errs), 4),
+        mean_ratio=round(statistics.mean(ratios), 4),
+        status="ok",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Optional end-to-end real-model benchmark (issue #269) — offline by default
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class E2ERealModelStats:
+    """Optional end-to-end cost / latency capture against a real model (#269).
+
+    Off by default; runs only when ``--with-real-model`` is passed **and**
+    ``CW_BENCH_LLM_PROVIDER`` + ``CW_BENCH_LLM_API_KEY`` are both set in the
+    environment.  Even then the harness calls a single model endpoint per
+    gold-query batch — there is no fan-out, no retry storm, no schema fuzz.
+
+    When disabled, the harness still emits the dataclass with
+    ``status='skipped: offline by default'`` so the scorecard's E2E section
+    documents how to enable the capture without ever pulling a key into CI.
+    """
+
+    provider: str = ""
+    model: str = ""
+    samples: int = 0
+    prompt_tokens_total: int = 0
+    completion_tokens_total: int = 0
+    estimated_usd_cost: float = 0.0
+    e2e_latency_ms_p50: float = 0.0
+    e2e_latency_ms_p95: float = 0.0
+    e2e_latency_ms_p99: float = 0.0
+    status: str = "skipped: offline by default"
+    note: str = (
+        "Set CW_BENCH_LLM_PROVIDER + CW_BENCH_LLM_API_KEY and pass "
+        "--with-real-model to enable.  See benchmarks/README.md."
+    )
+    per_call_results: list[dict[str, object]] = field(default_factory=list)
+
+
+def _run_e2e_real_model(
+    gold: list[dict[str, object]],
+    *,
+    enabled: bool,
+    sample_limit: int = 5,
+) -> E2ERealModelStats:
+    """Optionally run a tiny end-to-end real-model benchmark (issue #269).
+
+    Returns immediately with a ``"skipped: ..."`` status when disabled or
+    when required env vars are missing.  When fully wired, performs a
+    small sample (≤ *sample_limit* gold queries) of one-shot completions
+    against an OpenAI-compatible HTTP endpoint, recording prompt /
+    completion token usage and round-trip latency.
+
+    The HTTP layer uses :mod:`urllib.request` so the harness does not need
+    a new third-party SDK dependency.
+    """
+    if not enabled:
+        return E2ERealModelStats(status="skipped: offline by default")
+
+    provider = os.environ.get("CW_BENCH_LLM_PROVIDER", "").strip()
+    api_key = os.environ.get("CW_BENCH_LLM_API_KEY", "").strip()
+    if not provider or not api_key:
+        return E2ERealModelStats(
+            status="skipped: missing CW_BENCH_LLM_PROVIDER/CW_BENCH_LLM_API_KEY env vars"
+        )
+
+    model_id = os.environ.get("CW_BENCH_LLM_MODEL", "").strip() or "gpt-4o-mini"
+    endpoint = os.environ.get(
+        "CW_BENCH_LLM_ENDPOINT", "https://api.openai.com/v1/chat/completions"
+    ).strip()
+
+    # Lazy imports so module load stays light when E2E is off.
+    import json as _json  # noqa: PLC0415
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    samples = gold[:sample_limit]
+    latencies: list[float] = []
+    prompt_total = 0
+    completion_total = 0
+    per_call: list[dict[str, object]] = []
+
+    for entry in samples:
+        query = str(entry.get("query", ""))
+        payload = _json.dumps(
+            {
+                "model": model_id,
+                "messages": [{"role": "user", "content": query}],
+                "max_tokens": 64,
+                "temperature": 0.0,
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            endpoint,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        t0 = time.perf_counter()
+        try:
+            with urllib.request.urlopen(request, timeout=30) as resp:
+                body = _json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            return E2ERealModelStats(
+                provider=provider,
+                model=model_id,
+                samples=len(per_call),
+                status=f"skipped: transport error ({type(exc).__name__})",
+            )
+        latency_ms = (time.perf_counter() - t0) * 1000
+
+        usage = body.get("usage") or {}
+        prompt_n = int(usage.get("prompt_tokens", 0))
+        completion_n = int(usage.get("completion_tokens", 0))
+        prompt_total += prompt_n
+        completion_total += completion_n
+        latencies.append(latency_ms)
+        per_call.append(
+            {
+                "query": query[:64],
+                "prompt_tokens": prompt_n,
+                "completion_tokens": completion_n,
+                "latency_ms": round(latency_ms, 2),
+            }
+        )
+
+    latencies.sort()
+    cost = _estimate_usd_cost(provider, model_id, prompt_total, completion_total)
+    return E2ERealModelStats(
+        provider=provider,
+        model=model_id,
+        samples=len(per_call),
+        prompt_tokens_total=prompt_total,
+        completion_tokens_total=completion_total,
+        estimated_usd_cost=round(cost, 4),
+        e2e_latency_ms_p50=_percentile(latencies, 0.50),
+        e2e_latency_ms_p95=_percentile(latencies, 0.95),
+        e2e_latency_ms_p99=_percentile(latencies, 0.99),
+        status="ok",
+        per_call_results=per_call,
+    )
+
+
+# Per-model USD prices ($ per 1M tokens).  Kept intentionally small — the
+# scorecard's E2E section is a sanity-check, not a pricing source of truth.
+_E2E_USD_PRICES: dict[tuple[str, str], tuple[float, float]] = {
+    ("openai", "gpt-4o-mini"): (0.15, 0.60),
+    ("openai", "gpt-4o"): (2.50, 10.00),
+    ("openai", "gpt-3.5-turbo"): (0.50, 1.50),
+}
+
+
+def _estimate_usd_cost(
+    provider: str, model: str, prompt_tokens: int, completion_tokens: int
+) -> float:
+    """Estimate USD cost for an end-to-end run; returns ``0.0`` if unknown.
+
+    The intent is a directional cost signal, not an invoice — unknown
+    (provider, model) pairs return ``0.0`` and the renderer surfaces this
+    as ``"unpriced"``.
+    """
+    rates = _E2E_USD_PRICES.get((provider.lower(), model.lower()))
+    if rates is None:
+        return 0.0
+    prompt_rate, completion_rate = rates
+    return (prompt_tokens / 1_000_000) * prompt_rate + (
+        completion_tokens / 1_000_000
+    ) * completion_rate
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 
-_DEFAULT_MATRIX_BACKENDS = "tfidf,bm25,fuzzy"
-_SUPPORTED_BACKENDS = frozenset({"tfidf", "bm25", "fuzzy"})
+_DEFAULT_MATRIX_BACKENDS = "tfidf,bm25,fuzzy,embedding_hashing,embedding_st"
+_SUPPORTED_BACKENDS = frozenset(
+    {"tfidf", "bm25", "fuzzy", "embedding_hashing", "embedding_st"}
+)
 _DEFAULT_MATRIX_SIZES = "100,500,1000"
 
 
@@ -601,10 +1104,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--backends",
         default=_DEFAULT_MATRIX_BACKENDS,
         help=(
-            "Comma-separated routing backends for the matrix run "
-            "(any of: tfidf, bm25, fuzzy). The 'fuzzy' backend requires "
-            "the [retrieval] extra; missing backends are recorded with "
-            "an explicit 'status: skipped' row rather than silently omitted."
+            "Comma-separated routing backends for the matrix run (any of: "
+            "tfidf, bm25, fuzzy, embedding_hashing, embedding_st). "
+            "'fuzzy' requires the [retrieval] extra; 'embedding_st' requires "
+            "the [embeddings] extra; missing backends are recorded with an "
+            "explicit 'status: skipped' row rather than silently omitted."
         ),
     )
     parser.add_argument(
@@ -618,6 +1122,33 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Disable per-scenario naïve-concat baseline measurement (issue #215). "
             "Default is enabled; the naive_delta block is additive to each context row."
+        ),
+    )
+    parser.add_argument(
+        "--mixed-shapes",
+        action="store_true",
+        help=(
+            "Additionally run the matrix against the head-heavy + long-tail "
+            "mixed-namespace catalog at size 500 (issue #277).  Adds the "
+            "'routing_matrix_mixed_shape' block to the JSON output."
+        ),
+    )
+    parser.add_argument(
+        "--no-tiktoken-parity",
+        action="store_true",
+        help=(
+            "Disable the CharDivFourEstimator vs cl100k_base parity check "
+            "(issue #268).  Default is enabled because tiktoken is a core "
+            "dep; the parity block is small and additive."
+        ),
+    )
+    parser.add_argument(
+        "--with-real-model",
+        action="store_true",
+        help=(
+            "Run the optional end-to-end real-model cost / latency capture "
+            "(issue #269).  Off by default.  Requires CW_BENCH_LLM_PROVIDER + "
+            "CW_BENCH_LLM_API_KEY env vars; otherwise emits a 'skipped' row."
         ),
     )
     args = parser.parse_args(argv)
@@ -696,10 +1227,37 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             row["naive_delta"] = compute_naive_delta(scenario_path, row)
 
-    out = {
-        "benchmark_version": "1.1",
+    # Mixed-namespace head-heavy + long-tail matrix (issue #277).
+    mixed_shape_cells: list[MatrixCell] = []
+    if args.mixed_shapes:
+        backends_for_mixed = _csv_str_list(args.backends) or _csv_str_list(
+            _DEFAULT_MATRIX_BACKENDS
+        )
+        mixed_shape_cells = _run_matrix_mixed_shape(
+            gold=gold,
+            backends=backends_for_mixed,
+            k=args.k,
+            seed=args.seed,
+            n_timing_runs=args.timing_runs,
+        )
+        if mixed_shape_cells:
+            _print_matrix_table(mixed_shape_cells, args.k)
+
+    # Tiktoken parity check (issue #268).  Default is enabled; offline CIs
+    # without the cached encoding will see a 'skipped' status row instead.
+    parity_stats: TiktokenParityStats | None = None
+    if not args.no_tiktoken_parity:
+        parity_stats = _run_tiktoken_parity(gold)
+
+    # Optional end-to-end real-model capture (issue #269).
+    e2e_stats = _run_e2e_real_model(gold, enabled=args.with_real_model)
+
+    out: dict[str, object] = {
+        "benchmark_version": "1.2",
         "k": args.k,
         "seed": args.seed,
+        "environment": asdict(_capture_environment()),
+        "reference_rig": _REFERENCE_RIG,
         "routing": [asdict(r) for r in routing_results],
         "context": context_dicts,
     }
@@ -707,6 +1265,12 @@ def main(argv: list[str] | None = None) -> int:
         out["routing_matrix"] = [asdict(c) for c in matrix_cells]
     if ns_cells:
         out["routing_per_namespace"] = [asdict(c) for c in ns_cells]
+    if mixed_shape_cells:
+        out["routing_matrix_mixed_shape"] = [asdict(c) for c in mixed_shape_cells]
+    if parity_stats is not None:
+        out["tiktoken_parity"] = asdict(parity_stats)
+    # E2E stats: always emit (the 'skipped' default documents the opt-in).
+    out["e2e_real_model"] = asdict(e2e_stats)
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)

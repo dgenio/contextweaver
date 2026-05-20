@@ -197,3 +197,170 @@ def test_main_errors_when_input_missing(tmp_path: Path) -> None:
         ["--input", str(tmp_path / "no-such.json"), "--output", str(tmp_path / "out.md")]
     )
     assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# Hardware reference (issue #267)
+# ---------------------------------------------------------------------------
+
+
+def test_hardware_section_includes_reference_rig_label() -> None:
+    rendered = render_scorecard._hardware_section(
+        environment={
+            "system": "Linux",
+            "machine": "x86_64",
+            "processor": "x86_64",
+            "python_version": "3.11.15",
+            "python_implementation": "CPython",
+            "cpu_logical_cores": 4,
+            "platform_string": "Linux-6.x",
+        },
+        reference_rig={
+            "label": "GitHub Actions ubuntu-latest",
+            "system": "Linux",
+            "machine": "x86_64",
+            "cpu_logical_cores": 2,
+            "python_version": "3.10+",
+            "notes": "ordering not absolutes",
+        },
+    )
+    assert "Reference rig" in rendered
+    assert "GitHub Actions ubuntu-latest" in rendered
+    assert "Measured on" in rendered
+
+
+def test_hardware_section_empty_when_both_missing() -> None:
+    assert render_scorecard._hardware_section(environment=None, reference_rig=None) == ""
+
+
+# ---------------------------------------------------------------------------
+# Token-estimator parity (issue #268)
+# ---------------------------------------------------------------------------
+
+
+def test_tiktoken_parity_section_renders_metrics_when_ok() -> None:
+    rendered = render_scorecard._tiktoken_parity_section(
+        {
+            "samples": 200,
+            "mean_abs_error": 1.5,
+            "max_abs_error": 8,
+            "mean_signed_error": -0.4,
+            "mean_ratio": 1.0250,
+            "status": "ok",
+        }
+    )
+    assert "samples" in rendered
+    assert "1.5000" in rendered
+    assert "1.0250" in rendered
+
+
+def test_tiktoken_parity_section_renders_skipped_disclosure() -> None:
+    rendered = render_scorecard._tiktoken_parity_section(
+        {"samples": 0, "status": "skipped: HTTPError"}
+    )
+    assert "unavailable" in rendered
+    assert "HTTPError" in rendered
+
+
+def test_tiktoken_parity_section_empty_on_missing_input() -> None:
+    assert render_scorecard._tiktoken_parity_section(None) == ""
+
+
+# ---------------------------------------------------------------------------
+# E2E real-model section (issue #269)
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_section_renders_opt_in_note_when_skipped() -> None:
+    rendered = render_scorecard._e2e_real_model_section(
+        {"status": "skipped: offline by default", "note": "Set env vars."}
+    )
+    assert "skipped: offline by default" in rendered
+    assert "Set env vars." in rendered
+
+
+def test_e2e_section_renders_metrics_when_ok() -> None:
+    rendered = render_scorecard._e2e_real_model_section(
+        {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "samples": 5,
+            "prompt_tokens_total": 1234,
+            "completion_tokens_total": 256,
+            "estimated_usd_cost": 0.0021,
+            "e2e_latency_ms_p50": 432.10,
+            "e2e_latency_ms_p95": 901.55,
+            "e2e_latency_ms_p99": 1024.00,
+            "status": "ok",
+        }
+    )
+    assert "openai" in rendered
+    assert "gpt-4o-mini" in rendered
+    assert "$0.0021" in rendered
+    assert "432.10" in rendered
+
+
+# ---------------------------------------------------------------------------
+# Mixed-shape matrix integration (issue #277)
+# ---------------------------------------------------------------------------
+
+
+def test_render_includes_mixed_shape_section_when_payload_has_it() -> None:
+    payload = json.loads(json.dumps(_SAMPLE_PAYLOAD))
+    payload["routing_matrix_mixed_shape"] = [
+        {
+            "backend": "tfidf",
+            "catalog_size": 500,
+            "queries_evaluated": 100,
+            "precision_at_k": 0.02,
+            "recall_at_k": 0.10,
+            "mrr": 0.09,
+            "latency_ms_p50": 8.0,
+            "latency_ms_p95": 9.5,
+            "latency_ms_p99": 11.0,
+            "status": "ok",
+        }
+    ]
+    rendered = render_scorecard.render(payload)
+    assert "Mixed-namespace catalog" in rendered
+    assert "500" in rendered
+
+
+def test_render_omits_mixed_shape_section_when_absent() -> None:
+    """Default ``_SAMPLE_PAYLOAD`` has no mixed-shape block → section must not appear."""
+    rendered = render_scorecard.render(_SAMPLE_PAYLOAD)
+    assert "Mixed-namespace catalog" not in rendered
+
+
+def test_render_deterministic_for_payload_with_new_sections() -> None:
+    """Adding all new sections does not break the byte-stable contract."""
+    payload = json.loads(json.dumps(_SAMPLE_PAYLOAD))
+    payload["environment"] = {
+        "system": "Linux",
+        "machine": "x86_64",
+        "processor": "x86_64",
+        "python_version": "3.11.15",
+        "python_implementation": "CPython",
+        "cpu_logical_cores": 4,
+        "platform_string": "Linux-6.x",
+    }
+    payload["reference_rig"] = {
+        "label": "Test rig",
+        "system": "Linux",
+        "machine": "x86_64",
+        "cpu_logical_cores": 2,
+        "python_version": "3.10+",
+        "notes": "test",
+    }
+    payload["tiktoken_parity"] = {
+        "samples": 10,
+        "mean_abs_error": 0.5,
+        "max_abs_error": 2,
+        "mean_signed_error": 0.0,
+        "mean_ratio": 1.0,
+        "status": "ok",
+    }
+    payload["e2e_real_model"] = {"status": "skipped: offline by default", "note": "n"}
+    first = render_scorecard.render(payload)
+    second = render_scorecard.render(json.loads(json.dumps(payload)))
+    assert first == second

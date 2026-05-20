@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Benchmark scorecard transparency suite** (#266, #267, #268, #269, #271,
+  #277). Single-PR cluster expanding `benchmarks/scorecard.md` coverage:
+  - `embedding_hashing` and `embedding_st` routing backends in the per-
+    backend × per-size matrix (#266). The new stdlib-only
+    `HashingEmbeddingBackend` ships under `contextweaver.extras.embeddings`
+    and provides a deterministic, dependency-free embedding baseline;
+    `embedding_st` requires the existing `[embeddings]` extra and emits a
+    `skipped: missing sentence-transformers` row when absent.
+  - Hardware reference rig + measured-on disclosure (#267). The harness
+    now captures `platform`/`sys`/`os.cpu_count` metadata and the renderer
+    surfaces both the pinned canonical rig and the actual host that
+    produced `latest.json`, so absolute latency numbers have a known
+    baseline to read against.
+  - `CharDivFourEstimator` vs `cl100k_base` parity check (#268). New
+    `_run_tiktoken_parity` block emits mean/max absolute drift, signed
+    drift, and ratio so callers comparing the scorecard against an OpenAI
+    tokenizer can quantify the estimator gap. Degrades to a `skipped`
+    row when the `cl100k_base` encoding is unreachable.
+  - Optional end-to-end real-model capture (#269). New `--with-real-model`
+    flag plus `CW_BENCH_LLM_PROVIDER` + `CW_BENCH_LLM_API_KEY` env vars
+    runs a ≤5-query OpenAI-compatible HTTP probe through `urllib` (no new
+    SDK dep) recording prompt/completion tokens, USD cost (from an
+    embedded rate table for OpenAI models), and round-trip latency.
+    Off by default; CI never invokes the network path.
+  - Small-payload context scenarios (#271). New
+    `benchmarks/scenarios/tiny_payload.jsonl` and
+    `benchmarks/scenarios/mixed_payload.jsonl` so the scorecard's context
+    table documents the firewall correctly no-op'ing on tiny inputs
+    (`compaction == 1.00×`) alongside the existing compression-positive
+    scenarios.
+  - Head-heavy + long-tail mixed-namespace catalog (#277). New
+    `_make_mixed_namespace_catalog` and `--mixed-shapes` flag emit a
+    second matrix block at `catalog_size = 500` against an asymmetric
+    namespace distribution (one head namespace with 200 items, two mids,
+    four smalls, 100-namespace long tail) — contrasts with the uniform
+    8-namespace pool used by the headline matrix and surfaces the shape-
+    diversity gap.
+  - `benchmark_version` bumped to `1.2` (was `1.1`); JSON output is purely
+    additive (new top-level keys `environment`, `reference_rig`,
+    `tiktoken_parity`, `e2e_real_model`, `routing_matrix_mixed_shape`) so
+    downstream readers of `latest.json` see no breaking change.
 - **CLI budget regression checks** (#276). New `contextweaver budget-check`
   command rebuilds an ingested session for a selected phase, compares the
   rendered prompt token count against `--max-tokens`, exits 1 on budget

@@ -12,7 +12,7 @@ import math
 import pytest
 
 from contextweaver.exceptions import ConfigError
-from contextweaver.extras.embeddings import HybridEmbeddingRetriever
+from contextweaver.extras.embeddings import HashingEmbeddingBackend, HybridEmbeddingRetriever
 from contextweaver.protocols import EmbeddingBackend
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
@@ -182,6 +182,89 @@ def test_router_without_embedding_backend_falls_back_to_tfidf() -> None:
     router = Router(graph, items=items)
     result = router.route("anything")
     assert result.trace.retriever_engine == "tfidf"
+
+
+# ---------------------------------------------------------------------------
+# HashingEmbeddingBackend — stdlib-only baseline (issue #266)
+# ---------------------------------------------------------------------------
+
+
+def test_hashing_backend_implements_embedding_backend_protocol() -> None:
+    backend = HashingEmbeddingBackend()
+    assert isinstance(backend, EmbeddingBackend)
+
+
+def test_hashing_backend_emits_l2_normalised_vectors() -> None:
+    backend = HashingEmbeddingBackend(n_features=64)
+    [vec] = backend.embed(["send a notification to the infra channel"])
+    assert len(vec) == 64
+    norm = math.sqrt(sum(x * x for x in vec))
+    assert norm == pytest.approx(1.0, abs=1e-9)
+
+
+def test_hashing_backend_empty_input_returns_empty_list() -> None:
+    assert HashingEmbeddingBackend().embed([]) == []
+
+
+def test_hashing_backend_empty_text_returns_zero_vector() -> None:
+    [vec] = HashingEmbeddingBackend(n_features=32).embed([""])
+    assert vec == [0.0] * 32
+
+
+def test_hashing_backend_is_deterministic_across_calls() -> None:
+    a = HashingEmbeddingBackend(n_features=128).embed(["search records"])
+    b = HashingEmbeddingBackend(n_features=128).embed(["search records"])
+    assert a == b
+
+
+def test_hashing_backend_seed_changes_projection() -> None:
+    a = HashingEmbeddingBackend(n_features=128, seed=0).embed(["search records"])[0]
+    b = HashingEmbeddingBackend(n_features=128, seed=7).embed(["search records"])[0]
+    assert a != b
+
+
+def test_hashing_backend_similarity_is_dot_product_on_unit_vectors() -> None:
+    backend = HashingEmbeddingBackend(n_features=64)
+    vecs = backend.embed(["send a notification", "send a notification"])
+    sims = backend.similarity(vecs[0], vecs)
+    assert sims[0] == pytest.approx(1.0, abs=1e-9)
+    assert sims[1] == pytest.approx(1.0, abs=1e-9)
+
+
+def test_hashing_backend_self_similarity_dominates_unrelated() -> None:
+    backend = HashingEmbeddingBackend()
+    vecs = backend.embed(
+        [
+            "send a deployment freeze notification to engineers",
+            "render a quarterly analytics dashboard for finance",
+        ]
+    )
+    self_sim = backend.similarity(vecs[0], [vecs[0]])[0]
+    cross_sim = backend.similarity(vecs[0], [vecs[1]])[0]
+    assert self_sim == pytest.approx(1.0, abs=1e-9)
+    assert self_sim > cross_sim
+
+
+def test_hashing_backend_rejects_invalid_n_features() -> None:
+    with pytest.raises(ConfigError):
+        HashingEmbeddingBackend(n_features=0)
+
+
+def test_hashing_backend_rejects_invalid_ngram_range() -> None:
+    with pytest.raises(ConfigError):
+        HashingEmbeddingBackend(ngram_range=(5, 3))
+
+
+def test_hashing_backend_routes_via_router_embedding_kwarg() -> None:
+    items = [
+        _item("notifications.send", description="Send a notification to a channel"),
+        _item("analytics.query", description="Query the analytics warehouse"),
+    ]
+    graph = TreeBuilder().build(items)
+    backend = HashingEmbeddingBackend()
+    router = Router(graph, items=items, embedding_backend=backend, top_k=2)
+    result = router.route("notify the channel")
+    assert result.candidate_ids[0] == "notifications.send"
 
 
 # ---------------------------------------------------------------------------
