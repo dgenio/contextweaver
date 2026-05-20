@@ -80,6 +80,7 @@ class _DemoScenario(str, Enum):
     large_catalog = "large-catalog"
     huge_tool_output = "huge-tool-output"
     mcp_gateway = "mcp-gateway"
+    mcp_gateway_full = "mcp-gateway-full"
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +192,8 @@ def demo(
                 "default = friendly walkthrough on a small event log; "
                 "large-catalog = 1,000 tools shortlisted to compact ChoiceCards; "
                 "huge-tool-output = context firewall on a ~10 KB tool result; "
-                "mcp-gateway = MCP gateway meta-tools end-to-end (stubbed upstream, no network)."
+                "mcp-gateway = MCP gateway meta-tools end-to-end (3 stub tools, no network); "
+                "mcp-gateway-full = reference architecture's 60-tool single-turn run."
             ),
         ),
     ] = _DemoScenario.default,
@@ -204,6 +206,7 @@ def demo(
         _DemoScenario.large_catalog: _demos.run_large_catalog,
         _DemoScenario.huge_tool_output: _demos.run_huge_tool_output,
         _DemoScenario.mcp_gateway: _demos.run_mcp_gateway,
+        _DemoScenario.mcp_gateway_full: _demos.run_mcp_gateway_full,
     }
     dispatch[scenario]()
 
