@@ -1,4 +1,4 @@
-﻿"""Version derivation helper — re-exported by __init__.py."""
+"""Version derivation helper — re-exported by __init__.py."""
 
 from __future__ import annotations
 
