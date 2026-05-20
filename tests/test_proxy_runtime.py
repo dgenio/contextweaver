@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from contextweaver.adapters.gateway_error import GatewayError
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import CACHE_BREAKPOINT_ID, ProxyRuntime
@@ -440,6 +442,29 @@ def test_cache_stable_failed_hydrate_does_not_pollute_seen_set() -> None:
     result = runtime.hydrate("does:not:exist")
     assert isinstance(result, GatewayError)
     assert result.code == "HYDRATE_FAILED"
+    assert "does:not:exist" not in runtime.browsed_tool_ids
+
+
+@pytest.mark.asyncio
+async def test_cache_stable_execute_updates_seen_set() -> None:
+    """A successful execute() records the tool_id in browsed_tool_ids."""
+    runtime = _make_cache_stable_runtime()
+    tool_ids = sorted(runtime.list_tool_ids())
+    # github:close_issue@1.4.0 requires issue_id
+    target = tool_ids[0]
+    assert target not in runtime.browsed_tool_ids
+
+    result = await runtime.execute(target, {"issue_id": 42})
+    assert not isinstance(result, GatewayError), f"execute failed: {result}"
+    assert target in runtime.browsed_tool_ids
+
+
+@pytest.mark.asyncio
+async def test_cache_stable_failed_execute_does_not_pollute_seen_set() -> None:
+    """A failed execute (unknown tool_id) does NOT enter the seen set."""
+    runtime = _make_cache_stable_runtime()
+    result = await runtime.execute("does:not:exist", {})
+    assert isinstance(result, GatewayError)
     assert "does:not:exist" not in runtime.browsed_tool_ids
 
 

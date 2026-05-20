@@ -444,7 +444,9 @@ class ProxyRuntime:
                 kind="internal",
             )
             return [*seen_cards, marker, *new_cards]
-        return [*seen_cards, *new_cards]
+        # Defensive: ensure total never exceeds top_k even without marker.
+        combined = [*seen_cards, *new_cards]
+        return combined[: self._top_k]
 
     # ------------------------------------------------------------------
     # tool_execute (§4.2 + §4.4)

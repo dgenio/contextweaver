@@ -42,7 +42,7 @@ python examples/architectures/mcp_context_gateway/main.py
 | 4. Call upstream | Mock function returns MCP wire shape `{"content": [...], "isError": False}` | A ~16 KB rowset comes back. |
 | 5. Firewall | `ContextManager.ingest_mcp_result` | Raw 16,507 chars → 194-char summary + extracted facts + artifact `artifact:result:tc1`. The full bytes live in the artifact store. |
 | 6. Persist fact | `ContextManager.add_fact_sync` | A durable summary (`growth -> starter ...`) is written so the answer prompt doesn't need to re-read the rowset. |
-| 7. Answer | `ContextManager.build_sync(phase=Phase.answer, ...)` | A 120-token, 645-char final prompt with `[FACTS]`, `[TOOL RESULT]` (summary only), `[USER]`, `[TOOL CALL]`. **No rowset.** |
+| 7. Answer | `ContextManager.build_sync(phase=Phase.answer, ...)` | A 142-token, 645-char final prompt with `[FACTS]`, `[TOOL RESULT]` (summary only), `[USER]`, `[TOOL CALL]`. **No rowset.** |
 
 ## Captured metrics
 
