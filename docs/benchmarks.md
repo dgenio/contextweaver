@@ -80,9 +80,9 @@ following are deliberate, documented gaps — not bugs:
 
 If you find a regime where the default backends underperform, file an issue with your gold set and catalog — the harness is designed to absorb new scenarios.
 
-## Single-call gateway scenario
+## Gateway scenarios
 
-The [MCP Context Gateway reference architecture](architectures/mcp_context_gateway.md) (`examples/architectures/mcp_context_gateway/`) is a deterministic, network-free, LLM-free single-turn run that exercises the launch narrative end-to-end. Captured metrics from that run:
+The [MCP Context Gateway reference architecture](architectures/mcp_context_gateway.md) (`examples/architectures/mcp_context_gateway/`) is a deterministic, network-free, LLM-free run that exercises the launch narrative end-to-end. Single-turn captured metrics for the **`bigquery_rowset`** scenario:
 
 | Metric | Value | What it measures |
 |---|---:|---|
@@ -94,12 +94,32 @@ The [MCP Context Gateway reference architecture](architectures/mcp_context_gatew
 | `firewall_reduction_pct` | 98.8 % | (1 − 194 / 16,507) × 100 for this single tool result |
 | `final_prompt_tokens` | 142 | Answer-phase prompt budget consumed |
 
-> **Reading this honestly:** this is **one scripted scenario with one tool call**, not a benchmark over many scenarios. The 98.8% number reflects the specific shape of one rowset; your raw tool outputs will be different sizes and the per-call reduction will vary accordingly. The point of the scenario is to show all six load-bearing primitives (routing → cards → hydration → firewall → artifact → answer-phase build) interacting in one transcript, not to claim a generalizable reduction percentage.
+### Gateway-scenario range (issue #270)
 
-The architecture run is reproducible byte-for-byte via:
+The single 98.8 % number above reflects one specific rowset. To make the claim a measured **range** rather than an anecdote, `benchmarks/gateway_benchmark.py` reruns the same 60-tool gateway against four upstream payload shapes — one below the firewall threshold (correctly no-op), three above it. The committed snapshot at `benchmarks/results/gateway_latest.json` covers:
+
+| Scenario | Raw chars | Summary chars | Firewall reduction | Triggered |
+|---|---:|---:|---:|---|
+| `tiny_no_firewall` | 71 | 71 | 0.0 % | no (below threshold) |
+| `medium_crm` | 5,789 | 21 | 99.6 % | yes |
+| `bigquery_rowset` | 16,320 | 44 | 99.7 % | yes |
+| `slack_thread_review` | 49,887 | 42 | 99.9 % | yes |
+
+> **Reading this honestly:** the three triggered scenarios span 5 KB → 50 KB raw payloads and produce a firewall-reduction band of **99.6 % – 99.9 %** on the gateway's default 2,000-char threshold. The narrower spread vs. the legacy 98.8 % number is because the multi-scenario harness picks tighter compact-summary forms; the legacy number used the reference architecture's verbose header. Both are measured, not modelled — pick whichever matches your downstream summary style.
+
+Regenerate locally:
+
+```bash
+make benchmark-gateway         # rewrites benchmarks/results/gateway_latest.json
+make benchmark-gateway-check   # CI gate: byte-stable against the committed run
+```
+
+The architecture's full transcript is reproducible byte-for-byte via:
 
 ```bash
 python examples/architectures/mcp_context_gateway/main.py
+# Or, from a wheel install:
+contextweaver demo --scenario mcp-gateway-full
 ```
 
 Full captured run: [`examples/architectures/mcp_context_gateway/OUTPUT.md`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/OUTPUT.md).

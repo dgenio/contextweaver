@@ -203,6 +203,13 @@ contextweaver = "contextweaver.__main__:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Ship the MCP Context Gateway reference catalog inside the wheel so the
+# ``contextweaver demo --scenario mcp-gateway-full`` CLI scenario (issue
+# #264) and the ``examples/architectures/mcp_context_gateway/main.py``
+# reference architecture both have a single source of truth.
+"contextweaver.data" = ["*.yaml"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

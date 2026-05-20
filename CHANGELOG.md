@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`contextweaver mcp serve` CLI sub-app** (#243, #246). New
+  `src/contextweaver/_mcp_cli.py` Typer sub-app boots
+  `adapters.mcp_gateway_server.McpGatewayServer` or
+  `adapters.mcp_proxy_server.McpProxyServer` over stdio against any
+  JSON / YAML catalog. Flags: `--gateway` / `--proxy` shortcuts plus
+  `--mode {gateway,proxy}`, `--top-k`, `--beam-width`,
+  `--cache-stable`, `--name`, `--version`, and `--dry-run` (validate
+  catalog without binding stdio — useful for CI smoke tests). Loader
+  accepts both native contextweaver
+  (`id`/`kind`/`name`/`description` +/- `args_schema`) and raw MCP
+  `tools/list` snapshot shapes. Marked `[experimental]` in `--help`
+  for v0.9.
+- **`contextweaver demo --scenario mcp-gateway-full`** (#264). New
+  scenario shells the full 60-tool MCP Context Gateway architecture
+  from the CLI. The catalog now ships inside the wheel via
+  `src/contextweaver/data/mcp_gateway_catalog.yaml` and is exposed
+  via `contextweaver.data.gateway_catalog_path()`, so the scenario
+  works from `pip install contextweaver` without the `examples/`
+  directory present.
+- **Live-transport variant `main_live.py`** (#260). New
+  `examples/architectures/mcp_context_gateway/main_live.py` walks the
+  same five-step transcript via `ProxyRuntime` + `StubUpstream`,
+  exercising the real `tool_browse` / `tool_execute` / `tool_view`
+  MCP wire shape. Wired into `make architectures`.
+- **Multi-turn variant `main_multi.py`** (#262). New
+  `examples/architectures/mcp_context_gateway/main_multi.py` runs a
+  five-turn transcript that pins three properties single-turn
+  scripts can't: routing stability, cross-turn fact accumulation
+  (four `add_fact_sync` keys persist across turns), and cumulative
+  firewall reduction > 95 %. The Turn-1 rowset sentinel is asserted
+  absent from every subsequent turn's prompt.
+- **Gateway-scenario benchmark suite** (#270). New
+  `benchmarks/gateway_benchmark.py` runs the 60-tool gateway against
+  four upstream payload shapes (tiny / medium / large / huge),
+  emitting `benchmarks/results/gateway_latest.json`. `--check`
+  verifies byte-stability across machines. `make benchmark-gateway`
+  / `make benchmark-gateway-check` targets added. `docs/benchmarks.md`
+  swapped the single "98.8 % single-call scenario" claim for a
+  measured firewall-reduction **range** across the four scenarios
+  (and explicit no-op for `tiny_no_firewall`).
+- **`contextweaver.data` package** ships data files in the wheel via
+  `[tool.setuptools.package-data]`. Currently exports
+  `gateway_catalog_path()` for resolving the gateway demo catalog as
+  a concrete `pathlib.Path` regardless of editable vs zip-install.
+
+### Changed
+
+- **MCP Context Gateway architecture (`main.py`) drops `_FULL_SCHEMAS`** (#261).
+  The Call-phase schema is now hydrated via the existing
+  `Catalog.hydrate(tool_id).args_schema` returning the schema stored
+  on the catalog YAML's `bigquery.run_query` entry. Removes the last
+  demo-special-case helper from the reference architecture; the
+  metrics block is byte-stable (`firewall_reduction_pct = 98.8 %`,
+  `final_prompt_tokens = 142`).
+- **`__main__.py` docstring** updated to reflect 10 sub-commands /
+  sub-apps including the new `mcp` namespace.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added

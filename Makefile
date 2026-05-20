@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway benchmark-gateway-check scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -32,6 +32,8 @@ example:
 
 architectures:
 	python examples/architectures/mcp_context_gateway/main.py
+	python examples/architectures/mcp_context_gateway/main_live.py
+	python examples/architectures/mcp_context_gateway/main_multi.py
 	python examples/architectures/slack_ops_bot/main.py
 	python examples/architectures/code_review_bot/main.py
 	python examples/architectures/voice_agent/main.py
@@ -50,6 +52,12 @@ benchmark:
 
 benchmark-matrix:
 	python benchmarks/benchmark.py --matrix
+
+benchmark-gateway:
+	python benchmarks/gateway_benchmark.py
+
+benchmark-gateway-check:
+	python benchmarks/gateway_benchmark.py --check
 
 scorecard:
 	python scripts/render_scorecard.py
