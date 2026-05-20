@@ -115,7 +115,11 @@ from contextweaver.types import (
     ViewSpec,
 )
 
-__version__ = "0.8.0"
+try:
+    from importlib.metadata import version as _v
+    __version__ = _v("contextweaver")
+except Exception:
+    __version__ = "0.8.0"  # fallback
 __all__ = [
     # sub-modules
     "config",
