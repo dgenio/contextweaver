@@ -19,11 +19,10 @@ Quick start::
 """
 
 from __future__ import annotations
-from contextweaver._version import __version__  # noqa: F401
-
 
 from contextweaver import config, envelope, exceptions, profiles, protocols, types
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
+from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.manager import ContextManager
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
