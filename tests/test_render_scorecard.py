@@ -233,6 +233,34 @@ def test_hardware_section_empty_when_both_missing() -> None:
     assert render_scorecard._hardware_section(environment=None, reference_rig=None) == ""
 
 
+def test_render_omits_hardware_header_on_legacy_payload() -> None:
+    """Legacy payloads with neither ``environment`` nor ``reference_rig`` keys
+    must not produce an empty ``### Hardware reference rig`` section (#267).
+    """
+    payload = json.loads(json.dumps(_SAMPLE_PAYLOAD))
+    # _SAMPLE_PAYLOAD already lacks both keys, but be explicit.
+    payload.pop("environment", None)
+    payload.pop("reference_rig", None)
+    rendered = render_scorecard.render(payload)
+    assert "### Hardware reference rig" not in rendered
+
+
+def test_render_includes_hardware_header_when_payload_has_it() -> None:
+    """Modern payloads must trigger the section so the disclosure appears (#267)."""
+    payload = json.loads(json.dumps(_SAMPLE_PAYLOAD))
+    payload["reference_rig"] = {
+        "label": "Test rig",
+        "system": "Linux",
+        "machine": "x86_64",
+        "cpu_logical_cores": 2,
+        "python_version": "3.10+",
+        "notes": "test",
+    }
+    rendered = render_scorecard.render(payload)
+    assert "### Hardware reference rig" in rendered
+    assert "Test rig" in rendered
+
+
 # ---------------------------------------------------------------------------
 # Token-estimator parity (issue #268)
 # ---------------------------------------------------------------------------

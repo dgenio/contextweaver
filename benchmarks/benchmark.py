@@ -27,6 +27,7 @@ Exit codes: 0 on success, 1 on any error.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import platform
@@ -218,23 +219,25 @@ def _build_router(items: list[SelectableItem], scorer_backend: str = "tfidf") ->
 _FUZZY_AVAILABLE: bool = FuzzyScorer is not None
 
 
+@functools.cache
 def _sentence_transformers_available() -> bool:
     """Return True iff the ``[embeddings]`` extra is importable (#266).
 
     Used by the matrix runner to emit a ``"skipped: missing sentence-transformers"``
     row for the ``embedding_st`` backend rather than crash on a fresh install.
-    Imports are deferred so the default-install benchmark never pays the
-    cost of an attempted ``sentence_transformers`` import unless the user
-    asked for that backend.
+
+    The check is wrapped in :func:`functools.cache` so the
+    ``sentence_transformers`` import is performed **at most once per
+    process**, and only when something actually asks (e.g. the matrix
+    runner about to launch an ``embedding_st`` cell).  This avoids
+    paying the import cost on every plain ``python benchmarks/benchmark.py``
+    invocation when the ``[embeddings]`` extra happens to be installed.
     """
     try:
         import sentence_transformers  # noqa: F401, PLC0415
     except ImportError:
         return False
     return True
-
-
-_SENTENCE_TRANSFORMERS_AVAILABLE: bool = _sentence_transformers_available()
 
 
 def _matrix_cell_skip_reason(backend: str) -> str | None:
@@ -245,10 +248,13 @@ def _matrix_cell_skip_reason(backend: str) -> str | None:
     ``fuzzy`` backend, ``sentence-transformers`` for the ``embedding_st``
     backend).  Centralising the policy here keeps the cell runner short
     and makes it trivial to extend with future backends (#266, #208).
+    The ``sentence_transformers`` availability check is deferred — the
+    import only runs when a matrix cell actually targets the
+    ``embedding_st`` backend.
     """
     if backend == "fuzzy" and not _FUZZY_AVAILABLE:
         return "skipped: missing rapidfuzz"
-    if backend == "embedding_st" and not _SENTENCE_TRANSFORMERS_AVAILABLE:
+    if backend == "embedding_st" and not _sentence_transformers_available():
         return "skipped: missing sentence-transformers"
     return None
 
@@ -808,12 +814,15 @@ class TiktokenParityStats:
 
 
 def _gold_corpus_for_parity(gold: list[dict[str, object]]) -> list[str]:
-    """Flatten the gold dataset into one list of strings for token counting.
+    """Flatten the gold dataset's ``query`` strings for token counting.
 
-    Combines query text with the natural-language descriptions of expected
-    tool IDs so the corpus covers both short queries and tool descriptions
-    — the two distributions ``CharDivFourEstimator`` is asked to estimate
-    on in normal pipeline use.
+    Returns the non-empty ``query`` field from each gold entry.  This is
+    the corpus distribution ``CharDivFourEstimator`` is asked to estimate
+    on most often in the routing pipeline (the router receives a query
+    string and counts tokens against the route-phase budget).  Tool
+    descriptions are *not* included because they're long-form prose that
+    skews well within the estimator's tested range; the parity metric is
+    most informative on the short, idiomatic query distribution.
     """
     out: list[str] = []
     for entry in gold:

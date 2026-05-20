@@ -255,6 +255,25 @@ def test_hashing_backend_rejects_invalid_ngram_range() -> None:
         HashingEmbeddingBackend(ngram_range=(5, 3))
 
 
+def test_hashing_backend_rejects_negative_seed() -> None:
+    """Seed validation must surface as :class:`ConfigError`, not ``OverflowError``."""
+    with pytest.raises(ConfigError):
+        HashingEmbeddingBackend(seed=-1)
+
+
+def test_hashing_backend_rejects_oversized_seed() -> None:
+    """Seed > 2**64-1 must surface as :class:`ConfigError`, not ``OverflowError``."""
+    with pytest.raises(ConfigError):
+        HashingEmbeddingBackend(seed=2**64)
+
+
+def test_hashing_backend_accepts_max_seed() -> None:
+    """Boundary check: 2**64 - 1 is the largest accepted seed."""
+    b = HashingEmbeddingBackend(seed=2**64 - 1)
+    [vec] = b.embed(["x"])
+    assert len(vec) == 1024
+
+
 def test_hashing_backend_routes_via_router_embedding_kwarg() -> None:
     items = [
         _item("notifications.send", description="Send a notification to a channel"),

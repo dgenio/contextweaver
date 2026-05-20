@@ -132,7 +132,12 @@ def test_matrix_cell_skip_reason_embedding_st_when_extra_missing(
     """``embedding_st`` should emit a skipped row when sentence-transformers is missing."""
     import benchmark as bench_mod
 
-    monkeypatch.setattr(bench_mod, "_SENTENCE_TRANSFORMERS_AVAILABLE", False)
+    # ``_sentence_transformers_available`` is ``functools.cache``-wrapped so
+    # the import runs at most once.  Clear the cache then stub the function
+    # so the test always observes the "missing" branch regardless of which
+    # environment the suite is running in.
+    bench_mod._sentence_transformers_available.cache_clear()
+    monkeypatch.setattr(bench_mod, "_sentence_transformers_available", lambda: False)
     reason = _matrix_cell_skip_reason("embedding_st")
     assert reason is not None
     assert "sentence-transformers" in reason
@@ -171,8 +176,19 @@ def test_mixed_namespace_catalog_long_tail_present() -> None:
 def test_mixed_namespace_catalog_keeps_natural_gold_ids() -> None:
     """Natural pool IDs (gold-dataset-mapped) must survive the mixed shape."""
     items = _make_mixed_namespace_catalog(500)
-    natural_ids = {i.id for i in items if not i.id.startswith(("longtail_", "analytics_xl"))}
-    assert "billing.create_invoice" in natural_ids or any("billing" in i.id for i in items)
+    catalog_ids = {i.id for i in items}
+    # Pin specific IDs that ``generate_sample_catalog(seed=42)`` emits in
+    # the natural 83-item pool.  These cannot be produced by any of the
+    # synthetic namespace planners in ``_make_mixed_namespace_catalog``
+    # (which use the ``<ns>_xl.tool_NNN`` / ``longtail_NNN.*`` shape) so
+    # the assertion fails iff the natural pool is dropped.
+    expected_natural = {
+        "billing.invoices.create",
+        "admin.audit.export",
+        "search.web.search",
+    }
+    missing = expected_natural - catalog_ids
+    assert not missing, f"natural-pool IDs missing from mixed catalog: {missing}"
 
 
 # ---------------------------------------------------------------------------

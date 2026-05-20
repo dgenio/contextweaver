@@ -543,17 +543,23 @@ def render(payload: dict[str, Any]) -> str:
             "  microsecond count is not. See the **Hardware reference rig**",
             "  section below for the canonical reference machine (#267).",
             "",
-            "### Hardware reference rig",
-            "",
-            _hardware_section(
-                payload.get("environment")
-                if isinstance(payload.get("environment"), dict)
-                else None,
-                payload.get("reference_rig")
-                if isinstance(payload.get("reference_rig"), dict)
-                else None,
-            ),
-            "",
+        ]
+    )
+    hw_block = _hardware_section(
+        payload.get("environment") if isinstance(payload.get("environment"), dict) else None,
+        payload.get("reference_rig") if isinstance(payload.get("reference_rig"), dict) else None,
+    )
+    if hw_block:
+        parts.extend(
+            [
+                "### Hardware reference rig",
+                "",
+                hw_block,
+                "",
+            ]
+        )
+    parts.extend(
+        [
             "### Token-estimator parity check",
             "",
             "Quantifies the drift between `CharDivFourEstimator` (used everywhere",
