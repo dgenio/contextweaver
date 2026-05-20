@@ -69,6 +69,12 @@ gateway-scorecard:
 gateway-scorecard-check:
 	python scripts/render_gateway_scorecard.py --check
 
+record-demos:
+	python scripts/record_demo.py
+
+record-demos-check:
+	python scripts/record_demo.py --check
+
 sweep-scoring:
 	python scripts/sweep_scoring.py
 
