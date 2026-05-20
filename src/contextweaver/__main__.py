@@ -38,11 +38,11 @@ from rich.tree import Tree as RichTree
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
-from contextweaver.routing.catalog import Catalog, generate_sample_catalog, load_catalog_json
+from contextweaver.routing.catalog import generate_sample_catalog, load_catalog_json
 from contextweaver.routing.graph_io import load_graph, save_graph
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
-from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem
+from contextweaver.types import ContextItem, ItemKind, Phase
 
 # ---------------------------------------------------------------------------
 # Typer app + global console
@@ -73,6 +73,13 @@ class _PhaseChoice(str, Enum):
 class _StatsFormatChoice(str, Enum):
     rich = "rich"
     text = "text"
+
+
+class _DemoScenario(str, Enum):
+    default = "default"
+    large_catalog = "large-catalog"
+    huge_tool_output = "huge-tool-output"
+    mcp_gateway = "mcp-gateway"
 
 
 # ---------------------------------------------------------------------------
@@ -174,86 +181,31 @@ def _write_budget_baseline(
 
 
 @app.command()
-def demo() -> None:
-    """Run a built-in demonstration of both engines."""
-    print("=" * 60)
-    print("contextweaver demo — end-to-end demonstration")
-    print("=" * 60)
-
-    # 1. Build a sample catalog
-    raw_items = generate_sample_catalog(n=40, seed=42)
-    catalog = Catalog()
-    for raw in raw_items:
-        catalog.register(SelectableItem.from_dict(raw))
-    items = catalog.all()
-    ns_count = len({it.namespace for it in items})
-    print(f"\n[1/5] Loaded catalog: {len(items)} items across {ns_count} namespaces")
-
-    # 2. Build routing graph
-    builder = TreeBuilder(max_children=10)
-    graph = builder.build(items)
-    stats = graph.stats()
-    print(f"[2/5] Built routing graph: {stats['total_nodes']} nodes, depth={stats['max_depth']}")
-
-    # 3. Route a query
-    router = Router(graph, items=items, beam_width=3, top_k=5)
-    query = "find unpaid invoices and send a reminder email"
-    result = router.route(query)
-    print(f"[3/5] Routed query: {query!r}")
-    print(f"      Top candidates: {result.candidate_ids}")
-    cards = make_choice_cards(
-        result.candidate_items,
-        scores=dict(zip(result.candidate_ids, result.scores, strict=False)),
-    )
-    print(f"      Choice cards ({len(cards)}):")
-    print(render_cards_text(cards))
-
-    # 4. Ingest sample events and build context
-    mgr = ContextManager()
-    mgr.ingest(
-        ContextItem(id="u1", kind=ItemKind.user_turn, text="How many open invoices do we have?")
-    )
-    mgr.ingest(
-        ContextItem(id="a1", kind=ItemKind.agent_msg, text="Let me check the billing system.")
-    )
-    mgr.ingest(
-        ContextItem(
-            id="tc1", kind=ItemKind.tool_call, text="invoices.search(status='open')", parent_id="u1"
-        )
-    )
-    mgr.ingest(
-        ContextItem(
-            id="tr1",
-            kind=ItemKind.tool_result,
-            text=(
-                "invoice_id: INV-001\nstatus: open\namount: 5000\n\n"
-                "invoice_id: INV-002\nstatus: open\namount: 3200\n\n"
-                "summary: 2 open invoices, total $8,200"
+def demo(
+    scenario: Annotated[
+        _DemoScenario,
+        typer.Option(
+            "--scenario",
+            help=(
+                "Which scenario to run. "
+                "default = friendly walkthrough on a small event log; "
+                "large-catalog = 1,000 tools shortlisted to compact ChoiceCards; "
+                "huge-tool-output = context firewall on a ~10 KB tool result; "
+                "mcp-gateway = MCP gateway meta-tools end-to-end (stubbed upstream, no network)."
             ),
-            parent_id="tc1",
-        )
-    )
-    mgr.add_fact("customer_tier", "enterprise")
-    mgr.add_episode("ep-prev", "Previously discussed payment terms with client")
+        ),
+    ] = _DemoScenario.default,
+) -> None:
+    """Run a built-in demonstration scenario."""
+    from contextweaver import _demos
 
-    pack = mgr.build_sync(phase=Phase.answer, query="open invoices")
-    print(f"\n[4/5] Built context pack: phase={pack.phase.value}")
-    print(f"      Candidates: {pack.stats.total_candidates}, Included: {pack.stats.included_count}")
-    print(
-        f"      Dedup removed: {pack.stats.dedup_removed},"
-        f" Closures: {pack.stats.dependency_closures}"
-    )
-    print(f"      Token breakdown: {pack.stats.tokens_per_section}")
-
-    # 5. Show prompt preview
-    preview = pack.prompt[:400]
-    print(f"\n[5/5] Prompt preview ({len(pack.prompt)} chars total):")
-    print(preview)
-    if len(pack.prompt) > 400:
-        print("      ...")
-
-    print("\n" + "=" * 60)
-    print("Demo complete.")
+    dispatch: dict[_DemoScenario, Any] = {
+        _DemoScenario.default: _demos.run_default,
+        _DemoScenario.large_catalog: _demos.run_large_catalog,
+        _DemoScenario.huge_tool_output: _demos.run_huge_tool_output,
+        _DemoScenario.mcp_gateway: _demos.run_mcp_gateway,
+    }
+    dispatch[scenario]()
 
 
 @app.command()

@@ -1,8 +1,11 @@
 # contextweaver
 
-> Phase-specific, budget-aware **context engineering** for tool-using AI agents.
+> **A context firewall and tool router for tool-heavy AI agents.**
+>
+> Under the hood: phase-specific, budget-aware **context engineering** for
+> tool-using AI agents.
 
-**Zero runtime dependencies · deterministic output · Python ≥ 3.10**
+**Minimal core dependencies · deterministic output · Python ≥ 3.10**
 
 > **Context engineering** is the discipline of deciding what goes into a model's
 > context window, when, and at what cost — see the
