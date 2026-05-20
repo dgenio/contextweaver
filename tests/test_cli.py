@@ -296,3 +296,149 @@ def test_stats_subcommand_rich_format(tmp_path: Path) -> None:
     # Rich-rendered output strips markup but keeps the headers.
     assert "Context Build Report" in result.stdout
     assert "Candidates" in result.stdout
+
+
+# ------------------------------------------------------------------
+# budget-check (issue #276)
+# ------------------------------------------------------------------
+
+
+def test_budget_check_under_budget_passes(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "budget-check",
+        "--session",
+        str(ingested_path),
+        "--max-tokens",
+        "1000",
+        "--query",
+        "status",
+    )
+    assert result.returncode == 0
+    assert "OK total=" in result.stdout
+    assert "budget=1000" in result.stdout
+
+
+def test_budget_check_over_budget_fails(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "budget-check",
+        "--session",
+        str(ingested_path),
+        "--max-tokens",
+        "1",
+        "--query",
+        "status",
+    )
+    assert result.returncode == 1
+    assert "FAIL total=" in result.stdout
+    assert "over=" in result.stdout
+
+
+def test_budget_check_missing_session_file_is_usage_error(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.json"
+
+    result = _run("budget-check", "--session", str(missing), "--max-tokens", "1000")
+
+    assert result.returncode == 2
+    assert "session file not found" in result.stderr
+
+
+def test_budget_check_breakdown_output(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "budget-check",
+        "--session",
+        str(ingested_path),
+        "--max-tokens",
+        "1000",
+        "--breakdown",
+    )
+    assert result.returncode == 0
+    assert "Token breakdown:" in result.stdout
+
+
+def test_budget_check_json_output(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "budget-check",
+        "--session",
+        str(ingested_path),
+        "--max-tokens",
+        "1000",
+        "--json",
+    )
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["prompt_tokens"] <= payload["max_tokens"]
+    assert payload["tokens_per_section"]
+
+
+def test_budget_check_ratchet_write_and_compare(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+    baseline_path = tmp_path / ".budget-baseline.json"
+
+    first = _run(
+        "budget-check",
+        "--session",
+        str(ingested_path),
+        "--max-tokens",
+        "1000",
+        "--ratchet",
+        "--ratchet-path",
+        str(baseline_path),
+    )
+    assert first.returncode == 0
+    assert baseline_path.exists()
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert baseline["prompt_tokens"] > 0
+
+    baseline["prompt_tokens"] = 0
+    baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
+
+    second = _run(
+        "budget-check",
+        "--session",
+        str(ingested_path),
+        "--max-tokens",
+        "1000",
+        "--ratchet",
+        "--ratchet-path",
+        str(baseline_path),
+    )
+    assert second.returncode == 1
+    assert "Ratchet failed:" in second.stdout
+
+
+def test_budget_check_ratchet_uses_default_baseline_path(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "budget-check",
+        "--session",
+        str(ingested_path),
+        "--max-tokens",
+        "1000",
+        "--ratchet",
+        cwd=str(tmp_path),
+    )
+
+    assert result.returncode == 0
+    assert (tmp_path / ".budget-baseline.json").exists()

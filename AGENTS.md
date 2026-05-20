@@ -65,7 +65,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `extras/otel.py` | OpenTelemetry GenAI integration (`OTelEventHook` — `invoke_agent` / `execute_tool` spans + GenAI SemConv attributes, gated behind the `[otel]` extra, issue #224). |
 | `extras/memory/` | External-memory backend adapters that implement `EpisodicStore` / `FactStore` against an existing long-lived memory deployment without widening the Protocols (issue #195). |
 | `extras/memory/mem0.py` | `Mem0EpisodicStore` + `Mem0FactStore` — wrap a `mem0.Memory` instance scoped by `user_id`; writes go through `Memory.add(infer=False)` and items are stamped with `cw_episode_id` / `cw_fact_id` metadata for canonical-ID resolution. Gated behind the `[mem0]` extra (issue #195). |
-| `__main__.py` | CLI: 8 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`). Typer + Rich (both core deps as of v0.5, issue #221). |
+| `__main__.py` | CLI: 9 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`). Typer + Rich (both core deps as of v0.5, issue #221). |
 
 ## Pipelines (summary)
 

@@ -496,6 +496,8 @@ contextweaver route --graph g.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
+contextweaver stats --session session.json --format text
+contextweaver budget-check --session session.json --phase answer --max-tokens 4000
 ```
 
 ## Examples
