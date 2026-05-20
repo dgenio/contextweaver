@@ -24,6 +24,17 @@
 | Captured output | [`examples/architectures/mcp_context_gateway/OUTPUT.md`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/OUTPUT.md) |
 | Local README | [`examples/architectures/mcp_context_gateway/README.md`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/README.md) |
 
+### Variants
+
+| Variant | Script | What it adds |
+|---|---|---|
+| Single-turn (canonical) | [`main.py`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/main.py) | The reference shape. Uses the public `routing.hydration.SchemaSource` (#261) instead of a hand-rolled `_FULL_SCHEMAS` dict. |
+| Live transport | [`main_live.py`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/main_live.py) | Same scenario but routed through a real `mcp.server.Server` + `ClientSession` over the in-memory MCP transport (#260). |
+| Multi-turn | [`main_multi.py`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/main_multi.py) | 4-turn transcript (BigQuery → Linear → Slack → PagerDuty) with fact accumulation across turns; turn 1's artifact survives via dependency closure (#262). |
+| Real-MCP catalogs | [`main_real.py`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/main_real.py) | Runs the same shape against committed snapshots of three real public MCP servers (`server-time`, `server-filesystem`, `server-everything`) under [`real_catalogs/`](https://github.com/dgenio/contextweaver/tree/main/examples/architectures/mcp_context_gateway/real_catalogs) (#280). |
+| CLI surface | `contextweaver demo --scenario mcp-gateway-full` | The single-turn variant from the CLI without invoking the example script (#264). |
+| Benchmark range | [`benchmarks/gateway_scorecard.md`](https://github.com/dgenio/contextweaver/blob/main/benchmarks/gateway_scorecard.md) | Five gateway-shaped scenarios — firewall reduction **0.0 % – 98.8 %**. Regenerate with `make benchmark-gateway && make gateway-scorecard` (#270). |
+
 Run it:
 
 ```bash

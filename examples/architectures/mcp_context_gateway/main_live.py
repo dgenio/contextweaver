@@ -260,7 +260,7 @@ async def _run() -> None:
         print(f"injected_summary_chars  = {summary_chars:,}")
         print(f"firewall_reduction_pct  = {saving_pct:.1f}%")
         print(f"artifact_handle         = {artifact_handle}")
-        print(f"transport               = mcp.shared.memory (in-process)")
+        print("transport               = mcp.shared.memory (in-process)")
 
 
 def main() -> None:
