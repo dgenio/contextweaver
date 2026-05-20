@@ -86,7 +86,12 @@ class McpProxyServer:
 
         async def handle_call_tool(
             name: str, arguments: dict[str, Any] | None
-        ) -> tuple[list[mcp_types.TextContent], bool]:
+        ) -> mcp_types.CallToolResult:
+            # Return a fully-built ``CallToolResult`` so the MCP SDK's
+            # call-tool decorator does not try to derive ``structuredContent``
+            # from a ``(content, is_error)`` tuple. See the parallel comment
+            # in ``mcp_gateway_server.py``.
+            #
             # The proxy supports two meta-tools (tool_hydrate / tool_execute).
             # Any other name is treated as a direct upstream call routed via
             # tool_execute(name=tool_id) for the transparent flow.
@@ -125,7 +130,10 @@ class McpProxyServer:
                         ),
                     )
                 ]
-            return content, bool(result.get("isError", False))
+            return mcp_types.CallToolResult(
+                content=content,
+                isError=bool(result.get("isError", False)),
+            )
 
         # Register handlers by calling the decorators as functions.  See
         # the matching comment in ``mcp_gateway_server.py`` for context.
