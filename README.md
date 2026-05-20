@@ -12,6 +12,12 @@
 
 **600+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 
+Install:
+
+```bash
+pip install contextweaver
+```
+
 [📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md)
 
 ---
