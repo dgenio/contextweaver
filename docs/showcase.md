@@ -211,7 +211,7 @@ turn against an MCP-style tool gateway. How do they compose?
 **What contextweaver does:** [`examples/architectures/mcp_context_gateway/`](https://github.com/dgenio/contextweaver/tree/main/examples/architectures/mcp_context_gateway)
 is the launch reference architecture — a single deterministic transcript
 walking a 60-tool catalog, a routing query, lazy schema hydration, a 16 KB
-mocked upstream result, the firewall, and a 120-token final prompt.
+mocked upstream result, the firewall, and a 142-token final prompt.
 
 **Run it:**
 
@@ -229,7 +229,7 @@ raw_result_chars        = 16,507
 injected_summary_chars  = 194
 firewall_reduction_pct  = 98.8 %
 artifact_handle         = artifact:result:tc1
-final_prompt_tokens     = 120
+final_prompt_tokens     = 142
 final_prompt_chars      = 645
 ```
 

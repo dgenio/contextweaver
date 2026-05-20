@@ -1,4 +1,4 @@
-﻿"""Tests for contextweaver.adapters.proxy_runtime (#29).
+"""Tests for contextweaver.adapters.proxy_runtime (#29).
 
 Exercises the shared core that both the transparent proxy (#13) and the
 two-tool gateway (#28) build on.  ``StubUpstream`` lets us drive every
@@ -90,7 +90,7 @@ async def test_refresh_catalog_uses_upstream() -> None:
 
 
 # ---------------------------------------------------------------------------
-# browse() â€” Â§3.1 mutual exclusion + query / path
+# browse() — §3.1 mutual exclusion + query / path
 # ---------------------------------------------------------------------------
 
 
@@ -138,7 +138,7 @@ def test_browse_by_path_unknown_returns_path_not_found() -> None:
 
 
 # ---------------------------------------------------------------------------
-# hydrate() â€” Â§4.1
+# hydrate() — §4.1
 # ---------------------------------------------------------------------------
 
 
@@ -158,14 +158,14 @@ def test_hydrate_unknown_returns_hydrate_failed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# execute() â€” Â§4.2 + Â§4.4
+# execute() — §4.2 + §4.4
 # ---------------------------------------------------------------------------
 
 
 async def test_execute_validates_args_against_schema() -> None:
     runtime = _make_runtime()
     tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
-    # Missing required field "title" â†’ ARGS_INVALID.
+    # Missing required field "title" → ARGS_INVALID.
     err = await runtime.execute(tool_id, {})
     assert isinstance(err, GatewayError)
     assert err.code == "ARGS_INVALID"
@@ -201,7 +201,7 @@ async def test_execute_upstream_failure_returns_upstream_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# view() â€” #34
+# view() — #34
 # ---------------------------------------------------------------------------
 
 
@@ -239,7 +239,7 @@ def test_view_unknown_handle_returns_view_failed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# strip_tools_list() â€” Â§4.1
+# strip_tools_list() — §4.1
 # ---------------------------------------------------------------------------
 
 
@@ -249,13 +249,13 @@ def test_strip_tools_list_emits_sentinel_input_schema() -> None:
     assert len(stripped) == 3
     for entry in stripped:
         assert entry["inputSchema"] == {"type": "object"}
-        # No banned fields per Â§2.2.
+        # No banned fields per §2.2.
         for banned in ("args_schema", "outputSchema", "output_schema", "annotations", "_meta"):
             assert banned not in entry
 
 
 # ---------------------------------------------------------------------------
-# cache_stable browse â€” Â§5
+# cache_stable browse — §5
 # ---------------------------------------------------------------------------
 
 
@@ -285,7 +285,7 @@ def test_cache_stable_default_is_off() -> None:
     # No marker is emitted.
     assert CACHE_BREAKPOINT_ID not in _ids(cards_a)
     assert CACHE_BREAKPOINT_ID not in _ids(cards_b)
-    # Order is the existing score-desc / id-asc ordering â€” identical across calls.
+    # Order is the existing score-desc / id-asc ordering — identical across calls.
     assert _ids(cards_a) == _ids(cards_b)
 
 
@@ -311,12 +311,14 @@ def test_cache_stable_first_browse_has_no_marker() -> None:
 
 def test_cache_stable_repeated_same_query_has_no_marker_either() -> None:
     """If the second browse returns exactly the same id set, the response is
-    all-seen â€” no new tools, so no marker."""
+    all-seen — no new tools, so no marker."""
     runtime = _make_cache_stable_runtime()
     cards1 = runtime.browse(query="open a github issue")
     cards2 = runtime.browse(query="open a github issue")
-    # Both runs return cards from the same id set.
-    assert set(_ids(cards1)) == set(_ids(cards2)) - {CACHE_BREAKPOINT_ID}
+    # Both runs return cards from the same id set (minus any marker).
+    ids1 = set(_ids(cards1))
+    ids2 = set(_ids(cards2)) - {CACHE_BREAKPOINT_ID}
+    assert ids2 == ids1, f"second browse diverged: missing={ids1 - ids2}, extra={ids2 - ids1}"
     assert CACHE_BREAKPOINT_ID not in _ids(cards2), "all-seen response should not emit a marker"
 
 
@@ -326,7 +328,7 @@ def test_cache_stable_same_query_response_byte_identical() -> None:
     import json as _json
 
     runtime = _make_cache_stable_runtime()
-    # Two browses of the same query â€” second call has every id in the seen
+    # Two browses of the same query — second call has every id in the seen
     # set, so the response goes entirely through the cache-stable prefix.
     cards_a = runtime.browse(query="open a github issue")
     cards_b = runtime.browse(query="open a github issue")
@@ -338,7 +340,7 @@ def test_cache_stable_same_query_response_byte_identical() -> None:
 
 def test_cache_stable_overlapping_cards_have_identical_bytes_across_queries() -> None:
     """For ids that appear in two browse responses under different queries,
-    the cached frozen content must be byte-identical â€” this is the
+    the cached frozen content must be byte-identical — this is the
     prompt-cache-hit guarantee for cards in the common prefix."""
     import json as _json
 
@@ -353,7 +355,7 @@ def test_cache_stable_overlapping_cards_have_identical_bytes_across_queries() ->
     assert overlap, "test setup needs overlapping tools across queries"
     for cid in overlap:
         # Card content must be byte-identical despite the router having scored
-        # the item differently under the two queries â€” the cache freezes the
+        # the item differently under the two queries — the cache freezes the
         # first-sighting content, including score, so the cache prefix is
         # genuinely stable.
         a_bytes = _json.dumps(by_id_a[cid].to_dict(), sort_keys=True).encode("utf-8")
@@ -363,11 +365,11 @@ def test_cache_stable_overlapping_cards_have_identical_bytes_across_queries() ->
 
 def test_cache_stable_prefix_is_id_asc_for_seen_set() -> None:
     """Once cards are in the seen set, they appear in ascending-id order in
-    the prefix â€” never the score-desc order that the default produces."""
+    the prefix — never the score-desc order that the default produces."""
     runtime = _make_cache_stable_runtime()
     # First browse seeds the seen set.
     runtime.browse(query="open a github issue")
-    # Second browse with a query that surfaces the same ids â€” the response is
+    # Second browse with a query that surfaces the same ids — the response is
     # all-seen and must be ascending-id.
     cards = runtime.browse(query="open a github issue")
     ids = [c.id for c in cards if c.id != CACHE_BREAKPOINT_ID]
@@ -404,10 +406,10 @@ def test_cache_stable_new_tools_appended_after_marker() -> None:
 def test_cache_stable_marker_only_when_both_sides_present() -> None:
     """Marker is suppressed when seen-half OR new-half is empty (no boundary)."""
     runtime = _make_cache_stable_runtime()
-    # First browse â†’ all-new, no marker.
+    # First browse → all-new, no marker.
     cards1 = runtime.browse(query="open a github issue")
     assert CACHE_BREAKPOINT_ID not in _ids(cards1)
-    # Same browse again â†’ all-seen, no marker.
+    # Same browse again → all-seen, no marker.
     cards2 = runtime.browse(query="open a github issue")
     assert CACHE_BREAKPOINT_ID not in _ids(cards2)
 
@@ -473,9 +475,9 @@ def test_cache_stable_does_not_break_path_browse() -> None:
 
 
 def test_cache_stable_browse_propagates_gateway_errors() -> None:
-    """A GatewayError must pass through untouched â€” no marker injection."""
+    """A GatewayError must pass through untouched — no marker injection."""
     runtime = _make_cache_stable_runtime()
-    # Pass neither query nor path â†’ ARGS_INVALID.
+    # Pass neither query nor path → ARGS_INVALID.
     err = runtime.browse()
     assert isinstance(err, GatewayError)
     assert err.code == "ARGS_INVALID"

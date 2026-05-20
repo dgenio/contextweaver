@@ -125,7 +125,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 make fmt      # ruff format src/ tests/ examples/ scripts/
 make lint     # ruff check src/ tests/ examples/ scripts/
 make type     # mypy src/
-make test     # pytest --cov=contextweaver --cov-report=term-missing -q
+make test     # python -m pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures via the umbrella target)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
@@ -153,7 +153,7 @@ For command-selection rules and sequencing, see [docs/agent-context/workflows.md
 
 These are auto-reject in review. No exceptions.
 
-1. **No `print()` in library code.** Use hooks or logging. `__main__.py` (CLI) is exempt.
+1. **No `print()` in library code.** Use hooks or logging. `__main__.py` and `_demos.py` (CLI) are exempt.
 2. **No business logic in `__init__.py`.** Only re-exports allowed.
 
 ## Strong Patterns

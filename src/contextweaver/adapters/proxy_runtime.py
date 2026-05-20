@@ -1,8 +1,8 @@
-﻿"""Shared core for the MCP proxy (#13) and gateway (#28) runtime modes.
+"""Shared core for the MCP proxy (#13) and gateway (#28) runtime modes.
 
 :class:`ProxyRuntime` is the internal subsystem that both the transparent
 proxy and the two-tool gateway share, as called for by ``docs/gateway_spec.md``
-Â§4.  It owns:
+§4.  It owns:
 
 - Upstream MCP catalog aggregation via an injected
   :class:`UpstreamCall` Protocol (no MCP transport coupling).
@@ -13,19 +13,19 @@ proxy and the two-tool gateway share, as called for by ``docs/gateway_spec.md``
   upstream catalog changes.
 - The gateway's three primitives:
 
-  * :meth:`ProxyRuntime.browse` â€” ``tool_browse(query|path)`` per Â§3.
-  * :meth:`ProxyRuntime.execute` â€” ``tool_execute(tool_id, args)`` per
-    Â§4.4 (validates args against the hydrated schema before upstream
+  * :meth:`ProxyRuntime.browse` — ``tool_browse(query|path)`` per §3.
+  * :meth:`ProxyRuntime.execute` — ``tool_execute(tool_id, args)`` per
+    §4.4 (validates args against the hydrated schema before upstream
     dispatch, then runs the result through the context firewall).
-  * :meth:`ProxyRuntime.view` â€” ``tool_view(handle, selector)`` per #34
+  * :meth:`ProxyRuntime.view` — ``tool_view(handle, selector)`` per #34
     (drilldown over a previously-stored artifact).
 
 - The proxy's additional helpers:
 
-  * :meth:`ProxyRuntime.strip_tools_list` â€” stripped MCP-format
-    ``tools/list`` per Â§4.1.
-  * :meth:`ProxyRuntime.hydrate` â€” `Catalog.hydrate` wrapper exposed as
-    ``tool_hydrate(tool_id)`` per Â§4.1.
+  * :meth:`ProxyRuntime.strip_tools_list` — stripped MCP-format
+    ``tools/list`` per §4.1.
+  * :meth:`ProxyRuntime.hydrate` — `Catalog.hydrate` wrapper exposed as
+    ``tool_hydrate(tool_id)`` per §4.1.
 
 The shared error shape is :class:`~contextweaver.adapters.gateway_error.GatewayError`;
 none of these primitives raise across the MCP boundary.
@@ -66,7 +66,7 @@ logger = logging.getLogger("contextweaver.adapters.proxy_runtime")
 
 
 class ExposureMode(str, Enum):
-    """Which agent-facing surface the runtime is wired into (Â§4)."""
+    """Which agent-facing surface the runtime is wired into (§4)."""
 
     TRANSPARENT = "transparent"
     GATEWAY = "gateway"
@@ -78,7 +78,7 @@ class UpstreamCall(Protocol):
 
     Implementations may fan out over a single server, multiple servers,
     or an in-process stub.  The :class:`ProxyRuntime` only depends on
-    the two methods below â€” concrete MCP-SDK wiring lives in
+    the two methods below — concrete MCP-SDK wiring lives in
     :mod:`contextweaver.adapters.mcp_upstream`.
     """
 
@@ -99,10 +99,10 @@ class UpstreamCall(Protocol):
 
 @dataclass
 class _UpstreamNameIndex:
-    """Maps canonical ``tool_id`` â†’ upstream raw tool name.
+    """Maps canonical ``tool_id`` → upstream raw tool name.
 
     Required because :func:`mcp_tool_to_selectable` strips namespace
-    prefixes from the canonical id (Â§1.4), but the upstream MCP server
+    prefixes from the canonical id (§1.4), but the upstream MCP server
     only accepts the original name.
     """
 
@@ -114,7 +114,7 @@ class _UpstreamNameIndex:
 # marker is a real :class:`ChoiceCard` (``kind="internal"``) so it survives any
 # downstream serialisation that expects the same shape for every entry. The id
 # starts with a double underscore so it cannot collide with any canonical
-# ``tool_id`` per ``docs/gateway_spec.md`` Â§1.1 (which uses ``:`` separators
+# ``tool_id`` per ``docs/gateway_spec.md`` §1.1 (which uses ``:`` separators
 # and a stricter character set).
 CACHE_BREAKPOINT_ID: str = "__cache_breakpoint__"
 
@@ -139,13 +139,13 @@ class ProxyRuntime:
             ascending-``id`` order, followed by a :data:`CACHE_BREAKPOINT_ID`
             marker card, followed by newly-discovered tools (also
             ascending-``id`` order). This produces a byte-stable prompt
-            prefix across repeated browses in the same session â€” see
-            ``docs/gateway_spec.md`` Â§5 (cache-stable browse) and the
+            prefix across repeated browses in the same session — see
+            ``docs/gateway_spec.md`` §5 (cache-stable browse) and the
             Webfuse MCP cheat sheet pattern referenced from
             ``docs/integration_mcp.md``. Default ``False`` preserves the
-            Â§2.5 score-desc / id-asc ordering. Ranking metadata is
+            §2.5 score-desc / id-asc ordering. Ranking metadata is
             preserved on each :class:`ChoiceCard` via ``score`` so
-            downstream consumers can still rank after the fact â€”
+            downstream consumers can still rank after the fact —
             **the first emitted card is not guaranteed to be the
             highest-ranked card when this flag is on**.
     """
@@ -236,7 +236,11 @@ class ProxyRuntime:
         """
         return self._register_tool_defs(tool_defs)
 
-    def _register_tool_defs(self, tool_defs: list[dict[str, Any]]) -> int:`r`n        self._cached_cards.clear()`r`n        items: list[SelectableItem] = []
+    def _register_tool_defs(self, tool_defs: list[dict[str, Any]]) -> int:
+        # Invalidate cache-stable state: tool definitions may have changed.
+        self._cached_cards.clear()
+        self._browsed_tool_ids.clear()
+        items: list[SelectableItem] = []
         upstream_index: dict[str, str] = {}
         raw_defs: dict[str, dict[str, Any]] = {}
         for tool_def in tool_defs:
@@ -268,7 +272,7 @@ class ProxyRuntime:
         return [item.id for item in self._catalog.all()]
 
     # ------------------------------------------------------------------
-    # tool_browse (Â§3 + Â§4.2)
+    # tool_browse (§3 + §4.2)
     # ------------------------------------------------------------------
 
     def browse(
@@ -278,9 +282,9 @@ class ProxyRuntime:
         path: str | None = None,
         top_k: int | None = None,
     ) -> list[ChoiceCard] | GatewayError:
-        """Implement ``tool_browse(query|path)`` per Â§3.1.
+        """Implement ``tool_browse(query|path)`` per §3.1.
 
-        Exactly one of *query* or *path* must be supplied â€” passing both
+        Exactly one of *query* or *path* must be supplied — passing both
         or neither returns :class:`GatewayError` with code
         ``ARGS_INVALID``.
 
@@ -291,7 +295,7 @@ class ProxyRuntime:
             top_k: Optional override for the configured top-k count.
 
         Returns:
-            A list of :class:`ChoiceCard` bounded per Â§2.3, or a
+            A list of :class:`ChoiceCard` bounded per §2.3, or a
             :class:`GatewayError` describing why the request was
             rejected.
         """
@@ -343,7 +347,7 @@ class ProxyRuntime:
             try:
                 cards.append(item_to_card(self._catalog.get(child_id)))
             except ItemNotFoundError:
-                # Navigation node, not a leaf â€” synthesise a cluster card.
+                # Navigation node, not a leaf — synthesise a cluster card.
                 node = self._graph.get_node(child_id)
                 cards.append(
                     ChoiceCard(
@@ -357,11 +361,11 @@ class ProxyRuntime:
         return self._maybe_cache_stable(bound_browse_response(cards))
 
     # ------------------------------------------------------------------
-    # tool_hydrate (Â§4.1)
+    # tool_hydrate (§4.1)
     # ------------------------------------------------------------------
 
     def hydrate(self, tool_id: str) -> HydrationResult | GatewayError:
-        """Return the full schema for *tool_id* (Â§4.3).
+        """Return the full schema for *tool_id* (§4.3).
 
         When :attr:`cache_stable` is ``True``, a successful hydration is
         recorded so subsequent :meth:`browse` calls will surface *tool_id*
@@ -384,7 +388,7 @@ class ProxyRuntime:
         return result
 
     # ------------------------------------------------------------------
-    # cache-stable browse helper (Â§5)
+    # cache-stable browse helper (§5)
     # ------------------------------------------------------------------
 
     def _maybe_cache_stable(
@@ -400,7 +404,7 @@ class ProxyRuntime:
         session's browsed-id set.
 
         ``ChoiceCard.score`` is preserved on every card so downstream
-        consumers can re-rank after the fact â€” the marker carries no
+        consumers can re-rank after the fact — the marker carries no
         score (``None``) and is the explicit boundary between the
         cache-stable prefix and the score-rankable suffix.
         """
@@ -425,6 +429,11 @@ class ProxyRuntime:
         )
         self._browsed_tool_ids.update(c.id for c in cards)
         if seen_cards and new_cards:
+            # Reserve one slot for the marker so total never exceeds top_k.
+            max_new = max(0, self._top_k - len(seen_cards) - 1)
+            new_cards = new_cards[:max_new]
+            if not new_cards:
+                return seen_cards
             marker = ChoiceCard(
                 id=CACHE_BREAKPOINT_ID,
                 name="cache_breakpoint",
@@ -434,11 +443,11 @@ class ProxyRuntime:
                 ),
                 kind="internal",
             )
-                        # §2.3 budget: marker occupies one slot — trim new-half to fit.`r`n            new_cards = new_cards[: max(0, len(new_cards) - 1)]`r`n            if not new_cards:`r`n                return seen_cards`r`n            return [*seen_cards, marker, *new_cards]
+            return [*seen_cards, marker, *new_cards]
         return [*seen_cards, *new_cards]
 
     # ------------------------------------------------------------------
-    # tool_execute (Â§4.2 + Â§4.4)
+    # tool_execute (§4.2 + §4.4)
     # ------------------------------------------------------------------
 
     async def execute(
@@ -455,7 +464,7 @@ class ProxyRuntime:
         Returns:
             A :class:`ResultEnvelope` (post-firewall) or a
             :class:`GatewayError`.  Validation failures map to
-            ``ARGS_INVALID`` per Â§4.4; transport / protocol failures map
+            ``ARGS_INVALID`` per §4.4; transport / protocol failures map
             to ``UPSTREAM_ERROR``.
         """
         try:
@@ -467,7 +476,13 @@ class ProxyRuntime:
                 path=tool_id,
             )
         validation_error = _validate_args(args, hydrated.args_schema)
-        if validation_error is not None:`r`n            return GatewayError(`r`n                code="ARGS_INVALID",`r`n                message=validation_error.message,`r`n                path=tool_id,`r`n                details={"path": list(validation_error.path)},`r`n            )`r`n        if self._cache_stable:`r`n            self._browsed_tool_ids.add(tool_id)
+        if validation_error is not None:
+            return GatewayError(
+                code="ARGS_INVALID",
+                message=validation_error.message,
+                path=tool_id,
+                details={"path": list(validation_error.path)},
+            )
         upstream_name = self._upstream_names.by_tool_id.get(tool_id, hydrated.item.name)
         try:
             raw = await self._upstream.call_tool(upstream_name, args)
@@ -498,6 +513,8 @@ class ProxyRuntime:
                     label=f"text result from {tool_id}",
                 )
         envelope.provenance.setdefault("tool_id", tool_id)
+        if self._cache_stable:
+            self._browsed_tool_ids.add(tool_id)
         return envelope
 
     # ------------------------------------------------------------------
@@ -522,16 +539,16 @@ class ProxyRuntime:
             )
 
     # ------------------------------------------------------------------
-    # Proxy-only: stripped tools/list (Â§4.1)
+    # Proxy-only: stripped tools/list (§4.1)
     # ------------------------------------------------------------------
 
     def strip_tools_list(self) -> list[dict[str, Any]]:
-        """Return the stripped ``tools/list`` (Â§4.1) for transparent-proxy mode.
+        """Return the stripped ``tools/list`` (§4.1) for transparent-proxy mode.
 
         Each entry mirrors the upstream tool's *name* and *description*
-        (description truncated to the Â§2.4 budget) but replaces
+        (description truncated to the §2.4 budget) but replaces
         ``inputSchema`` with the sentinel ``{"type": "object"}``.  No
-        banned fields are emitted (Â§2.2).
+        banned fields are emitted (§2.2).
 
         Returns:
             A list of MCP-format tool definitions ready for the proxy's

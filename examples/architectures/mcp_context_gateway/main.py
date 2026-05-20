@@ -288,7 +288,7 @@ def main() -> None:
     _print_header("[5/5] Answer phase — final prompt sees summary + handle, NOT raw rows")
     answer = mgr.build_sync(phase=Phase.answer, query=ROUTING_QUERY)
     final_prompt = answer.prompt
-    final_prompt_tokens = sum(answer.stats.tokens_per_section.values())
+    final_prompt_tokens = answer.stats.prompt_tokens
     print(f"answer prompt: included={answer.stats.included_count}  tokens={final_prompt_tokens}")
     print(f"final prompt length: {len(final_prompt):,} chars")
     # Sentinel must be unique to the deep rowset content — the firewall summary

@@ -56,7 +56,7 @@ From the deterministic run (see [`OUTPUT.md`](https://github.com/dgenio/contextw
 | `raw_result_chars` | 16,507 |
 | `injected_summary_chars` | 194 |
 | `firewall_reduction_pct` | **98.8 %** |
-| `final_prompt_tokens` | 120 |
+| `final_prompt_tokens` | 142 |
 | `final_prompt_chars` | 645 |
 
 ## How this maps to a real MCP runtime

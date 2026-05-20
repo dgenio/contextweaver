@@ -56,7 +56,7 @@ extracted facts (first 3 of 24):
 ============================================================================
 [5/5] Answer phase — final prompt sees summary + handle, NOT raw rows
 ============================================================================
-answer prompt: included=3  tokens=120
+answer prompt: included=3  tokens=142
 final prompt length: 645 chars
 contains raw rowset? no
 contains artifact handle? yes
@@ -91,7 +91,7 @@ raw_result_chars        = 16,507
 injected_summary_chars  = 194
 firewall_reduction_pct  = 98.8%
 artifact_handle         = artifact:result:tc1
-final_prompt_tokens     = 120
+final_prompt_tokens     = 142
 final_prompt_chars      = 645
 ```
 
@@ -106,7 +106,7 @@ final_prompt_chars      = 645
 | `injected_summary_chars` | **194** | What the firewall leaves on the prompt side — header lines + row count + schema, no rows. |
 | `firewall_reduction_pct` | **98.8 %** | (1 − 194 / 16,507) × 100. The raw rowset never reaches the LLM. |
 | `artifact_handle` | `artifact:result:tc1` | The full 16 KB body is in the artifact store, addressable via `tool_view(handle, selector=…)`. |
-| `final_prompt_tokens` | **120** | Total answer-phase prompt budget consumed. Compare against the 4,000-token answer budget configured in `main.py`. |
+| `final_prompt_tokens` | **142** | Total answer-phase prompt budget consumed. Compare against the 4,000-token answer budget configured in `main.py`. |
 | `contains raw rowset?` | **no** | Pinned by `tests/test_architectures_mcp_context_gateway.py` — the sentinel `"mrr_delta_usd": -450` (only in day 47's row) must not appear in the prompt. |
 
 The takeaway: a 16 KB tool result and a 60-tool catalog collapse into a

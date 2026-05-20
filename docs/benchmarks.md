@@ -92,7 +92,7 @@ The [MCP Context Gateway reference architecture](architectures/mcp_context_gatew
 | `raw_result_chars` | 16,507 | Mocked BigQuery rowset (MCP wire shape) |
 | `injected_summary_chars` | 194 | What the firewall leaves on the prompt side |
 | `firewall_reduction_pct` | 98.8 % | (1 − 194 / 16,507) × 100 for this single tool result |
-| `final_prompt_tokens` | 120 | Answer-phase prompt budget consumed |
+| `final_prompt_tokens` | 142 | Answer-phase prompt budget consumed |
 
 > **Reading this honestly:** this is **one scripted scenario with one tool call**, not a benchmark over many scenarios. The 98.8% number reflects the specific shape of one rowset; your raw tool outputs will be different sizes and the per-call reduction will vary accordingly. The point of the scenario is to show all six load-bearing primitives (routing → cards → hydration → firewall → artifact → answer-phase build) interacting in one transcript, not to claim a generalizable reduction percentage.
 
