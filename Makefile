@@ -53,11 +53,20 @@ benchmark:
 benchmark-matrix:
 	python benchmarks/benchmark.py --matrix
 
+benchmark-gateway:
+	python benchmarks/gateway_benchmark.py
+
 scorecard:
 	python scripts/render_scorecard.py
 
 scorecard-check:
 	python scripts/render_scorecard.py --check
+
+gateway-scorecard:
+	python scripts/render_gateway_scorecard.py
+
+gateway-scorecard-check:
+	python scripts/render_gateway_scorecard.py --check
 
 sweep-scoring:
 	python scripts/sweep_scoring.py
