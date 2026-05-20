@@ -16,8 +16,8 @@ Run::
     python scripts/record_demo.py --check    # exit 1 if artifacts drift
 
 The script is stdlib-only and deterministic (no real timestamps; the
-asciinema header carries a fixed timestamp pinned to the v0.8 launch
-date so re-running on a different day does not produce a diff).
+asciinema header carries a fixed timestamp pinned to the v0.9 launch
+window so re-running on a different day does not produce a diff).
 """
 
 from __future__ import annotations
@@ -247,10 +247,12 @@ def _render_svg(frames: list[Frame]) -> str:
 def _write_if_changed(path: Path, content: str) -> bool:
     """Write *content* to *path* if it differs.  Returns True on change."""
 
-    if path.exists() and path.read_text() == content:
+    if path.exists() and path.read_text(encoding="utf-8") == content:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
+    # Pin newlines to "\n" so the cast (JSONL) and SVG stay byte-identical
+    # across Windows / macOS / Linux checkouts.
+    path.write_text(content, encoding="utf-8", newline="\n")
     return True
 
 
@@ -274,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.check:
         drift = False
         for path, expected in ((CAST_PATH, cast), (SVG_PATH, svg)):
-            if not path.exists() or path.read_text() != expected:
+            if not path.exists() or path.read_text(encoding="utf-8") != expected:
                 sys.stderr.write(f"drift: {path.relative_to(ROOT)}\n")
                 drift = True
         if drift:

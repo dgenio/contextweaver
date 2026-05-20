@@ -82,7 +82,7 @@ for card in result.choice_cards:
 
 The router is deterministic by default — same catalog + query → byte-identical
 `ChoiceCard` JSON. This is intentional and locked by
-`tests/test_router.py::test_make_choice_cards_byte_identical_stable_order`
+`tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`
 so the cards can be reused as a stable `cache_control` prefix in
 Anthropic / OpenAI / Google prompt-caching deployments.
 

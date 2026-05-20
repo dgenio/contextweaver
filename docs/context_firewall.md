@@ -72,7 +72,7 @@ request a specific slice without rehydrating the entire artifact:
 
 The drilldown selectors are byte-identical across `InMemoryArtifactStore`
 and `JsonFileArtifactStore` (enforced by a shared
-`store/artifacts.py::_apply_selector` helper).
+`src/contextweaver/store/artifacts.py::_apply_selector` helper).
 
 ## Worked examples
 

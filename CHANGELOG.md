@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with two new dedicated overview pages (`docs/context_firewall.md`,
   `docs/tool_router.md`); and pins the `mkdocs-material` major in the
   `[docs]` extra so docs builds do not silently regress on a future
-  minor.
+  major (10.x).
 
 ## [0.8.0] - 2026-05-19
 

@@ -14,7 +14,7 @@
 > benchmarks.
 
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards." width="100%"/>
+  <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
 </p>
 
 **1150+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
@@ -25,11 +25,11 @@ python -m contextweaver demo     # 5-step end-to-end demo
 ```
 
 <p align="center">
-  <img src="docs/assets/demo.svg" alt="Animated terminal recording of `python -m contextweaver demo`: load a 40-tool catalog, build a 9-node routing graph, narrow to 5 ChoiceCards for the query 'find unpaid invoices and send a reminder email', build a phase-answer context pack, and print the 321-character compiled prompt." width="100%"/>
+  <img src="docs/assets/demo.svg" alt="Animated terminal recording of `python -m contextweaver demo`: load a 40-tool catalog, build a 9-node routing graph, narrow to 5 ChoiceCards for the query 'find unpaid invoices and send a reminder email', build a phase-answer context pack, and print the 321-character compiled prompt."/>
 </p>
 
 <p align="center">
-  <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant." width="100%"/>
+  <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
 </p>
 
 [📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
@@ -497,7 +497,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
 | **Raw MCP** ([modelcontextprotocol v0.1](https://modelcontextprotocol.io)) | ❌ Servers expose tools; routing across many servers is the client's problem | ❌ Out of scope for the protocol | ❌ Out of scope for the protocol | ✅ Wire protocol is deterministic | ✅ — _is_ the protocol |
 
-[^cw-route]: `contextweaver.routing.router.Router` ships a four-stage pipeline (`retrieve → rerank → navigate → pack`) with deterministic tie-break by `id`. Locked by `tests/test_router.py::test_make_choice_cards_byte_identical_stable_order`.
+[^cw-route]: `contextweaver.routing.router.Router` ships a four-stage pipeline (`retrieve → rerank → navigate → pack`) with deterministic tie-break by `id`. Locked by `tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`.
 [^cw-bench]: Range from the committed scorecard ([`benchmarks/scorecard.md`](benchmarks/scorecard.md)) using `tiktoken.cl100k_base` against the naïve baseline ([`scripts/baseline_naive.py`](scripts/baseline_naive.py)). Average 55.8 %; min 41.6 % on the smallest scenario; max 74.5 % on `stress_conversation.jsonl`.
 [^cw-fire]: `contextweaver.context.firewall.apply_firewall` plus `ArtifactRef` drilldown selectors (`head` / `lines` / `json_keys` / `rows`). See [`docs/context_firewall.md`](docs/context_firewall.md) and the [`firewall_drilldown_recipe`](examples/cookbook/firewall_drilldown_recipe.py).
 [^cw-det]: Determinism is an invariant — see `docs/agent-context/invariants.md` and `make scorecard-check` in the CI gate.

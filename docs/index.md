@@ -16,11 +16,15 @@
 contextweaver provides two cooperating engines that solve the context window
 problem for tool-using AI agents:
 
-- **[Context Engine](context_firewall.md)** — eight-stage pipeline:
+- **Context Engine** — eight-stage pipeline:
   candidates → dependency closure → sensitivity filter → firewall →
-  scoring → dedup → selection → rendering.
-- **[Routing Engine](tool_router.md)** — bounded DAG + beam search over
-  large tool catalogs, producing compact LLM-friendly `ChoiceCard`s.
+  scoring → dedup → selection → rendering. See the
+  [Context Firewall](context_firewall.md) page for the load-bearing
+  firewall primitive and [Architecture](architecture.md) for the full
+  pipeline.
+- **Routing Engine** — bounded DAG + beam search over large tool
+  catalogs, producing compact LLM-friendly `ChoiceCard`s. See the
+  [Tool Router](tool_router.md) page.
 
 ## Get started
 
