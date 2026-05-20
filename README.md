@@ -7,18 +7,32 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
 
-> Phase-specific, budget-aware **context engineering** for tool-using AI agents
-> — context compilation with a context firewall plus bounded-choice tool routing.
+> **Context firewall + tool router for tool-heavy AI agents.** Phase-specific,
+> budget-aware **context engineering** with a deterministic core — large tool
+> outputs stay out of the prompt, large catalogs collapse to a few
+> `ChoiceCard`s, and your token bill drops 42–75 % on the committed
+> benchmarks.
 
-**600+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards." width="100%"/>
+</p>
 
-Install:
+**1150+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 
 ```bash
-pip install contextweaver
+pip install contextweaver        # install
+python -m contextweaver demo     # 5-step end-to-end demo
 ```
 
-[📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md)
+<p align="center">
+  <img src="docs/assets/demo.svg" alt="Animated terminal recording of `python -m contextweaver demo`: load a 40-tool catalog, build a 9-node routing graph, narrow to 5 ChoiceCards for the query 'find unpaid invoices and send a reminder email', build a phase-answer context pack, and print the 321-character compiled prompt." width="100%"/>
+</p>
+
+<p align="center">
+  <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant." width="100%"/>
+</p>
+
+[📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
 
 ---
 
@@ -471,16 +485,29 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### Comparison
 
-| Approach | Token Control | Tool Routing | Firewall | Framework Agnostic | Dependencies |
-|---|---|---|---|---|---|
-| **Naive concatenation** | ❌ No | ❌ No | ❌ No | ✅ Yes | None |
-| **LangChain ConversationBufferMemory** | ❌ No | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
-| **LangChain ConversationSummaryMemory** | ⚠️ LLM-based | ❌ No | ❌ No | ❌ No (LangChain only) | Many |
-| **LlamaIndex ContextManager** | ⚠️ Partial | ❌ No | ❌ No | ❌ No (LlamaIndex only) | Many |
-| **contextweaver** | ✅ Yes (phase-specific budgets) | ✅ Yes (bounded DAG) | ✅ Yes (out-of-band storage) | ✅ Yes | None |
+> _Snapshot of the launch landscape as of 2026-05-20 — see footnotes for the
+> versions referenced and the evidence behind each non-trivial claim. Will be
+> refreshed each minor release._
 
-> Most frameworks offer memory classes, but they don't enforce token budgets, route tools, or
-> handle large outputs. contextweaver provides all three as a composable, framework-agnostic layer.
+| Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
+|---|---|---|---|---|---|
+| **contextweaver** (this repo, [v0.8.0](https://pypi.org/project/contextweaver/0.8.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42–75 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
+| **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
+| **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
+| **Raw MCP** ([modelcontextprotocol v0.1](https://modelcontextprotocol.io)) | ❌ Servers expose tools; routing across many servers is the client's problem | ❌ Out of scope for the protocol | ❌ Out of scope for the protocol | ✅ Wire protocol is deterministic | ✅ — _is_ the protocol |
+
+[^cw-route]: `contextweaver.routing.router.Router` ships a four-stage pipeline (`retrieve → rerank → navigate → pack`) with deterministic tie-break by `id`. Locked by `tests/test_router.py::test_make_choice_cards_byte_identical_stable_order`.
+[^cw-bench]: Range from the committed scorecard ([`benchmarks/scorecard.md`](benchmarks/scorecard.md)) using `tiktoken.cl100k_base` against the naïve baseline ([`scripts/baseline_naive.py`](scripts/baseline_naive.py)). Average 55.8 %; min 41.6 % on the smallest scenario; max 74.5 % on `stress_conversation.jsonl`.
+[^cw-fire]: `contextweaver.context.firewall.apply_firewall` plus `ArtifactRef` drilldown selectors (`head` / `lines` / `json_keys` / `rows`). See [`docs/context_firewall.md`](docs/context_firewall.md) and the [`firewall_drilldown_recipe`](examples/cookbook/firewall_drilldown_recipe.py).
+[^cw-det]: Determinism is an invariant — see `docs/agent-context/invariants.md` and `make scorecard-check` in the CI gate.
+[^cw-mcp]: `src/contextweaver/adapters/mcp_proxy.py`, `mcp_gateway.py`, `mcp_proxy_server.py`, `mcp_gateway_server.py`. Bound by `docs/gateway_spec.md`.
+[^lg-mem]: LangGraph 0.6 docs ("Memory"): `ConversationSummaryMemory` requires an LLM round-trip to produce a summary; output is non-deterministic across runs even with `temperature=0` due to model jitter.
+[^li-mem]: LlamaIndex 0.11 docs ("Chat memory"): `ChatMemoryBuffer(token_limit=...)` truncates oldest-first; no phase awareness and no dependency closure.
+
+> Most agent frameworks offer one or two of these capabilities. contextweaver
+> ships all five as a composable, framework-agnostic layer that runs under
+> whichever framework you already have.
 
 ---
 
@@ -585,10 +612,17 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
 
 | Milestone | Status | Highlights |
 |---|---|---|
-| **v0.1 — Foundation** | ✅ complete | Context Engine, Routing Engine, MCP + A2A adapters, CLI, sensitivity enforcement, logging |
-| **v0.2 — Integrations** | 🚧 in progress | Framework integration guides (LlamaIndex, OpenAI Agents SDK, Google ADK, LangChain) |
-| **v0.3 — Tooling** | 📋 planned | DAG visualization, merge compression, LLM-assisted labeler |
-| **Future** | 📋 planned | Context versioning, distributed stores, multi-agent coordination |
+| **v0.1 — Foundation** (2026-03) | ✅ complete | Context Engine + Routing Engine cores, CLI scaffold, sensitivity enforcement, in-memory stores |
+| **v0.2 — Determinism + benchmarks** (2026-04) | ✅ complete | Naïve-concat baseline, scorecard, weekly cron, gold set 50→200, ScoringConfig sweep |
+| **v0.3 — Framework integrations** (2026-05-11) | ✅ complete | LlamaIndex, LangChain + LangGraph, OpenAI Agents SDK, Google ADK, Pipecat guides + interop matrix |
+| **v0.4 — MCP gateway + weaver-spec** (2026-05-16) | ✅ complete | Gateway spec, MCP proxy + two-tool gateway runtime, weaver-spec interop, JSON Schemas + drift gate |
+| **v0.5 — Persistent stores + reports** (2026-05-17) | ✅ complete | `SqliteEventLog`, `JsonFileArtifactStore`, `BuildStats.report()`, `RouteResult.explanation()`, `stats` CLI |
+| **v0.6 — Adopter surface** (2026-05-17) | ✅ complete | Typer + Rich CLI rewrite, OTel GenAI semconv, provider message adapters (OpenAI / Anthropic / Gemini), 5-line adoption snippet |
+| **v0.7 — Reference architectures + routing pipeline** (2026-05-18) | ✅ complete | Explicit routing pipeline, embedding backend, history-aware routing, code-review bot + voice agent architectures, FastMCP CodeMode hooks |
+| **v0.8 — CrewAI + Mem0** (2026-05-19) | ✅ complete | CrewAI adapter (Phase 1), Mem0 external-memory backend, provider-SDK-leak invariant tests |
+| **v0.9 — Launch polish + adapters** (2026-05) | 🚧 in progress | `contextweaver mcp serve` CLI, full MCP Context Gateway architecture, CrewAI/Pydantic AI/smolagents/Agno adapter Phase 2 |
+| **v1.0 — API stability** | 📋 planned | API freeze, semantic-versioning commitment, long-term support window |
+| **Future** | 📋 planned | DAG visualization, LLM-assisted labeler, distributed stores, multi-agent coordination |
 
 See [CHANGELOG.md](CHANGELOG.md) for the detailed release history.
 

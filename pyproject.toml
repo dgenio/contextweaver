@@ -124,14 +124,17 @@ langchain = [
 voice = [
     "pipecat-ai>=0.0.50",
 ]
-# Docs site (mkdocs).
+# Docs site (mkdocs).  The mkdocs-material major is pinned (`<10`) so a future
+# 10.x breaking change cannot silently regress the docs build on a fresh `pip
+# install -e ".[docs]"` (#256).  Likewise for the mkdocstrings major.  Bump the
+# upper bound deliberately when adopting a new major.
 docs = [
-    "mkdocs>=1.6",
-    "mkdocs-material>=9.5",
-    "mkdocstrings[python]>=0.25",
-    "mkdocs-gen-files>=0.5",
-    "mkdocs-literate-nav>=0.6",
-    "mkdocs-section-index>=0.3",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
+    "mkdocstrings[python]>=0.25,<1",
+    "mkdocs-gen-files>=0.5,<1",
+    "mkdocs-literate-nav>=0.6,<1",
+    "mkdocs-section-index>=0.3,<1",
 ]
 # Deprecated empty alias.  Typer + Rich became core deps in v0.5 (#221), so
 # ``pip install 'contextweaver[cli]'`` is now equivalent to a plain install.

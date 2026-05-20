@@ -63,6 +63,8 @@ nav:
   - Home: index.md
   - Quickstart: quickstart.md
   - Which pattern fits?: which_pattern.md
+  - Context Firewall: context_firewall.md
+  - Tool Router: tool_router.md
   - Concepts: concepts.md
   - How contextweaver Fits: interop.md
   - Cookbook: cookbook.md
