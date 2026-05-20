@@ -87,7 +87,12 @@ class McpGatewayServer:
 
         async def handle_call_tool(
             name: str, arguments: dict[str, Any] | None
-        ) -> tuple[list[mcp_types.TextContent], bool]:
+        ) -> mcp_types.CallToolResult:
+            # Return a fully-built ``CallToolResult`` so the MCP SDK's
+            # call-tool decorator does not try to derive ``structuredContent``
+            # from a ``(content, is_error)`` tuple — the gateway's
+            # ``tool_browse`` payload is a JSON array which fails
+            # structured-content validation (must be a dict).
             if name not in GATEWAY_TOOL_NAMES:
                 payload = json.dumps(
                     {
@@ -95,14 +100,20 @@ class McpGatewayServer:
                         "message": f"unknown meta-tool {name!r}",
                     }
                 )
-                return [mcp_types.TextContent(type="text", text=payload)], True
+                return mcp_types.CallToolResult(
+                    content=[mcp_types.TextContent(type="text", text=payload)],
+                    isError=True,
+                )
             result = await dispatch_meta_tool(self.runtime, name, arguments or {})
             content = [
                 mcp_types.TextContent(type="text", text=part.get("text", ""))
                 for part in result.get("content", [])
                 if part.get("type") == "text"
             ]
-            return content, bool(result.get("isError", False))
+            return mcp_types.CallToolResult(
+                content=content,
+                isError=bool(result.get("isError", False)),
+            )
 
         # Register handlers by calling the decorators as functions.  This
         # avoids the ``Any`` propagation that the MCP SDK's untyped

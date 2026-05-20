@@ -46,11 +46,13 @@ from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import Catalog, load_catalog_yaml
+from contextweaver.routing.hydration import SchemaSource, hydrate_with_schema
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import ContextItem, ItemKind, Phase
 
 CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
+SCHEMAS_PATH = Path(__file__).parent / "tool_schemas.json"
 
 # The user-typed phrasing matters: a real agent would rephrase a vague
 # natural-language question into a tool-shaped query before routing. We
@@ -59,47 +61,6 @@ CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
 USER_TYPED_QUERY = "Why did customer C-12345's MRR drop last month?"
 ROUTING_QUERY = "Execute a BigQuery query to find MRR delta rows for customer C-12345"
 SELECTED_TOOL_ID = "bigquery.run_query"
-
-# The mocked upstream needs full JSON Schemas to "hydrate" — but only for the
-# selected tool. We deliberately hold a real schema for the selected tool and
-# **only** the selected tool, so the demo can show that schemas for the other
-# 59 catalog entries never enter the prompt at any phase.
-_FULL_SCHEMAS: dict[str, dict[str, Any]] = {
-    "bigquery.run_query": {
-        "type": "object",
-        "title": "bigquery_run_query",
-        "properties": {
-            "sql": {
-                "type": "string",
-                "description": "Standard-SQL BigQuery query.",
-            },
-            "project": {
-                "type": "string",
-                "description": "GCP project to bill the query to.",
-                "default": "ops-analytics-prod",
-            },
-            "max_results": {
-                "type": "integer",
-                "description": "Cap on returned rows.",
-                "default": 1000,
-                "minimum": 1,
-                "maximum": 100000,
-            },
-            "dry_run": {
-                "type": "boolean",
-                "description": "If true, return the query plan only.",
-                "default": False,
-            },
-            "labels": {
-                "type": "object",
-                "additionalProperties": {"type": "string"},
-                "description": "Free-form labels attached to the job.",
-            },
-        },
-        "required": ["sql"],
-        "additionalProperties": False,
-    },
-}
 
 
 def _mock_bigquery_result() -> dict[str, Any]:
@@ -213,8 +174,15 @@ def main() -> None:
     # 3. Call phase — hydrate ONLY the selected tool's schema.
     # ------------------------------------------------------------------
     _print_header("[2/5] Call phase — hydrate ONLY the selected tool's schema")
-    selected_schema = _FULL_SCHEMAS.get(chosen)
-    if selected_schema is None:
+    # The catalog YAML carries only routing-shaped metadata (name, tags,
+    # description). Full JSON Schemas live in a sidecar file and are merged
+    # in at hydration time by ``hydrate_with_schema`` (issue #261). In a
+    # production gateway this sidecar is whatever upstream MCP servers
+    # return from ``tools/list`` — same shape, same helper.
+    schemas = SchemaSource.from_json_file(SCHEMAS_PATH)
+    hydrated = hydrate_with_schema(catalog, chosen, schemas)
+    selected_schema = hydrated.args_schema
+    if not selected_schema:
         raise SystemExit(
             f"No schema registered for chosen tool {chosen!r}; the demo intent "
             "map is mis-aligned with the catalog."
