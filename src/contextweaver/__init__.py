@@ -1,12 +1,12 @@
-"""contextweaver — dynamic context management for tool-using AI agents.
+"""contextweaver â€” context firewall and tool router for tool-heavy AI agents.
 
 Two integrated engines:
 
-* **Context Engine** — phase-specific budgeted context compilation with a
+* **Context Engine** â€” phase-specific budgeted context compilation with a
   context firewall (raw tool outputs stored out-of-band; LLM sees summaries,
   handles, and structured extractions).
 
-* **Routing Engine** — bounded-choice navigation over large tool catalogs via
+* **Routing Engine** â€” bounded-choice navigation over large tool catalogs via
   a DAG + beam search + LLM-friendly choice cards.
 
 Quick start::
@@ -19,6 +19,8 @@ Quick start::
 """
 
 from __future__ import annotations
+from contextweaver._version import __version__  # noqa: F401
+
 
 from contextweaver import config, envelope, exceptions, profiles, protocols, types
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
@@ -115,11 +117,6 @@ from contextweaver.types import (
     ViewSpec,
 )
 
-try:
-    from importlib.metadata import version as _v
-    __version__ = _v("contextweaver")
-except Exception:
-    __version__ = "0.8.0"  # fallback
 __all__ = [
     # sub-modules
     "config",
