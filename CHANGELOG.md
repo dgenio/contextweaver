@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-20
+
 ### Added
 
+- **`ProxyRuntime(cache_stable=True)`** — new opt-in parameter that inserts a
+  cache-breakpoint marker between previously-seen and newly-routed choice cards,
+  enabling LLM prompt-cache hits across successive browse calls. Issue #283.
 - **CLI budget regression checks** (#276). New `contextweaver budget-check`
   command rebuilds an ingested session for a selected phase, compares the
   rendered prompt token count against `--max-tokens`, exits 1 on budget

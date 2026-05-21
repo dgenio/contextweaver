@@ -27,6 +27,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
 | `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
+| `_version.py` | Single-source version derived from `importlib.metadata`; fallback `"0.0.0+local"` |
+| `_demos.py` | Demo logic for the CLI `demo` subcommand (exempt from `print()` rule) |
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` |
 | `store/` | In-memory data stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`, `StoreBundle` |
 | `store/_sqlite_base.py` | Shared SQLite connection + migration scaffolding (WAL, `foreign_keys=ON`, `_contextweaver_schema_version` table). Reused by every SQLite-backed store (issue #174). |
@@ -125,7 +127,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 make fmt      # ruff format src/ tests/ examples/ scripts/
 make lint     # ruff check src/ tests/ examples/ scripts/
 make type     # mypy src/
-make test     # pytest --cov=contextweaver --cov-report=term-missing -q
+make test     # python -m pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures via the umbrella target)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
@@ -153,7 +155,7 @@ For command-selection rules and sequencing, see [docs/agent-context/workflows.md
 
 These are auto-reject in review. No exceptions.
 
-1. **No `print()` in library code.** Use hooks or logging. `__main__.py` (CLI) is exempt.
+1. **No `print()` in library code.** Use hooks or logging. `__main__.py` and `_demos.py` (CLI) are exempt.
 2. **No business logic in `__init__.py`.** Only re-exports allowed.
 
 ## Strong Patterns

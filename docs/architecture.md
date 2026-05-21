@@ -119,7 +119,7 @@ etc.) the agent can drilldown into without retrieving the full blob.
 
 ## Design principles
 
-- **Zero runtime dependencies** — stdlib-only, Python ≥ 3.10.
+- **Minimal core dependencies** — a small, audited set (`tiktoken`, `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, `rich`); Python ≥ 3.10.
 - **Deterministic** — tie-break by ID, sorted keys.
 - **Protocol-based** — all store and estimator interfaces are
   `typing.Protocol`, allowing custom implementations.

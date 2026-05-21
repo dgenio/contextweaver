@@ -109,6 +109,16 @@ class _UpstreamNameIndex:
     by_tool_id: dict[str, str] = field(default_factory=dict)
 
 
+# Sentinel ``ChoiceCard.id`` emitted between the seen-prefix and the new-suffix
+# when ``ProxyRuntime(cache_stable=True)`` reorders a browse response. The
+# marker is a real :class:`ChoiceCard` (``kind="internal"``) so it survives any
+# downstream serialisation that expects the same shape for every entry. The id
+# starts with a double underscore so it cannot collide with any canonical
+# ``tool_id`` per ``docs/gateway_spec.md`` §1.1 (which uses ``:`` separators
+# and a stricter character set).
+CACHE_BREAKPOINT_ID: str = "__cache_breakpoint__"
+
+
 class ProxyRuntime:
     """Shared core for the MCP proxy and gateway modes.
 
@@ -124,6 +134,20 @@ class ProxyRuntime:
         beam_width: Router beam width passed through to
             :class:`~contextweaver.routing.router.Router`.
         top_k: Maximum number of cards returned by :meth:`browse`.
+        cache_stable: When ``True``, :meth:`browse` reorders the returned
+            cards so previously-browsed-or-hydrated tools appear first in
+            ascending-``id`` order, followed by a :data:`CACHE_BREAKPOINT_ID`
+            marker card, followed by newly-discovered tools (also
+            ascending-``id`` order). This produces a byte-stable prompt
+            prefix across repeated browses in the same session — see
+            ``docs/gateway_spec.md`` §5 (cache-stable browse) and the
+            Webfuse MCP cheat sheet pattern referenced from
+            ``docs/integration_mcp.md``. Default ``False`` preserves the
+            §2.5 score-desc / id-asc ordering. Ranking metadata is
+            preserved on each :class:`ChoiceCard` via ``score`` so
+            downstream consumers can still rank after the fact —
+            **the first emitted card is not guaranteed to be the
+            highest-ranked card when this flag is on**.
     """
 
     def __init__(
@@ -135,6 +159,7 @@ class ProxyRuntime:
         tree_builder: TreeBuilder | None = None,
         beam_width: int = 3,
         top_k: int = 10,
+        cache_stable: bool = False,
     ) -> None:
         self._upstream = upstream
         self._mode = mode
@@ -142,6 +167,15 @@ class ProxyRuntime:
         self._tree_builder = tree_builder or TreeBuilder()
         self._beam_width = beam_width
         self._top_k = top_k
+        self._cache_stable = cache_stable
+        self._browsed_tool_ids: set[str] = set()
+        # First-sighting frozen card content keyed by ``tool_id``. Used by
+        # ``_maybe_cache_stable`` so the byte-stable prefix really is
+        # byte-stable: subsequent browses with different queries produce
+        # different scores for the same item, which would otherwise drift
+        # the serialised prefix. The cache freezes that content the first
+        # time a card is emitted.
+        self._cached_cards: dict[str, ChoiceCard] = {}
         self._catalog: Catalog = Catalog()
         self._graph: ChoiceGraph | None = None
         self._router: Router | None = None
@@ -167,6 +201,20 @@ class ProxyRuntime:
         """Return the per-session :class:`ContextManager`."""
         return self._context_manager
 
+    @property
+    def cache_stable(self) -> bool:
+        """Whether browse responses are reordered for a byte-stable prefix."""
+        return self._cache_stable
+
+    @property
+    def browsed_tool_ids(self) -> frozenset[str]:
+        """Snapshot of every ``tool_id`` that has been browsed or hydrated.
+
+        Only populated when :attr:`cache_stable` is ``True``. Returned as a
+        :class:`frozenset` so callers cannot mutate runtime state through it.
+        """
+        return frozenset(self._browsed_tool_ids)
+
     # ------------------------------------------------------------------
     # Catalog management
     # ------------------------------------------------------------------
@@ -189,6 +237,9 @@ class ProxyRuntime:
         return self._register_tool_defs(tool_defs)
 
     def _register_tool_defs(self, tool_defs: list[dict[str, Any]]) -> int:
+        # Invalidate cache-stable state: tool definitions may have changed.
+        self._cached_cards.clear()
+        self._browsed_tool_ids.clear()
         items: list[SelectableItem] = []
         upstream_index: dict[str, str] = {}
         raw_defs: dict[str, dict[str, Any]] = {}
@@ -272,7 +323,7 @@ class ProxyRuntime:
             max_cards=effective_top_k,
             scores=scores,
         )
-        return bound_browse_response(cards)
+        return self._maybe_cache_stable(bound_browse_response(cards))
 
     def _browse_by_path(self, path: str) -> list[ChoiceCard] | GatewayError:
         if self._graph is None:
@@ -307,7 +358,7 @@ class ProxyRuntime:
                         namespace=child_id.split(":", 1)[0] if ":" in child_id else "",
                     )
                 )
-        return bound_browse_response(cards)
+        return self._maybe_cache_stable(bound_browse_response(cards))
 
     # ------------------------------------------------------------------
     # tool_hydrate (§4.1)
@@ -316,18 +367,86 @@ class ProxyRuntime:
     def hydrate(self, tool_id: str) -> HydrationResult | GatewayError:
         """Return the full schema for *tool_id* (§4.3).
 
+        When :attr:`cache_stable` is ``True``, a successful hydration is
+        recorded so subsequent :meth:`browse` calls will surface *tool_id*
+        in the byte-stable prefix.
+
         Returns:
             A :class:`HydrationResult` or :class:`GatewayError` with code
             ``HYDRATE_FAILED`` when *tool_id* is unknown.
         """
         try:
-            return self._catalog.hydrate(tool_id)
+            result = self._catalog.hydrate(tool_id)
         except ItemNotFoundError as exc:
             return GatewayError(
                 code="HYDRATE_FAILED",
                 message=str(exc),
                 path=tool_id,
             )
+        if self._cache_stable:
+            self._browsed_tool_ids.add(tool_id)
+        return result
+
+    # ------------------------------------------------------------------
+    # cache-stable browse helper (§5)
+    # ------------------------------------------------------------------
+
+    def _maybe_cache_stable(
+        self, cards: list[ChoiceCard] | GatewayError
+    ) -> list[ChoiceCard] | GatewayError:
+        """Pass *cards* through the cache-stable reordering if enabled.
+
+        No-op when :attr:`cache_stable` is ``False`` or when *cards* is a
+        :class:`GatewayError`. When enabled: split *cards* into
+        previously-seen vs newly-discovered, sort each half by ``id``
+        ascending, insert a :data:`CACHE_BREAKPOINT_ID` marker if both
+        halves are non-empty, and record the union back into the
+        session's browsed-id set.
+
+        ``ChoiceCard.score`` is preserved on every card so downstream
+        consumers can re-rank after the fact — the marker carries no
+        score (``None``) and is the explicit boundary between the
+        cache-stable prefix and the score-rankable suffix.
+        """
+        if not self._cache_stable or isinstance(cards, GatewayError):
+            return cards
+        # Snapshot the seen-set BEFORE this call so the partition is
+        # well-defined regardless of what we add below.
+        previously_seen = frozenset(self._browsed_tool_ids)
+        # Freeze first-sighting card content. The cache then guarantees that
+        # subsequent browses with different queries still emit byte-identical
+        # bytes for ids in the prefix, even though the router would have
+        # produced different ``score`` values for them on this call.
+        for card in cards:
+            self._cached_cards.setdefault(card.id, card)
+        seen_cards = sorted(
+            (self._cached_cards[c.id] for c in cards if c.id in previously_seen),
+            key=lambda c: c.id,
+        )
+        new_cards = sorted(
+            (c for c in cards if c.id not in previously_seen),
+            key=lambda c: c.id,
+        )
+        self._browsed_tool_ids.update(c.id for c in cards)
+        if seen_cards and new_cards:
+            # Reserve one slot for the marker so total never exceeds top_k.
+            max_new = max(0, self._top_k - len(seen_cards) - 1)
+            new_cards = new_cards[:max_new]
+            if not new_cards:
+                return seen_cards
+            marker = ChoiceCard(
+                id=CACHE_BREAKPOINT_ID,
+                name="cache_breakpoint",
+                description=(
+                    "Cache-stable prefix above; newly-discovered tools below "
+                    "(read ChoiceCard.score for rank)."
+                ),
+                kind="internal",
+            )
+            return [*seen_cards, marker, *new_cards]
+        # Defensive: ensure total never exceeds top_k even without marker.
+        combined = [*seen_cards, *new_cards]
+        return combined[: self._top_k]
 
     # ------------------------------------------------------------------
     # tool_execute (§4.2 + §4.4)
@@ -396,6 +515,8 @@ class ProxyRuntime:
                     label=f"text result from {tool_id}",
                 )
         envelope.provenance.setdefault("tool_id", tool_id)
+        if self._cache_stable:
+            self._browsed_tool_ids.add(tool_id)
         return envelope
 
     # ------------------------------------------------------------------

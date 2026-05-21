@@ -62,14 +62,18 @@ plugins:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Showcase: showcase.md
+  - Where it fits: comparison.md
+  - FAQ: faq.md
   - Which pattern fits?: which_pattern.md
   - Context Firewall: context_firewall.md
   - Tool Router: tool_router.md
   - Concepts: concepts.md
-  - How contextweaver Fits: interop.md
+  - How contextweaver Fits (deeper): interop.md
   - Cookbook: cookbook.md
   - Architectures:
       - Overview: architectures/index.md
+      - MCP Context Gateway: architectures/mcp_context_gateway.md
       - Slack ops bot: architectures/slack_ops_bot.md
       - Code-review bot: architectures/code_review_bot.md
       - Voice agent: architectures/voice_agent.md

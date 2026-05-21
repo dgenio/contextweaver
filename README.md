@@ -73,7 +73,7 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
-Cost:         42–75% lower [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
+Cost:         41.6%–74.5% fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
 ```
 
 [^naive-baseline]: Measured against the "concatenate all tool schemas + full
@@ -255,8 +255,6 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based agent crews with bounded tool shortlists |
-| External memory (Mem0) | [Guide](docs/integration_memory.md) | Plug an existing Mem0 deployment as the `EpisodicStore` / `FactStore` |
 
 ---
 
@@ -284,7 +282,7 @@ techniques, and performance optimisation tips.
 
 contextweaver is built for production use with comprehensive quality gates:
 
-- **600+ passing tests** across all modules — context pipeline, routing engine, firewall,
+- **1100+ passing tests** across all modules — context pipeline, routing engine, firewall,
   adapters, stores, CLI, sensitivity enforcement
 - **mypy strict** type checking — zero errors across all source files
 - **ruff clean** linting — zero warnings
@@ -316,7 +314,7 @@ Every architectural choice was made for a reason:
 
 | Decision | Reason |
 |---|---|
-| **Zero runtime dependencies** | No version conflicts, no supply-chain risks, no bloat. Works in any Python 3.10+ environment. |
+| **Minimal core dependencies** | A small, audited set of widely-used deps (`tiktoken`, `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, `rich`); no heavy ML / cloud-SDK packages pulled in by default. |
 | **Protocol-based interfaces** | `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` are `typing.Protocol` — swap backends without forking. |
 | **Async-first context engine** | Async-compatible compilation API for real-time integrations; `build_sync()` wrappers for synchronous callers, with room for future non-blocking execution. |
 | **Phase-specific token budgets** | Route / call / interpret / answer phases each get their own budget — no one-size-fits-all truncation. |
@@ -324,8 +322,8 @@ Every architectural choice was made for a reason:
 | **Dependency closure** | `parent_id` chains keep tool results coherent — tool calls are never separated from their results. |
 
 > These aren't accidental features. They are design decisions optimized for reliability,
-> extensibility, and production use. Zero dependencies means you can adopt contextweaver
-> without disrupting your existing stack.
+> extensibility, and production use. A minimal, audited core-dependency set means you
+> can adopt contextweaver without disrupting your existing stack.
 
 See [docs/architecture.md](docs/architecture.md) for full pipeline detail and design rationale.
 
@@ -387,8 +385,6 @@ contextweaver works with any LLM provider and any agent framework:
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based agent crews with bounded tool shortlists |
-| External memory (Mem0) | [Guide](docs/integration_memory.md) | Plug an existing Mem0 deployment as the `EpisodicStore` / `FactStore` |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -453,7 +449,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 - Routing Engine: Catalog, DAG builder, beam-search router, choice cards
 - Protocol adapters: MCP (full content types, structured content, output schemas) and A2A
 - Stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` with protocol-based interfaces
-- 600+ passing tests, mypy strict, ruff clean, minimal core dependencies
+- 1100+ passing tests, mypy strict, ruff clean, minimal core dependencies
 
 **v0.2 (🚧 In Progress — Q2 2026)**
 
@@ -523,8 +519,6 @@ contextweaver route --graph g.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
-contextweaver stats --session session.json --format text
-contextweaver budget-check --session session.json --phase answer --max-tokens 4000
 ```
 
 ## Examples
@@ -541,6 +535,7 @@ contextweaver budget-check --session session.json --phase answer --max-tokens 40
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 | `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
 | `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
+| `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
 | `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
 ```bash
@@ -572,12 +567,8 @@ to any LLM or framework. See dedicated guides for
 [LlamaIndex](docs/integration_llamaindex.md),
 [LangChain + LangGraph](docs/integration_langchain.md),
 [OpenAI Agents SDK](docs/integration_openai_adk.md),
-[Google ADK / Vertex AI](docs/integration_google_adk.md),
-[Pipecat](docs/integration_pipecat.md), and
-[CrewAI](docs/integration_crewai.md).  Already running a long-lived
-memory layer? Adapt
-[Mem0](docs/integration_memory.md) onto the `EpisodicStore` / `FactStore`
-protocols.  If your runtime isn't listed, the
+[Google ADK / Vertex AI](docs/integration_google_adk.md), and
+[Pipecat](docs/integration_pipecat.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 

@@ -1,0 +1,102 @@
+# MCP Context Gateway reference architecture — mocked tool catalog.
+#
+# 60 tools across 10 namespaces. Loaded via
+# contextweaver.routing.catalog.load_catalog_yaml() in main.py and registered
+# into a Catalog before the routing graph is built. The catalog is wider than
+# the Slack ops bot's (48) and is laid out to exercise namespaced routing.
+#
+# Namespaces:
+#   analytics    — events, funnels, dashboards, metrics, retention
+#   bigquery     — SQL execution, dataset / table listing, dry-runs
+#   billing      — subscriptions, invoices, refunds, plan changes
+#   crm          — accounts, contacts, opportunities, notes
+#   docs         — runbook search, doc fetch, code search
+#   email        — search, send, threads, drafts
+#   github       — issues, PRs, comments, repos
+#   linear       — tickets, projects, comments, status changes
+#   pagerduty    — incidents, schedules, acks, escalations
+#   slack        — search, post, dm, threads
+#
+# Each entry is a SelectableItem dict. Tools that mutate state set
+# side_effects: true so a production deployment could refuse to call them
+# automatically (Router.route(..., exclude_tags=...)).
+
+# --- analytics ----------------------------------------------------------
+- {id: analytics.events.query,        kind: tool, name: analytics_events_query,     namespace: analytics, description: "Query the events table for a customer", tags: [analytics, events, read], side_effects: false, cost_hint: 0.30}
+- {id: analytics.events.track,        kind: tool, name: analytics_events_track,     namespace: analytics, description: "Track a custom analytics event",        tags: [analytics, events, write], side_effects: true,  cost_hint: 0.10}
+- {id: analytics.funnels.compute,     kind: tool, name: analytics_funnels_compute,  namespace: analytics, description: "Compute a funnel report",               tags: [analytics, funnel],        side_effects: false, cost_hint: 0.50}
+- {id: analytics.dashboards.get,      kind: tool, name: analytics_dashboards_get,   namespace: analytics, description: "Fetch a saved analytics dashboard",     tags: [analytics, dashboards],    side_effects: false, cost_hint: 0.20}
+- {id: analytics.metrics.define,      kind: tool, name: analytics_metrics_define,   namespace: analytics, description: "Define a custom analytics metric",     tags: [analytics, metrics, write], side_effects: true, cost_hint: 0.10}
+- {id: analytics.retention.cohort,    kind: tool, name: analytics_retention_cohort, namespace: analytics, description: "Compute a cohort retention curve",      tags: [analytics, retention],     side_effects: false, cost_hint: 0.50}
+
+# --- bigquery -----------------------------------------------------------
+- {id: bigquery.run_query,            kind: tool, name: bigquery_run_query,         namespace: bigquery,  description: "Execute a BigQuery SQL query and return rows", tags: [bigquery, sql, read],     side_effects: false, cost_hint: 0.50}
+- {id: bigquery.dry_run,              kind: tool, name: bigquery_dry_run,           namespace: bigquery,  description: "Estimate cost of a BigQuery query",       tags: [bigquery, sql, plan],    side_effects: false, cost_hint: 0.05}
+- {id: bigquery.list_datasets,        kind: tool, name: bigquery_list_datasets,     namespace: bigquery,  description: "List BigQuery datasets in a project",     tags: [bigquery, schema],       side_effects: false, cost_hint: 0.10}
+- {id: bigquery.list_tables,          kind: tool, name: bigquery_list_tables,       namespace: bigquery,  description: "List tables in a BigQuery dataset",       tags: [bigquery, schema],       side_effects: false, cost_hint: 0.10}
+- {id: bigquery.describe_table,       kind: tool, name: bigquery_describe_table,    namespace: bigquery,  description: "Return schema and stats for a BQ table",  tags: [bigquery, schema],       side_effects: false, cost_hint: 0.10}
+- {id: bigquery.export_table,         kind: tool, name: bigquery_export_table,      namespace: bigquery,  description: "Export a BigQuery table to Cloud Storage",tags: [bigquery, export, write],side_effects: true,  cost_hint: 0.60}
+
+# --- billing ------------------------------------------------------------
+- {id: billing.subscriptions.list,    kind: tool, name: billing_subscriptions_list, namespace: billing,   description: "List active subscriptions for an account", tags: [billing, subscriptions, read], side_effects: false, cost_hint: 0.20}
+- {id: billing.subscriptions.cancel,  kind: tool, name: billing_subscriptions_cancel, namespace: billing, description: "Cancel an active subscription",            tags: [billing, subscriptions, write], side_effects: true,  cost_hint: 0.40}
+- {id: billing.invoices.list,         kind: tool, name: billing_invoices_list,      namespace: billing,   description: "List recent invoices for an account",     tags: [billing, invoices, read], side_effects: false, cost_hint: 0.20}
+- {id: billing.invoices.refund,       kind: tool, name: billing_invoices_refund,    namespace: billing,   description: "Issue a refund for an invoice",           tags: [billing, refund, write], side_effects: true,  cost_hint: 0.50}
+- {id: billing.plans.change,          kind: tool, name: billing_plans_change,       namespace: billing,   description: "Change the active plan on a subscription",tags: [billing, plans, write],  side_effects: true,  cost_hint: 0.40}
+- {id: billing.mrr.history,           kind: tool, name: billing_mrr_history,        namespace: billing,   description: "Return MRR change history for an account",tags: [billing, mrr, read],     side_effects: false, cost_hint: 0.30}
+
+# --- crm ----------------------------------------------------------------
+- {id: crm.accounts.get,              kind: tool, name: crm_accounts_get,           namespace: crm,       description: "Fetch a CRM account by id",               tags: [crm, accounts, read],    side_effects: false, cost_hint: 0.10}
+- {id: crm.accounts.search,           kind: tool, name: crm_accounts_search,        namespace: crm,       description: "Search CRM accounts by name or domain",   tags: [crm, accounts, search],  side_effects: false, cost_hint: 0.20}
+- {id: crm.contacts.list,             kind: tool, name: crm_contacts_list,          namespace: crm,       description: "List contacts on a CRM account",          tags: [crm, contacts, read],    side_effects: false, cost_hint: 0.10}
+- {id: crm.notes.create,              kind: tool, name: crm_notes_create,           namespace: crm,       description: "Attach a note to a CRM account",          tags: [crm, notes, write],      side_effects: true,  cost_hint: 0.20}
+- {id: crm.opportunities.list,        kind: tool, name: crm_opportunities_list,     namespace: crm,       description: "List opportunities on an account",        tags: [crm, opportunities, read], side_effects: false, cost_hint: 0.20}
+- {id: crm.opportunities.update,      kind: tool, name: crm_opportunities_update,   namespace: crm,       description: "Update an opportunity's stage or amount", tags: [crm, opportunities, write], side_effects: true, cost_hint: 0.30}
+
+# --- docs ---------------------------------------------------------------
+- {id: docs.runbooks.search,          kind: tool, name: docs_runbooks_search,       namespace: docs,      description: "Search internal runbook docs",            tags: [docs, runbooks, search], side_effects: false, cost_hint: 0.20}
+- {id: docs.runbooks.fetch,           kind: tool, name: docs_runbooks_fetch,        namespace: docs,      description: "Fetch a runbook page by id",              tags: [docs, runbooks, read],   side_effects: false, cost_hint: 0.10}
+- {id: docs.code.search,              kind: tool, name: docs_code_search,           namespace: docs,      description: "Search internal source code",             tags: [docs, code, search],     side_effects: false, cost_hint: 0.30}
+- {id: docs.code.fetch,               kind: tool, name: docs_code_fetch,            namespace: docs,      description: "Fetch a source file by path",             tags: [docs, code, read],       side_effects: false, cost_hint: 0.10}
+- {id: docs.api.fetch,                kind: tool, name: docs_api_fetch,             namespace: docs,      description: "Fetch an API reference page",             tags: [docs, api, read],        side_effects: false, cost_hint: 0.10}
+- {id: docs.terms.lookup,             kind: tool, name: docs_terms_lookup,          namespace: docs,      description: "Look up an internal glossary term",       tags: [docs, glossary],         side_effects: false, cost_hint: 0.05}
+
+# --- email --------------------------------------------------------------
+- {id: email.search,                  kind: tool, name: email_search,               namespace: email,     description: "Search emails by sender, subject, body",  tags: [email, search],          side_effects: false, cost_hint: 0.20}
+- {id: email.thread.fetch,            kind: tool, name: email_thread_fetch,         namespace: email,     description: "Fetch a full email thread",               tags: [email, thread, read],    side_effects: false, cost_hint: 0.10}
+- {id: email.send,                    kind: tool, name: email_send,                 namespace: email,     description: "Send an email",                           tags: [email, send, write],     side_effects: true,  cost_hint: 0.30}
+- {id: email.draft.create,            kind: tool, name: email_draft_create,         namespace: email,     description: "Create an email draft",                   tags: [email, draft, write],    side_effects: true,  cost_hint: 0.20}
+- {id: email.label.apply,             kind: tool, name: email_label_apply,          namespace: email,     description: "Apply a label to an email thread",        tags: [email, label, write],    side_effects: true,  cost_hint: 0.10}
+- {id: email.archive,                 kind: tool, name: email_archive,              namespace: email,     description: "Archive a thread",                        tags: [email, archive, write],  side_effects: true,  cost_hint: 0.10}
+
+# --- github -------------------------------------------------------------
+- {id: github.issues.create,          kind: tool, name: github_issues_create,       namespace: github,    description: "Open a new GitHub issue",                 tags: [github, issues, write],  side_effects: true,  cost_hint: 0.30}
+- {id: github.issues.search,          kind: tool, name: github_issues_search,       namespace: github,    description: "Search issues in a GitHub repo",          tags: [github, issues, search], side_effects: false, cost_hint: 0.20}
+- {id: github.prs.list,               kind: tool, name: github_prs_list,            namespace: github,    description: "List recent pull requests on a repo",     tags: [github, prs, read],      side_effects: false, cost_hint: 0.20}
+- {id: github.prs.review,             kind: tool, name: github_prs_review,          namespace: github,    description: "Submit a review on a pull request",       tags: [github, prs, write],     side_effects: true,  cost_hint: 0.30}
+- {id: github.commits.search,         kind: tool, name: github_commits_search,      namespace: github,    description: "Search commits across repos",             tags: [github, commits, search],side_effects: false, cost_hint: 0.30}
+- {id: github.repos.dispatch,         kind: tool, name: github_repos_dispatch,      namespace: github,    description: "Trigger a repository_dispatch event",     tags: [github, dispatch, write],side_effects: true,  cost_hint: 0.40}
+
+# --- linear -------------------------------------------------------------
+- {id: linear.tickets.create,         kind: tool, name: linear_tickets_create,      namespace: linear,    description: "Create a Linear ticket",                  tags: [linear, tickets, write], side_effects: true,  cost_hint: 0.30}
+- {id: linear.tickets.search,         kind: tool, name: linear_tickets_search,      namespace: linear,    description: "Search Linear tickets",                   tags: [linear, tickets, search],side_effects: false, cost_hint: 0.20}
+- {id: linear.tickets.update,         kind: tool, name: linear_tickets_update,      namespace: linear,    description: "Update a Linear ticket's status",         tags: [linear, tickets, write], side_effects: true,  cost_hint: 0.20}
+- {id: linear.projects.list,          kind: tool, name: linear_projects_list,       namespace: linear,    description: "List Linear projects in a team",          tags: [linear, projects, read], side_effects: false, cost_hint: 0.10}
+- {id: linear.comments.add,           kind: tool, name: linear_comments_add,        namespace: linear,    description: "Add a comment to a Linear ticket",        tags: [linear, comments, write],side_effects: true,  cost_hint: 0.20}
+- {id: linear.workflow.transition,    kind: tool, name: linear_workflow_transition, namespace: linear,    description: "Move a ticket through a workflow state",  tags: [linear, workflow, write],side_effects: true,  cost_hint: 0.20}
+
+# --- pagerduty ----------------------------------------------------------
+- {id: pagerduty.incidents.list,      kind: tool, name: pagerduty_incidents_list,   namespace: pagerduty, description: "List active PagerDuty incidents",         tags: [pagerduty, incidents, read],     side_effects: false, cost_hint: 0.10}
+- {id: pagerduty.incidents.ack,       kind: tool, name: pagerduty_incidents_ack,    namespace: pagerduty, description: "Acknowledge a PagerDuty incident",        tags: [pagerduty, incidents, write],    side_effects: true,  cost_hint: 0.20}
+- {id: pagerduty.incidents.resolve,   kind: tool, name: pagerduty_incidents_resolve, namespace: pagerduty, description: "Resolve a PagerDuty incident",            tags: [pagerduty, incidents, write],    side_effects: true,  cost_hint: 0.20}
+- {id: pagerduty.schedules.get,       kind: tool, name: pagerduty_schedules_get,    namespace: pagerduty, description: "Get the on-call schedule for a team",     tags: [pagerduty, schedules, read],     side_effects: false, cost_hint: 0.10}
+- {id: pagerduty.escalations.list,    kind: tool, name: pagerduty_escalations_list, namespace: pagerduty, description: "List escalation policies",                tags: [pagerduty, escalations, read],   side_effects: false, cost_hint: 0.10}
+- {id: pagerduty.alerts.silence,      kind: tool, name: pagerduty_alerts_silence,   namespace: pagerduty, description: "Silence a noisy alert source",            tags: [pagerduty, alerts, write],       side_effects: true,  cost_hint: 0.20}
+
+# --- slack --------------------------------------------------------------
+- {id: slack.messages.search,         kind: tool, name: slack_messages_search,      namespace: slack,     description: "Search messages across Slack channels",   tags: [slack, messages, search], side_effects: false, cost_hint: 0.20}
+- {id: slack.channels.post,           kind: tool, name: slack_channels_post,        namespace: slack,     description: "Post a message to a Slack channel",       tags: [slack, post, write],     side_effects: true,  cost_hint: 0.30}
+- {id: slack.dm.send,                 kind: tool, name: slack_dm_send,              namespace: slack,     description: "Send a direct message to a user",         tags: [slack, dm, write],       side_effects: true,  cost_hint: 0.30}
+- {id: slack.threads.fetch,           kind: tool, name: slack_threads_fetch,        namespace: slack,     description: "Fetch a Slack thread by parent ts",       tags: [slack, thread, read],    side_effects: false, cost_hint: 0.10}
+- {id: slack.users.lookup,            kind: tool, name: slack_users_lookup,         namespace: slack,     description: "Look up a Slack user by email or handle", tags: [slack, users, read],     side_effects: false, cost_hint: 0.10}
+- {id: slack.reactions.add,           kind: tool, name: slack_reactions_add,        namespace: slack,     description: "Add a reaction emoji to a message",       tags: [slack, reactions, write],side_effects: true,  cost_hint: 0.10}
