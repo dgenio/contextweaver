@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-05-21
+
+### Fixed
+
+- **Benchmark scorecard review follow-up** — addressed post-merge Copilot
+  review findings on the scorecard transparency suite (PR #299).
+- **Comparison table version reference** — updated stale `v0.8.0` reference
+  in the comparison table to `v0.9.0` (PR #298).
+- **Mixed-catalog docstring** — corrected inline docstring on the mixed-
+  namespace catalog helper added in the scorecard transparency suite.
+
+### Documentation
+
+- **Routing query behaviour** — clarified how the Router interprets the
+  query string when items share prefix tokens; contributed by
+  [@RounakSharma2005](https://github.com/RounakSharma2005) (PR #286).
+- **AGENTS.md module map** — added `extras/embeddings_hashing.py`
+  (`HashingEmbeddingBackend`) to the module map; it shipped in v0.9.0 but
+  the entry was omitted from the release commit.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added
