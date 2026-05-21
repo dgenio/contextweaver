@@ -40,6 +40,7 @@ from typing import Any
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
+from contextweaver.exceptions import CatalogError
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.hydration import SchemaSource, hydrate_with_schema
@@ -100,9 +101,11 @@ def _build_catalog_from_mcp_tools(tool_defs: list[dict[str, Any]]) -> Catalog:
         # Skip the rare case where the same tool name appears twice in
         # a snapshot — the upstream wire contract forbids duplicates,
         # but defensive code makes the example robust to snapshot drift.
+        # Narrow the catch to CatalogError so adapter regressions or other
+        # unexpected bugs surface loudly instead of silently dropping tools.
         try:
             catalog.register(item)
-        except Exception:  # noqa: BLE001
+        except CatalogError:
             continue
     return catalog
 

@@ -103,13 +103,31 @@ class SchemaSource:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
             raise CatalogError(f"Invalid JSON in schema-source file {path!s}: {exc}") from exc
-        if isinstance(data, dict) and "tools" in data and isinstance(data["tools"], list):
-            return cls.from_mcp_tools(data["tools"])
-        if isinstance(data, dict):
-            return cls(data)
-        raise CatalogError(
-            f"Schema-source file {path!s} must be a JSON object (got {type(data).__name__})"
-        )
+        if not isinstance(data, dict):
+            raise CatalogError(
+                f"Schema-source file {path!s} must be a JSON object (got {type(data).__name__})"
+            )
+        if "tools" in data:
+            tools = data["tools"]
+            if not isinstance(tools, list):
+                raise CatalogError(
+                    f"Schema-source file {path!s} has a 'tools' key whose value is "
+                    f"{type(tools).__name__}, expected a list of MCP tool defs. "
+                    "If you meant the flat-mapping shape, remove the 'tools' key."
+                )
+            return cls.from_mcp_tools(tools)
+        for key, value in data.items():
+            if not isinstance(key, str):
+                raise CatalogError(
+                    f"Schema-source file {path!s} has a non-string key "
+                    f"({type(key).__name__}); flat-mapping keys must be tool ids."
+                )
+            if not isinstance(value, Mapping):
+                raise CatalogError(
+                    f"Schema-source file {path!s} entry {key!r} must be a JSON object "
+                    f"(got {type(value).__name__})."
+                )
+        return cls(data)
 
     @classmethod
     def from_mcp_tools(cls, tool_defs: Iterable[Mapping[str, Any]]) -> SchemaSource:

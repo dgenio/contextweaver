@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interpret a 2-tuple as `(unstructured, structuredContent)` and reject
   the `bool` half via JSON-schema validation, breaking the live
   transport path. Surfaced while landing #260.
+- **`SchemaSource.from_json_file` input validation** — explicitly
+  validates the flat-mapping shape (string keys, mapping values) and
+  rejects `{"tools": <non-list>}` (a common user typo) with a clear
+  `CatalogError` instead of falling through to the flat-mapping path
+  or raising a raw `TypeError`/`ValueError` from `dict()`. Honors the
+  documented `Raises: CatalogError` contract.
+- **Real-catalog example no longer swallows unexpected errors** —
+  `_build_catalog_from_mcp_tools` in
+  `examples/architectures/mcp_context_gateway/main_real.py` now narrows
+  the catch to `CatalogError` (duplicate ids) so adapter regressions
+  and other bugs surface loudly instead of silently dropping tools.
 
 ## [0.9.0] - 2026-05-20
 

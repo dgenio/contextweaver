@@ -138,6 +138,36 @@ def test_from_json_file_non_object_top_level_raises(tmp_path: Path) -> None:
         SchemaSource.from_json_file(path)
 
 
+def test_from_json_file_tools_key_with_non_list_raises_catalog_error(tmp_path: Path) -> None:
+    # Common user typo: {"tools": {...}} instead of {"tools": [...]}.
+    # Must not silently fall through to the flat-mapping path (where "tools"
+    # would be treated as a tool id with a dict value).
+    path = tmp_path / "bad_tools.json"
+    path.write_text(json.dumps({"tools": {"name": "oops"}}), encoding="utf-8")
+    with pytest.raises(CatalogError, match="'tools' key"):
+        SchemaSource.from_json_file(path)
+
+
+def test_from_json_file_flat_mapping_with_non_mapping_value_raises_catalog_error(
+    tmp_path: Path,
+) -> None:
+    # Without validation the constructor would raise raw ValueError from dict("oops"),
+    # which violates the documented Raises: CatalogError contract.
+    path = tmp_path / "bad_value.json"
+    path.write_text(json.dumps({"some.tool": "oops"}), encoding="utf-8")
+    with pytest.raises(CatalogError, match="some.tool"):
+        SchemaSource.from_json_file(path)
+
+
+def test_from_json_file_flat_mapping_with_int_value_raises_catalog_error(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bad_int.json"
+    path.write_text(json.dumps({"some.tool": 123}), encoding="utf-8")
+    with pytest.raises(CatalogError, match="some.tool"):
+        SchemaSource.from_json_file(path)
+
+
 # ---------------------------------------------------------------------------
 # SchemaSource — from_mcp_tools
 # ---------------------------------------------------------------------------
