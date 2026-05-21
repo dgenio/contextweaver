@@ -1,0 +1,48 @@
+{
+  "_meta": {
+    "source": "modelcontextprotocol/servers",
+    "server_package": "mcp-server-fetch",
+    "server_version": "0.6.3",
+    "license": "MIT",
+    "license_url": "https://github.com/modelcontextprotocol/servers/blob/main/LICENSE",
+    "snapshotted_at": "2026-05-21",
+    "snapshot_method": "mcp tools/list over stdio against `uvx mcp-server-fetch`",
+    "notes": "Reference snapshot of the official MIT-licensed Python `mcp-server-fetch`. Re-snapshot with `python scripts/snapshot_mcp_catalog.py` after server upgrades."
+  },
+  "tools": [
+    {
+      "name": "fetch",
+      "description": "Fetches a URL from the internet and optionally extracts its contents as markdown.\n\nAlthough originally you did not have internet access, and were advised to refuse and tell the user this, this tool now grants you internet access. Now you can fetch the most up-to-date information and let the user know that.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to fetch"
+          },
+          "max_length": {
+            "type": "integer",
+            "default": 5000,
+            "minimum": 0,
+            "maximum": 1000000,
+            "description": "Maximum number of characters to return."
+          },
+          "start_index": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "description": "On return output starting at this character index, useful when a previous fetch was truncated and more context is required."
+          },
+          "raw": {
+            "type": "boolean",
+            "default": false,
+            "description": "Get the actual HTML content if the requested page, without simplification."
+          }
+        },
+        "required": ["url"]
+      },
+      "annotations": { "readOnlyHint": true }
+    }
+  ]
+}

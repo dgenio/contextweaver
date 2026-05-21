@@ -1,0 +1,161 @@
+{
+  "_meta": {
+    "source": "modelcontextprotocol/servers",
+    "server_package": "mcp-server-git",
+    "server_version": "0.7.2",
+    "license": "MIT",
+    "license_url": "https://github.com/modelcontextprotocol/servers/blob/main/LICENSE",
+    "snapshotted_at": "2026-05-21",
+    "snapshot_method": "mcp tools/list over stdio against `uvx mcp-server-git --repository .`",
+    "notes": "Reference snapshot of the official MIT-licensed Python `mcp-server-git`. Re-snapshot with `python scripts/snapshot_mcp_catalog.py` after server upgrades."
+  },
+  "tools": [
+    {
+      "name": "git_status",
+      "description": "Shows the working tree status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string", "description": "Path to git repository" }
+        },
+        "required": ["repo_path"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "git_diff_unstaged",
+      "description": "Shows changes in the working directory that are not yet staged",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" }
+        },
+        "required": ["repo_path"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "git_diff_staged",
+      "description": "Shows changes that are staged for commit",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" }
+        },
+        "required": ["repo_path"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "git_diff",
+      "description": "Shows differences between branches or commits",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "target": { "type": "string", "description": "Target branch or commit to compare with" }
+        },
+        "required": ["repo_path", "target"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "git_commit",
+      "description": "Records changes to the repository",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "message": { "type": "string", "description": "Commit message" }
+        },
+        "required": ["repo_path", "message"]
+      }
+    },
+    {
+      "name": "git_add",
+      "description": "Adds file contents to the staging area",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["repo_path", "files"]
+      }
+    },
+    {
+      "name": "git_reset",
+      "description": "Unstages all staged changes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" }
+        },
+        "required": ["repo_path"]
+      },
+      "annotations": { "destructiveHint": true }
+    },
+    {
+      "name": "git_log",
+      "description": "Shows the commit logs",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "max_count": { "type": "number", "default": 10 }
+        },
+        "required": ["repo_path"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "git_create_branch",
+      "description": "Creates a new branch from an optional base branch",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "branch_name": { "type": "string" },
+          "base_branch": { "type": "string" }
+        },
+        "required": ["repo_path", "branch_name"]
+      }
+    },
+    {
+      "name": "git_checkout",
+      "description": "Switches branches",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "branch_name": { "type": "string" }
+        },
+        "required": ["repo_path", "branch_name"]
+      }
+    },
+    {
+      "name": "git_show",
+      "description": "Shows the contents of a commit",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" },
+          "revision": { "type": "string" }
+        },
+        "required": ["repo_path", "revision"]
+      },
+      "annotations": { "readOnlyHint": true }
+    },
+    {
+      "name": "git_init",
+      "description": "Initialize a new Git repository",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repo_path": { "type": "string" }
+        },
+        "required": ["repo_path"]
+      }
+    }
+  ]
+}
