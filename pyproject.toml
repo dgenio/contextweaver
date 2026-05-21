@@ -110,6 +110,33 @@ fastmcp = [
 crewai = [
     "crewai>=0.80",
 ]
+# Pydantic AI adapter integration (issue #272, child of #193).  Pulls the
+# Pydantic AI runtime so user applications can import the live-discovery
+# helper (``contextweaver.adapters.pydantic_ai.load_pydantic_ai_catalog``)
+# and the ``ModelMessage`` round-trip.  The plain-dict conversion path
+# (``pydantic_ai_tool_to_selectable``, ``from_pydantic_ai_messages``)
+# works without this extra installed.
+pydantic-ai = [
+    "pydantic-ai-slim>=0.0.50",
+]
+# smolagents adapter integration (issue #274, child of #193).  Pulls the
+# HuggingFace smolagents runtime so user applications can import the
+# live-discovery helper (``load_smolagents_catalog``) and the
+# ``MultiStepAgent`` step ingestion.  The plain-dict conversion path
+# (``smolagents_tool_to_selectable``, ``from_smolagents_agent``) works
+# without this extra installed.
+smolagents = [
+    "smolagents>=1.0",
+]
+# Agno adapter integration (issue #275, child of #193).  Pulls the Agno
+# (formerly Phidata) runtime so user applications can import the
+# live-discovery helper (``load_agno_catalog``) and the
+# ``Agent.memory.messages`` ingestion.  The plain-dict conversion path
+# (``agno_tool_to_selectable``, ``from_agno_agent``) works without this
+# extra installed.
+agno = [
+    "agno>=1.0",
+]
 # LangChain integration examples.
 langchain = [
     "langchain-core>=0.3",
@@ -231,6 +258,18 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "crewai.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pydantic_ai.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "smolagents.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "agno.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -52,8 +52,14 @@ It prepares context and routes tools but never calls models or executes tools.
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
-| `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #193, #194, #219, #222) |
+| `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI, Pydantic AI, smolagents, Agno protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories and Pydantic AI / smolagents / Agno message-or-step histories (issues #13, #28, #29, #34, #193, #194, #219, #222, #272, #274, #275) |
 | `adapters/crewai.py` | CrewAI `BaseTool` (or equivalent plain-dict shape) ↔ `SelectableItem` (`crewai_tool_to_selectable`, `crewai_tools_to_catalog`, `infer_crewai_namespace`, `load_crewai_catalog`, issue #193) |
+| `adapters/pydantic_ai.py` | Pydantic AI `Tool` / `FunctionToolset` (or equivalent dict shape) ↔ `SelectableItem` (`pydantic_ai_tool_to_selectable`, `pydantic_ai_tools_to_catalog`, `infer_pydantic_ai_namespace`, `load_pydantic_ai_catalog`, issue #272 / #193). |
+| `adapters/pydantic_ai_messages.py` | Pydantic AI `list[ModelMessage]` ↔ `ContextItem` round-trip (`from_pydantic_ai_messages`, `to_pydantic_ai_messages`, issue #272). Per-part decode/encode helpers live in `adapters/_pydantic_ai_messages.py`. |
+| `adapters/smolagents.py` | smolagents `Tool` / `Toolbox` (or equivalent dict shape) ↔ `SelectableItem` (`smolagents_tool_to_selectable`, `smolagents_tools_to_catalog`, `infer_smolagents_namespace`, `load_smolagents_catalog`, issue #274 / #193). |
+| `adapters/smolagents_steps.py` | smolagents `MultiStepAgent.memory.steps` → `ContextItem` (`from_smolagents_agent`, issue #274). |
+| `adapters/agno.py` | Agno `Function` / `Toolkit` (or equivalent dict shape) ↔ `SelectableItem` (`agno_tool_to_selectable`, `agno_tools_to_catalog`, `infer_agno_namespace`, `load_agno_catalog`, issue #275 / #193). |
+| `adapters/agno_messages.py` | Agno `Agent.memory.messages` / `RunResponse.messages` → `ContextItem` (`from_agno_agent`, issue #275). |
 | `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
 | `adapters/mcp_gateway.py` | Two-tool gateway dispatch (`tool_browse` + `tool_execute` + `tool_view`, issues #28 / #34) |
 | `adapters/mcp_proxy.py` | Transparent proxy dispatch (stripped `tools/list` + `tool_hydrate` + `tool_execute`, issue #13) |

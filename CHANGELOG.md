@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Framework adapter cluster — Pydantic AI / smolagents / Agno** (#193,
+  Phase 2; closes #272, #274, #275). Three new thin stateless converters
+  under `src/contextweaver/adapters/`, each shipping the same four-helper
+  shape established by `adapters/crewai.py`:
+  - **Pydantic AI** (`adapters/pydantic_ai.py` +
+    `adapters/pydantic_ai_messages.py` + private
+    `adapters/_pydantic_ai_messages.py`). Exposes
+    `pydantic_ai_tool_to_selectable`, `pydantic_ai_tools_to_catalog`,
+    `infer_pydantic_ai_namespace`, `load_pydantic_ai_catalog`, plus a
+    `ModelMessage` ↔ `ContextItem` round-trip via
+    `from_pydantic_ai_messages` / `to_pydantic_ai_messages`.  Wraps live
+    `pydantic_ai.tools.Tool` instances or any duck-typed object
+    exposing `name` / `description`; also flattens a
+    `FunctionToolset`.  New `[pydantic-ai]` optional-dependency group.
+  - **smolagents** (`adapters/smolagents.py` +
+    `adapters/smolagents_steps.py`). Exposes
+    `smolagents_tool_to_selectable`, `smolagents_tools_to_catalog`,
+    `infer_smolagents_namespace`, `load_smolagents_catalog`, plus
+    `from_smolagents_agent` which ingests a `MultiStepAgent.memory.steps`
+    log (or any duck-typed memory exposing `.steps` /
+    `.get_full_steps()`) into the `ContextItem` event log.  Converts
+    smolagents `Tool.inputs` mappings to JSON-Schema object shapes the
+    router consumes.  New `[smolagents]` optional-dependency group.
+  - **Agno** (`adapters/agno.py` + `adapters/agno_messages.py`). Exposes
+    `agno_tool_to_selectable`, `agno_tools_to_catalog`,
+    `infer_agno_namespace`, `load_agno_catalog`, plus
+    `from_agno_agent` which prefers `Agent.run_response.messages`
+    (richer, includes `reasoning_content`) and falls back to
+    `Agent.memory.messages` / `.memory.get_messages()`.  Flattens
+    a `Toolkit` so every `Function` member becomes one
+    `SelectableItem` stamped with `metadata["toolkit"]`.  New `[agno]`
+    optional-dependency group.
+- **New runnable demos** wired into `make example`:
+  `examples/pydantic_ai_adapter_demo.py`,
+  `examples/smolagents_adapter_demo.py`, and
+  `examples/agno_adapter_demo.py`.  Each shells the namespace
+  inference, dict-conversion, batch-catalog, router shortlist, and
+  message-or-step ingestion paths without requiring the upstream
+  package installed.
+- **New integration guides**: `docs/integration_pydantic_ai.md`,
+  `docs/integration_smolagents.md`, and `docs/integration_agno.md`.
+  Each carries the same five-section shape used by the CrewAI guide
+  (Why / Prerequisites / Architecture / Minimal wiring / Message-or-step
+  ingestion + Namespace inference + Troubleshooting + See also).
+- **mypy ignore_missing_imports** for `pydantic_ai.*`, `smolagents.*`,
+  and `agno.*` so contributors without the optional extras installed
+  still see a clean `make type` run.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added
