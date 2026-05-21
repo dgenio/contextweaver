@@ -189,6 +189,14 @@ otel = [
 graph = [
     "networkx>=3.0",
 ]
+# End-to-end real-model benchmark hook (issue #269).  Empty today on purpose:
+# the harness uses ``urllib.request`` against an OpenAI-compatible HTTP
+# endpoint and does not need a vendor SDK.  The extras group exists so
+# callers can ``pip install 'contextweaver[e2e-eval]'`` to opt into the
+# capture without changing the public install surface, and future
+# additions (a benchmark-only ``openai`` SDK pin or alternative provider
+# helpers) can land here without churning the install command in docs.
+e2e-eval = []
 # Convenience: install every optional capability at once.
 all = [
     "contextweaver[retrieval]",
@@ -198,6 +206,7 @@ all = [
     "contextweaver[graph]",
     "contextweaver[weaver-spec]",
     "contextweaver[voice]",
+    "contextweaver[e2e-eval]",
 ]
 
 [project.scripts]
