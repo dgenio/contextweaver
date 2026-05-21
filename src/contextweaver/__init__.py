@@ -24,7 +24,22 @@ from contextweaver import config, envelope, exceptions, profiles, protocols, typ
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+from contextweaver.context.handoff import (
+    HANDOFF_CATEGORIES,
+    HANDOFF_PACK_VERSION,
+    HandoffEntry,
+    SessionHandoffPack,
+    build_session_handoff_pack,
+    render_handoff_pack,
+)
 from contextweaver.context.manager import ContextManager
+from contextweaver.context.memory_source import (
+    PHASE_SCOPE_PREFERENCES,
+    JsonFixtureMemorySource,
+    MemoryEntry,
+    memory_entries_to_context_items,
+    select_memory_for_phase,
+)
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
 from contextweaver.envelope import (
@@ -59,6 +74,7 @@ from contextweaver.protocols import (
     Extractor,
     FactStore,
     Labeler,
+    MemorySource,
     Navigator,
     RedactionHook,
     Reranker,
@@ -160,6 +176,7 @@ __all__ = [
     "Extractor",
     "FactStore",
     "Labeler",
+    "MemorySource",
     "Navigator",
     "RedactionHook",
     "Reranker",
@@ -188,11 +205,22 @@ __all__ = [
     "StoreBundle",
     # context engine
     "ContextManager",
+    "HANDOFF_CATEGORIES",
+    "HANDOFF_PACK_VERSION",
+    "HandoffEntry",
+    "JsonFixtureMemorySource",
     "MaskRedactionHook",
+    "MemoryEntry",
+    "PHASE_SCOPE_PREFERENCES",
+    "SessionHandoffPack",
     "ViewRegistry",
+    "build_session_handoff_pack",
     "drilldown_tool_spec",
     "generate_views",
+    "memory_entries_to_context_items",
     "register_redaction_hook",
+    "render_handoff_pack",
+    "select_memory_for_phase",
     # observability
     "MetricsCollector",
     "MetricsHook",

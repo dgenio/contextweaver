@@ -23,7 +23,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
-| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine` (store protocols re-exported from `store/protocols.py`) |
+| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine` (store protocols re-exported from `store/protocols.py`) |
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
 | `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
@@ -37,6 +37,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
 | `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline) |
+| `context/memory_source.py` | `MemoryEntry` + `JsonFixtureMemorySource` + `memory_entries_to_context_items` / `select_memory_for_phase` — phase-aware memory ingestion adapter (issue #293).  Implements the `MemorySource` Protocol from `protocols.py`. |
+| `context/handoff.py` | `SessionHandoffPack` + `build_session_handoff_pack` / `render_handoff_pack` — deterministic, budget-aware, sensitivity-respecting session continuity snapshot (issue #294). |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
 | `routing/filters.py` | Pre-scoring helpers: `filter_items()`, `augment_query()`, `suggest_clarifying_question()` (issues #14, #22, #112, #116) |
 | `routing/manifest.py` | `GraphManifest` + `compute_catalog_hash()` for graph metadata and cache invalidation (issue #48, #15) |
