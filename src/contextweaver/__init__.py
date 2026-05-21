@@ -24,6 +24,10 @@ from contextweaver import config, envelope, exceptions, profiles, protocols, typ
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+from contextweaver.context.explanation import (
+    CandidateExplanation,
+    ContextBuildExplanation,
+)
 from contextweaver.context.manager import ContextManager
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
@@ -187,6 +191,8 @@ __all__ = [
     "SqliteEventLog",
     "StoreBundle",
     # context engine
+    "CandidateExplanation",
+    "ContextBuildExplanation",
     "ContextManager",
     "MaskRedactionHook",
     "ViewRegistry",

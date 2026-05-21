@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`RouteResult.to_dict()` / `from_dict()`** (#289). `RouteResult` now
+  implements the same serialisation pattern as every other public result
+  dataclass (`RouteTrace`, `RouteHistory`, `ChoiceCard`, `RoutingDecision`,
+  `SelectableItem`).  Default behaviour embeds each `SelectableItem` as a
+  full dict; opt-in `to_dict(include_items=False)` emits the cheaper
+  ID-only payload for downstream persistence alongside a catalog.
+- **`ContextBuildExplanation` + opt-in `ContextManager.build(..., explain=True)`**
+  (#291).  Public, versioned dataclass capturing per-candidate scoring,
+  drop reasons, dependency-closure additions, sensitivity drops, and
+  dedup collapses for a single `ContextManager.build` call.  Sister to
+  `RouteResult.explanation()` (issue #226) on the routing side.  Default
+  `explain=False` preserves the existing `ContextPack` return shape; only
+  callers that opt in receive the `(pack, explanation)` tuple.  Lives in
+  the new `src/contextweaver/context/explanation.py` module so the
+  `ContextManager` line count does not grow further (issue #101).
+- **Sensitivity / firewall regression fixtures** (#292).  Six explicit
+  fixtures under `tests/fixtures/sensitivity/` (public / internal /
+  confidential / restricted / PII-like / secret-like) driven through
+  `apply_sensitivity_filter` at every floor in both drop and redact
+  modes.  Tests pin the conservative default (`confidential` floor +
+  `drop` action) and the `MaskRedactionHook` invariant that the raw
+  text NEVER survives redaction.
+- **Weaver-spec payload fixtures + file-bearing CI failures** (#295).
+  Checked-in `tests/fixtures/weaver_spec/*.json` fixtures driven through
+  the existing `adapters.weaver_contracts` adapter and validated against
+  the weaver-spec JSON Schemas in CI.
+  `scripts/weaver_spec_conformance.py` gained a `--fixtures-dir` flag;
+  fixture failures cite the exact file path, JSON pointer, and schema
+  for actionable debugging.
+- **Golden route-prompt + MCP-ingestion fixtures** (#296).  New
+  `tests/fixtures/golden/route_prompt/` and `tests/fixtures/golden/mcp_ingestion/`
+  hold normalised snapshots of `ContextManager.build_route_prompt_sync`
+  and `mcp_result_to_envelope` outputs.  Volatile fields (timestamps,
+  UUIDs, score floats > 4dp) are stripped by the shared
+  `tests/fixtures/_normalize.py` helper so fixtures stay byte-stable
+  across machines.  Drift produces a diff with the failing file path.
+- **`docs/contributing_fixtures.md`** — fixture organisation and
+  regeneration playbook for the four new fixture dirs.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added
