@@ -141,8 +141,11 @@ def _make_mixed_namespace_catalog(
     are synthesised with the head-heavy distribution defined by
     :data:`_MIXED_NAMESPACE_HEAD` / ``_MID`` / ``_SMALL`` /
     ``_TAIL_NS_COUNT`` so the routing layer sees a deliberately uneven
-    namespace surface.  Synthetic items carry distinct IDs so they will
-    not match gold-dataset queries — precision/recall remains valid.
+    namespace surface.  The plan declares 100 long-tail namespaces but
+    the *n*-cap truncates the tail once the head/mid/small segments fill
+    their quota (at n=500 only ~17 tail namespaces survive).  Synthetic
+    items carry distinct IDs so they will not match gold-dataset
+    queries — precision/recall remains valid.
 
     Args:
         n: Total catalog size.  Default 500 matches the issue's request.
