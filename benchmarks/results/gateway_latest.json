@@ -1,0 +1,63 @@
+{
+  "benchmark_version": "1.0",
+  "catalog_source": "contextweaver.data:mcp_gateway_catalog.yaml",
+  "firewall_threshold": 2000,
+  "scenarios": [
+    {
+      "catalog_tools": 60,
+      "chosen_was_intent": true,
+      "exposed_choice_cards": 5,
+      "final_prompt_tokens": 27,
+      "firewall_reduction_pct": 99.73,
+      "firewall_triggered": true,
+      "injected_summary_chars": 44,
+      "name": "bigquery_rowset",
+      "raw_result_chars": 16320,
+      "selected_tool_id": "bigquery.run_query"
+    },
+    {
+      "catalog_tools": 60,
+      "chosen_was_intent": true,
+      "exposed_choice_cards": 5,
+      "final_prompt_tokens": 21,
+      "firewall_reduction_pct": 99.64,
+      "firewall_triggered": true,
+      "injected_summary_chars": 21,
+      "name": "medium_crm",
+      "raw_result_chars": 5789,
+      "selected_tool_id": "crm.accounts.search"
+    },
+    {
+      "catalog_tools": 60,
+      "chosen_was_intent": false,
+      "exposed_choice_cards": 5,
+      "final_prompt_tokens": 29,
+      "firewall_reduction_pct": 99.92,
+      "firewall_triggered": true,
+      "injected_summary_chars": 42,
+      "name": "slack_thread_review",
+      "raw_result_chars": 49887,
+      "selected_tool_id": "slack.channels.post"
+    },
+    {
+      "catalog_tools": 60,
+      "chosen_was_intent": false,
+      "exposed_choice_cards": 5,
+      "final_prompt_tokens": 17,
+      "firewall_reduction_pct": 0.0,
+      "firewall_triggered": false,
+      "injected_summary_chars": 71,
+      "name": "tiny_no_firewall",
+      "raw_result_chars": 71,
+      "selected_tool_id": "bigquery.list_datasets"
+    }
+  ],
+  "summary": {
+    "firewall_no_op_count": 1,
+    "firewall_reduction_max_pct": 99.92,
+    "firewall_reduction_mean_pct": 99.76,
+    "firewall_reduction_min_pct": 99.64,
+    "firewall_triggered_count": 3,
+    "scenario_count": 4
+  }
+}

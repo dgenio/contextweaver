@@ -39,18 +39,23 @@ Or via ``make architectures`` / ``make example``.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
+from contextweaver.data import gateway_catalog_path
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import Catalog, load_catalog_yaml
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import ContextItem, ItemKind, Phase
 
-CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
+# Issue #264: the catalog ships inside ``contextweaver.data`` so this example
+# (and the matching ``contextweaver demo --scenario mcp-gateway-full`` CLI
+# scenario) work from a wheel install without needing the examples/ directory.
+# ``gateway_catalog_path()`` returns a real filesystem ``Path`` regardless of
+# whether the package is installed editable or extracted from a zip wheel.
+CATALOG_PATH = gateway_catalog_path()
 
 # The user-typed phrasing matters: a real agent would rephrase a vague
 # natural-language question into a tool-shaped query before routing. We
@@ -59,47 +64,6 @@ CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
 USER_TYPED_QUERY = "Why did customer C-12345's MRR drop last month?"
 ROUTING_QUERY = "Execute a BigQuery query to find MRR delta rows for customer C-12345"
 SELECTED_TOOL_ID = "bigquery.run_query"
-
-# The mocked upstream needs full JSON Schemas to "hydrate" — but only for the
-# selected tool. We deliberately hold a real schema for the selected tool and
-# **only** the selected tool, so the demo can show that schemas for the other
-# 59 catalog entries never enter the prompt at any phase.
-_FULL_SCHEMAS: dict[str, dict[str, Any]] = {
-    "bigquery.run_query": {
-        "type": "object",
-        "title": "bigquery_run_query",
-        "properties": {
-            "sql": {
-                "type": "string",
-                "description": "Standard-SQL BigQuery query.",
-            },
-            "project": {
-                "type": "string",
-                "description": "GCP project to bill the query to.",
-                "default": "ops-analytics-prod",
-            },
-            "max_results": {
-                "type": "integer",
-                "description": "Cap on returned rows.",
-                "default": 1000,
-                "minimum": 1,
-                "maximum": 100000,
-            },
-            "dry_run": {
-                "type": "boolean",
-                "description": "If true, return the query plan only.",
-                "default": False,
-            },
-            "labels": {
-                "type": "object",
-                "additionalProperties": {"type": "string"},
-                "description": "Free-form labels attached to the job.",
-            },
-        },
-        "required": ["sql"],
-        "additionalProperties": False,
-    },
-}
 
 
 def _mock_bigquery_result() -> dict[str, Any]:
@@ -213,13 +177,18 @@ def main() -> None:
     # 3. Call phase — hydrate ONLY the selected tool's schema.
     # ------------------------------------------------------------------
     _print_header("[2/5] Call phase — hydrate ONLY the selected tool's schema")
-    selected_schema = _FULL_SCHEMAS.get(chosen)
-    if selected_schema is None:
+    # Issue #261: pull the schema from the catalog itself via Catalog.hydrate()
+    # rather than a demo-special-case lookup table. The other 59 entries have
+    # an empty args_schema in catalog.yaml, so this still proves the firewall
+    # claim that only the selected tool's schema enters the prompt.
+    hydrated = catalog.hydrate(chosen)
+    selected_schema = hydrated.args_schema
+    if not selected_schema:
         raise SystemExit(
-            f"No schema registered for chosen tool {chosen!r}; the demo intent "
-            "map is mis-aligned with the catalog."
+            f"Catalog entry {chosen!r} has no args_schema; the demo catalog "
+            "must carry a schema for the selected tool."
         )
-    schema_json = json.dumps(selected_schema, indent=2)
+    schema_json = json.dumps(selected_schema, indent=2, sort_keys=True)
     print(f"tool: {chosen}")
     print(f"hydrated schema for: {chosen!r}  ({len(schema_json)} chars)")
     print(f"hydrated schema for the other {catalog_tools - 1} tools: 0 chars (skipped)")
