@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "contextweaver"
 version = "0.9.0"
-description = "Dynamic context management for tool-using AI agents"
+description = "Context firewall and tool router for tool-heavy AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -15,10 +15,13 @@ keywords = [
     "agents",
     "context",
     "context-engineering",
+    "context-firewall",
     "llm",
     "tools",
     "tool-routing",
+    "tool-router",
     "mcp",
+    "mcp-gateway",
     "prompt-budgeting",
     "agent-infrastructure",
     "routing",

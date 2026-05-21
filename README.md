@@ -128,6 +128,38 @@ contextweaver provides two cooperating engines:
 
 ---
 
+## When not to use contextweaver
+
+contextweaver is a context compiler for tool-using agents — its value scales
+with the size of the catalog and the length of the conversation. Reach for
+something simpler when none of that pressure exists:
+
+- **Small tool catalogs (≤ 5 tools).** Dumping every schema into the prompt
+  costs a few hundred tokens. Building a routing graph and running beam
+  search adds latency and a dependency you don't need.
+- **Single-shot Q&A or one-turn agents.** With no history to compact and no
+  follow-up phases (`call` / `interpret` / `answer`), phase-aware budgeting
+  is dead weight — pass the user's message straight to the model.
+- **Tiny tool outputs.** If every `tool_result` is comfortably under the
+  configured `firewall_threshold` (default 2000 characters), the
+  [context firewall](docs/context_firewall.md) correctly no-ops — you're
+  paying the conceptual cost of the firewall for zero token savings.
+- **Full context is cheaper than the engineering.** If your naïve prompt
+  fits comfortably under the model's context window and your token bill is
+  not a concern, the [before/after scorecard](benchmarks/scorecard.md)
+  numbers won't move the needle.
+- **You need non-deterministic, LLM-driven routing.** contextweaver's
+  routing engine is deterministic by design (tie-break by sorted ID). If
+  you want an LLM to decide which tool to call from free-form reasoning,
+  LangGraph or a plain `tool_choice="auto"` call is a better fit — see
+  [`docs/comparison.md`](docs/comparison.md) for the trade-offs.
+
+If you're not sure, the [10-minute Quickstart](#10-minute-quickstart) below
+is the cheapest way to find out: a 40-tool catalog and a 50-turn transcript
+is the smallest scenario where contextweaver clearly pays for itself.
+
+---
+
 ## Quickstart
 
 ### Install
@@ -441,45 +473,7 @@ validation. CI fetches the schemas from
 mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 (same content, different host). Run locally with `make weaver-conformance`.
 
-### 6. Roadmap & Community
-
-**v0.1 (✅ Complete)**
-
-- Context Engine: 8-stage pipeline (candidates → closure → sensitivity → firewall → score → dedup → select → render)
-- Routing Engine: Catalog, DAG builder, beam-search router, choice cards
-- Protocol adapters: MCP (full content types, structured content, output schemas) and A2A
-- Stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` with protocol-based interfaces
-- 1100+ passing tests, mypy strict, ruff clean, minimal core dependencies
-
-**v0.2 (🚧 In Progress — Q2 2026)**
-
-- Framework integration guides: LlamaIndex, LangChain, LangGraph, OpenAI Agents SDK, Google ADK, Pipecat
-- Benchmark suite: token reduction, latency, and accuracy vs. naive concatenation
-- Distributed stores: Redis-backed `EventLog`, S3-backed `ArtifactStore`
-
-**v0.3 (📋 Planned — Q3 2026)**
-
-- DAG visualization: interactive routing graph inspector
-- Merge compression: deduplicate similar tool results across turns
-- LLM-based labeler: auto-generate namespace labels for tool catalogs
-- LLM-based extractor: structured fact extraction with prompt-based schema
-
-**v1.0 (📋 Planned — Q4 2026)**
-
-- API freeze: no breaking changes in 1.x releases
-- Production benchmarks: 1M+ turn deployments
-- Enterprise features: audit logging, compliance tags, PII redaction
-
-**Community:**
-
-- [GitHub Discussions](https://github.com/dgenio/contextweaver/discussions) — ask questions, share patterns
-- [GitHub Issues](https://github.com/dgenio/contextweaver/issues) — report bugs, request features
-- [CHANGELOG](CHANGELOG.md) — track every release
-
-> contextweaver is under active development with a clear roadmap. v0.1 is feature-complete
-> for basic use cases; v0.2 adds production-ready integrations; v1.0 is the API stability milestone.
-
-### Comparison
+### 6. Comparison
 
 > _Snapshot of the launch landscape as of 2026-05-20 — see footnotes for the
 > versions referenced and the evidence behind each non-trivial claim. Will be

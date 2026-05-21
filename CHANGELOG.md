@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **README "When not to use contextweaver" section** (#290). New top-level
+  section after `## How contextweaver Solves It` covering the four
+  honest non-fits: small tool catalogs (≤ 5 tools), single-shot Q&A
+  agents, tiny tool outputs (firewall correctly no-ops), small token
+  bills, and non-deterministic LLM-driven routing. Closes the last
+  outstanding acceptance criterion of #290; the README opening,
+  before/after example, and labelled benchmark claims landed earlier
+  with the v0.9 launch-readiness pass.
+
+### Changed
+
+- **`pyproject.toml` description + keywords** (#248). Project description
+  changed from `"Dynamic context management for tool-using AI agents"` to
+  `"Context firewall and tool router for tool-heavy AI agents."` to match
+  the launch positioning and the README tagline. Three new keywords
+  added: `context-firewall`, `tool-router`, `mcp-gateway`. PyPI search
+  and the GitHub social card render the description field directly.
+
+### Removed
+
+- **Stale `### 6. Roadmap & Community` block in README** (#242). The
+  legacy roadmap text (v0.2 🚧 In Progress — Q2 2026, v0.3 📋 Planned —
+  Q3 2026, v1.0 📋 Planned — Q4 2026) was a duplicate of and contradicted
+  the accurate `## Roadmap` table further down the README, which was
+  refreshed in the v0.9 launch-readiness pass (#252). Removing the stale
+  block; the `### Comparison` subsection is renumbered to `### 6.
+  Comparison` to keep the "Why Trust contextweaver?" parent section
+  numbering contiguous. The community links it previously hosted survive
+  via the Discussions badge at the top of the README and the `## License`
+  / `[CHANGELOG.md]` reference at the bottom.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added
