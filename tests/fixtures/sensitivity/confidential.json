@@ -1,0 +1,15 @@
+{
+  "label": "Confidential item — dropped/redacted at default floor",
+  "item": {
+    "id": "conf-1",
+    "kind": "memory_fact",
+    "text": "User preference: account tier = enterprise.",
+    "sensitivity": "confidential"
+  },
+  "expected_actions": {
+    "floor_public": "filtered",
+    "floor_internal": "filtered",
+    "floor_confidential": "filtered",
+    "floor_restricted": "passes"
+  }
+}

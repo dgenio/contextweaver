@@ -1,0 +1,23 @@
+{
+  "label": "Basic SelectableItem — single-tool db.search with args_schema and tags",
+  "kind": "selectable_item",
+  "payload": {
+    "id": "db.search",
+    "kind": "tool",
+    "name": "search",
+    "description": "Search the customer database",
+    "tags": ["db", "query"],
+    "namespace": "db",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "q": { "type": "string" }
+      }
+    },
+    "side_effects": false,
+    "cost_hint": 0.2,
+    "metadata": {
+      "owner": "platform"
+    }
+  }
+}

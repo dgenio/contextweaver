@@ -1,0 +1,16 @@
+{
+  "label": "Basic ChoiceCard — tool card with a score",
+  "kind": "choice_card",
+  "payload": {
+    "id": "db.search",
+    "name": "search",
+    "description": "Search the customer database",
+    "tags": ["db"],
+    "kind": "tool",
+    "namespace": "db",
+    "has_schema": true,
+    "cost_hint": 0.2,
+    "side_effects": false,
+    "score": 0.91
+  }
+}
