@@ -239,9 +239,18 @@ client.messages.create(
 > across navigation, sort hydrated cards by ID once and append newly-discovered
 > cards after the breakpoint. The
 > [Webfuse MCP cheat sheet](https://www.webfuse.com/mcp-cheat-sheet)
-> documents the canonical "append after cache breakpoint" pattern. A
-> first-class `cache_stable` runtime flag on `ProxyRuntime` is tracked as a
-> follow-up.
+> documents the canonical "append after cache breakpoint" pattern.
+>
+> **First-class flag:** `ProxyRuntime(cache_stable=True)` implements this
+> pattern automatically — see [gateway spec §5](gateway_spec.md#5-cache-stable-tool-browsing-cache_stabletrue).
+> Browsed/hydrated tool ids are tracked per session; on each
+> `tool_browse` call, previously-seen cards are emitted first in
+> ascending-`id` order, followed by a `__cache_breakpoint__` marker
+> card, followed by newly-discovered cards (also `id`-ascending).
+> First-sighting card content is frozen, so the prefix bytes are
+> stable across browses with different queries. **Caveat:** the
+> first emitted card is not the highest-ranked when this flag is on
+> — read rank from `ChoiceCard.score`.
 
 ## Security Considerations
 
@@ -293,6 +302,12 @@ The MCP adapter ships two runtime modes for fronting one or more
 upstream MCP servers.  Both share the
 [`ProxyRuntime`](../src/contextweaver/adapters/proxy_runtime.py) core and
 satisfy the contracts in [`docs/gateway_spec.md`](gateway_spec.md):
+
+Production MCP gateway deployments commonly transform raw
+user input into routing-oriented queries before calling
+`Router.route(query)`. ContextWeaver does not require a
+specific rewriting strategy and accepts whichever
+routing-shaped query your gateway produces.
 
 | Mode | Discovery channel | Invocation channel | Schema exposure |
 |------|-------------------|--------------------|-----------------|

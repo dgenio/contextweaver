@@ -1,8 +1,11 @@
 # contextweaver
 
-> Phase-specific, budget-aware **context engineering** for tool-using AI agents.
+> **Context firewall + tool router for tool-heavy AI agents.** Phase-specific,
+> budget-aware **context engineering** with a deterministic core.
 
-**Zero runtime dependencies · deterministic output · Python ≥ 3.10**
+![contextweaver architecture overview](assets/hero.svg)
+
+**Minimal core dependencies · deterministic output · Python ≥ 3.10**
 
 > **Context engineering** is the discipline of deciding what goes into a model's
 > context window, when, and at what cost — see the
@@ -13,15 +16,22 @@
 contextweaver provides two cooperating engines that solve the context window
 problem for tool-using AI agents:
 
-- **Context Engine** — eight-stage pipeline: candidates → dependency closure →
-  sensitivity filter → firewall → scoring → dedup → selection → rendering.
-- **Routing Engine** — bounded DAG + beam search over large tool catalogs,
-  producing compact LLM-friendly `ChoiceCards`.
+- **Context Engine** — eight-stage pipeline:
+  candidates → dependency closure → sensitivity filter → firewall →
+  scoring → dedup → selection → rendering. See the
+  [Context Firewall](context_firewall.md) page for the load-bearing
+  firewall primitive and [Architecture](architecture.md) for the full
+  pipeline.
+- **Routing Engine** — bounded DAG + beam search over large tool
+  catalogs, producing compact LLM-friendly `ChoiceCard`s. See the
+  [Tool Router](tool_router.md) page.
 
 ## Get started
 
 [10-Minute Quickstart](quickstart.md){ .md-button .md-button--primary }
 [API Reference](reference/){ .md-button }
+
+![Animated demo recording](assets/demo.svg)
 
 ## Navigate
 

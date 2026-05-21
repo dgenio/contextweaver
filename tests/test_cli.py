@@ -55,6 +55,70 @@ def test_demo_runs_to_completion() -> None:
     assert "complete" in result.stdout.lower() or "loaded" in result.stdout.lower()
 
 
+def test_demo_help_lists_all_scenarios() -> None:
+    result = _run("demo", "--help")
+    assert result.returncode == 0
+    out = result.stdout
+    for name in ("default", "large-catalog", "huge-tool-output", "mcp-gateway"):
+        assert name in out, f"--help missing scenario {name!r}"
+
+
+def test_demo_default_scenario_explicit_flag() -> None:
+    result = _run("demo", "--scenario", "default")
+    assert result.returncode == 0
+    assert "default scenario" in result.stdout.lower()
+    assert "demo complete" in result.stdout.lower()
+
+
+def test_demo_large_catalog_scenario() -> None:
+    result = _run("demo", "--scenario", "large-catalog")
+    assert result.returncode == 0
+    out = result.stdout
+    # Pin only invariants the user cares about per the demo spec.
+    assert "1000 tools" in out, "catalog size header missing"
+    assert "Cards exposed to model:" in out, "card-count header missing"
+    assert "Selected candidate IDs:" in out, "selected-IDs line missing"
+    assert "NO full schemas" in out, "compact-card reassurance missing"
+    assert "Demo complete" in out
+
+
+def test_demo_huge_tool_output_scenario() -> None:
+    result = _run("demo", "--scenario", "huge-tool-output")
+    assert result.returncode == 0
+    out = result.stdout
+    assert "Raw tool output:" in out, "raw-size header missing"
+    assert "After context firewall" in out, "firewall section missing"
+    assert "Artifact ref:" in out, "artifact-ref line missing"
+    assert "Artifact store" in out, "artifact-store section missing"
+    # The firewall must actually shrink the prompt-side text.
+    assert "Token savings vs raw:" in out
+    # 120 rows of synthetic data; raw must be larger than the summary text.
+    assert "9689 bytes raw" in out or "bytes raw" in out
+    assert "Demo complete" in out
+
+
+def test_demo_mcp_gateway_scenario() -> None:
+    result = _run("demo", "--scenario", "mcp-gateway")
+    assert result.returncode == 0
+    out = result.stdout
+    # The four narrative steps the spec asks for: meta-tools, browse, execute, view.
+    assert "Meta-tools the gateway advertises" in out
+    assert "tool_browse" in out
+    assert "tool_execute" in out
+    assert "stored out-of-band" in out, "firewall artifact not surfaced"
+    # The github stub must successfully execute end-to-end.
+    assert "status=ok" in out
+    assert "Demo complete" in out
+
+
+def test_demo_unknown_scenario_rejected() -> None:
+    result = _run("demo", "--scenario", "nope")
+    # Typer/Click returns exit-code 2 for invalid choice values.
+    assert result.returncode != 0
+    combined = (result.stdout + result.stderr).lower()
+    assert "nope" in combined or "invalid" in combined or "scenario" in combined
+
+
 # ------------------------------------------------------------------
 # build
 # ------------------------------------------------------------------

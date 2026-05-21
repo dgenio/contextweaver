@@ -10,7 +10,7 @@ type:
 	mypy src/
 
 test:
-	pytest --cov=contextweaver --cov-report=term-missing -q
+	python -m pytest --cov=contextweaver --cov-report=term-missing -q
 
 example:
 	python examples/minimal_loop.py
@@ -31,6 +31,7 @@ example:
 	$(MAKE) architectures
 
 architectures:
+	python examples/architectures/mcp_context_gateway/main.py
 	python examples/architectures/slack_ops_bot/main.py
 	python examples/architectures/code_review_bot/main.py
 	python examples/architectures/voice_agent/main.py

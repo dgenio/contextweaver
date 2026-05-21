@@ -3,6 +3,19 @@
 This guide gets you to a working context build, a firewall-protected tool result,
 and a routed tool shortlist in under 10 minutes.
 
+> **In a hurry?** After `pip install contextweaver`, the built-in demo
+> walks you through the same ideas in one command:
+>
+> ```bash
+> contextweaver demo                                  # friendly walkthrough
+> contextweaver demo --scenario large-catalog         # 1,000 tools → compact cards
+> contextweaver demo --scenario huge-tool-output      # context firewall on a big tool result
+> contextweaver demo --scenario mcp-gateway           # MCP gateway meta-tools end-to-end
+> ```
+>
+> Each scenario is deterministic and network-free. Run `contextweaver demo
+> --help` to see the full list.
+
 Time budget:
 
 - Prerequisites: 30 seconds

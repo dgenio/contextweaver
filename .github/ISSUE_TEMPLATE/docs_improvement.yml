@@ -1,0 +1,68 @@
+name: Documentation / Example Improvement
+description: Improve docs, examples, READMEs, or any in-repo prose.
+title: "[docs] "
+labels: ["documentation", "area:docs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for typos, unclear explanations, broken links, missing
+        examples, stale numbers, outdated commands — anything where the
+        code is fine but the words around it could be better.
+
+        For substantive new features, use the
+        [Feature request](?template=feature_request.yml) template.
+
+  - type: input
+    id: where
+    attributes:
+      label: Where (file path or URL)
+      description: File path in the repo, or a URL to the docs page.
+      placeholder: "docs/quickstart.md, README.md line 200, https://dgenio.github.io/contextweaver/quickstart/"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of improvement
+      multiple: false
+      options:
+        - Typo / grammar / formatting
+        - Unclear explanation
+        - Broken link / missing anchor
+        - Stale number / command / version
+        - Missing example
+        - Missing or wrong cross-link
+        - Outdated screenshot / diagram
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong / what's missing
+      description: One paragraph describing the problem from a reader's perspective.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix (optional)
+      description: |
+        If you have a specific edit in mind, paste it here. Code blocks,
+        diff syntax, "replace X with Y" all welcome.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I can submit a PR for this fix
+          required: false
+        - label: This is a `good first issue` candidate
+          required: false
