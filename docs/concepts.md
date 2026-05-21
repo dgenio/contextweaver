@@ -36,11 +36,11 @@ Different phases emphasise different item kinds — for example, the
 `route` phase prioritises tool descriptions.
 
 ### User Query vs Routing Query
-Production agents may transform raw user input into a routing query prior to retrieval or context selection. Routing queries tend to be more compact and intent-matched.
+Production agents may transform raw user input into a routing query prior to retrieval or context selection. Routing queries remove conversational context so retrievers can match tools and context more precisely.
 
 `Router.route(query)` takes a query that is formatted like a routing query, not the actual user input query.
 ContextWeaver does not mandate what happens during the query transformation step. Different applications might adopt different strategies, such as LLM rewriting, classification, templates, or custom middleware.
-Check out the MCP context gateway example  [MCP gateway example](../examples/architectures/mcp_context_gateway/main.py) for a worked example.
+Check out the MCP context gateway example [MCP gateway example](../examples/mcp_gateway_demo.py) for a worked example.
 
 ## Selectable Item (ToolCard)
 
