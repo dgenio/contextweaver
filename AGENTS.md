@@ -68,6 +68,10 @@ It prepares context and routes tools but never calls models or executes tools.
 | `extras/memory/` | External-memory backend adapters that implement `EpisodicStore` / `FactStore` against an existing long-lived memory deployment without widening the Protocols (issue #195). |
 | `extras/memory/mem0.py` | `Mem0EpisodicStore` + `Mem0FactStore` — wrap a `mem0.Memory` instance scoped by `user_id`; writes go through `Memory.add(infer=False)` and items are stamped with `cw_episode_id` / `cw_fact_id` metadata for canonical-ID resolution. Gated behind the `[mem0]` extra (issue #195). |
 | `__main__.py` | CLI: 9 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`). Typer + Rich (both core deps as of v0.5, issue #221). |
+| `examples/architectures/mcp_context_gateway/real_catalogs/` | Verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (filesystem, git, fetch). Each carries a `_meta` provenance block. Feed `main_real.py`; refresh via `scripts/snapshot_mcp_catalog.py` (issue #280). |
+| `examples/architectures/mcp_context_gateway/main_real.py` | Real-catalog variant of the reference architecture — runs the same route → call → interpret → answer flow against every committed snapshot (issue #280). |
+| `examples/recipes/` | MCP-client integration recipes: `serve_gateway.py` launcher + `claude_desktop_config.json` / `copilot_mcp.json` example configs referenced from `docs/recipes/` (issues #278, #279). |
+| `scripts/snapshot_mcp_catalog.py` | Helper that spawns an MCP server over stdio and writes its `tools/list` as a `{_meta, tools}` snapshot under `real_catalogs/` (issue #280). |
 
 ## Pipelines (summary)
 

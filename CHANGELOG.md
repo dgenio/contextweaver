@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **MCP-client integration recipes** (#278, #279). New `docs/recipes/`
+  section ships step-by-step guides for putting the contextweaver gateway
+  in front of Claude Desktop (`docs/recipes/claude_desktop.md`) and VS
+  Code's GitHub Copilot Chat agent mode
+  (`docs/recipes/github_copilot.md`). Each recipe links to a
+  copy-pasteable client config under `examples/recipes/` and a
+  minimal stdio launcher (`examples/recipes/serve_gateway.py`) that
+  wires `McpGatewayServer.run_stdio()` against either a built-in stub
+  catalog or any committed `{_meta, tools}` snapshot.
+- **Real-MCP catalog example variant** (#280). New
+  `examples/architectures/mcp_context_gateway/main_real.py` runs the
+  reference DevOps-Copilot flow against three verbatim `tools/list`
+  snapshots from MIT-licensed reference MCP servers
+  (`@modelcontextprotocol/server-filesystem`, `mcp-server-git`,
+  `mcp-server-fetch`) committed under `real_catalogs/`. Wired into
+  `make architectures`. Snapshots are refreshable via the new
+  `scripts/snapshot_mcp_catalog.py` helper.
+- **`scripts/snapshot_mcp_catalog.py`** (#280) — spawns an MCP server
+  over stdio, issues a single `tools/list`, and writes the result as a
+  `{_meta, tools}` JSON file in the shape `main_real.py` consumes. Used
+  to refresh the committed snapshots when upstream servers ship new
+  versions.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added
