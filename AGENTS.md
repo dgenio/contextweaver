@@ -48,7 +48,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/navigator.py` | `BeamSearchNavigator` (lifted from `router.py`) + `rank_collected` (issue #56) |
 | `routing/packer.py` | `DefaultCardPacker` wrapping `make_choice_cards` for the pipeline pack stage (issue #56) |
 | `routing/history.py` | `RouteHistory` dataclass + `adjust_scores` (history-aware re-routing, issue #27) |
-| `extras/embeddings.py` | `SentenceTransformerBackend` + `HybridEmbeddingRetriever` behind the `[embeddings]` extra (issue #8) |
+| `extras/embeddings.py` | `SentenceTransformerBackend` + `HybridEmbeddingRetriever` + `HashingEmbeddingBackend` (re-exported) behind the `[embeddings]` extra (issue #8) |
+| `extras/embeddings_hashing.py` | `HashingEmbeddingBackend` — stdlib-only deterministic `EmbeddingBackend` using blake2b hashing trick; no extras required (issue #266) |
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |

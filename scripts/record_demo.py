@@ -205,7 +205,7 @@ def main() -> int:
                 sys.stderr.write(f"error: {target} is stale — re-run scripts/record_demo.py\n")
                 rc = 1
         else:
-            target.write_text(cast, encoding="utf-8")
+            target.write_text(cast, encoding="utf-8", newline="\n")
             print(f"Wrote {target} ({len(cast)} chars)")
     return rc
 
