@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Init scaffold git hygiene** — ignored `contextweaver init` scaffold files so running init from the repo root does not leave commit-prone untracked files (#314).
+
 ## [0.9.1] - 2026-05-21
 
 ### Fixed
