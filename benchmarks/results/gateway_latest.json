@@ -9,7 +9,7 @@
     "raw_chars_min": 34
   },
   "benchmark_version": "1.0",
-  "catalog_path": "contextweaver.data:mcp_gateway_catalog.yaml",
+  "catalog_path": "examples/architectures/mcp_context_gateway/catalog.yaml",
   "scenarios": [
     {
       "artifact_created": false,

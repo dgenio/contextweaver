@@ -49,11 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference architecture from the CLI so users can see the full launch
   narrative without invoking the example script directly. Issue #264.
 - **Gateway-scenario benchmark suite** — `benchmarks/gateway_benchmark.py`
-  runs deterministic gateway-shaped scenarios over the same 60-tool
+  runs 5 deterministic gateway-shaped scenarios over the same 60-tool
   catalog and emits `benchmarks/results/gateway_latest.json` +
-  `benchmarks/gateway_scorecard.md`. `make benchmark-gateway` /
-  `make gateway-scorecard{,-check}` (the latter is the byte-stability
-  gate). Issue #270.
+  `benchmarks/gateway_scorecard.md`. Headline range: **firewall reduction
+  0.0 % – 98.8 %** across the 5 scenarios. `make benchmark-gateway` /
+  `make gateway-scorecard{,-check}`. Issue #270.
 - **Real-MCP catalog architecture variant** —
   `examples/architectures/mcp_context_gateway/main_real.py` runs the same
   shape against committed snapshots of three real MCP servers
