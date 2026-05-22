@@ -45,10 +45,14 @@ from mcp.shared.memory import create_connected_server_and_client_session
 
 from contextweaver.adapters import ProxyRuntime, StubUpstream
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
+from contextweaver.data import gateway_catalog_path
 from contextweaver.routing.catalog import load_catalog_yaml
 from contextweaver.routing.hydration import SchemaSource
 
-CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
+# Issue #264: the 60-tool gateway catalog ships inside the wheel; the
+# example reads it through ``gateway_catalog_path()`` so it also works
+# from a ``pip install`` without the ``examples/`` directory.
+CATALOG_PATH = gateway_catalog_path()
 SCHEMAS_PATH = Path(__file__).parent / "tool_schemas.json"
 
 USER_TYPED_QUERY = "Why did customer C-12345's MRR drop last month?"

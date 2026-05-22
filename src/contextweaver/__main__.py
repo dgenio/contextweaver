@@ -1,6 +1,6 @@
 """Command-line interface for contextweaver.
 
-Provides nine sub-commands:
+Provides ten sub-commands / sub-apps:
 
 demo        Run a built-in demonstration of both engines.
 build       Build a routing graph from a catalog JSON file.
@@ -14,6 +14,9 @@ stats       Render a human-readable :class:`BuildStats` diagnostic report
 budget-check
             Assert an ingested session's rendered prompt stays under a
             token ceiling for CI regression checks (issue #276).
+mcp serve   [experimental] Run contextweaver as a stdio MCP server
+            (gateway or proxy mode) in front of an upstream catalog
+            (issues #243, #246).
 
 Invocable as ``python -m contextweaver`` or ``contextweaver`` (via
 ``[project.scripts]``).  Exempt from the 300-line module limit.
@@ -35,6 +38,7 @@ import typer
 from rich.console import Console
 from rich.tree import Tree as RichTree
 
+from contextweaver._mcp_cli import mcp_app
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
@@ -193,7 +197,7 @@ def demo(
                 "large-catalog = 1,000 tools shortlisted to compact ChoiceCards; "
                 "huge-tool-output = context firewall on a ~10 KB tool result; "
                 "mcp-gateway = MCP gateway meta-tools end-to-end (3 stub tools, no network); "
-                "mcp-gateway-full = reference architecture's 60-tool single-turn run."
+                "mcp-gateway-full = full 60-tool MCP Context Gateway architecture (issue #264)."
             ),
         ),
     ] = _DemoScenario.default,
@@ -544,6 +548,14 @@ def budget_check(
                 print(f"  {name}: {tokens}")
 
     raise typer.Exit(0 if ok else 1)
+
+
+# ---------------------------------------------------------------------------
+# Sub-apps
+# ---------------------------------------------------------------------------
+
+# ``mcp serve`` lives in its own module to keep this file lean (issue #243/#246).
+app.add_typer(mcp_app)
 
 
 # ---------------------------------------------------------------------------

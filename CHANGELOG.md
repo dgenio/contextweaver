@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`contextweaver mcp serve` CLI sub-app** (#243, #246). New
+  `src/contextweaver/_mcp_cli.py` Typer sub-app boots
+  `adapters.mcp_gateway_server.McpGatewayServer` or
+  `adapters.mcp_proxy_server.McpProxyServer` over stdio against any
+  JSON / YAML catalog. Flags: `--gateway` / `--proxy` shortcuts plus
+  `--mode {gateway,proxy}`, `--top-k`, `--beam-width`,
+  `--cache-stable`, `--name`, `--version`, and `--dry-run` (validate
+  catalog without binding stdio — useful for CI smoke tests). Loader
+  accepts both native contextweaver
+  (`id`/`kind`/`name`/`description` +/- `args_schema`) and raw MCP
+  `tools/list` snapshot shapes. Marked `[experimental]` in `--help`
+  for v0.9.
+- **`contextweaver.data` package** ships data files in the wheel via
+  `[tool.setuptools.package-data]`. Currently exports
+  `gateway_catalog_path()` for resolving the gateway demo catalog as
+  a concrete `pathlib.Path` regardless of editable vs zip-install.
+
+### Changed
+
 - **`contextweaver.routing.hydration`** — public schema-hydration helpers
   (`SchemaSource`, `hydrate_with_schema`, `lazy_schema_resolver`). Reference
   architectures and gateway runtimes can resolve a tool's full input schema
@@ -47,9 +66,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cast format. Four committed casts under `docs/assets/casts/`
   (default, large-catalog, huge-tool-output, mcp-gateway-full) linked
   from `docs/showcase.md`. `make record-demos{,-check}`. Issue #281.
+- **`__main__.py` docstring** updated to reflect 10 sub-commands /
+  sub-apps including the new `mcp` namespace.
 
 ### Fixed
 
+- **`_mcp_cli.py` honors the no-`print()`-in-library-code rule** (PR #301
+  review). Replaced three `print(..., file=sys.stderr)` calls in the
+  `mcp serve` sub-app with `typer.echo(..., err=True)` so the new CLI
+  module no longer violates the AGENTS.md hard rule that exempts only
+  `__main__.py` and `_demos.py`.
+- **`gateway_catalog_path()` correctly resolves zip-installed catalogs**
+  (PR #301 review). The previous `try Path(str(traversable)) / except
+  TypeError` shape was unreachable for zipimport (the `str(...)` cast
+  never raises, and the `as_file()` branch returned a `Path` to a
+  temp file that could be cleaned up on context-manager exit). The
+  helper now branches on `isinstance(traversable, Path)`: editable
+  installs and unpacked wheels return the real on-disk path; zipped
+  wheels materialise the catalog into a stable cache under
+  `Path(tempfile.gettempdir()) / "contextweaver"` so callers keep
+  the documented `Path` API.
 - **MCP server call-tool result shape** — `McpGatewayServer` and
   `McpProxyServer` now return fully-built `CallToolResult` objects
   instead of `(content, is_error)` 2-tuples. Newer MCP SDK versions
@@ -68,6 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the catch to `CatalogError` (duplicate ids) so adapter regressions
   and other bugs surface loudly instead of silently dropping tools.
 - **Init scaffold git hygiene** — ignored `contextweaver init` scaffold files so running init from the repo root does not leave commit-prone untracked files (#314).
+
+### Documentation
+
+- **AGENTS.md module map** — updated the `__main__.py` row to list 10
+  sub-commands / sub-apps including the new `mcp serve` experimental
+  entry, addressing the doc-drift caught in PR #301 review.
 
 ## [0.9.1] - 2026-05-21
 

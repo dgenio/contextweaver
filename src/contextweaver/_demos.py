@@ -303,6 +303,121 @@ def run_mcp_gateway() -> None:
     asyncio.run(_run_mcp_gateway_async())
 
 
+def run_mcp_gateway_full() -> None:
+    """Full 60-tool MCP Context Gateway architecture run (issue #264).
+
+    Thin re-entry into the reference architecture's ``main()`` so
+    ``contextweaver demo --scenario mcp-gateway-full`` reaches the same
+    end-to-end narrative as ``python examples/architectures/mcp_context_gateway/main.py``
+    without requiring users to clone the repo. The catalog ships inside
+    ``contextweaver.data`` so this works from a wheel install too.
+    """
+    _banner("mcp-gateway-full scenario (60-tool reference architecture)")
+
+    # Late import: the example main.py performs non-trivial work at import
+    # time only when ``main()`` is called, but we keep it lazy anyway so
+    # the other demo scenarios don't pay the cost on import.
+    import importlib.util
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    main_path = repo_root / "examples" / "architectures" / "mcp_context_gateway" / "main.py"
+    if main_path.is_file():
+        # Source-tree / editable install path — load the example verbatim
+        # so we exercise the exact code path users will copy-paste from
+        # the README.
+        spec = importlib.util.spec_from_file_location(
+            "contextweaver._demos_mcp_gateway_full", main_path
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError(
+                f"Cannot load reference architecture from {main_path} "
+                "(importlib could not derive a module spec or loader)."
+            )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.main()
+    else:
+        # Wheel-install fallback: re-implement the architecture's flow against
+        # the packaged catalog so users on ``pip install contextweaver`` (no
+        # examples/) still see the full narrative.
+        _run_mcp_gateway_full_packaged()
+
+    _footer()
+
+
+def _run_mcp_gateway_full_packaged() -> None:
+    """Wheel-install fallback for :func:`run_mcp_gateway_full`.
+
+    Mirrors the reference architecture's narrative but loads everything
+    from ``contextweaver.data``. Kept inline (rather than importing the
+    example) so ``contextweaver demo --scenario mcp-gateway-full`` works
+    even when ``examples/`` was stripped from the install.
+    """
+    from contextweaver.config import ContextBudget
+    from contextweaver.data import gateway_catalog_path
+    from contextweaver.routing.catalog import Catalog, load_catalog_yaml
+
+    _banner("mcp-gateway-full scenario (packaged catalog)")
+    catalog = Catalog()
+    for selectable in load_catalog_yaml(gateway_catalog_path()):
+        catalog.register(selectable)
+    items = catalog.all()
+    ns_count = len({it.namespace for it in items})
+    print(f"\nLoaded catalog: {len(items)} tools across {ns_count} namespaces")
+
+    routing_query = "Execute a BigQuery query to find MRR delta rows for customer C-12345"
+    builder = TreeBuilder(max_children=10)
+    graph = builder.build(items)
+    router = Router(graph, items=items, top_k=5)
+    result = router.route(routing_query)
+    cards = make_choice_cards(
+        result.candidate_items,
+        scores=dict(zip(result.candidate_ids, result.scores, strict=False)),
+    )
+    print(f"\nRoute: {routing_query!r}")
+    print(f"Shortlist: {result.candidate_ids}")
+    print(render_cards_text(cards))
+
+    chosen = "bigquery.run_query"
+    hydrated = catalog.hydrate(chosen)
+    schema_json = json.dumps(hydrated.args_schema, indent=2, sort_keys=True)
+    print(f"\nHydrated schema for {chosen!r}: {len(schema_json)} chars")
+    print(f"Hydrated schema for the other {len(items) - 1} tools: 0 chars (skipped)")
+
+    mgr = ContextManager(budget=ContextBudget(answer=2000))
+    mgr.ingest_sync(ContextItem(id="u1", kind=ItemKind.user_turn, text="Why did MRR drop?"))
+    mgr.ingest_sync(
+        ContextItem(
+            id="tc1",
+            kind=ItemKind.tool_call,
+            text=f"{chosen}(sql=...)",
+            parent_id="u1",
+        )
+    )
+    big_text = "rowset: bigquery.run_query\nrows_returned: 90\n\n" + "\n".join(
+        f'{{"day":{d},"mrr_delta_usd":{(137 * d) % 600 - 300}}}' for d in range(1, 91)
+    )
+    item, envelope = mgr.ingest_mcp_result(
+        tool_call_id="tc1",
+        mcp_result={"content": [{"type": "text", "text": big_text}], "isError": False},
+        tool_name=chosen,
+        firewall_threshold=2000,
+    )
+    artifact_handle = item.artifact_ref.handle if item.artifact_ref else "<none>"
+    pack = mgr.build_sync(phase=Phase.answer, query=routing_query)
+    saving = 100.0 * (1.0 - len(item.text) / max(len(big_text), 1))
+
+    print(
+        f"\nFirewall: {len(big_text):,} chars → {len(item.text):,}-char summary "
+        f"(artifact {artifact_handle})"
+    )
+    print(f"Final prompt tokens: {pack.stats.prompt_tokens}")
+    print(f"Firewall reduction: {saving:.1f}%")
+    _ = envelope  # consumed via mgr; surfaced for symmetry with the example.
+    _footer()
+
+
 async def _run_mcp_gateway_async() -> None:
     from contextweaver.adapters import (
         ProxyRuntime,
@@ -351,60 +466,5 @@ async def _run_mcp_gateway_async() -> None:
         print(f"      Drilldown view (first 40 chars): {head!r}")
     else:
         print("      (no artifact persisted — text-only upstream response)")
-
-    _footer()
-
-
-# --- MCP gateway full architecture scenario (issue #264) ------------------
-
-
-def run_mcp_gateway_full() -> None:
-    """Run the 60-tool MCP Context Gateway reference architecture from the CLI.
-
-    This is the same deterministic walk that
-    ``examples/architectures/mcp_context_gateway/main.py`` exercises — the
-    full single-turn investigation against the 60-tool catalog, with lazy
-    schema hydration, the context firewall on a ~16 KB rowset, and the
-    answer-phase prompt that sees only a summary + artifact handle. The
-    CLI surface lets users see the launch narrative end-to-end without
-    invoking the example script directly (issue #264).
-    """
-    _banner("mcp-gateway-full scenario (60-tool reference architecture)")
-    print(
-        "(loading examples/architectures/mcp_context_gateway/main.py — "
-        "the same script make architectures runs)"
-    )
-
-    import importlib.util
-    from pathlib import Path
-
-    # Locate the reference architecture relative to the installed package.
-    # The CLI ships with the package; the example sits in the repo /
-    # source tarball. The fallback path is the editable-install layout
-    # (repo root two levels above the package).
-    repo_root = Path(__file__).resolve().parent.parent.parent
-    arch_main = repo_root / "examples" / "architectures" / "mcp_context_gateway" / "main.py"
-    if not arch_main.exists():
-        print(
-            f"\n[warning] reference architecture not found at {arch_main}; "
-            "the CLI scenario requires a source checkout (examples/ is not "
-            "shipped on PyPI wheels). Falling back to the smaller "
-            "mcp-gateway scenario."
-        )
-        run_mcp_gateway()
-        return
-
-    spec = importlib.util.spec_from_file_location("_cw_arch_mcp_gateway_full", arch_main)
-    # `assert` would be stripped under `python -O`, leaving a confusing
-    # AttributeError on the next line if the loader cannot be derived.
-    # Raise explicitly so the failure mode is the same in both modes.
-    if spec is None or spec.loader is None:
-        raise RuntimeError(
-            f"Cannot load reference architecture from {arch_main} "
-            "(importlib could not derive a module spec or loader)."
-        )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module.main()
 
     _footer()

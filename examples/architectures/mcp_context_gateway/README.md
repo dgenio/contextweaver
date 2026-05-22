@@ -34,6 +34,21 @@ scripted turn:
 | Result bloat | `ContextManager.ingest_mcp_result` | 16,507 chars → **194-char** summary + artifact |
 | Dependency loss | `parent_id` chains + dependency closure | The `[TOOL CALL]` and `[TOOL RESULT]` stay paired in the final prompt |
 
+## Variants
+
+This architecture ships three sibling runs against the same packaged
+60-tool catalog (`contextweaver.data.mcp_gateway_catalog.yaml`):
+
+| File | What it shows | When to read it |
+|---|---|---|
+| `main.py` | Single-turn narrative inlining `Router`, `Catalog.hydrate`, and `ContextManager.ingest_mcp_result`. | First read — easiest to follow. |
+| `main_live.py` (issue #260) | Same scenario driven through `tool_browse` / `tool_execute` / `tool_view` on a `ProxyRuntime` + `StubUpstream`. Exercises the real MCP wire shape. | Reference for `contextweaver mcp serve --gateway --catalog ...`. |
+| `main_multi.py` (issue #262) | Five-turn transcript with cross-turn fact accumulation and a Slack-thread firewall hit on Turn 5. | When you want to see whether facts survive across turns. |
+
+All three are wired into `make architectures`.
+
+The catalog itself ships inside the wheel via `contextweaver.data.gateway_catalog_path()` — that's why these example scripts work from a `pip install contextweaver` without the `examples/` directory.
+
 ## How to run it
 
 ```bash

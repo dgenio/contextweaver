@@ -103,6 +103,7 @@ Reproduce byte-for-byte via:
 ```bash
 python examples/architectures/mcp_context_gateway/main.py   # single-turn run
 make benchmark-gateway && make gateway-scorecard            # 5-scenario range
+make gateway-scorecard-check                                # CI: byte-stable
 ```
 
 ## Why this exists

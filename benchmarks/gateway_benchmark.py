@@ -4,8 +4,8 @@ Turns the single-call "Single-call gateway scenario" anecdote in
 ``docs/benchmarks.md`` (98.8 % firewall reduction on one rowset) into a
 **measured range** across 5 gateway-shaped scenarios. All scenarios:
 
-- Reuse the 60-tool MCP Context Gateway catalog at
-  ``examples/architectures/mcp_context_gateway/catalog.yaml``.
+- Reuse the 60-tool MCP Context Gateway catalog packaged at
+  ``contextweaver.data:mcp_gateway_catalog.yaml`` (issue #264).
 - Use different routing queries against the same catalog.
 - Use different mocked upstream result sizes, including one tiny payload
   (< 500 chars — firewall correctly no-ops) and one large payload
@@ -46,6 +46,7 @@ sys.path.insert(0, str(_ROOT / "src"))
 
 from contextweaver.config import ContextBudget  # noqa: E402
 from contextweaver.context.manager import ContextManager  # noqa: E402
+from contextweaver.data import gateway_catalog_path  # noqa: E402
 from contextweaver.protocols import CharDivFourEstimator  # noqa: E402
 from contextweaver.routing.cards import make_choice_cards  # noqa: E402
 from contextweaver.routing.catalog import Catalog, load_catalog_yaml  # noqa: E402
@@ -53,7 +54,9 @@ from contextweaver.routing.router import Router  # noqa: E402
 from contextweaver.routing.tree import TreeBuilder  # noqa: E402
 from contextweaver.types import ContextItem, ItemKind, Phase  # noqa: E402
 
-_CATALOG_PATH = _ROOT / "examples" / "architectures" / "mcp_context_gateway" / "catalog.yaml"
+# Issue #264 + #270: the 60-tool catalog now ships inside ``contextweaver.data``
+# rather than under ``examples/`` so the benchmark works from a wheel install.
+_CATALOG_PATH = gateway_catalog_path()
 _BUDGET = ContextBudget(route=1500, call=2000, interpret=3000, answer=4000)
 _ESTIMATOR = CharDivFourEstimator()
 _BENCHMARK_VERSION = "1.0"
@@ -259,7 +262,7 @@ def run_all() -> dict[str, Any]:
 
     payload: dict[str, Any] = {
         "benchmark_version": _BENCHMARK_VERSION,
-        "catalog_path": str(_CATALOG_PATH.relative_to(_ROOT)),
+        "catalog_path": "contextweaver.data:mcp_gateway_catalog.yaml",
         "scenarios": [asdict(row) for row in rows],
         "aggregate": {
             "n_scenarios": len(rows),

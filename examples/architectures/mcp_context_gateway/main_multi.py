@@ -46,6 +46,7 @@ from typing import Any
 
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
+from contextweaver.data import gateway_catalog_path
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.catalog import Catalog, load_catalog_yaml
 from contextweaver.routing.hydration import SchemaSource, hydrate_with_schema
@@ -53,7 +54,10 @@ from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import ContextItem, ItemKind, Phase
 
-CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
+# Issue #264: the 60-tool gateway catalog ships inside the wheel; the
+# multi-turn variant reads it through ``gateway_catalog_path()`` so it
+# also works from a ``pip install`` without the ``examples/`` directory.
+CATALOG_PATH = gateway_catalog_path()
 SCHEMAS_PATH = Path(__file__).parent / "tool_schemas.json"
 
 

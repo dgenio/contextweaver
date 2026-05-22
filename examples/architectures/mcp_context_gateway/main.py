@@ -44,6 +44,7 @@ from typing import Any
 
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
+from contextweaver.data import gateway_catalog_path
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import Catalog, load_catalog_yaml
 from contextweaver.routing.hydration import SchemaSource, hydrate_with_schema
@@ -51,7 +52,13 @@ from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import ContextItem, ItemKind, Phase
 
-CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
+# Issue #264: the catalog ships inside ``contextweaver.data`` so this example
+# (and the matching ``contextweaver demo --scenario mcp-gateway-full`` CLI
+# scenario) work from a wheel install. ``gateway_catalog_path()`` returns a
+# real filesystem ``Path`` for editable installs and unpacked wheels, and
+# materialises a persistent cache copy under
+# ``tempfile.gettempdir()/contextweaver/`` for zipimport.
+CATALOG_PATH = gateway_catalog_path()
 SCHEMAS_PATH = Path(__file__).parent / "tool_schemas.json"
 
 # The user-typed phrasing matters: a real agent would rephrase a vague
@@ -184,10 +191,10 @@ def main() -> None:
     selected_schema = hydrated.args_schema
     if not selected_schema:
         raise SystemExit(
-            f"No schema registered for chosen tool {chosen!r}; the demo intent "
-            "map is mis-aligned with the catalog."
+            f"Catalog entry {chosen!r} has no args_schema; the demo catalog "
+            "must carry a schema for the selected tool."
         )
-    schema_json = json.dumps(selected_schema, indent=2)
+    schema_json = json.dumps(selected_schema, indent=2, sort_keys=True)
     print(f"tool: {chosen}")
     print(f"hydrated schema for: {chosen!r}  ({len(schema_json)} chars)")
     print(f"hydrated schema for the other {catalog_tools - 1} tools: 0 chars (skipped)")

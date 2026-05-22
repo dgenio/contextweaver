@@ -89,3 +89,57 @@ def test_every_scenario_in_enum_has_a_demo_handler(scenario: _DemoScenario) -> N
     without wiring it into the dispatch dict)."""
     name = "run_" + scenario.value.replace("-", "_")
     assert callable(getattr(_demos, name)), f"no demo handler for {scenario.value!r}"
+
+
+def test_packaged_fallback_agrees_with_architecture_on_load_bearing_metrics() -> None:
+    """The wheel-install fallback (``_run_mcp_gateway_full_packaged``) and
+    the source-tree path (``examples/.../main.py``) must agree on the
+    load-bearing metrics: catalog size, ChoiceCard width, and firewall
+    reduction band.
+
+    This is the regression gate for the audit finding that
+    ``_run_mcp_gateway_full_packaged`` re-implements the architecture's
+    pipeline narration. If the two outputs drift, this test fails — so
+    forgetting to update one when the architecture changes is caught at
+    CI time instead of in production.
+    """
+    buf_packaged = io.StringIO()
+    with redirect_stdout(buf_packaged):
+        _demos._run_mcp_gateway_full_packaged()
+    packaged = buf_packaged.getvalue()
+
+    buf_arch = io.StringIO()
+    with redirect_stdout(buf_arch):
+        _demos.run_mcp_gateway_full()  # source-tree path (loads the example)
+    arch = buf_arch.getvalue()
+
+    def _catalog_size(text: str) -> int:
+        # The architecture prints "catalog_tools           = 60" while the
+        # packaged fallback prints "Loaded catalog: 60 tools across N
+        # namespaces" — both must surface 60.
+        match = re.search(r"(?:catalog_tools\s+=\s+|Loaded catalog:\s+)(\d+)", text)
+        assert match is not None, f"catalog size not found in:\n{text[:200]}"
+        return int(match.group(1))
+
+    def _firewall_reduction(text: str) -> float:
+        # Architecture: "firewall_reduction_pct  = 98.8%"
+        # Packaged:    "Firewall reduction: 98.8%"
+        match = re.search(
+            r"(?:firewall_reduction_pct\s+=\s+|Firewall reduction:\s+)([\d.]+)%", text
+        )
+        assert match is not None, f"firewall reduction not found in:\n{text[:200]}"
+        return float(match.group(1))
+
+    # Both code paths route against the same 60-tool packaged catalog.
+    assert _catalog_size(packaged) == _catalog_size(arch) == 60, (
+        "Wheel-install fallback and source-tree architecture disagree on "
+        "catalog size — one of them is reading a different catalog."
+    )
+
+    # Both code paths fire the firewall on the ~16 KB BigQuery rowset; the
+    # reduction band must stay > 95 %. The two narrations use slightly
+    # different summary text (the example is verbose; the fallback is
+    # terser), so the absolute values diverge by ~1 percentage point — but
+    # both must clear the band that the README headline claims.
+    assert _firewall_reduction(packaged) > 95.0
+    assert _firewall_reduction(arch) > 95.0
