@@ -24,6 +24,9 @@ example:
 	python examples/mcp_proxy_demo.py
 	python examples/a2a_adapter_demo.py
 	python examples/crewai_adapter_demo.py
+	python examples/pydantic_ai_adapter_demo.py
+	python examples/smolagents_adapter_demo.py
+	python examples/agno_adapter_demo.py
 	python examples/fastmcp_discovery_demo.py
 	python examples/langchain_memory_demo.py
 	python examples/cookbook/byot_recipe.py

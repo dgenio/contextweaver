@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pydantic AI adapter — `adapters/pydantic_ai.py`** (#272, child of #193).
+  Thin stateless converter turning Pydantic AI `Tool` definitions (live
+  instances or the equivalent plain-dict shape `Tool.model_dump()` emits)
+  into `SelectableItem`s, plus a lossless `from_pydantic_ai_messages` /
+  `to_pydantic_ai_messages` round-trip for `ModelMessage` history. Heavy
+  decode/encode helpers live in `adapters/_pydantic_ai_messages.py` to
+  keep `pydantic_ai.py` close to the 300-line module guideline. New
+  `[pydantic-ai]` optional-dependency group; plain-dict / message-dict
+  paths work without the extra installed. New
+  `docs/integration_pydantic_ai.md` integration guide,
+  `examples/pydantic_ai_adapter_demo.py` (wired into `make example`),
+  and 26 new test cases in `tests/test_adapters_pydantic_ai.py`.
+- **smolagents adapter — `adapters/smolagents.py`** (#274, child of #193).
+  Thin stateless converter turning Hugging Face smolagents `Tool`
+  definitions into `SelectableItem`s (with `inputs` → JSON-Schema
+  coercion) and a `from_smolagents_agent` step-log ingestor that pulls
+  `MultiStepAgent.memory.steps` into `ContextItem`s. `CodeAgent` code
+  blocks are intentionally not surfaced — only the executed tool calls
+  and their observations land in the event log. New `[smolagents]`
+  optional-dependency group; plain-dict / step-dict paths work without
+  the extra installed. New `docs/integration_smolagents.md`,
+  `examples/smolagents_adapter_demo.py`, and 27 new test cases in
+  `tests/test_adapters_smolagents.py`.
+- **Agno adapter — `adapters/agno.py`** (#275, child of #193). Thin
+  stateless converter turning Agno (formerly Phidata) `Function` and
+  `Toolkit` members into `SelectableItem`s, plus a `from_agno_session`
+  ingestor that walks an `AgentSession` (or `AgentRun.messages`) into
+  `ContextItem`s following the OpenAI Chat Completions message shape
+  Agno emits. New `[agno]` optional-dependency group; plain-dict /
+  message-dict paths work without the extra installed. The integration
+  guide explicitly addresses the contextweaver-vs-Agno-`Memory`
+  layering so users understand which layer owns what. New
+  `docs/integration_agno.md`, `examples/agno_adapter_demo.py`, and 29
+  new test cases in `tests/test_adapters_agno.py`.
+- README "Framework Integrations" table (both occurrences) and Examples
+  table gained rows for CrewAI, Pydantic AI, smolagents, and Agno.
+  `docs/interop.md` matrix promotes Pydantic AI / smolagents / Agno
+  from "Planned (#193)" to "Available". `mkdocs.yml` nav surfaces the
+  three new integration guides. The umbrella issue #193 closes with
+  this release.
+
 ## [0.10.0] - 2026-05-22
 
 ### Added

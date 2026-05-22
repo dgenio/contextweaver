@@ -88,6 +88,9 @@ nav:
       - Google ADK / Vertex AI: integration_google_adk.md
       - Pipecat: integration_pipecat.md
       - CrewAI: integration_crewai.md
+      - Pydantic AI: integration_pydantic_ai.md
+      - smolagents: integration_smolagents.md
+      - Agno: integration_agno.md
       - External Memory: integration_memory.md
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md

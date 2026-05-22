@@ -255,6 +255,10 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
 ---
 
@@ -385,6 +389,10 @@ contextweaver works with any LLM provider and any agent framework:
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -532,6 +540,10 @@ contextweaver replay --session session.json --phase answer
 | `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
 | `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
 | `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
+| `crewai_adapter_demo.py` | CrewAI adapter: `BaseTool` → catalog → routing |
+| `pydantic_ai_adapter_demo.py` | Pydantic AI adapter: tools + lossless message round-trip |
+| `smolagents_adapter_demo.py` | smolagents adapter: tools + `MultiStepAgent` step-log ingestion |
+| `agno_adapter_demo.py` | Agno adapter: toolkit → catalog + session-history ingestion |
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 | `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
 | `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
@@ -567,8 +579,12 @@ to any LLM or framework. See dedicated guides for
 [LlamaIndex](docs/integration_llamaindex.md),
 [LangChain + LangGraph](docs/integration_langchain.md),
 [OpenAI Agents SDK](docs/integration_openai_adk.md),
-[Google ADK / Vertex AI](docs/integration_google_adk.md), and
-[Pipecat](docs/integration_pipecat.md).  If your runtime isn't listed, the
+[Google ADK / Vertex AI](docs/integration_google_adk.md),
+[Pipecat](docs/integration_pipecat.md),
+[CrewAI](docs/integration_crewai.md),
+[Pydantic AI](docs/integration_pydantic_ai.md),
+[smolagents](docs/integration_smolagents.md), and
+[Agno](docs/integration_agno.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 
