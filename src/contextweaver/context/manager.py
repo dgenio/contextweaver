@@ -490,9 +490,10 @@ class ContextManager:
 
         # 1. Generate candidates
         candidates = generate_candidates(self._event_log, phase, self._policy)
-        pre_closure_ids = {c.id for c in candidates}
 
         # 2. Dependency closure
+        if explain:
+            pre_closure_ids = {c.id for c in candidates}
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
         closure_added_ids = {c.id for c in candidates} - pre_closure_ids if explain else set()
 
