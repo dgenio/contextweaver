@@ -1,0 +1,19 @@
+{
+  "label": "PII-like item — confidential. The placeholder mimics shape only, never real PII.",
+  "_note": "Strings like NAME / EMAIL / ID are deliberately stylised placeholders so this fixture is greppable without leaking real PII.",
+  "item": {
+    "id": "pii-1",
+    "kind": "memory_fact",
+    "text": "Customer NAME=<<PLACEHOLDER>>, EMAIL=<<PLACEHOLDER>>, ID=<<PLACEHOLDER>>",
+    "sensitivity": "confidential",
+    "metadata": {
+      "pii_like": true
+    }
+  },
+  "expected_actions": {
+    "floor_public": "filtered",
+    "floor_internal": "filtered",
+    "floor_confidential": "filtered",
+    "floor_restricted": "passes"
+  }
+}

@@ -22,6 +22,11 @@ from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.graph_io import load_graph, save_graph
 from contextweaver.routing.graph_node import ChoiceNode
+from contextweaver.routing.hydration import (
+    SchemaSource,
+    hydrate_with_schema,
+    lazy_schema_resolver,
+)
 from contextweaver.routing.labeler import KeywordLabeler
 from contextweaver.routing.path import parse_path, resolve_path
 from contextweaver.routing.router import Router, RouteResult
@@ -43,6 +48,7 @@ __all__ = [
     "KeywordLabeler",
     "RouteResult",
     "Router",
+    "SchemaSource",
     "ToolIdParts",
     "TreeBuilder",
     "bound_browse_response",
@@ -52,7 +58,9 @@ __all__ = [
     "count_tokens",
     "format_card_for_prompt",
     "format_tool_id",
+    "hydrate_with_schema",
     "item_to_card",
+    "lazy_schema_resolver",
     "load_graph",
     "make_choice_cards",
     "parse_path",

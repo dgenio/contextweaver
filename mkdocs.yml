@@ -66,6 +66,8 @@ nav:
   - Where it fits: comparison.md
   - FAQ: faq.md
   - Which pattern fits?: which_pattern.md
+  - Context Firewall: context_firewall.md
+  - Tool Router: tool_router.md
   - Concepts: concepts.md
   - How contextweaver Fits (deeper): interop.md
   - Cookbook: cookbook.md
@@ -90,6 +92,9 @@ nav:
       - Google ADK / Vertex AI: integration_google_adk.md
       - Pipecat: integration_pipecat.md
       - CrewAI: integration_crewai.md
+      - Pydantic AI: integration_pydantic_ai.md
+      - smolagents: integration_smolagents.md
+      - Agno: integration_agno.md
       - External Memory: integration_memory.md
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md

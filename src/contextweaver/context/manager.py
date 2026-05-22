@@ -15,12 +15,18 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context import ingest as _ingest
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
+from contextweaver.context.explanation import (
+    ContextBuildExplanation,
+)
+from contextweaver.context.explanation import (
+    build_explanation as _build_explanation,
+)
 from contextweaver.context.firewall import apply_firewall_to_batch
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
@@ -442,7 +448,8 @@ class ContextManager:
         budget_tokens: int | None = None,
         hints: list[str] | None = None,
         extra: dict[str, Any] | None = None,
-    ) -> ContextPack:
+        explain: bool = False,
+    ) -> tuple[ContextPack, ContextBuildExplanation | None]:
         """Run the full context compilation pipeline (synchronous core).
 
         All eight pipeline steps are pure computation, so no ``await`` is
@@ -458,9 +465,15 @@ class ContextManager:
             budget_tokens: Override the default phase budget.
             hints: Additional hint tags for scoring.
             extra: Reserved for future pipeline extensions.
+            explain: When ``True``, collect explanation-specific
+                intermediate state and return a populated
+                :class:`ContextBuildExplanation`.  When ``False``
+                (default), skip explanation overhead and return
+                ``None`` as the second tuple element (issue #291).
 
         Returns:
-            A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
+            A 2-tuple ``(pack, explanation)``.  *explanation* is
+            ``None`` when *explain* is ``False``.
         """
         _ = extra  # reserved
         _tags = sorted(set(list(query_tags or []) + list(hints or [])))
@@ -479,10 +492,22 @@ class ContextManager:
         candidates = generate_candidates(self._event_log, phase, self._policy)
 
         # 2. Dependency closure
+        if explain:
+            pre_closure_ids = {c.id for c in candidates}
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
+        closure_added_ids = {c.id for c in candidates} - pre_closure_ids if explain else set()
 
         # 3. Sensitivity filter
+        if explain:
+            pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in candidates}
         candidates, sensitivity_drops = apply_sensitivity_filter(candidates, self._policy)
+        if explain:
+            post_sens_ids = {c.id for c in candidates}
+            sensitivity_dropped_records: list[tuple[str, str, str]] = sorted(
+                (cid, kind, sens) for (cid, kind, sens) in pre_sens_ids if cid not in post_sens_ids
+            )
+        else:
+            sensitivity_dropped_records = []
 
         # 4. Firewall
         candidates, envelopes = apply_firewall_to_batch(
@@ -497,9 +522,22 @@ class ContextManager:
         scored = score_candidates(candidates, query, _tags, self._scoring)
 
         # 6. Dedup
+        if explain:
+            pre_dedup_view: list[tuple[str, str, str, float]] = [
+                (item.id, item.kind.value, item.sensitivity.value, score) for score, item in scored
+            ]
         scored, dedup_removed = deduplicate_candidates(
             scored, similarity_threshold=self._scoring.dedup_threshold
         )
+        if explain:
+            post_dedup_ids = {item.id for _score, item in scored}
+            dedup_dropped_records: list[tuple[str, str, str, float]] = [
+                (iid, kind, sens, sc)
+                for (iid, kind, sens, sc) in pre_dedup_view
+                if iid not in post_dedup_ids
+            ]
+        else:
+            dedup_dropped_records = []
 
         # Pre-build episodic + fact injection text so we can estimate its
         # token cost and subtract it from the budget *before* selection.
@@ -584,6 +622,25 @@ class ContextManager:
         prompt = render_context(selected, header=full_header, footer=footer)
 
         pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
+
+        # Assemble the explanation (issue #291) only when requested.
+        explanation: ContextBuildExplanation | None = None
+        if explain:
+            explanation = _build_explanation(
+                phase=phase,
+                query=query,
+                stats=stats,
+                sensitivity_dropped=sensitivity_dropped_records,
+                sensitivity_drops=sensitivity_drops,
+                dedup_dropped=dedup_dropped_records,
+                dedup_removed=dedup_removed,
+                closures=closures,
+                closure_added_ids=closure_added_ids,
+                scored=scored,
+                selected_ids={item.id for item in selected},
+                budget_tokens=adjusted.for_phase(phase),
+            )
+
         self._hook.on_context_built(pack)
         logger.info(
             "context build: phase=%s, included=%d, dropped=%d, tokens=%d/%d",
@@ -593,7 +650,37 @@ class ContextManager:
             sum(stats.tokens_per_section.values()),
             effective_budget.for_phase(phase),
         )
-        return pack
+        return pack, explanation
+
+    @overload
+    async def build(
+        self,
+        phase: Phase = ...,
+        query: str = ...,
+        query_tags: list[str] | None = ...,
+        header: str = ...,
+        footer: str = ...,
+        budget_tokens: int | None = ...,
+        hints: list[str] | None = ...,
+        extra: dict[str, Any] | None = ...,
+        *,
+        explain: Literal[False] = False,
+    ) -> ContextPack: ...
+
+    @overload
+    async def build(
+        self,
+        phase: Phase = ...,
+        query: str = ...,
+        query_tags: list[str] | None = ...,
+        header: str = ...,
+        footer: str = ...,
+        budget_tokens: int | None = ...,
+        hints: list[str] | None = ...,
+        extra: dict[str, Any] | None = ...,
+        *,
+        explain: Literal[True],
+    ) -> tuple[ContextPack, ContextBuildExplanation]: ...
 
     async def build(
         self,
@@ -605,7 +692,9 @@ class ContextManager:
         budget_tokens: int | None = None,
         hints: list[str] | None = None,
         extra: dict[str, Any] | None = None,
-    ) -> ContextPack:
+        *,
+        explain: bool = False,
+    ) -> ContextPack | tuple[ContextPack, ContextBuildExplanation]:
         """Asynchronously compile a :class:`~contextweaver.envelope.ContextPack`.
 
         The current pipeline is fully synchronous; this ``async`` wrapper
@@ -623,11 +712,18 @@ class ContextManager:
             budget_tokens: Override the default phase budget.
             hints: Additional hint tags for scoring.
             extra: Reserved for future pipeline extensions.
+            explain: Keyword-only.  When ``True``, the method returns a
+                ``(pack, explanation)`` tuple where *explanation* is a
+                :class:`ContextBuildExplanation` capturing per-candidate
+                scoring + drop reasons.  Default ``False`` preserves the
+                bare :class:`ContextPack` return shape (issue #291).
 
         Returns:
-            A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
+            A :class:`~contextweaver.envelope.ContextPack` ready for
+            the LLM, or a ``(pack, explanation)`` tuple when
+            ``explain=True``.
         """
-        return self._build(
+        pack, explanation = self._build(
             phase=phase,
             query=query,
             query_tags=query_tags,
@@ -636,7 +732,42 @@ class ContextManager:
             budget_tokens=budget_tokens,
             hints=hints,
             extra=extra,
+            explain=explain,
         )
+        if explain:
+            assert explanation is not None
+            return (pack, explanation)
+        return pack
+
+    @overload
+    def build_sync(
+        self,
+        phase: Phase = ...,
+        query: str = ...,
+        query_tags: list[str] | None = ...,
+        header: str = ...,
+        footer: str = ...,
+        budget_tokens: int | None = ...,
+        hints: list[str] | None = ...,
+        extra: dict[str, Any] | None = ...,
+        *,
+        explain: Literal[False] = False,
+    ) -> ContextPack: ...
+
+    @overload
+    def build_sync(
+        self,
+        phase: Phase = ...,
+        query: str = ...,
+        query_tags: list[str] | None = ...,
+        header: str = ...,
+        footer: str = ...,
+        budget_tokens: int | None = ...,
+        hints: list[str] | None = ...,
+        extra: dict[str, Any] | None = ...,
+        *,
+        explain: Literal[True],
+    ) -> tuple[ContextPack, ContextBuildExplanation]: ...
 
     def build_sync(
         self,
@@ -648,7 +779,9 @@ class ContextManager:
         budget_tokens: int | None = None,
         hints: list[str] | None = None,
         extra: dict[str, Any] | None = None,
-    ) -> ContextPack:
+        *,
+        explain: bool = False,
+    ) -> ContextPack | tuple[ContextPack, ContextBuildExplanation]:
         """Synchronous entry point — delegates to :meth:`_build`.
 
         Works inside Jupyter notebooks, FastAPI handlers, and any other
@@ -665,11 +798,15 @@ class ContextManager:
             budget_tokens: Override the default phase budget.
             hints: Additional hint tags for scoring.
             extra: Reserved for future pipeline extensions.
+            explain: Keyword-only.  Same semantics as
+                :meth:`build` (issue #291).
 
         Returns:
-            A :class:`~contextweaver.envelope.ContextPack` ready for the LLM.
+            A :class:`~contextweaver.envelope.ContextPack` ready for
+            the LLM, or a ``(pack, explanation)`` tuple when
+            ``explain=True``.
         """
-        return self._build(
+        pack, explanation = self._build(
             phase=phase,
             query=query,
             query_tags=query_tags,
@@ -678,7 +815,12 @@ class ContextManager:
             budget_tokens=budget_tokens,
             hints=hints,
             extra=extra,
+            explain=explain,
         )
+        if explain:
+            assert explanation is not None
+            return (pack, explanation)
+        return pack
 
     # ------------------------------------------------------------------
     # Route-integrated build
@@ -738,7 +880,7 @@ class ContextManager:
         cards_text = render_cards_text(cards)
         footer = f"[AVAILABLE TOOLS]\n{cards_text}" if cards_text else ""
 
-        pack = self._build(
+        pack, _explanation = self._build(
             phase=Phase.route,
             query=query,
             header=f"[GOAL]\n{goal}",
@@ -886,12 +1028,13 @@ class ContextManager:
             constraints=constraints,
         )
 
-        return self._build(
+        pack, _explanation = self._build(
             phase=Phase.call,
             query=query,
             header=header,
             budget_tokens=budget_tokens,
         )
+        return pack
 
     async def build_call_prompt(
         self,

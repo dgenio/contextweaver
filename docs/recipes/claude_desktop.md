@@ -48,7 +48,7 @@ servers.
    uses the official MIT-licensed
    [`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
    as the worked example, since its tool surface is committed under
-   [`examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json)
+   [`examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json)
    for offline reproduction.
 
 ## Step 1 — Install contextweaver locally
@@ -82,14 +82,14 @@ launcher at a real `tools/list` snapshot from a real MCP server:
 
 ```bash
 python /path/to/contextweaver/examples/recipes/serve_gateway.py \
-    --catalog /path/to/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json
+    --catalog /path/to/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json
 ```
 
 The launcher should now report `11 upstream tools, mode=GATEWAY` on
 stderr. The committed snapshot is verbatim from the official
 `@modelcontextprotocol/server-filesystem` package; re-snapshot from a
 live server with
-[`scripts/snapshot_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/snapshot_mcp_catalog.py)
+[`scripts/capture_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/capture_mcp_catalog.py)
 when upstream ships a new version.
 
 > **Working against the *live* MCP server:** the recipe above uses a
@@ -112,7 +112,7 @@ and paste:
       "args": [
         "/ABSOLUTE/PATH/TO/contextweaver/examples/recipes/serve_gateway.py",
         "--catalog",
-        "/ABSOLUTE/PATH/TO/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json"
+        "/ABSOLUTE/PATH/TO/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json"
       ],
       "env": {}
     }
@@ -216,5 +216,5 @@ Desktop). Walk this checklist after wiring:
   `ProxyRuntime`, `MultiplexUpstream`, `McpGatewayServer`).
 - [Real-MCP catalog snapshots](https://github.com/dgenio/contextweaver/tree/main/examples/architectures/mcp_context_gateway/real_catalogs)
   — committed `tools/list` snapshots ready to point the launcher at.
-- [`scripts/snapshot_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/snapshot_mcp_catalog.py)
+- [`scripts/capture_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/capture_mcp_catalog.py)
   — re-snapshot a server when upstream ships a new version.

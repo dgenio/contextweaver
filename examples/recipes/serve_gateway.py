@@ -11,7 +11,7 @@ Usage::
 
     # 2) Real catalog snapshot.
     python examples/recipes/serve_gateway.py --catalog \\
-        examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json
+        examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json
 
     # 3) Programmatic — wrap your own UpstreamCall.
     from examples.recipes.serve_gateway import build_runtime_from_snapshot
@@ -61,7 +61,12 @@ _STUB_TOOLS: list[dict[str, Any]] = [
 
 
 def _load_snapshot_tools(path: Path) -> list[dict[str, Any]]:
-    """Read a ``{_meta, tools}`` snapshot file and return its ``tools`` list."""
+    """Read a real-catalog snapshot file and return its ``tools`` list.
+
+    Accepts the on-disk shape used by ``scripts/capture_mcp_catalog.py``
+    (a JSON object with at least a top-level ``tools`` list, plus
+    optional ``_source`` / ``_captured_with`` provenance fields).
+    """
     payload = json.loads(path.read_text())
     if not isinstance(payload, dict) or "tools" not in payload:
         raise SystemExit(f"{path}: malformed snapshot, expected JSON object with a 'tools' key")
@@ -105,8 +110,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--catalog",
         type=Path,
         help=(
-            "Path to a {_meta, tools} snapshot JSON file (see "
-            "examples/architectures/mcp_context_gateway/real_catalogs/)."
+            "Path to a real-catalog snapshot JSON file (e.g. "
+            "examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json)."
         ),
     )
     p.add_argument(

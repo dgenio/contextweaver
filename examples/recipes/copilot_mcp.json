@@ -7,7 +7,7 @@
       "args": [
         "${workspaceFolder}/examples/recipes/serve_gateway.py",
         "--catalog",
-        "${workspaceFolder}/examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json"
+        "${workspaceFolder}/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json"
       ]
     }
   }

@@ -16,54 +16,173 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`docs/recipes/github_copilot.md`). Each recipe links to a
   copy-pasteable client config under `examples/recipes/` and a
   minimal stdio launcher (`examples/recipes/serve_gateway.py`) that
-  wires `McpGatewayServer.run_stdio()` against either a built-in stub
-  catalog or any committed `{_meta, tools}` snapshot.
-- **Real-MCP catalog example variant** (#280). New
-  `examples/architectures/mcp_context_gateway/main_real.py` runs the
-  reference DevOps-Copilot flow against three verbatim `tools/list`
-  snapshots from MIT-licensed reference MCP servers
-  (`@modelcontextprotocol/server-filesystem`, `mcp-server-git`,
-  `mcp-server-fetch`) committed under `real_catalogs/`. Wired into
-  `make architectures`. Snapshots are refreshable via the new
-  `scripts/snapshot_mcp_catalog.py` helper.
-- **`scripts/snapshot_mcp_catalog.py`** (#280) — spawns an MCP server
-  over stdio, issues a single `tools/list`, and writes the result as a
-  `{_meta, tools}` JSON file in the shape `main_real.py` consumes. Used
-  to refresh the committed snapshots when upstream servers ship new
-  versions. `_meta.snapshot_method` defaults to a sanitised form
-  (`--source-name <NAME>`) so secrets in `--command` are not persisted
-  into committed snapshots; pass `--snapshot-method-override` when you
-  deliberately want the exact reproducible invocation recorded.
+  wires `McpGatewayServer.run_stdio()` against the committed real-catalog
+  snapshots under `examples/architectures/mcp_context_gateway/real_catalogs/`
+  (`time.json`, `filesystem.json`, `everything.json`).
+- **Pydantic AI adapter — `adapters/pydantic_ai.py`** (#272, child of #193).
+  Thin stateless converter turning Pydantic AI `Tool` definitions (live
+  instances or the equivalent plain-dict shape `Tool.model_dump()` emits)
+  into `SelectableItem`s, plus a lossless `from_pydantic_ai_messages` /
+  `to_pydantic_ai_messages` round-trip for `ModelMessage` history. Heavy
+  decode/encode helpers live in `adapters/_pydantic_ai_messages.py` to
+  keep `pydantic_ai.py` close to the 300-line module guideline. New
+  `[pydantic-ai]` optional-dependency group; plain-dict / message-dict
+  paths work without the extra installed. New
+  `docs/integration_pydantic_ai.md` integration guide,
+  `examples/pydantic_ai_adapter_demo.py` (wired into `make example`),
+  and 26 new test cases in `tests/test_adapters_pydantic_ai.py`.
+- **smolagents adapter — `adapters/smolagents.py`** (#274, child of #193).
+  Thin stateless converter turning Hugging Face smolagents `Tool`
+  definitions into `SelectableItem`s (with `inputs` → JSON-Schema
+  coercion) and a `from_smolagents_agent` step-log ingestor that pulls
+  `MultiStepAgent.memory.steps` into `ContextItem`s. `CodeAgent` code
+  blocks are intentionally not surfaced — only the executed tool calls
+  and their observations land in the event log. New `[smolagents]`
+  optional-dependency group; plain-dict / step-dict paths work without
+  the extra installed. New `docs/integration_smolagents.md`,
+  `examples/smolagents_adapter_demo.py`, and 27 new test cases in
+  `tests/test_adapters_smolagents.py`.
+- **Agno adapter — `adapters/agno.py`** (#275, child of #193). Thin
+  stateless converter turning Agno (formerly Phidata) `Function` and
+  `Toolkit` members into `SelectableItem`s, plus a `from_agno_session`
+  ingestor that walks an `AgentSession` (or `AgentRun.messages`) into
+  `ContextItem`s following the OpenAI Chat Completions message shape
+  Agno emits. New `[agno]` optional-dependency group; plain-dict /
+  message-dict paths work without the extra installed. The integration
+  guide explicitly addresses the contextweaver-vs-Agno-`Memory`
+  layering so users understand which layer owns what. New
+  `docs/integration_agno.md`, `examples/agno_adapter_demo.py`, and 29
+  new test cases in `tests/test_adapters_agno.py`.
+- README "Framework Integrations" table (both occurrences) and Examples
+  table gained rows for CrewAI, Pydantic AI, smolagents, and Agno.
+  `docs/interop.md` matrix promotes Pydantic AI / smolagents / Agno
+  from "Planned (#193)" to "Available". `mkdocs.yml` nav surfaces the
+  three new integration guides. The umbrella issue #193 closes with
+  this release.
 
-### Changed
+## [0.10.0] - 2026-05-22
 
-- `scripts/snapshot_mcp_catalog.py`: internal failures (missing MCP SDK,
-  empty `--command`) now raise `RuntimeError` instead of `SystemExit`
-  so programmatic callers can rely on the documented `int` return
-  contract. Argparse-level errors continue to exit via `SystemExit` as
-  usual.
-- `examples/architectures/mcp_context_gateway/main_real.py`: scenario
-  data moved to a sibling `scenarios.py` to keep the runner module
-  under the ≤ 300 line guideline. Behaviour is unchanged.
-- `examples/architectures/mcp_context_gateway/real_catalogs/README.md`:
-  fixed four `../../../` relative links that resolved to
-  `examples/...` instead of the repo root. They now go up four
-  levels.
+### Added
 
-### Tests
+- **`contextweaver.routing.hydration`** — public schema-hydration helpers
+  (`SchemaSource`, `hydrate_with_schema`, `lazy_schema_resolver`). Reference
+  architectures and gateway runtimes can resolve a tool's full input schema
+  from a sidecar source (raw dict, JSON file, MCP `tools/list` snapshot)
+  without hand-rolling a `_FULL_SCHEMAS` dict. Inline `args_schema` on the
+  catalog item still wins; sidecar only fills in when the entry is empty.
+  Issue #261.
+- **`contextweaver mcp serve` CLI** — new `_mcp_cli.py` Typer sub-app
+  (`contextweaver mcp serve`) boots `McpGatewayServer` or `McpProxyServer`
+  over stdio against any JSON / YAML catalog. Flags: `--mode {gateway,proxy}`,
+  `--gateway` / `--proxy` shortcuts, `--top-k`, `--beam-width`,
+  `--cache-stable`, `--name`, `--version`, `--dry-run` (catalog validation
+  without binding stdio). Loader accepts both native contextweaver and raw MCP
+  `tools/list` snapshot shapes. Marked `[experimental]` for v0.10.
+  Issues #243 / #246.
+- **Live-transport MCP gateway architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_live.py` runs the reference
+  architecture through a real `mcp.server.Server` + `ClientSession` paired via
+  `mcp.shared.memory` (in-process, deterministic, network-free). Issue #260.
+- **Multi-turn MCP gateway architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_multi.py` extends the
+  scenario to 4 turns (BigQuery → Linear → Slack → PagerDuty) with fact
+  accumulation across turns; the turn-1 artifact survives into the final answer
+  prompt via dependency closure. Issue #262.
+- **`contextweaver demo --scenario mcp-gateway-full`** — surfaces the 60-tool
+  reference architecture from the CLI so users can see the full launch
+  narrative without invoking the example script directly. The catalog ships
+  inside the wheel at `contextweaver/data/mcp_gateway_catalog.yaml`, exposed
+  via `contextweaver.data.gateway_catalog_path()`. Issue #264.
+- **Gateway-scenario benchmark suite** — `benchmarks/gateway_benchmark.py`
+  runs 5 deterministic gateway-shaped scenarios over the same 60-tool catalog
+  and emits `benchmarks/results/gateway_latest.json` +
+  `benchmarks/gateway_scorecard.md`. Headline firewall-reduction range:
+  **0.0 % – 98.8 %** across scenarios. `make benchmark-gateway` /
+  `make gateway-scorecard{,-check}` targets added. Issue #270.
+- **Real-MCP catalog architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_real.py` runs the same
+  shape against committed snapshots of three real MCP servers
+  (`server-time`, `server-filesystem`, `server-everything`) under
+  `real_catalogs/`. `scripts/capture_mcp_catalog.py` is the offline-safe
+  regenerator. Issue #280.
+- **Asciinema recordings for the showcase demos** — `scripts/record_demo.py`
+  is a stdlib-only writer for the asciinema v2 cast format. Four committed
+  casts under `docs/assets/casts/` (default, large-catalog, huge-tool-output,
+  mcp-gateway-full) linked from `docs/showcase.md`. `make record-demos{,-check}`
+  targets added. Issue #281.
+- **`RouteResult.to_dict` / `from_dict`** — adds the missing serialization pair
+  to `RouteResult`. Default `include_items=True` embeds full `SelectableItem`
+  dicts; opt-in `include_items=False` emits the cheaper ID-only payload.
+  Issue #289.
+- **Context-pack explanation traces** — new `contextweaver.context.explanation`
+  module exposes `ContextBuildExplanation` + `CandidateExplanation` versioned
+  dataclasses capturing per-candidate scoring, drop reasons,
+  dependency-closure additions, and sensitivity / dedup drops. Surface is
+  opt-in: `ContextManager.build(..., explain=True)` returns a `(pack,
+  explanation)` tuple; the default `explain=False` return type is unchanged.
+  Issue #291.
+- **Sensitivity / firewall regression fixtures** — six explicit fixtures under
+  `tests/fixtures/sensitivity/` (public, internal, confidential, restricted,
+  PII-like, secret-like) driven through `apply_sensitivity_filter` at every
+  floor level in both drop and redact modes. Pins the conservative default
+  (`confidential` floor + `drop`) and the `MaskRedactionHook` invariant.
+  Issue #292.
+- **Weaver-spec payload fixtures** — checked-in `tests/fixtures/weaver_spec/`
+  fixtures driven through the `adapters.weaver_contracts` adapter. The CI
+  `weaver-spec conformance` step gained a `--fixtures-dir` flag that cites the
+  exact failing fixture path, JSON pointer, and schema on failure. Issue #295.
+- **Golden route-prompt + MCP-ingestion fixtures** — `tests/fixtures/golden/`
+  snapshots `ContextManager.build_route_prompt_sync` and
+  `mcp_result_to_envelope` outputs. Shared `tests/fixtures/_normalize.py`
+  strips volatile fields (timestamps, UUIDs, score floats > 4 dp) for
+  machine-stable comparisons. Issue #296.
 
-- `tests/test_architectures_mcp_context_gateway_real.py`: replaced
-  hard-coded `[1, 11, 12]` catalog-size assertions and `10/11/0`
-  skipped-tool counts with invariants derived from the run output,
-  matching the docstring's "valid across snapshot refreshes" claim.
-  Also stripped thousands separators when parsing the firewall
-  summary line so the test does not break once summaries cross
-  1,000 chars.
-- `tests/test_snapshot_mcp_catalog.py`: extracted the dedup loop
-  from `_fetch_tools_list` into a `_serialise_tools` helper and
-  added real dedup / blank-name / attribute-shape coverage. Renamed
-  the existing test to `test_main_preserves_tool_order` to match
-  what it actually asserts.
+### Fixed
+
+- **MCP server call-tool result shape** — `McpGatewayServer` and
+  `McpProxyServer` now return fully-built `CallToolResult` objects instead of
+  `(content, is_error)` 2-tuples. Newer MCP SDK versions interpret a 2-tuple
+  as `(unstructured, structuredContent)` and reject the `bool` half via
+  JSON-schema validation, breaking the live-transport path. Surfaced while
+  landing #260.
+- **`SchemaSource.from_json_file` validation** — tightened schema-key checks
+  and narrowed the example error catch to `json.JSONDecodeError` (was bare
+  `Exception`). Issue #261 follow-up.
+- **`CallToolResult.content` type annotation** — narrowed from `Any` to
+  `list[ContentBlock]` for `mypy --strict` compliance. Issue #300.
+- **`ContextBuildExplanation` overload** — added `assert explanation is not
+  None` guard when `explain=True` so both `@overload` branches satisfy mypy.
+  Issue #291 follow-up.
+- **`PYTHONPATH` in pytest config** — added `pythonpath = ["src", "tests"]` to
+  `pyproject.toml` so `tests.fixtures` package imports resolve correctly in
+  all invocation styles. Issue #302.
+
+## [0.9.1] - 2026-05-21
+
+### Added
+
+- **Benchmark scorecard transparency suite** (#266 #267 #268 #269 #271 #277).
+  Seven scorecard expansions in a single cluster:
+  - `HashingEmbeddingBackend` — stdlib-only deterministic `EmbeddingBackend`
+    (blake2b hashing trick, L2-normalised vectors) so the embedding code path
+    runs in CI without pulling torch. Re-exported from
+    `contextweaver.extras.embeddings`. Issue #266.
+  - Hardware reference-rig disclosure — benchmark harness captures `platform` /
+    `sys` / `os.cpu_count` metadata; scorecard renderer emits the pinned
+    canonical rig and the measured-on host as separate blocks. Issue #267.
+  - Tiktoken parity check — `_run_tiktoken_parity` quantifies
+    `CharDivFourEstimator` vs `cl100k_base` drift (MAE, max, signed, ratio).
+    Issue #268.
+  - Optional end-to-end real-model probe — `--with-real-model` flag plus
+    `CW_BENCH_LLM_PROVIDER` / `CW_BENCH_LLM_API_KEY` env vars; off by default,
+    CI never invokes the network path. New `[e2e-eval]` extra. Issue #269.
+  - Small-payload scenarios — `benchmarks/scenarios/tiny_payload.jsonl` and
+    `mixed_payload.jsonl` make the firewall `compaction == 1.00×` no-op
+    behaviour explicit. Issue #271.
+  - Head-heavy + long-tail mixed-namespace catalog — new `--mixed-shapes`
+    matrix block at `catalog_size=500` against an asymmetric namespace
+    distribution. Issue #277.
+  - `benchmark_version` bumped to `1.2`; JSON output is purely additive.
 
 ## [0.9.0] - 2026-05-20
 

@@ -5,7 +5,7 @@
       "args": [
         "/ABSOLUTE/PATH/TO/contextweaver/examples/recipes/serve_gateway.py",
         "--catalog",
-        "/ABSOLUTE/PATH/TO/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json"
+        "/ABSOLUTE/PATH/TO/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json"
       ],
       "env": {}
     }

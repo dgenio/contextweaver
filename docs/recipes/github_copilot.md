@@ -66,13 +66,13 @@ stderr. `Ctrl-C` to stop.
 
 ```bash
 python /path/to/contextweaver/examples/recipes/serve_gateway.py \
-    --catalog /path/to/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json
+    --catalog /path/to/contextweaver/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json
 ```
 
 The committed snapshot is verbatim from the MIT-licensed
 `@modelcontextprotocol/server-filesystem` reference server.
 Re-snapshot with
-[`scripts/snapshot_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/snapshot_mcp_catalog.py)
+[`scripts/capture_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/capture_mcp_catalog.py)
 when the upstream ships a new version.
 
 ## Step 4 — Wire Copilot via `.vscode/mcp.json`
@@ -96,7 +96,7 @@ For workspace scope, create `.vscode/mcp.json` with:
       "args": [
         "${workspaceFolder}/examples/recipes/serve_gateway.py",
         "--catalog",
-        "${workspaceFolder}/examples/architectures/mcp_context_gateway/real_catalogs/filesystem_mcp.json"
+        "${workspaceFolder}/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json"
       ]
     }
   }
@@ -188,5 +188,5 @@ After wiring, validate manually:
   `ProxyRuntime`, `MultiplexUpstream`, `McpGatewayServer`).
 - [Real-MCP catalog snapshots](https://github.com/dgenio/contextweaver/tree/main/examples/architectures/mcp_context_gateway/real_catalogs)
   — committed `tools/list` snapshots ready to point the launcher at.
-- [`scripts/snapshot_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/snapshot_mcp_catalog.py)
+- [`scripts/capture_mcp_catalog.py`](https://github.com/dgenio/contextweaver/blob/main/scripts/capture_mcp_catalog.py)
   — re-snapshot a server when upstream ships a new version.
