@@ -9,6 +9,7 @@ the flag-parsing rules (mutual exclusion of ``--gateway``/``--proxy``).
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,20 @@ from contextweaver._mcp_cli import (
 )
 from contextweaver.adapters.proxy_runtime import ExposureMode
 from contextweaver.data import gateway_catalog_path
+
+# Rich renders Typer ``--help`` with per-character ANSI styling (each dash and
+# each token in a flag name gets wrapped in its own ``\x1b[...m`` sequence),
+# so the literal substring ``"--catalog"`` does not appear verbatim in the
+# rendered stdout when the CI runner exports ``TERM`` / Rich auto-detects a
+# colour-capable sink. Strip the SGR escapes before asserting on flag names
+# so the test is portable across "plain" local subprocess runs and "coloured"
+# CI runs.
+_ANSI_SGR_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Return *text* with all ANSI SGR (colour / style) sequences removed."""
+    return _ANSI_SGR_RE.sub("", text)
 
 
 def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -46,22 +61,23 @@ def test_mcp_subapp_listed_in_root_help() -> None:
     """``contextweaver --help`` advertises the new ``mcp`` sub-app."""
     result = _run("--help")
     assert result.returncode == 0
-    assert "mcp" in result.stdout
+    assert "mcp" in _strip_ansi(result.stdout)
 
 
 def test_mcp_help_lists_serve_subcommand() -> None:
     """``contextweaver mcp --help`` shows the ``serve`` subcommand."""
     result = _run("mcp", "--help")
     assert result.returncode == 0
-    assert "serve" in result.stdout
-    assert "MCP server entrypoints" in result.stdout or "MCP" in result.stdout
+    out = _strip_ansi(result.stdout)
+    assert "serve" in out
+    assert "MCP server entrypoints" in out or "MCP" in out
 
 
 def test_mcp_serve_help_shows_required_catalog_flag() -> None:
     """``serve --help`` advertises the required ``--catalog`` option and modes."""
     result = _run("mcp", "serve", "--help")
     assert result.returncode == 0
-    out = result.stdout
+    out = _strip_ansi(result.stdout)
     assert "--catalog" in out
     assert "--mode" in out
     assert "--gateway" in out
