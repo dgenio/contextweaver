@@ -30,7 +30,47 @@
 - {id: analytics.retention.cohort,    kind: tool, name: analytics_retention_cohort, namespace: analytics, description: "Compute a cohort retention curve",      tags: [analytics, retention],     side_effects: false, cost_hint: 0.50}
 
 # --- bigquery -----------------------------------------------------------
-- {id: bigquery.run_query,            kind: tool, name: bigquery_run_query,         namespace: bigquery,  description: "Execute a BigQuery SQL query and return rows", tags: [bigquery, sql, read],     side_effects: false, cost_hint: 0.50}
+# The bigquery.run_query entry carries a full args_schema so the Call phase
+# can hydrate it via Catalog.hydrate() (issue #261) — no demo-special-case
+# _FULL_SCHEMAS lookup in main.py. Other catalog entries leave args_schema
+# unset (empty dict) so the demo still proves that only the SELECTED tool's
+# schema enters the prompt.
+- id: bigquery.run_query
+  kind: tool
+  name: bigquery_run_query
+  namespace: bigquery
+  description: "Execute a BigQuery SQL query and return rows"
+  tags: [bigquery, sql, read]
+  side_effects: false
+  cost_hint: 0.50
+  args_schema:
+    type: object
+    title: bigquery_run_query
+    required: [sql]
+    additionalProperties: false
+    properties:
+      sql:
+        type: string
+        description: "Standard-SQL BigQuery query."
+      project:
+        type: string
+        description: "GCP project to bill the query to."
+        default: ops-analytics-prod
+      max_results:
+        type: integer
+        description: "Cap on returned rows."
+        default: 1000
+        minimum: 1
+        maximum: 100000
+      dry_run:
+        type: boolean
+        description: "If true, return the query plan only."
+        default: false
+      labels:
+        type: object
+        additionalProperties:
+          type: string
+        description: "Free-form labels attached to the job."
 - {id: bigquery.dry_run,              kind: tool, name: bigquery_dry_run,           namespace: bigquery,  description: "Estimate cost of a BigQuery query",       tags: [bigquery, sql, plan],    side_effects: false, cost_hint: 0.05}
 - {id: bigquery.list_datasets,        kind: tool, name: bigquery_list_datasets,     namespace: bigquery,  description: "List BigQuery datasets in a project",     tags: [bigquery, schema],       side_effects: false, cost_hint: 0.10}
 - {id: bigquery.list_tables,          kind: tool, name: bigquery_list_tables,       namespace: bigquery,  description: "List tables in a BigQuery dataset",       tags: [bigquery, schema],       side_effects: false, cost_hint: 0.10}

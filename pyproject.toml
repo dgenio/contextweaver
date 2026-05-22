@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.9.0"
+version = "0.10.0"
 description = "Dynamic context management for tool-using AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -148,14 +148,17 @@ langchain = [
 voice = [
     "pipecat-ai>=0.0.50",
 ]
-# Docs site (mkdocs).
+# Docs site (mkdocs).  The mkdocs-material major is pinned (`<10`) so a future
+# 10.x breaking change cannot silently regress the docs build on a fresh `pip
+# install -e ".[docs]"` (#256).  Likewise for the mkdocstrings major.  Bump the
+# upper bound deliberately when adopting a new major.
 docs = [
-    "mkdocs>=1.6",
-    "mkdocs-material>=9.5",
-    "mkdocstrings[python]>=0.25",
-    "mkdocs-gen-files>=0.5",
-    "mkdocs-literate-nav>=0.6",
-    "mkdocs-section-index>=0.3",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5,<10",
+    "mkdocstrings[python]>=0.25,<1",
+    "mkdocs-gen-files>=0.5,<1",
+    "mkdocs-literate-nav>=0.6,<1",
+    "mkdocs-section-index>=0.3,<1",
 ]
 # Deprecated empty alias.  Typer + Rich became core deps in v0.5 (#221), so
 # ``pip install 'contextweaver[cli]'`` is now equivalent to a plain install.
@@ -210,6 +213,14 @@ otel = [
 graph = [
     "networkx>=3.0",
 ]
+# End-to-end real-model benchmark hook (issue #269).  Empty today on purpose:
+# the harness uses ``urllib.request`` against an OpenAI-compatible HTTP
+# endpoint and does not need a vendor SDK.  The extras group exists so
+# callers can ``pip install 'contextweaver[e2e-eval]'`` to opt into the
+# capture without changing the public install surface, and future
+# additions (a benchmark-only ``openai`` SDK pin or alternative provider
+# helpers) can land here without churning the install command in docs.
+e2e-eval = []
 # Convenience: install every optional capability at once.
 all = [
     "contextweaver[retrieval]",
@@ -219,6 +230,7 @@ all = [
     "contextweaver[graph]",
     "contextweaver[weaver-spec]",
     "contextweaver[voice]",
+    "contextweaver[e2e-eval]",
 ]
 
 [project.scripts]

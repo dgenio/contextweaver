@@ -66,6 +66,8 @@ nav:
   - Where it fits: comparison.md
   - FAQ: faq.md
   - Which pattern fits?: which_pattern.md
+  - Context Firewall: context_firewall.md
+  - Tool Router: tool_router.md
   - Concepts: concepts.md
   - How contextweaver Fits (deeper): interop.md
   - Cookbook: cookbook.md
