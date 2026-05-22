@@ -105,7 +105,7 @@ class McpGatewayServer:
                     isError=True,
                 )
             result = await dispatch_meta_tool(self.runtime, name, arguments or {})
-            content = [
+            content: list[mcp_types.ContentBlock] = [
                 mcp_types.TextContent(type="text", text=part.get("text", ""))
                 for part in result.get("content", [])
                 if part.get("type") == "text"

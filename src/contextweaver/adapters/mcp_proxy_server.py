@@ -116,7 +116,7 @@ class McpProxyServer:
                         },
                     },
                 )
-            content = [
+            content: list[mcp_types.ContentBlock] = [
                 mcp_types.TextContent(type="text", text=part.get("text", ""))
                 for part in result.get("content", [])
                 if part.get("type") == "text"
