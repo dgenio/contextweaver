@@ -25,6 +25,7 @@ from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.explanation import (
+    EXPLANATION_VERSION,
     CandidateExplanation,
     ContextBuildExplanation,
 )
@@ -194,6 +195,7 @@ __all__ = [
     "CandidateExplanation",
     "ContextBuildExplanation",
     "ContextManager",
+    "EXPLANATION_VERSION",
     "MaskRedactionHook",
     "ViewRegistry",
     "drilldown_tool_spec",

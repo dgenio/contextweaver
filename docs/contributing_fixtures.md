@@ -3,7 +3,7 @@
 This page documents the layout, normalisation, and regeneration policy
 for the checked-in test fixtures under [`tests/fixtures/`](../tests/fixtures).
 
-The fixtures back four issue-cluster regression suites that landed
+The fixtures back five issue-cluster regression suites that landed
 together:
 
 | Fixture set | Issue | Test file | What it pins |

@@ -50,6 +50,7 @@ from contextweaver.adapters.weaver_contracts import (  # noqa: E402
     to_weaver_selectable_item,
 )
 from contextweaver.envelope import ChoiceCard, ResultEnvelope, RoutingDecision  # noqa: E402
+from contextweaver.exceptions import ConfigError  # noqa: E402
 from contextweaver.types import ArtifactRef, SelectableItem, ViewSpec  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -289,7 +290,7 @@ def _payload_to_spec(kind: str, payload: dict[str, Any]) -> object:
             capability_id=str(payload["capability_id"]),
             created_at=created,
         )
-    raise ValueError(f"unknown fixture kind: {kind!r}")
+    raise ConfigError(f"unknown fixture kind: {kind!r}")
 
 
 def _check_fixture_files(schemas_dir: Path, fixtures_dir: Path) -> None:

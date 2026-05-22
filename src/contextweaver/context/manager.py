@@ -448,7 +448,8 @@ class ContextManager:
         budget_tokens: int | None = None,
         hints: list[str] | None = None,
         extra: dict[str, Any] | None = None,
-    ) -> tuple[ContextPack, ContextBuildExplanation]:
+        explain: bool = False,
+    ) -> tuple[ContextPack, ContextBuildExplanation | None]:
         """Run the full context compilation pipeline (synchronous core).
 
         All eight pipeline steps are pure computation, so no ``await`` is
@@ -464,15 +465,15 @@ class ContextManager:
             budget_tokens: Override the default phase budget.
             hints: Additional hint tags for scoring.
             extra: Reserved for future pipeline extensions.
+            explain: When ``True``, collect explanation-specific
+                intermediate state and return a populated
+                :class:`ContextBuildExplanation`.  When ``False``
+                (default), skip explanation overhead and return
+                ``None`` as the second tuple element (issue #291).
 
         Returns:
-            A 2-tuple ``(pack, explanation)``.  Public wrappers
-            (:meth:`build`, :meth:`build_sync`) discard *explanation*
-            by default and only return it when the caller opts in via
-            ``explain=True`` (issue #291).  The explanation is built
-            unconditionally because it is cheap to assemble alongside
-            the existing pipeline state — far cheaper than re-running
-            the pipeline a second time.
+            A 2-tuple ``(pack, explanation)``.  *explanation* is
+            ``None`` when *explain* is ``False``.
         """
         _ = extra  # reserved
         _tags = sorted(set(list(query_tags or []) + list(hints or [])))
@@ -493,16 +494,21 @@ class ContextManager:
 
         # 2. Dependency closure
         candidates, closures = resolve_dependency_closure(candidates, self._event_log)
-        closure_added_ids = {c.id for c in candidates} - pre_closure_ids
+        closure_added_ids = {c.id for c in candidates} - pre_closure_ids if explain else set()
 
-        # 3. Sensitivity filter (capture dropped item ids for the
-        #    explanation — does not affect filter behaviour)
-        pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in candidates}
+        # 3. Sensitivity filter
+        if explain:
+            pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in candidates}
         candidates, sensitivity_drops = apply_sensitivity_filter(candidates, self._policy)
-        post_sens_ids = {c.id for c in candidates}
-        sensitivity_dropped_records = sorted(
-            (cid, kind, sens) for (cid, kind, sens) in pre_sens_ids if cid not in post_sens_ids
-        )
+        if explain:
+            post_sens_ids = {c.id for c in candidates}
+            sensitivity_dropped_records: list[tuple[str, str, str]] = sorted(
+                (cid, kind, sens)
+                for (cid, kind, sens) in pre_sens_ids
+                if cid not in post_sens_ids
+            )
+        else:
+            sensitivity_dropped_records = []
 
         # 4. Firewall
         candidates, envelopes = apply_firewall_to_batch(
@@ -517,18 +523,23 @@ class ContextManager:
         scored = score_candidates(candidates, query, _tags, self._scoring)
 
         # 6. Dedup
-        pre_dedup_view: list[tuple[str, str, str, float]] = [
-            (item.id, item.kind.value, item.sensitivity.value, score) for score, item in scored
-        ]
+        if explain:
+            pre_dedup_view: list[tuple[str, str, str, float]] = [
+                (item.id, item.kind.value, item.sensitivity.value, score)
+                for score, item in scored
+            ]
         scored, dedup_removed = deduplicate_candidates(
             scored, similarity_threshold=self._scoring.dedup_threshold
         )
-        post_dedup_ids = {item.id for _score, item in scored}
-        dedup_dropped_records = [
-            (iid, kind, sens, sc)
-            for (iid, kind, sens, sc) in pre_dedup_view
-            if iid not in post_dedup_ids
-        ]
+        if explain:
+            post_dedup_ids = {item.id for _score, item in scored}
+            dedup_dropped_records: list[tuple[str, str, str, float]] = [
+                (iid, kind, sens, sc)
+                for (iid, kind, sens, sc) in pre_dedup_view
+                if iid not in post_dedup_ids
+            ]
+        else:
+            dedup_dropped_records = []
 
         # Pre-build episodic + fact injection text so we can estimate its
         # token cost and subtract it from the budget *before* selection.
@@ -614,21 +625,23 @@ class ContextManager:
 
         pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
 
-        # Assemble the explanation (issue #291) from the pipeline state.
-        explanation = _build_explanation(
-            phase=phase,
-            query=query,
-            stats=stats,
-            sensitivity_dropped=sensitivity_dropped_records,
-            sensitivity_drops=sensitivity_drops,
-            dedup_dropped=dedup_dropped_records,
-            dedup_removed=dedup_removed,
-            closures=closures,
-            closure_added_ids=closure_added_ids,
-            scored=scored,
-            selected_ids={item.id for item in selected},
-            budget_tokens=adjusted.for_phase(phase),
-        )
+        # Assemble the explanation (issue #291) only when requested.
+        explanation: ContextBuildExplanation | None = None
+        if explain:
+            explanation = _build_explanation(
+                phase=phase,
+                query=query,
+                stats=stats,
+                sensitivity_dropped=sensitivity_dropped_records,
+                sensitivity_drops=sensitivity_drops,
+                dedup_dropped=dedup_dropped_records,
+                dedup_removed=dedup_removed,
+                closures=closures,
+                closure_added_ids=closure_added_ids,
+                scored=scored,
+                selected_ids={item.id for item in selected},
+                budget_tokens=adjusted.for_phase(phase),
+            )
 
         self._hook.on_context_built(pack)
         logger.info(
@@ -721,6 +734,7 @@ class ContextManager:
             budget_tokens=budget_tokens,
             hints=hints,
             extra=extra,
+            explain=explain,
         )
         return (pack, explanation) if explain else pack
 
@@ -800,6 +814,7 @@ class ContextManager:
             budget_tokens=budget_tokens,
             hints=hints,
             extra=extra,
+            explain=explain,
         )
         return (pack, explanation) if explain else pack
 

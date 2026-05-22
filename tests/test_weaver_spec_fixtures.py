@@ -164,7 +164,7 @@ def test_fixtures_validate_against_local_schemas() -> None:
     """
     import sys
 
-    sys.path.insert(0, str(LOCAL_SCHEMAS.parent / "scripts"))
+    sys.path.insert(0, str(LOCAL_SCHEMAS.parent))
     from scripts.weaver_spec_conformance import _check_fixture_files  # noqa: PLC0415
 
     _check_fixture_files(LOCAL_SCHEMAS, FIXTURE_DIR)

@@ -1,5 +1,5 @@
 {
-  "label": "Public item — passes every sensitivity floor",
+  "label": "Public item — passes all floors above public; filtered at floor=public",
   "item": {
     "id": "pub-1",
     "kind": "doc_snippet",

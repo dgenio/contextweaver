@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RouteResult.explanation()` (issue #226) on the routing side.  Default
   `explain=False` preserves the existing `ContextPack` return shape; only
   callers that opt in receive the `(pack, explanation)` tuple.  Lives in
-  the new `src/contextweaver/context/explanation.py` module so the
-  `ContextManager` line count does not grow further (issue #101).
+  the new `src/contextweaver/context/explanation.py` module to avoid
+  putting explanation logic in `manager.py` (issue #101).
 - **Sensitivity / firewall regression fixtures** (#292).  Six explicit
   fixtures under `tests/fixtures/sensitivity/` (public / internal /
   confidential / restricted / PII-like / secret-like) driven through
@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/fixtures/_normalize.py` helper so fixtures stay byte-stable
   across machines.  Drift produces a diff with the failing file path.
 - **`docs/contributing_fixtures.md`** — fixture organisation and
-  regeneration playbook for the four new fixture dirs.
+  regeneration playbook for the five new fixture sets.
 
 ## [0.9.0] - 2026-05-20
 

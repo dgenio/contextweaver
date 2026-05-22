@@ -64,8 +64,10 @@ class CandidateExplanation:
             (``None`` for candidates dropped before scoring).
         included: ``True`` when the candidate landed in the final pack.
         drop_reason: One of ``"sensitivity"``, ``"dedup"``,
-            ``"kind_limit"``, ``"budget"``, ``""`` (kept). Empty when
-            ``included`` is ``True``.
+            ``"selection"``, ``""`` (kept).  ``"selection"`` is a
+            coarse bucket covering both per-kind-limit and budget
+            drops (the breakdown lives on :class:`BuildStats`).
+            Empty when ``included`` is ``True``.
         dependency_closure: ``True`` when the candidate was pulled in
             by the dependency-closure stage rather than the phase
             filter — i.e. it scored lower than the cutoff but the
@@ -129,7 +131,9 @@ class ContextBuildExplanation:
         budget_tokens: The effective phase budget after header/footer
             reservation.
         candidates: Per-candidate :class:`CandidateExplanation` entries
-            ordered by descending score (then by id, for determinism).
+            ordered by inclusion (included first, then dropped),
+            then by descending score within each group (then by id,
+            for determinism).
     """
 
     version: int = EXPLANATION_VERSION
@@ -202,11 +206,11 @@ def build_explanation(
 ) -> ContextBuildExplanation:
     """Assemble a :class:`ContextBuildExplanation` from pipeline state.
 
-    Module-private helper called by
+    Internal helper called by
     :meth:`~contextweaver.context.manager.ContextManager._build`.  Lives
-    here so the manager module does not grow further past the 300-line
-    guideline (issue #101) and so explanation rendering stays in a
-    single self-contained module alongside the dataclasses.
+    here to avoid putting explanation logic in ``manager.py``
+    (issue #101) and to keep explanation rendering in a single
+    self-contained module alongside the dataclasses.
 
     All inputs are passed positionally as keyword arguments to avoid
     accidental field-order regressions: the manager sets up these
@@ -336,5 +340,4 @@ __all__ = [
     "EXPLANATION_VERSION",
     "CandidateExplanation",
     "ContextBuildExplanation",
-    "build_explanation",
 ]
