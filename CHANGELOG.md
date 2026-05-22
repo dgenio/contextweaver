@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `examples/architectures/mcp_context_gateway/main_real.py` now narrows
   the catch to `CatalogError` (duplicate ids) so adapter regressions
   and other bugs surface loudly instead of silently dropping tools.
+- **Init scaffold git hygiene** — ignored `contextweaver init` scaffold files so running init from the repo root does not leave commit-prone untracked files (#314).
 
 ## [0.9.1] - 2026-05-21
 
