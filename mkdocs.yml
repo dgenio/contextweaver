@@ -77,6 +77,10 @@ nav:
       - Slack ops bot: architectures/slack_ops_bot.md
       - Code-review bot: architectures/code_review_bot.md
       - Voice agent: architectures/voice_agent.md
+  - Recipes:
+      - Overview: recipes/index.md
+      - Claude Desktop: recipes/claude_desktop.md
+      - GitHub Copilot: recipes/github_copilot.md
   - Gateway Spec: gateway_spec.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md

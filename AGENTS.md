@@ -76,6 +76,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `__main__.py` | CLI: 9 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`) plus the `mcp` Typer sub-app (`mcp serve`, [experimental] stdio MCP gateway/proxy entrypoint; issues #243/#246). Typer + Rich (both core deps as of v0.5, issue #221). |
 | `_mcp_cli.py` | Backs the `mcp` Typer sub-app mounted from `__main__.py`. Hosts `mcp serve` (stdio MCP gateway or transparent proxy) and the catalog loader that accepts both native contextweaver and raw MCP `tools/list` shapes. Marked `[experimental]` in `--help` for v0.9. Uses `typer.echo(..., err=True)` for stderr output (library-code `print()` is forbidden). |
 | `data/` | Packaged data files shipped inside the wheel via `[tool.setuptools.package-data]`. Exposes `gateway_catalog_path()` (resolves `mcp_gateway_catalog.yaml` to a concrete `Path` for both editable installs and zipped wheels — falls back to a persistent cache under `tempfile.gettempdir()/contextweaver/` for zipimport). Issue #264. |
+| `examples/recipes/` | MCP-client integration recipes: `serve_gateway.py` launcher + `claude_desktop_config.json` / `copilot_mcp.json` example configs referenced from `docs/recipes/` (issues #278, #279). |
 
 ## Pipelines (summary)
 
