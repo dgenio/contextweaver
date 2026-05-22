@@ -13,6 +13,12 @@ Usage::
     contextweaver mcp serve --gateway --catalog examples/sample_catalog.json
     contextweaver mcp serve --proxy   --catalog examples/sample_catalog.json
 
+    # Wheel-install users (no ``examples/`` directory) can point the CLI
+    # at the catalog packaged inside the wheel. ``gateway_catalog_path()``
+    # resolves a real on-disk path for both editable and zipped installs:
+    python -c "from contextweaver.data import gateway_catalog_path; print(gateway_catalog_path())"
+    contextweaver mcp serve --gateway --catalog "$CATALOG"  # CATALOG from above
+
 Both modes block on stdio and exit cleanly on ``SIGINT`` / EOF from the
 client. The sub-app is marked **experimental** in ``--help`` for v0.9 and
 will be promoted to stable once the wire shape is exercised by downstream
@@ -90,8 +96,17 @@ def _load_tool_defs_from_catalog(catalog_path: Path) -> list[dict[str, Any]]:
             f"cannot read catalog file {catalog_path}: {exc}", param_hint="--catalog"
         ) from exc
     suffix = catalog_path.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        parse: Any = yaml.safe_load
+    elif suffix == ".json":
+        parse = json.loads
+    else:
+        raise typer.BadParameter(
+            f"unsupported catalog format {suffix!r} for {catalog_path}; use .json, .yaml, or .yml",
+            param_hint="--catalog",
+        )
     try:
-        data: Any = yaml.safe_load(text) if suffix in (".yaml", ".yml") else json.loads(text)
+        data: Any = parse(text)
     except (yaml.YAMLError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(
             f"invalid catalog file {catalog_path}: {exc}", param_hint="--catalog"
@@ -309,8 +324,11 @@ def serve(
     async def _serve() -> None:
         await server.run_stdio()
 
+    # Create the loop *before* the try so that a failure here surfaces as a
+    # real exception rather than tripping ``UnboundLocalError`` from the
+    # ``finally: loop.close()`` below.
+    loop = asyncio.new_event_loop()
     try:
-        loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         _install_sigint_handler(loop)
         loop.run_until_complete(_serve())
