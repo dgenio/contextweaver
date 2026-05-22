@@ -34,6 +34,21 @@ scripted turn:
 | Result bloat | `ContextManager.ingest_mcp_result` | 16,507 chars → **194-char** summary + artifact |
 | Dependency loss | `parent_id` chains + dependency closure | The `[TOOL CALL]` and `[TOOL RESULT]` stay paired in the final prompt |
 
+## Variants
+
+This architecture ships three sibling runs against the same packaged
+60-tool catalog (`contextweaver.data.mcp_gateway_catalog.yaml`):
+
+| File | What it shows | When to read it |
+|---|---|---|
+| `main.py` | Single-turn narrative inlining `Router`, `Catalog.hydrate`, and `ContextManager.ingest_mcp_result`. | First read — easiest to follow. |
+| `main_live.py` (issue #260) | Same scenario driven through `tool_browse` / `tool_execute` / `tool_view` on a `ProxyRuntime` + `StubUpstream`. Exercises the real MCP wire shape. | Reference for `contextweaver mcp serve --gateway --catalog ...`. |
+| `main_multi.py` (issue #262) | Five-turn transcript with cross-turn fact accumulation and a Slack-thread firewall hit on Turn 5. | When you want to see whether facts survive across turns. |
+
+All three are wired into `make architectures`.
+
+The catalog itself ships inside the wheel via `contextweaver.data.gateway_catalog_path()` — that's why these example scripts work from a `pip install contextweaver` without the `examples/` directory.
+
 ## How to run it
 
 ```bash
@@ -87,7 +102,7 @@ When you read the run, focus on these moments:
 |---|---|
 | `load_catalog_yaml("catalog.yaml")` | `ProxyRuntime.register_tool_defs_sync(upstream.list_tools())` — the gateway pulls tool defs from upstream servers. |
 | `Router.route(query)` | The agent's `tool_browse(query)` meta-tool call returns the same `ChoiceCard` shape (see `examples/mcp_gateway_demo.py`). |
-| `_FULL_SCHEMAS[chosen]` lookup | The gateway hydrates the selected tool's input schema *only* when the agent calls `tool_execute(tool_id, args)`. |
+| `SchemaSource.from_json_file("tool_schemas.json")` + `hydrate_with_schema(catalog, chosen, schemas)` | The gateway hydrates the selected tool's input schema *only* when the agent calls `tool_execute(tool_id, args)`. The same `routing.hydration` helpers work over `ProxyRuntime`'s upstream tool list — the example loads schemas from the sidecar JSON, production loads them from `runtime.list_tool_defs()`. |
 | `_mock_bigquery_result()` | Whatever the upstream MCP server returns over stdio / HTTP. |
 | `ContextManager.ingest_mcp_result(...)` | **Identical API — no swap needed.** This is the production-shape method that parses the MCP wire result, stores binary content as artifacts, and runs the firewall. |
 | `ContextManager.add_fact_sync(...)` | Same — facts persist across turns regardless of how the result was sourced. |

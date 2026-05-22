@@ -49,10 +49,12 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/navigator.py` | `BeamSearchNavigator` (lifted from `router.py`) + `rank_collected` (issue #56) |
 | `routing/packer.py` | `DefaultCardPacker` wrapping `make_choice_cards` for the pipeline pack stage (issue #56) |
 | `routing/history.py` | `RouteHistory` dataclass + `adjust_scores` (history-aware re-routing, issue #27) |
-| `extras/embeddings.py` | `SentenceTransformerBackend` + `HybridEmbeddingRetriever` behind the `[embeddings]` extra (issue #8) |
+| `extras/embeddings.py` | `SentenceTransformerBackend` + `HybridEmbeddingRetriever` + `HashingEmbeddingBackend` (re-exported) behind the `[embeddings]` extra (issue #8) |
+| `extras/embeddings_hashing.py` | `HashingEmbeddingBackend` — stdlib-only deterministic `EmbeddingBackend` using blake2b hashing trick; no extras required (issue #266) |
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
+| `routing/hydration.py` | Public schema-hydration helpers — `SchemaSource` (from raw dict / JSON file / MCP tools-list), `hydrate_with_schema`, `lazy_schema_resolver`. Reference architectures use these to resolve a tool's full input schema from a sidecar source rather than hand-rolling a `_FULL_SCHEMAS` dict. Inline `args_schema` on the catalog item wins; sidecar only fills empties. Issue #261. |
 | `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #193, #194, #219, #222) |
 | `adapters/crewai.py` | CrewAI `BaseTool` (or equivalent plain-dict shape) ↔ `SelectableItem` (`crewai_tool_to_selectable`, `crewai_tools_to_catalog`, `infer_crewai_namespace`, `load_crewai_catalog`, issue #193) |
 | `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
@@ -68,7 +70,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | `extras/otel.py` | OpenTelemetry GenAI integration (`OTelEventHook` — `invoke_agent` / `execute_tool` spans + GenAI SemConv attributes, gated behind the `[otel]` extra, issue #224). |
 | `extras/memory/` | External-memory backend adapters that implement `EpisodicStore` / `FactStore` against an existing long-lived memory deployment without widening the Protocols (issue #195). |
 | `extras/memory/mem0.py` | `Mem0EpisodicStore` + `Mem0FactStore` — wrap a `mem0.Memory` instance scoped by `user_id`; writes go through `Memory.add(infer=False)` and items are stamped with `cw_episode_id` / `cw_fact_id` metadata for canonical-ID resolution. Gated behind the `[mem0]` extra (issue #195). |
-| `__main__.py` | CLI: 9 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`). Typer + Rich (both core deps as of v0.5, issue #221). |
+| `__main__.py` | CLI: 9 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`) plus the `mcp` Typer sub-app (`mcp serve`, [experimental] stdio MCP gateway/proxy entrypoint; issues #243/#246). Typer + Rich (both core deps as of v0.5, issue #221). |
+| `_mcp_cli.py` | Backs the `mcp` Typer sub-app mounted from `__main__.py`. Hosts `mcp serve` (stdio MCP gateway or transparent proxy) and the catalog loader that accepts both native contextweaver and raw MCP `tools/list` shapes. Marked `[experimental]` in `--help` for v0.9. Uses `typer.echo(..., err=True)` for stderr output (library-code `print()` is forbidden). |
+| `data/` | Packaged data files shipped inside the wheel via `[tool.setuptools.package-data]`. Exposes `gateway_catalog_path()` (resolves `mcp_gateway_catalog.yaml` to a concrete `Path` for both editable installs and zipped wheels — falls back to a persistent cache under `tempfile.gettempdir()/contextweaver/` for zipimport). Issue #264. |
 
 ## Pipelines (summary)
 
@@ -177,7 +181,10 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 - **Type hints** on all public functions and methods.
 - **Google-style docstrings** on all public classes and functions.
 - **100-character line length** (enforced by ruff).
-- **≤ 300 lines per module** — exempt: `types.py`, `envelope.py`, `__main__.py`.
+- **≤ 300 lines per module** — exempt: `types.py`, `envelope.py`, `__main__.py`,
+  `_mcp_cli.py` (experimental Typer sub-app; size is dominated by Typer
+  parameter declarations + docstrings and is expected to shrink once
+  `mcp serve` graduates from `[experimental]` to stable).
 - **Core runtime dependencies.** The core install pulls `tiktoken`, `PyYAML`, `rank-bm25`, plus `mcp` and `jsonschema` (added when the proxy / gateway runtimes landed — both are load-bearing for `docs/gateway_spec.md` §4.4 schema validation and the MCP transport binding).  Adding *another* core dependency requires explicit justification: broad ecosystem use, small wheel, and a default the library would otherwise have to approximate.  Heavy or runtime-specific packages (CLI, OpenTelemetry, fuzzy retrieval, ANN, NetworkX, FastMCP, LangChain) live under `[project.optional-dependencies]` and are loaded via guarded imports.
 
 ## Testing

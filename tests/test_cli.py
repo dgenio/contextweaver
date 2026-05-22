@@ -59,7 +59,13 @@ def test_demo_help_lists_all_scenarios() -> None:
     result = _run("demo", "--help")
     assert result.returncode == 0
     out = result.stdout
-    for name in ("default", "large-catalog", "huge-tool-output", "mcp-gateway"):
+    for name in (
+        "default",
+        "large-catalog",
+        "huge-tool-output",
+        "mcp-gateway",
+        "mcp-gateway-full",
+    ):
         assert name in out, f"--help missing scenario {name!r}"
 
 
@@ -109,6 +115,19 @@ def test_demo_mcp_gateway_scenario() -> None:
     # The github stub must successfully execute end-to-end.
     assert "status=ok" in out
     assert "Demo complete" in out
+
+
+def test_demo_mcp_gateway_full_scenario() -> None:
+    """The new mcp-gateway-full scenario (#264) runs the 60-tool architecture."""
+    result = _run("demo", "--scenario", "mcp-gateway-full")
+    assert result.returncode == 0
+    out = result.stdout
+    # The full architecture prints the metrics block with the documented fields.
+    assert "catalog_tools" in out
+    assert "exposed_choice_cards" in out
+    assert "firewall_reduction_pct" in out
+    # Top-1 routing must still pick bigquery.run_query (the marquee path).
+    assert "bigquery.run_query" in out
 
 
 def test_demo_unknown_scenario_rejected() -> None:
