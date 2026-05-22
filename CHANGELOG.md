@@ -18,7 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   minimal stdio launcher (`examples/recipes/serve_gateway.py`) that
   wires `McpGatewayServer.run_stdio()` against the committed real-catalog
   snapshots under `examples/architectures/mcp_context_gateway/real_catalogs/`
-  (`time.json`, `filesystem.json`, `everything.json`).
+  (`time.json`, `filesystem.json`, `everything.json`). The launcher
+  raises `RuntimeError` (not `SystemExit`) on malformed snapshots so
+  `main()` honours its documented `int` return contract; argparse-level
+  errors continue to exit via `SystemExit` as usual.
+  `tests/test_recipes_serve_gateway.py` pins the loader (happy path +
+  malformed JSON + missing key + non-list + array payload), the runtime
+  builders, the CLI parser, and every `main()` exit-code path
+  (clean / keyboard-interrupt / transport-error / malformed-snapshot)
+  via a stubbed `asyncio.run`.
 - **Pydantic AI adapter — `adapters/pydantic_ai.py`** (#272, child of #193).
   Thin stateless converter turning Pydantic AI `Tool` definitions (live
   instances or the equivalent plain-dict shape `Tool.model_dump()` emits)

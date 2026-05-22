@@ -66,13 +66,17 @@ def _load_snapshot_tools(path: Path) -> list[dict[str, Any]]:
     Accepts the on-disk shape used by ``scripts/capture_mcp_catalog.py``
     (a JSON object with at least a top-level ``tools`` list, plus
     optional ``_source`` / ``_captured_with`` provenance fields).
+
+    Raises :class:`RuntimeError` (not :class:`SystemExit`) on malformed
+    snapshots so :func:`main` can map the failure to ``return 1`` and
+    programmatic callers do not have to special-case ``SystemExit``.
     """
     payload = json.loads(path.read_text())
     if not isinstance(payload, dict) or "tools" not in payload:
-        raise SystemExit(f"{path}: malformed snapshot, expected JSON object with a 'tools' key")
+        raise RuntimeError(f"{path}: malformed snapshot, expected JSON object with a 'tools' key")
     tools = payload["tools"]
     if not isinstance(tools, list):
-        raise SystemExit(f"{path}: 'tools' field is not a list")
+        raise RuntimeError(f"{path}: 'tools' field is not a list")
     return tools
 
 
@@ -130,15 +134,20 @@ async def _run(runtime: ProxyRuntime, *, name: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry point. Returns a process exit code."""
+    """CLI entry point. Returns a process exit code.
+
+    Argparse may still raise :class:`SystemExit` for missing required
+    arguments -- that is normal CLI behaviour and propagates to the
+    ``__main__`` boundary. Logic-level startup failures (malformed
+    snapshot, IO errors) are caught and mapped to ``return 1`` so
+    programmatic callers can rely on the documented ``int`` return.
+    """
     args = _parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 
     try:
         runtime = build_stub_runtime() if args.stub else build_runtime_from_snapshot(args.catalog)
-    except SystemExit:
-        raise
-    except Exception as exc:  # noqa: BLE001 — startup failures should never reach stdout
+    except Exception as exc:  # noqa: BLE001 -- startup failures should never reach stdout
         logger.error("startup failed: %s", exc)
         return 1
 
