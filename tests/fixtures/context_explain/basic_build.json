@@ -1,0 +1,80 @@
+{
+  "budget_tokens": 400,
+  "candidates": [
+    {
+      "dependency_closure": false,
+      "drop_reason": "",
+      "included": true,
+      "item_id": "u1",
+      "kind": "user_turn",
+      "score": 0.6975,
+      "sensitivity": "public"
+    },
+    {
+      "dependency_closure": false,
+      "drop_reason": "",
+      "included": true,
+      "item_id": "dup2",
+      "kind": "doc_snippet",
+      "score": 0.54,
+      "sensitivity": "public"
+    },
+    {
+      "dependency_closure": false,
+      "drop_reason": "",
+      "included": true,
+      "item_id": "tr1",
+      "kind": "tool_result",
+      "score": 0.4921,
+      "sensitivity": "public"
+    },
+    {
+      "dependency_closure": false,
+      "drop_reason": "",
+      "included": true,
+      "item_id": "tc1",
+      "kind": "tool_call",
+      "score": 0.46,
+      "sensitivity": "public"
+    },
+    {
+      "dependency_closure": false,
+      "drop_reason": "",
+      "included": true,
+      "item_id": "a1",
+      "kind": "agent_msg",
+      "score": 0.445,
+      "sensitivity": "public"
+    },
+    {
+      "dependency_closure": false,
+      "drop_reason": "dedup",
+      "included": false,
+      "item_id": "dup1",
+      "kind": "doc_snippet",
+      "score": 0.49,
+      "sensitivity": "public"
+    },
+    {
+      "dependency_closure": false,
+      "drop_reason": "sensitivity",
+      "included": false,
+      "item_id": "conf1",
+      "kind": "memory_fact",
+      "score": null,
+      "sensitivity": "confidential"
+    }
+  ],
+  "dedup_removed": 1,
+  "dependency_closures": 0,
+  "dropped_count": 1,
+  "dropped_reasons": {
+    "sensitivity": 1
+  },
+  "included_count": 5,
+  "phase": "answer",
+  "query": "weather",
+  "sensitivity_drops": 1,
+  "total_candidates": 6,
+  "version": 1
+}

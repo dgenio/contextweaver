@@ -50,6 +50,7 @@ from contextweaver.adapters.weaver_contracts import (  # noqa: E402
     to_weaver_selectable_item,
 )
 from contextweaver.envelope import ChoiceCard, ResultEnvelope, RoutingDecision  # noqa: E402
+from contextweaver.exceptions import ConfigError  # noqa: E402
 from contextweaver.types import ArtifactRef, SelectableItem, ViewSpec  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -249,6 +250,87 @@ def _check_schemas(schemas_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Fixture-file validation (issue #295)
+# ---------------------------------------------------------------------------
+
+
+_FIXTURE_KIND_TO_SCHEMA: dict[str, str] = {
+    "selectable_item": "selectable_item.schema.json",
+    "choice_card": "choice_card.schema.json",
+    "routing_decision": "routing_decision.schema.json",
+    "frame": "frame.schema.json",
+}
+
+
+def _payload_to_spec(kind: str, payload: dict[str, Any]) -> object:
+    """Adapt a contextweaver-shaped payload to its weaver-spec form.
+
+    Each fixture stores the contextweaver-side representation; the spec
+    JSON-Schema lives on the weaver-spec side, so we route through the
+    existing adapter functions to produce schema-shaped JSON.
+    """
+    if kind == "selectable_item":
+        return to_weaver_selectable_item(SelectableItem.from_dict(payload))
+    if kind == "choice_card":
+        return to_weaver_choice_card(ChoiceCard.from_dict(payload))
+    if kind == "routing_decision":
+        return to_weaver_routing_decision(RoutingDecision.from_dict(payload))
+    if kind == "frame":
+        envelope = ResultEnvelope.from_dict(payload["envelope"])
+        created_raw = payload.get("created_at")
+        if isinstance(created_raw, str):
+            created = datetime.fromisoformat(created_raw)
+        elif isinstance(created_raw, datetime):
+            created = created_raw
+        else:
+            created = datetime.now(timezone.utc)
+        return to_weaver_frame(
+            envelope,
+            frame_id=str(payload["frame_id"]),
+            capability_id=str(payload["capability_id"]),
+            created_at=created,
+        )
+    raise ConfigError(f"unknown fixture kind: {kind!r}")
+
+
+def _check_fixture_files(schemas_dir: Path, fixtures_dir: Path) -> None:
+    """Validate every ``*.json`` fixture under *fixtures_dir* (issue #295).
+
+    Each fixture has the shape::
+
+        {"label": "...", "kind": "<one of _FIXTURE_KIND_TO_SCHEMA>",
+         "payload": {...contextweaver-shaped...}}
+
+    Failures include the fixture file path, JSON pointer, and schema
+    file so the diff is actionable.
+    """
+    fixtures = sorted(fixtures_dir.glob("*.json"))
+    if not fixtures:
+        raise AssertionError(f"no fixture files found under {fixtures_dir}")
+    for fixture_path in fixtures:
+        try:
+            fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+            kind = fixture.get("kind")
+            payload = fixture.get("payload")
+            if kind not in _FIXTURE_KIND_TO_SCHEMA:
+                raise AssertionError(
+                    f"{fixture_path}: unknown fixture 'kind' {kind!r}; "
+                    f"valid: {sorted(_FIXTURE_KIND_TO_SCHEMA)}"
+                )
+            if not isinstance(payload, dict):
+                raise AssertionError(f"{fixture_path}: 'payload' must be an object")
+            spec_obj = _payload_to_spec(kind, payload)
+            schema_path = schemas_dir / _FIXTURE_KIND_TO_SCHEMA[kind]
+            _validate_against_schema(_spec_to_jsonable(spec_obj), schema_path)
+        except AssertionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - reported with file path
+            raise AssertionError(
+                f"{fixture_path}: failed to validate against weaver-spec — {exc}"
+            ) from exc
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -268,6 +350,17 @@ def main(argv: list[str] | None = None) -> int:
             "round-trip checks run."
         ),
     )
+    parser.add_argument(
+        "--fixtures-dir",
+        type=Path,
+        default=REPO_ROOT / "tests" / "fixtures" / "weaver_spec",
+        help=(
+            "Directory containing checked-in payload fixtures (issue "
+            "#295).  Only validated when --schemas-dir is also supplied. "
+            "Defaults to tests/fixtures/weaver_spec/ relative to the "
+            "repo root."
+        ),
+    )
     args = parser.parse_args(argv)
 
     checks: list[tuple[str, Any]] = [
@@ -282,6 +375,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: --schemas-dir does not exist: {schemas_dir}", file=sys.stderr)
             return 1
         checks.append(("JSON-Schema validation", lambda: _check_schemas(schemas_dir)))
+        if args.fixtures_dir is not None and args.fixtures_dir.is_dir():
+            fixtures_dir: Path = args.fixtures_dir
+            try:
+                pretty = str(fixtures_dir.relative_to(REPO_ROOT))
+            except ValueError:
+                pretty = str(fixtures_dir)
+            checks.append(
+                (
+                    f"Fixture files in {pretty}",
+                    lambda: _check_fixture_files(schemas_dir, fixtures_dir),
+                )
+            )
 
     failed = 0
     for name, fn in checks:

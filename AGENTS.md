@@ -37,6 +37,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
 | `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline) |
+| `context/explanation.py` | `ContextBuildExplanation` + `CandidateExplanation` opt-in debug surface returned by `ContextManager.build(..., explain=True)` (issue #291). Sister to `routing/explanation.py` on the routing side. |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
 | `routing/filters.py` | Pre-scoring helpers: `filter_items()`, `augment_query()`, `suggest_clarifying_question()` (issues #14, #22, #112, #116) |
 | `routing/manifest.py` | `GraphManifest` + `compute_catalog_hash()` for graph metadata and cache invalidation (issue #48, #15) |
