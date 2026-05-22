@@ -37,89 +37,30 @@ Or via ``make architectures``. Re-snapshot upstream catalogs with
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import sys
 from pathlib import Path
 from typing import Any
 
-from contextweaver.adapters.mcp import mcp_tool_to_selectable
-from contextweaver.config import ContextBudget
-from contextweaver.context.manager import ContextManager
-from contextweaver.routing.cards import make_choice_cards, render_cards_text
-from contextweaver.routing.catalog import Catalog
-from contextweaver.routing.router import Router
-from contextweaver.routing.tree import TreeBuilder
-from contextweaver.types import ContextItem, ItemKind, Phase
+# Allow `from scenarios import ...` whether this module is launched directly
+# (`python examples/.../main_real.py`) or loaded via `importlib.util` from a
+# test fixture. Direct invocation already puts `__file__`'s directory on
+# sys.path; the explicit insert covers the importlib path.
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
 
-REAL_CATALOGS_DIR = Path(__file__).parent / "real_catalogs"
+from scenarios import _SCENARIOS, _Scenario  # noqa: E402,F401
 
+from contextweaver.adapters.mcp import mcp_tool_to_selectable  # noqa: E402
+from contextweaver.config import ContextBudget  # noqa: E402
+from contextweaver.context.manager import ContextManager  # noqa: E402
+from contextweaver.routing.cards import make_choice_cards, render_cards_text  # noqa: E402
+from contextweaver.routing.catalog import Catalog  # noqa: E402
+from contextweaver.routing.router import Router  # noqa: E402
+from contextweaver.routing.tree import TreeBuilder  # noqa: E402
+from contextweaver.types import ContextItem, ItemKind, Phase  # noqa: E402
 
-@dataclass(frozen=True)
-class _Scenario:
-    """One scripted run against a real MCP-server snapshot."""
-
-    snapshot: str
-    user_query: str
-    routing_query: str
-    intent_tool_name: str  # upstream-server tool name; we match by suffix
-    fake_result_text: str
-
-    @property
-    def title(self) -> str:
-        return self.snapshot.removesuffix("_mcp.json")
-
-
-# Three deterministic scenarios — one per snapshot. Each ``fake_result_text``
-# is large enough to trigger the firewall (>2000 chars) so the summary path
-# is exercised on every run, just like in ``main.py``.
-_SCENARIOS: tuple[_Scenario, ...] = (
-    _Scenario(
-        snapshot="filesystem_mcp.json",
-        user_query="Find every Python file under /workspace that imports `httpx`.",
-        routing_query="recursively search files matching a pattern",
-        intent_tool_name="search_files",
-        fake_result_text=(
-            "search results for pattern 'import httpx' under /workspace:\n"
-            + "\n".join(
-                f"/workspace/pkg{i // 50}/module_{i:04d}.py: import httpx  # line {i}"
-                for i in range(160)
-            )
-            + "\n"
-        ),
-    ),
-    _Scenario(
-        snapshot="git_mcp.json",
-        user_query="What changed in the working tree of /repo since the last commit?",
-        routing_query="show working tree status for repo",
-        intent_tool_name="git_status",
-        fake_result_text=(
-            "On branch feat/context-recipes\n"
-            "Your branch is up to date with 'origin/main'.\n\n"
-            "Changes not staged for commit:\n"
-            + "\n".join(
-                f"\tmodified:   examples/recipes/auto_generated_{i:03d}.py" for i in range(40)
-            )
-            + "\n\nUntracked files:\n"
-            + "\n".join(f"\tdocs/recipes/scratch_{i:03d}.md" for i in range(30))
-            + '\n\nno changes added to commit (use "git add" and/or "git commit -a")\n'
-        ),
-    ),
-    _Scenario(
-        snapshot="fetch_mcp.json",
-        user_query="Read the contextweaver MCP integration page so I can quote from it.",
-        routing_query="fetch URL and extract markdown contents",
-        intent_tool_name="fetch",
-        fake_result_text=(
-            "# MCP Integration\n\n"
-            + (
-                "contextweaver ships a thin adapter on top of the Model Context Protocol "
-                "that converts MCP tool definitions and results into contextweaver's native "
-                "shapes. The adapter lives in `src/contextweaver/adapters/mcp.py`. "
-            )
-            * 32
-            + "\n"
-        ),
-    ),
-)
+REAL_CATALOGS_DIR = _HERE / "real_catalogs"
 
 
 def _print_header(title: str) -> None:

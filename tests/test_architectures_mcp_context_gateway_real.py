@@ -111,7 +111,8 @@ def test_route_phase_emits_bounded_shortlist(real_gateway_run_output: str) -> No
     Router can return fewer than top_k candidates when the beam search
     converges early on a small catalog; the load-bearing invariant is
     that the shortlist size never exceeds top_k and never exceeds the
-    catalog size.
+    catalog size. Catalog sizes themselves are intentionally NOT pinned
+    so the test survives ``scripts/snapshot_mcp_catalog.py`` refreshes.
     """
     import re
 
@@ -119,24 +120,39 @@ def test_route_phase_emits_bounded_shortlist(real_gateway_run_output: str) -> No
     assert len(matches) == 3, (
         f"expected 3 shortlist lines (one per snapshot), got {len(matches)}: {matches}"
     )
-    catalog_sizes = sorted(int(c) for _, c in matches)
-    assert catalog_sizes == [1, 11, 12], (
-        f"expected catalog sizes (1, 11, 12) from the three committed snapshots, "
-        f"got {catalog_sizes}"
-    )
     for shortlist_str, catalog_str in matches:
         shortlist = int(shortlist_str)
         catalog = int(catalog_str)
-        assert 1 <= shortlist <= 5, f"shortlist size {shortlist} outside [1, 5]"
-        assert shortlist <= catalog, f"shortlist ({shortlist}) larger than catalog ({catalog})"
+        assert catalog >= 1, f"catalog size {catalog} below 1"
+        assert shortlist >= 1, f"shortlist size {shortlist} below 1"
+        assert shortlist <= min(5, catalog), (
+            f"shortlist ({shortlist}) exceeds min(top_k=5, catalog={catalog})"
+        )
 
 
 def test_call_phase_only_hydrates_one_schema(real_gateway_run_output: str) -> None:
-    """Lazy schema hydration: exactly the chosen tool's schema is materialised."""
-    # The skipped-count line for each snapshot must match (catalog_size - 1).
-    assert "hydrated schema for the other 10 tools: 0 chars (skipped)" in real_gateway_run_output
-    assert "hydrated schema for the other 11 tools: 0 chars (skipped)" in real_gateway_run_output
-    assert "hydrated schema for the other 0 tools: 0 chars (skipped)" in real_gateway_run_output
+    """Lazy schema hydration: skipped-tool count must equal ``catalog_size - 1``.
+
+    Derived from the shortlist lines so the assertion survives snapshot
+    refreshes (no hard-coded counts).
+    """
+    import re
+
+    catalog_sizes = sorted(
+        int(c) for _, c in re.findall(r"shortlist \((\d+) of (\d+)\):", real_gateway_run_output)
+    )
+    skipped_strs = re.findall(
+        r"hydrated schema for the other (\d+) tools: 0 chars \(skipped\)",
+        real_gateway_run_output,
+    )
+    assert len(skipped_strs) == 3, (
+        f"expected 3 skipped-count lines, got {len(skipped_strs)}: {skipped_strs}"
+    )
+    skipped_counts = sorted(int(s) for s in skipped_strs)
+    expected = sorted(max(c - 1, 0) for c in catalog_sizes)
+    assert skipped_counts == expected, (
+        f"skipped-tools counts {skipped_counts} do not match catalog_size - 1 = {expected}"
+    )
 
 
 def test_firewall_triggers_on_every_snapshot(real_gateway_run_output: str) -> None:
@@ -147,9 +163,13 @@ def test_firewall_triggers_on_every_snapshot(real_gateway_run_output: str) -> No
     assert len(lines) == 3, f"expected 3 firewall log lines, got {len(lines)}: {lines}"
     for line in lines:
         # Shape: "firewall: 12,345 chars  ->  67-char summary  (artifact ...)"
+        # Both fields use ``{:,}`` formatting in main_real.py, so the parse
+        # must strip thousands separators on both sides -- the original code
+        # only stripped on raw_chars, which would have broken once firewall
+        # summaries crossed 1,000 chars.
         parts = line.split()
         raw_chars = int(parts[1].replace(",", ""))
-        summary_chars = int(parts[4].split("-")[0])
+        summary_chars = int(parts[4].split("-")[0].replace(",", ""))
         assert summary_chars < raw_chars, f"summary did not shrink the raw payload: {line!r}"
 
 

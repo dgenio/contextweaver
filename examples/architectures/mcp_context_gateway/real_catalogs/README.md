@@ -21,8 +21,8 @@ Each file is a JSON object with two top-level keys:
   date, snapshot method, and notes.
 - `tools` — a list of raw `tools/list` entries (`name`, `description`,
   `inputSchema`, optional `annotations`) consumable by
-  [`ProxyRuntime.register_tool_defs_sync`](../../../src/contextweaver/adapters/proxy_runtime.py)
-  or [`mcp_tool_to_selectable`](../../../src/contextweaver/adapters/mcp.py).
+  [`ProxyRuntime.register_tool_defs_sync`](../../../../src/contextweaver/adapters/proxy_runtime.py)
+  or [`mcp_tool_to_selectable`](../../../../src/contextweaver/adapters/mcp.py).
 
 ## Re-snapshotting
 
@@ -41,6 +41,13 @@ python scripts/snapshot_mcp_catalog.py \
 The helper writes back the same `{_meta, tools}` shape this directory
 expects, so the re-snapshot is a drop-in replacement that keeps
 `main_real.py` working.
+
+By default the captured `_meta.snapshot_method` is a sanitised form
+(`scripts/snapshot_mcp_catalog.py --source-name <NAME>`) so secrets or
+sensitive paths inside `--command` are never persisted into the
+committed snapshot. Pass `--snapshot-method-override "<string>"` to
+record an explicit reproducible invocation when you deliberately want
+that over secrecy.
 
 ## Licence & attribution
 
@@ -64,7 +71,7 @@ When adding a new snapshot to this directory:
 - [`../main.py`](../main.py) — the mocked 60-tool reference architecture.
 - [`../main_real.py`](../main_real.py) — runs the gateway flow against
   these real snapshots.
-- [`../../../docs/recipes/claude_desktop.md`](../../../docs/recipes/claude_desktop.md)
-  and [`../../../docs/recipes/github_copilot.md`](../../../docs/recipes/github_copilot.md)
+- [`../../../../docs/recipes/claude_desktop.md`](../../../../docs/recipes/claude_desktop.md)
+  and [`../../../../docs/recipes/github_copilot.md`](../../../../docs/recipes/github_copilot.md)
   — recipes for putting `contextweaver` in front of real MCP servers
   from real MCP clients.

@@ -131,6 +131,46 @@ def test_build_meta_omits_blank_optional_fields(tmp_path: Path) -> None:
     assert "notes" not in meta
 
 
+def test_build_meta_sanitises_snapshot_method_by_default(tmp_path: Path) -> None:
+    """Default ``snapshot_method`` records a sanitised string, not the raw --command.
+
+    Guards against persisting secrets / sensitive paths placed in
+    ``--command`` (e.g. ``--auth=<TOKEN>``) into committed snapshots.
+    """
+    args = snapshot_mcp_catalog._parse_args(
+        [
+            "--command",
+            "npx -y server-x --auth=SECRET-TOKEN",
+            "--source-name",
+            "server-x",
+            "--output",
+            str(tmp_path / "x.json"),
+        ]
+    )
+    meta = snapshot_mcp_catalog._build_meta(args)
+    assert "SECRET-TOKEN" not in meta["snapshot_method"]
+    assert "--auth" not in meta["snapshot_method"]
+    assert "server-x" in meta["snapshot_method"]
+
+
+def test_build_meta_snapshot_method_override_is_recorded_verbatim(tmp_path: Path) -> None:
+    """``--snapshot-method-override`` writes the override string into _meta verbatim."""
+    args = snapshot_mcp_catalog._parse_args(
+        [
+            "--command",
+            "npx -y server-x /tmp",
+            "--source-name",
+            "server-x",
+            "--snapshot-method-override",
+            "mcp tools/list over stdio against `npx -y server-x /tmp`",
+            "--output",
+            str(tmp_path / "x.json"),
+        ]
+    )
+    meta = snapshot_mcp_catalog._build_meta(args)
+    assert meta["snapshot_method"] == ("mcp tools/list over stdio against `npx -y server-x /tmp`")
+
+
 # ------------------------------------------------------------------
 # main() end-to-end with a stubbed _fetch_tools_list
 # ------------------------------------------------------------------
@@ -174,11 +214,13 @@ def test_main_writes_well_formed_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert payload["_meta"]["server_package"] == "fake-server"
 
 
-def test_main_deduplicates_tools_by_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """When the stub helper returns duplicate names, the writer keeps the first occurrence."""
+def test_main_preserves_tool_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``main()`` writes the tools list in the same order the fetch helper returns."""
 
-    # _fetch_tools_list already dedupes by name in the real code path; we
-    # verify the surrounding main() preserves order and does not regress.
+    # ``_fetch_tools_list`` is stubbed out here, so this test is *not* a
+    # deduplication test (the stub returns tools verbatim). The actual
+    # dedup invariant is covered by ``test_serialise_tools_deduplicates_by_name``
+    # against ``_serialise_tools`` directly.
     fake_tools = [
         {"name": "echo", "description": "v1", "inputSchema": {}},
         {"name": "now", "description": "n", "inputSchema": {}},
@@ -192,6 +234,53 @@ def test_main_deduplicates_tools_by_name(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert exit_code == 0
     written = json.loads(out.read_text())["tools"]
     assert [t["name"] for t in written] == ["echo", "now"]
+
+
+# ------------------------------------------------------------------
+# _serialise_tools (extracted helper): real dedup + tolerant shapes
+# ------------------------------------------------------------------
+
+
+def test_serialise_tools_deduplicates_by_name() -> None:
+    """Duplicate ``name`` entries collapse to the first occurrence; order survives."""
+    raw_tools = [
+        {"name": "echo", "description": "first", "inputSchema": {}},
+        {"name": "now", "description": "n", "inputSchema": {}},
+        {"name": "echo", "description": "second-duplicate", "inputSchema": {"x": 1}},
+        {"name": "later", "description": "ok", "inputSchema": {}},
+    ]
+    result = snapshot_mcp_catalog._serialise_tools(raw_tools)
+    assert [t["name"] for t in result] == ["echo", "now", "later"]
+    # First-write-wins: the kept "echo" entry must be the original one.
+    assert next(t for t in result if t["name"] == "echo")["description"] == "first"
+
+
+def test_serialise_tools_drops_blank_or_missing_names() -> None:
+    """Tools with empty / whitespace / missing ``name`` are dropped silently."""
+    raw_tools = [
+        {"name": "", "description": "empty", "inputSchema": {}},
+        {"name": "   ", "description": "whitespace", "inputSchema": {}},
+        {"description": "missing", "inputSchema": {}},
+        {"name": "real", "description": "ok", "inputSchema": {}},
+    ]
+    result = snapshot_mcp_catalog._serialise_tools(raw_tools)
+    assert [t["name"] for t in result] == ["real"]
+
+
+def test_serialise_tools_handles_object_with_attributes() -> None:
+    """Arbitrary objects exposing ``name`` / ``description`` / ``inputSchema`` work."""
+
+    class _FakeTool:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.description = f"desc-{name}"
+            self.inputSchema = {"type": "object"}
+
+    raw_tools = [_FakeTool("alpha"), _FakeTool("beta"), _FakeTool("alpha")]
+    result = snapshot_mcp_catalog._serialise_tools(raw_tools)
+    assert [t["name"] for t in result] == ["alpha", "beta"]
+    assert result[0]["description"] == "desc-alpha"
+    assert result[0]["inputSchema"] == {"type": "object"}
 
 
 def test_main_returns_nonzero_on_fetch_failure(

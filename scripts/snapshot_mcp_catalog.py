@@ -21,10 +21,14 @@ any error.
 
 The output JSON has two top-level keys:
 
-- ``_meta`` — provenance: ``source``, ``server_package``,
+- ``_meta`` -- provenance: ``source``, ``server_package``,
   ``server_version``, ``license``, ``license_url``, ``snapshotted_at``,
-  ``snapshot_method``, ``notes``.
-- ``tools`` — verbatim list of ``tools/list`` entries, deduplicated by
+  ``snapshot_method``, ``notes``. ``snapshot_method`` defaults to a
+  sanitised string (``--source-name <NAME>``) so secrets in ``--command``
+  are not persisted into committed snapshots; pass
+  ``--snapshot-method-override`` to record the exact invocation when you
+  deliberately want reproducibility over secrecy.
+- ``tools`` -- verbatim list of ``tools/list`` entries, deduplicated by
   ``name``.
 """
 
@@ -98,40 +102,34 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "(default: 'modelcontextprotocol/servers')."
         ),
     )
+    p.add_argument(
+        "--snapshot-method-override",
+        default="",
+        help=(
+            "Override the string recorded in _meta.snapshot_method. By "
+            "default this records a sanitised form ('--source-name <NAME>') "
+            "to avoid persisting secrets / sensitive paths from --command "
+            "into the committed snapshot. Pass an explicit string here when "
+            "you deliberately want the exact reproducible invocation in the "
+            "committed snapshot."
+        ),
+    )
     return p.parse_args(argv)
 
 
-async def _fetch_tools_list(command: str) -> list[dict[str, Any]]:
-    """Connect to the MCP server defined by *command* and return its tools/list.
+def _serialise_tools(raw_tools: list[Any]) -> list[dict[str, Any]]:
+    """Convert raw MCP tool objects to JSON-serialisable dicts.
 
-    The function spawns the server as a subprocess over stdio using the MCP
-    SDK's :class:`mcp.client.stdio.stdio_client`, then issues a single
-    ``tools/list`` request. The MCP SDK is a core dependency, so this
-    helper does not need a guarded import.
+    Deduplicates by ``name`` (first occurrence wins) and preserves the
+    input ordering. Tolerates Pydantic ``Tool`` objects (the MCP SDK
+    shape), plain dicts (custom transports), and arbitrary objects with
+    ``name`` / ``description`` / ``inputSchema`` attributes. Tools with
+    a blank ``name`` are dropped silently.
     """
-    try:
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
-    except ImportError as exc:
-        raise SystemExit(
-            "The `mcp` SDK is required to snapshot a real MCP server. "
-            "Install it with `pip install mcp` (already a core dependency)."
-        ) from exc
-
-    argv = shlex.split(command)
-    if not argv:
-        raise SystemExit("--command was empty after shell-quoting parse")
-    params = StdioServerParameters(command=argv[0], args=argv[1:])
-
-    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
-        await session.initialize()
-        response = await session.list_tools()
-        raw_tools = response.tools
-
     serialised: list[dict[str, Any]] = []
     seen: set[str] = set()
     for tool in raw_tools:
-        # MCP SDK Tool objects expose `model_dump` (pydantic) — fall back to
+        # MCP SDK Tool objects expose `model_dump` (pydantic) -- fall back to
         # dict() conversion for any custom transport that returns plain dicts.
         if hasattr(tool, "model_dump"):
             dumped = tool.model_dump(exclude_none=True)
@@ -151,14 +149,57 @@ async def _fetch_tools_list(command: str) -> list[dict[str, Any]]:
     return serialised
 
 
+async def _fetch_tools_list(command: str) -> list[dict[str, Any]]:
+    """Connect to the MCP server defined by *command* and return its tools/list.
+
+    The function spawns the server as a subprocess over stdio using the MCP
+    SDK's :class:`mcp.client.stdio.stdio_client`, then issues a single
+    ``tools/list`` request. The MCP SDK is a core dependency, so this
+    helper does not need a guarded import.
+
+    Raises :class:`RuntimeError` (not :class:`SystemExit`) on internal
+    failures so :func:`main` can map them to a non-zero exit code without
+    forcing programmatic callers to handle ``SystemExit``.
+    """
+    try:
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+    except ImportError as exc:
+        raise RuntimeError(
+            "The `mcp` SDK is required to snapshot a real MCP server. "
+            "Install it with `pip install mcp` (already a core dependency)."
+        ) from exc
+
+    argv = shlex.split(command)
+    if not argv:
+        raise RuntimeError("--command was empty after shell-quoting parse")
+    params = StdioServerParameters(command=argv[0], args=argv[1:])
+
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        response = await session.list_tools()
+        raw_tools = response.tools
+
+    return _serialise_tools(list(raw_tools))
+
+
 def _build_meta(args: argparse.Namespace) -> dict[str, Any]:
+    # Default to a sanitised method string so secrets / sensitive paths the
+    # caller may have placed in --command never end up committed in the
+    # snapshot _meta. Callers who deliberately want the exact reproducible
+    # invocation pass --snapshot-method-override.
+    snapshot_method = (
+        args.snapshot_method_override
+        if args.snapshot_method_override
+        else f"scripts/snapshot_mcp_catalog.py --source-name {args.source_name}"
+    )
     meta: dict[str, Any] = {
         "source": args.source,
         "server_package": args.source_name,
         "server_version": args.server_version,
         "license": args.license,
         "snapshotted_at": _dt.date.today().isoformat(),
-        "snapshot_method": f"scripts/snapshot_mcp_catalog.py --command {args.command!r}",
+        "snapshot_method": snapshot_method,
     }
     if args.license_url:
         meta["license_url"] = args.license_url
@@ -168,16 +209,20 @@ def _build_meta(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry point. Returns a process exit code."""
+    """CLI entry point. Returns a process exit code.
+
+    Argparse may still raise :class:`SystemExit` for missing required
+    arguments -- that is normal CLI behaviour and surfaces to the
+    ``__main__`` boundary. Logic-level failures (missing SDK, transport
+    errors) propagate as :class:`Exception` and are mapped to ``return 1``.
+    """
     args = _parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logger.info("snapshot: launching `%s`", args.command)
 
     try:
         tools = asyncio.run(_fetch_tools_list(args.command))
-    except SystemExit:
-        raise
-    except Exception as exc:  # noqa: BLE001 — surface upstream failures verbatim
+    except Exception as exc:  # noqa: BLE001 -- surface upstream failures verbatim
         logger.error("snapshot failed: %s", exc)
         return 1
 

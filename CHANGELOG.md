@@ -30,7 +30,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over stdio, issues a single `tools/list`, and writes the result as a
   `{_meta, tools}` JSON file in the shape `main_real.py` consumes. Used
   to refresh the committed snapshots when upstream servers ship new
-  versions.
+  versions. `_meta.snapshot_method` defaults to a sanitised form
+  (`--source-name <NAME>`) so secrets in `--command` are not persisted
+  into committed snapshots; pass `--snapshot-method-override` when you
+  deliberately want the exact reproducible invocation recorded.
+
+### Changed
+
+- `scripts/snapshot_mcp_catalog.py`: internal failures (missing MCP SDK,
+  empty `--command`) now raise `RuntimeError` instead of `SystemExit`
+  so programmatic callers can rely on the documented `int` return
+  contract. Argparse-level errors continue to exit via `SystemExit` as
+  usual.
+- `examples/architectures/mcp_context_gateway/main_real.py`: scenario
+  data moved to a sibling `scenarios.py` to keep the runner module
+  under the ≤ 300 line guideline. Behaviour is unchanged.
+- `examples/architectures/mcp_context_gateway/real_catalogs/README.md`:
+  fixed four `../../../` relative links that resolved to
+  `examples/...` instead of the repo root. They now go up four
+  levels.
+
+### Tests
+
+- `tests/test_architectures_mcp_context_gateway_real.py`: replaced
+  hard-coded `[1, 11, 12]` catalog-size assertions and `10/11/0`
+  skipped-tool counts with invariants derived from the run output,
+  matching the docstring's "valid across snapshot refreshes" claim.
+  Also stripped thousands separators when parsing the firewall
+  summary line so the test does not break once summaries cross
+  1,000 chars.
+- `tests/test_snapshot_mcp_catalog.py`: extracted the dedup loop
+  from `_fetch_tools_list` into a `_serialise_tools` helper and
+  added real dedup / blank-name / attribute-shape coverage. Renamed
+  the existing test to `test_main_preserves_tool_order` to match
+  what it actually asserts.
 
 ## [0.9.0] - 2026-05-20
 
