@@ -395,7 +395,14 @@ def run_mcp_gateway_full() -> None:
         return
 
     spec = importlib.util.spec_from_file_location("_cw_arch_mcp_gateway_full", arch_main)
-    assert spec is not None and spec.loader is not None
+    # `assert` would be stripped under `python -O`, leaving a confusing
+    # AttributeError on the next line if the loader cannot be derived.
+    # Raise explicitly so the failure mode is the same in both modes.
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Cannot load reference architecture from {arch_main} "
+            "(importlib could not derive a module spec or loader)."
+        )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.main()
