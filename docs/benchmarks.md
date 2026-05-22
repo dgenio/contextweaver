@@ -80,29 +80,30 @@ following are deliberate, documented gaps — not bugs:
 
 If you find a regime where the default backends underperform, file an issue with your gold set and catalog — the harness is designed to absorb new scenarios.
 
-## Single-call gateway scenario
+## Gateway scenarios (range)
 
-The [MCP Context Gateway reference architecture](architectures/mcp_context_gateway.md) (`examples/architectures/mcp_context_gateway/`) is a deterministic, network-free, LLM-free single-turn run that exercises the launch narrative end-to-end. Captured metrics from that run:
+The [MCP Context Gateway reference architecture](architectures/mcp_context_gateway.md) (`examples/architectures/mcp_context_gateway/`) ships a single-turn reference run that exercises the launch narrative end-to-end. As of issue #270 the harness also runs **five** deterministic gateway scenarios over the same 60-tool catalog so the reduction number is reported as a measured range, not a single anecdote:
 
-| Metric | Value | What it measures |
-|---|---:|---|
-| `catalog_tools` | 60 | Pool the agent could route against |
-| `exposed_choice_cards` | 5 | Cards actually emitted to the model at the route phase |
-| `hydrated_schema_chars` | 854 | Full JSON Schema for the **selected** tool only |
-| `raw_result_chars` | 16,507 | Mocked BigQuery rowset (MCP wire shape) |
-| `injected_summary_chars` | 194 | What the firewall leaves on the prompt side |
-| `firewall_reduction_pct` | 98.8 % | (1 − 194 / 16,507) × 100 for this single tool result |
-| `final_prompt_tokens` | 142 | Answer-phase prompt budget consumed |
+| Scenario | Raw chars | Summary chars | Firewall reduction | Artifact |
+|---|---:|---:|---:|:-:|
+| `tiny_ack` | 34 | 34 | 0.0 % | — |
+| `small_post` | 77 | 77 | 0.0 % | — |
+| `medium_ticket` | 238 | 238 | 0.0 % | — |
+| `large_log` | 14,206 | 501 | 96.5 % | ✓ |
+| `bigquery_rowset` | 16,507 | 194 | 98.8 % | ✓ |
 
-> **Reading this honestly:** this is **one scripted scenario with one tool call**, not a benchmark over many scenarios. The 98.8% number reflects the specific shape of one rowset; your raw tool outputs will be different sizes and the per-call reduction will vary accordingly. The point of the scenario is to show all six load-bearing primitives (routing → cards → hydration → firewall → artifact → answer-phase build) interacting in one transcript, not to claim a generalizable reduction percentage.
+**Headline range:** firewall reduction across five gateway scenarios runs **0.0 % – 98.8 %**. The 0.0 % cases are not regressions — they're the firewall correctly no-op'ing on payloads under the `firewall_threshold=2000` threshold. The full per-scenario detail (routing query, chosen tool, exposed cards, answer-phase tokens) is committed at [`benchmarks/gateway_scorecard.md`](https://github.com/dgenio/contextweaver/blob/main/benchmarks/gateway_scorecard.md).
 
-The architecture run is reproducible byte-for-byte via:
+The single-turn architecture run still produces the same metrics (`bigquery_rowset` row above, plus `hydrated_schema_chars = 854` and `final_prompt_tokens = 142` from the answer-phase build); see [`examples/architectures/mcp_context_gateway/OUTPUT.md`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/OUTPUT.md) for the captured run.
+
+> **Reading this honestly:** the 98.8 % high-water mark only applies to the `bigquery_rowset` scenario. A real gateway deployment's per-call reduction will vary with the shape of each upstream response; the explicit floor at 0.0 % is the load-bearing claim that the firewall does not penalise small responses.
+
+Reproduce byte-for-byte via:
 
 ```bash
-python examples/architectures/mcp_context_gateway/main.py
+python examples/architectures/mcp_context_gateway/main.py   # single-turn run
+make benchmark-gateway && make gateway-scorecard            # 5-scenario range
 ```
-
-Full captured run: [`examples/architectures/mcp_context_gateway/OUTPUT.md`](https://github.com/dgenio/contextweaver/blob/main/examples/architectures/mcp_context_gateway/OUTPUT.md).
 
 ## Why this exists
 

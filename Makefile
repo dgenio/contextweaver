@@ -32,6 +32,9 @@ example:
 
 architectures:
 	python examples/architectures/mcp_context_gateway/main.py
+	python examples/architectures/mcp_context_gateway/main_live.py
+	python examples/architectures/mcp_context_gateway/main_multi.py
+	python examples/architectures/mcp_context_gateway/main_real.py
 	python examples/architectures/slack_ops_bot/main.py
 	python examples/architectures/code_review_bot/main.py
 	python examples/architectures/voice_agent/main.py
@@ -51,11 +54,26 @@ benchmark:
 benchmark-matrix:
 	python benchmarks/benchmark.py --matrix
 
+benchmark-gateway:
+	python benchmarks/gateway_benchmark.py
+
 scorecard:
 	python scripts/render_scorecard.py
 
 scorecard-check:
 	python scripts/render_scorecard.py --check
+
+gateway-scorecard:
+	python scripts/render_gateway_scorecard.py
+
+gateway-scorecard-check:
+	python scripts/render_gateway_scorecard.py --check
+
+record-demos:
+	python scripts/record_demo.py
+
+record-demos-check:
+	python scripts/record_demo.py --check
 
 sweep-scoring:
 	python scripts/sweep_scoring.py

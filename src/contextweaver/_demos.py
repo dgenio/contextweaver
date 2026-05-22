@@ -353,3 +353,58 @@ async def _run_mcp_gateway_async() -> None:
         print("      (no artifact persisted — text-only upstream response)")
 
     _footer()
+
+
+# --- MCP gateway full architecture scenario (issue #264) ------------------
+
+
+def run_mcp_gateway_full() -> None:
+    """Run the 60-tool MCP Context Gateway reference architecture from the CLI.
+
+    This is the same deterministic walk that
+    ``examples/architectures/mcp_context_gateway/main.py`` exercises — the
+    full single-turn investigation against the 60-tool catalog, with lazy
+    schema hydration, the context firewall on a ~16 KB rowset, and the
+    answer-phase prompt that sees only a summary + artifact handle. The
+    CLI surface lets users see the launch narrative end-to-end without
+    invoking the example script directly (issue #264).
+    """
+    _banner("mcp-gateway-full scenario (60-tool reference architecture)")
+    print(
+        "(loading examples/architectures/mcp_context_gateway/main.py — "
+        "the same script make architectures runs)"
+    )
+
+    import importlib.util
+    from pathlib import Path
+
+    # Locate the reference architecture relative to the installed package.
+    # The CLI ships with the package; the example sits in the repo /
+    # source tarball. The fallback path is the editable-install layout
+    # (repo root two levels above the package).
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    arch_main = repo_root / "examples" / "architectures" / "mcp_context_gateway" / "main.py"
+    if not arch_main.exists():
+        print(
+            f"\n[warning] reference architecture not found at {arch_main}; "
+            "the CLI scenario requires a source checkout (examples/ is not "
+            "shipped on PyPI wheels). Falling back to the smaller "
+            "mcp-gateway scenario."
+        )
+        run_mcp_gateway()
+        return
+
+    spec = importlib.util.spec_from_file_location("_cw_arch_mcp_gateway_full", arch_main)
+    # `assert` would be stripped under `python -O`, leaving a confusing
+    # AttributeError on the next line if the loader cannot be derived.
+    # Raise explicitly so the failure mode is the same in both modes.
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"Cannot load reference architecture from {arch_main} "
+            "(importlib could not derive a module spec or loader)."
+        )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main()
+
+    _footer()

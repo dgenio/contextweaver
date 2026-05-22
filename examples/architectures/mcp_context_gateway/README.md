@@ -87,7 +87,7 @@ When you read the run, focus on these moments:
 |---|---|
 | `load_catalog_yaml("catalog.yaml")` | `ProxyRuntime.register_tool_defs_sync(upstream.list_tools())` — the gateway pulls tool defs from upstream servers. |
 | `Router.route(query)` | The agent's `tool_browse(query)` meta-tool call returns the same `ChoiceCard` shape (see `examples/mcp_gateway_demo.py`). |
-| `_FULL_SCHEMAS[chosen]` lookup | The gateway hydrates the selected tool's input schema *only* when the agent calls `tool_execute(tool_id, args)`. |
+| `SchemaSource.from_json_file("tool_schemas.json")` + `hydrate_with_schema(catalog, chosen, schemas)` | The gateway hydrates the selected tool's input schema *only* when the agent calls `tool_execute(tool_id, args)`. The same `routing.hydration` helpers work over `ProxyRuntime`'s upstream tool list — the example loads schemas from the sidecar JSON, production loads them from `runtime.list_tool_defs()`. |
 | `_mock_bigquery_result()` | Whatever the upstream MCP server returns over stdio / HTTP. |
 | `ContextManager.ingest_mcp_result(...)` | **Identical API — no swap needed.** This is the production-shape method that parses the MCP wire result, stores binary content as artifacts, and runs the firewall. |
 | `ContextManager.add_fact_sync(...)` | Same — facts persist across turns regardless of how the result was sourced. |

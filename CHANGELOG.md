@@ -7,8 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`contextweaver.routing.hydration`** — public schema-hydration helpers
+  (`SchemaSource`, `hydrate_with_schema`, `lazy_schema_resolver`). Reference
+  architectures and gateway runtimes can resolve a tool's full input schema
+  from a sidecar source (raw dict, JSON file, MCP tools-list) without
+  hand-rolling a `_FULL_SCHEMAS` dict. Inline `args_schema` on the catalog
+  item still wins — sidecar only fills in when the catalog entry is empty.
+  Issue #261.
+- **Live-transport MCP gateway architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_live.py` runs the
+  reference architecture through a real `mcp.server.Server` + `ClientSession`
+  paired via `mcp.shared.memory` (in-process, deterministic, network-free).
+  Issue #260.
+- **Multi-turn MCP gateway architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_multi.py` extends the
+  scenario to 4 turns (BigQuery → Linear → Slack → PagerDuty) with fact
+  accumulation across turns. The turn-1 artifact survives into the final
+  answer prompt via dependency closure. Issue #262.
+- **`contextweaver demo --scenario mcp-gateway-full`** — surfaces the 60-tool
+  reference architecture from the CLI so users can see the full launch
+  narrative without invoking the example script directly. Issue #264.
+- **Gateway-scenario benchmark suite** — `benchmarks/gateway_benchmark.py`
+  runs 5 deterministic gateway-shaped scenarios over the same 60-tool
+  catalog and emits `benchmarks/results/gateway_latest.json` +
+  `benchmarks/gateway_scorecard.md`. Headline range: **firewall reduction
+  0.0 % – 98.8 %** across the 5 scenarios. `make benchmark-gateway` /
+  `make gateway-scorecard{,-check}`. Issue #270.
+- **Real-MCP catalog architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_real.py` runs the same
+  shape against committed snapshots of three real MCP servers
+  (`server-time`, `server-filesystem`, `server-everything`) under
+  `real_catalogs/`. `scripts/capture_mcp_catalog.py` is the offline-safe
+  regenerator (stdio MCP transport, leaves existing snapshots untouched
+  on failure). Issue #280.
+- **Asciinema recordings for the showcase demos** —
+  `scripts/record_demo.py` is a stdlib-only writer for the asciinema v2
+  cast format. Four committed casts under `docs/assets/casts/`
+  (default, large-catalog, huge-tool-output, mcp-gateway-full) linked
+  from `docs/showcase.md`. `make record-demos{,-check}`. Issue #281.
+
 ### Fixed
 
+- **MCP server call-tool result shape** — `McpGatewayServer` and
+  `McpProxyServer` now return fully-built `CallToolResult` objects
+  instead of `(content, is_error)` 2-tuples. Newer MCP SDK versions
+  interpret a 2-tuple as `(unstructured, structuredContent)` and reject
+  the `bool` half via JSON-schema validation, breaking the live
+  transport path. Surfaced while landing #260.
+- **`SchemaSource.from_json_file` input validation** — explicitly
+  validates the flat-mapping shape (string keys, mapping values) and
+  rejects `{"tools": <non-list>}` (a common user typo) with a clear
+  `CatalogError` instead of falling through to the flat-mapping path
+  or raising a raw `TypeError`/`ValueError` from `dict()`. Honors the
+  documented `Raises: CatalogError` contract.
+- **Real-catalog example no longer swallows unexpected errors** —
+  `_build_catalog_from_mcp_tools` in
+  `examples/architectures/mcp_context_gateway/main_real.py` now narrows
+  the catch to `CatalogError` (duplicate ids) so adapter regressions
+  and other bugs surface loudly instead of silently dropping tools.
 - **Init scaffold git hygiene** — ignored `contextweaver init` scaffold files so running init from the repo root does not leave commit-prone untracked files (#314).
 
 ## [0.9.1] - 2026-05-21

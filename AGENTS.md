@@ -53,6 +53,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
+| `routing/hydration.py` | Public schema-hydration helpers — `SchemaSource` (from raw dict / JSON file / MCP tools-list), `hydrate_with_schema`, `lazy_schema_resolver`. Reference architectures use these to resolve a tool's full input schema from a sidecar source rather than hand-rolling a `_FULL_SCHEMAS` dict. Inline `args_schema` on the catalog item wins; sidecar only fills empties. Issue #261. |
 | `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #193, #194, #219, #222) |
 | `adapters/crewai.py` | CrewAI `BaseTool` (or equivalent plain-dict shape) ↔ `SelectableItem` (`crewai_tool_to_selectable`, `crewai_tools_to_catalog`, `infer_crewai_namespace`, `load_crewai_catalog`, issue #193) |
 | `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
