@@ -504,9 +504,7 @@ class ContextManager:
         if explain:
             post_sens_ids = {c.id for c in candidates}
             sensitivity_dropped_records: list[tuple[str, str, str]] = sorted(
-                (cid, kind, sens)
-                for (cid, kind, sens) in pre_sens_ids
-                if cid not in post_sens_ids
+                (cid, kind, sens) for (cid, kind, sens) in pre_sens_ids if cid not in post_sens_ids
             )
         else:
             sensitivity_dropped_records = []
@@ -526,8 +524,7 @@ class ContextManager:
         # 6. Dedup
         if explain:
             pre_dedup_view: list[tuple[str, str, str, float]] = [
-                (item.id, item.kind.value, item.sensitivity.value, score)
-                for score, item in scored
+                (item.id, item.kind.value, item.sensitivity.value, score) for score, item in scored
             ]
         scored, dedup_removed = deduplicate_candidates(
             scored, similarity_threshold=self._scoring.dedup_threshold
