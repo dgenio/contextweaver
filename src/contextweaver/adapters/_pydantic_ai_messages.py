@@ -17,6 +17,7 @@ from contextweaver.adapters._messages_common import (
     expect_list,
     ingest_into_manager,
     json_args_dumps,
+    strip_prefix,
 )
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ContextItem, ItemKind
@@ -221,10 +222,16 @@ def _encode_request_part(item: ContextItem) -> dict[str, Any]:
     if item.kind is ItemKind.policy:
         return {"part_kind": "system-prompt", "content": item.text}
     if item.kind is ItemKind.tool_result:
+        tool_call_id = meta.get("tool_call_id") or strip_prefix(item.id, _PREFIX_TOOL_RESULT)
+        if not tool_call_id:
+            raise CatalogError(
+                f"tool_result item {item.id!r} cannot round-trip: missing "
+                "tool_call_id in metadata and id does not carry the pydantic_ai prefix"
+            )
         return {
             "part_kind": "tool-return",
             "tool_name": meta.get("tool_name", ""),
-            "tool_call_id": meta.get("tool_call_id", ""),
+            "tool_call_id": tool_call_id,
             "content": item.text,
         }
     raise CatalogError(
@@ -251,10 +258,16 @@ def _encode_response_part(item: ContextItem) -> dict[str, Any]:
     if item.kind is ItemKind.agent_msg:
         return {"part_kind": "text", "content": item.text}
     if item.kind is ItemKind.tool_call:
+        tool_call_id = meta.get("tool_call_id") or strip_prefix(item.id, _PREFIX_TOOL_CALL)
+        if not tool_call_id:
+            raise CatalogError(
+                f"tool_call item {item.id!r} cannot round-trip: missing "
+                "tool_call_id in metadata and id does not carry the pydantic_ai prefix"
+            )
         return {
             "part_kind": "tool-call",
             "tool_name": meta.get("tool_name", ""),
-            "tool_call_id": meta.get("tool_call_id", ""),
+            "tool_call_id": tool_call_id,
             "args": _restore_args(item.text),
         }
     raise CatalogError(
