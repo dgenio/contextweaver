@@ -196,7 +196,7 @@ def demo(
                 "default = friendly walkthrough on a small event log; "
                 "large-catalog = 1,000 tools shortlisted to compact ChoiceCards; "
                 "huge-tool-output = context firewall on a ~10 KB tool result; "
-                "mcp-gateway = MCP gateway meta-tools end-to-end (stubbed upstream, no network); "
+                "mcp-gateway = MCP gateway meta-tools end-to-end (3 stub tools, no network); "
                 "mcp-gateway-full = full 60-tool MCP Context Gateway architecture (issue #264)."
             ),
         ),

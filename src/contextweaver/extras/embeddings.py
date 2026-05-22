@@ -19,6 +19,13 @@ What is shipped here:
 - :class:`SentenceTransformerBackend` — concrete
   :class:`~contextweaver.protocols.EmbeddingBackend` implementation backed
   by `sentence-transformers <https://www.sbert.net/>`_.
+- :class:`HashingEmbeddingBackend` — stdlib-only deterministic baseline
+  :class:`~contextweaver.protocols.EmbeddingBackend` using the hashing
+  trick (no extras required).  Useful when a stable, dependency-free
+  reference is needed (CI baselines, benchmark scorecard rows — #266).
+  Re-exported from :mod:`contextweaver.extras.embeddings_hashing`; the
+  implementation lives in that sibling module so this file stays under
+  the project's 300-line module guideline.
 - :class:`HybridEmbeddingRetriever` — :class:`~contextweaver.protocols.Retriever`
   adapter that uses an embedding backend for primary scoring and the
   in-tree TF-IDF scorer as a secondary lexical signal (weighted sum).
@@ -40,6 +47,7 @@ import math
 from typing import TYPE_CHECKING, Any
 
 from contextweaver._utils import TfIdfScorer
+from contextweaver.extras.embeddings_hashing import HashingEmbeddingBackend
 
 if TYPE_CHECKING:
     from contextweaver.protocols import EmbeddingBackend
@@ -247,6 +255,7 @@ def _norm(v: list[float]) -> float:
 
 
 __all__ = [
+    "HashingEmbeddingBackend",
     "HybridEmbeddingRetriever",
     "SentenceTransformerBackend",
 ]

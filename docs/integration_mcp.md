@@ -303,6 +303,12 @@ upstream MCP servers.  Both share the
 [`ProxyRuntime`](../src/contextweaver/adapters/proxy_runtime.py) core and
 satisfy the contracts in [`docs/gateway_spec.md`](gateway_spec.md):
 
+Production MCP gateway deployments commonly transform raw
+user input into routing-oriented queries before calling
+`Router.route(query)`. ContextWeaver does not require a
+specific rewriting strategy and accepts whichever
+routing-shaped query your gateway produces.
+
 | Mode | Discovery channel | Invocation channel | Schema exposure |
 |------|-------------------|--------------------|-----------------|
 | `ExposureMode.TRANSPARENT` (#13) | Stripped `tools/list` — one entry per upstream tool with sentinel `inputSchema: {"type": "object"}` | `tool_hydrate(tool_id)` + `tool_execute(tool_id, args)` | On demand via `tool_hydrate` |

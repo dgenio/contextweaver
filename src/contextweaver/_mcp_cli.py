@@ -25,7 +25,6 @@ import asyncio
 import json
 import logging
 import signal
-import sys
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
@@ -290,15 +289,15 @@ def serve(
     )
     tool_count = len(runtime.list_tool_ids())
 
-    print(
+    typer.echo(
         f"contextweaver mcp serve: mode={resolved_mode.value} "
         f"catalog={catalog} tools={tool_count} top_k={top_k} "
         f"beam_width={beam_width} cache_stable={cache_stable}",
-        file=sys.stderr,
+        err=True,
     )
 
     if dry_run:
-        print("dry-run: catalog validated; not binding stdio.", file=sys.stderr)
+        typer.echo("dry-run: catalog validated; not binding stdio.", err=True)
         raise typer.Exit(0)
 
     server: McpGatewayServer | McpProxyServer
@@ -316,7 +315,7 @@ def serve(
         _install_sigint_handler(loop)
         loop.run_until_complete(_serve())
     except (KeyboardInterrupt, asyncio.CancelledError):
-        print("contextweaver mcp serve: interrupted, shutting down.", file=sys.stderr)
+        typer.echo("contextweaver mcp serve: interrupted, shutting down.", err=True)
         raise typer.Exit(0) from None
     finally:
         loop.close()

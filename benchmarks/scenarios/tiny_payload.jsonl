@@ -1,0 +1,20 @@
+{"type": "user_turn", "id": "u1", "text": "Toggle the staging feature flag for the new checkout flow"}
+{"type": "tool_call", "id": "tc1", "text": "feature_flags.set(flag='checkout_v2', env='staging', value=true)", "parent_id": "u1"}
+{"type": "tool_result", "id": "tr1", "text": "ok", "parent_id": "tc1"}
+{"type": "agent_msg", "id": "a1", "text": "Done — checkout_v2 is now on in staging."}
+{"type": "user_turn", "id": "u2", "text": "What is the current request rate on the api gateway?"}
+{"type": "tool_call", "id": "tc2", "text": "metrics.gauge(metric='api_gateway.qps', window='1m')", "parent_id": "u2"}
+{"type": "tool_result", "id": "tr2", "text": "qps=412", "parent_id": "tc2"}
+{"type": "agent_msg", "id": "a2", "text": "API gateway is at 412 qps over the last minute."}
+{"type": "user_turn", "id": "u3", "text": "Mark the deploy ticket DPL-9821 as complete"}
+{"type": "tool_call", "id": "tc3", "text": "tickets.update(id='DPL-9821', status='done')", "parent_id": "u3"}
+{"type": "tool_result", "id": "tr3", "text": "updated", "parent_id": "tc3"}
+{"type": "agent_msg", "id": "a3", "text": "DPL-9821 marked done."}
+{"type": "user_turn", "id": "u4", "text": "Get the current on-call engineer"}
+{"type": "tool_call", "id": "tc4", "text": "oncall.current(team='infra')", "parent_id": "u4"}
+{"type": "tool_result", "id": "tr4", "text": "alex.kim", "parent_id": "tc4"}
+{"type": "agent_msg", "id": "a4", "text": "Alex Kim is on call for infra."}
+{"type": "user_turn", "id": "u5", "text": "Cancel the pending pull request automerge for PR 4471"}
+{"type": "tool_call", "id": "tc5", "text": "github.automerge_cancel(pr=4471, repo='dgenio/contextweaver')", "parent_id": "u5"}
+{"type": "tool_result", "id": "tr5", "text": "cancelled", "parent_id": "tc5"}
+{"type": "agent_msg", "id": "a5", "text": "Automerge cancelled on PR 4471."}

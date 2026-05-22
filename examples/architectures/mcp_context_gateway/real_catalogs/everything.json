@@ -1,0 +1,100 @@
+{
+  "_source": "https://github.com/modelcontextprotocol/servers/tree/main/src/everything",
+  "_captured_with": "scripts/capture_mcp_catalog.py",
+  "tools": [
+    {
+      "name": "echo",
+      "description": "Echoes back the input.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {"message": {"type": "string", "description": "Message to echo"}},
+        "required": ["message"]
+      }
+    },
+    {
+      "name": "add",
+      "description": "Adds two numbers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "a": {"type": "number", "description": "First number"},
+          "b": {"type": "number", "description": "Second number"}
+        },
+        "required": ["a", "b"]
+      }
+    },
+    {
+      "name": "longRunningOperation",
+      "description": "Demonstrates a long running operation with progress updates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "duration": {"type": "number", "default": 10, "description": "Duration of the operation in seconds"},
+          "steps": {"type": "number", "default": 5, "description": "Number of steps in the operation"}
+        }
+      }
+    },
+    {
+      "name": "printEnv",
+      "description": "Prints all environment variables, helpful for debugging MCP server configuration.",
+      "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+      "name": "sampleLLM",
+      "description": "Samples from an LLM using MCP's sampling feature. Demonstrates how a server can request the host application to perform an LLM completion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {"type": "string", "description": "The prompt to send to the LLM"},
+          "maxTokens": {"type": "number", "default": 100, "description": "Maximum number of tokens to generate"}
+        },
+        "required": ["prompt"]
+      }
+    },
+    {
+      "name": "getTinyImage",
+      "description": "Returns the MCP_TINY_IMAGE.",
+      "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+      "name": "annotatedMessage",
+      "description": "Demonstrates how annotations can be used to provide metadata about content. Returns a message with annotations indicating priority and target audience.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageType": {
+            "type": "string",
+            "enum": ["error", "success", "debug"],
+            "description": "Type of message to demonstrate different annotation patterns"
+          },
+          "includeImage": {"type": "boolean", "default": false}
+        },
+        "required": ["messageType"]
+      }
+    },
+    {
+      "name": "getResourceReference",
+      "description": "Returns a resource reference that can be used by MCP clients. Demonstrates resource embedding and referencing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "number",
+            "description": "ID of the resource to reference (1-100)"
+          }
+        },
+        "required": ["resourceId"]
+      }
+    },
+    {
+      "name": "getResourceLinks",
+      "description": "Returns multiple resource links that reference different types of resources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {"type": "number", "default": 3, "description": "Number of resource links to return"}
+        }
+      }
+    }
+  ]
+}

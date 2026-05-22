@@ -312,6 +312,8 @@ def run_mcp_gateway_full() -> None:
     without requiring users to clone the repo. The catalog ships inside
     ``contextweaver.data`` so this works from a wheel install too.
     """
+    _banner("mcp-gateway-full scenario (60-tool reference architecture)")
+
     # Late import: the example main.py performs non-trivial work at import
     # time only when ``main()`` is called, but we keep it lazy anyway so
     # the other demo scenarios don't pay the cost on import.
@@ -327,16 +329,21 @@ def run_mcp_gateway_full() -> None:
         spec = importlib.util.spec_from_file_location(
             "contextweaver._demos_mcp_gateway_full", main_path
         )
-        assert spec is not None and spec.loader is not None
+        if spec is None or spec.loader is None:
+            raise RuntimeError(
+                f"Cannot load reference architecture from {main_path} "
+                "(importlib could not derive a module spec or loader)."
+            )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         module.main()
-        return
+    else:
+        # Wheel-install fallback: re-implement the architecture's flow against
+        # the packaged catalog so users on ``pip install contextweaver`` (no
+        # examples/) still see the full narrative.
+        _run_mcp_gateway_full_packaged()
 
-    # Wheel-install fallback: re-implement the architecture's flow against
-    # the packaged catalog so users on ``pip install contextweaver`` (no
-    # examples/) still see the full narrative.
-    _run_mcp_gateway_full_packaged()
+    _footer()
 
 
 def _run_mcp_gateway_full_packaged() -> None:

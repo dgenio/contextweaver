@@ -39,6 +39,7 @@ Or via ``make architectures`` / ``make example``.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from contextweaver.config import ContextBudget
@@ -46,16 +47,19 @@ from contextweaver.context.manager import ContextManager
 from contextweaver.data import gateway_catalog_path
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import Catalog, load_catalog_yaml
+from contextweaver.routing.hydration import SchemaSource, hydrate_with_schema
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import ContextItem, ItemKind, Phase
 
 # Issue #264: the catalog ships inside ``contextweaver.data`` so this example
 # (and the matching ``contextweaver demo --scenario mcp-gateway-full`` CLI
-# scenario) work from a wheel install without needing the examples/ directory.
-# ``gateway_catalog_path()`` returns a real filesystem ``Path`` regardless of
-# whether the package is installed editable or extracted from a zip wheel.
+# scenario) work from a wheel install. ``gateway_catalog_path()`` returns a
+# real filesystem ``Path`` for editable installs and unpacked wheels, and
+# materialises a persistent cache copy under
+# ``tempfile.gettempdir()/contextweaver/`` for zipimport.
 CATALOG_PATH = gateway_catalog_path()
+SCHEMAS_PATH = Path(__file__).parent / "tool_schemas.json"
 
 # The user-typed phrasing matters: a real agent would rephrase a vague
 # natural-language question into a tool-shaped query before routing. We
@@ -177,11 +181,13 @@ def main() -> None:
     # 3. Call phase — hydrate ONLY the selected tool's schema.
     # ------------------------------------------------------------------
     _print_header("[2/5] Call phase — hydrate ONLY the selected tool's schema")
-    # Issue #261: pull the schema from the catalog itself via Catalog.hydrate()
-    # rather than a demo-special-case lookup table. The other 59 entries have
-    # an empty args_schema in catalog.yaml, so this still proves the firewall
-    # claim that only the selected tool's schema enters the prompt.
-    hydrated = catalog.hydrate(chosen)
+    # The catalog YAML carries only routing-shaped metadata (name, tags,
+    # description). Full JSON Schemas live in a sidecar file and are merged
+    # in at hydration time by ``hydrate_with_schema`` (issue #261). In a
+    # production gateway this sidecar is whatever upstream MCP servers
+    # return from ``tools/list`` — same shape, same helper.
+    schemas = SchemaSource.from_json_file(SCHEMAS_PATH)
+    hydrated = hydrate_with_schema(catalog, chosen, schemas)
     selected_schema = hydrated.args_schema
     if not selected_schema:
         raise SystemExit(

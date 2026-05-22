@@ -1,0 +1,36 @@
+{
+  "bigquery.run_query": {
+    "type": "object",
+    "title": "bigquery_run_query",
+    "properties": {
+      "sql": {
+        "type": "string",
+        "description": "Standard-SQL BigQuery query."
+      },
+      "project": {
+        "type": "string",
+        "description": "GCP project to bill the query to.",
+        "default": "ops-analytics-prod"
+      },
+      "max_results": {
+        "type": "integer",
+        "description": "Cap on returned rows.",
+        "default": 1000,
+        "minimum": 1,
+        "maximum": 100000
+      },
+      "dry_run": {
+        "type": "boolean",
+        "description": "If true, return the query plan only.",
+        "default": false
+      },
+      "labels": {
+        "type": "object",
+        "additionalProperties": {"type": "string"},
+        "description": "Free-form labels attached to the job."
+      }
+    },
+    "required": ["sql"],
+    "additionalProperties": false
+  }
+}
