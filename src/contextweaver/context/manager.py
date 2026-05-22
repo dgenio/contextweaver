@@ -734,7 +734,10 @@ class ContextManager:
             extra=extra,
             explain=explain,
         )
-        return (pack, explanation) if explain else pack
+        if explain:
+            assert explanation is not None
+            return (pack, explanation)
+        return pack
 
     @overload
     def build_sync(
@@ -814,7 +817,10 @@ class ContextManager:
             extra=extra,
             explain=explain,
         )
-        return (pack, explanation) if explain else pack
+        if explain:
+            assert explanation is not None
+            return (pack, explanation)
+        return pack
 
     # ------------------------------------------------------------------
     # Route-integrated build
