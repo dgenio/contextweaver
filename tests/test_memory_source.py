@@ -85,6 +85,16 @@ def test_memory_entry_defaults_round_trip() -> None:
     assert rehydrated.expires_at is None
 
 
+def test_memory_entry_from_dict_invalid_sensitivity_raises_config_error() -> None:
+    with pytest.raises(ConfigError, match="invalid sensitivity"):
+        MemoryEntry.from_dict({"id": "m1", "text": "x", "sensitivity": "secret"})
+
+
+def test_memory_entry_from_dict_missing_required_field_raises_config_error() -> None:
+    with pytest.raises(ConfigError, match="missing required field"):
+        MemoryEntry.from_dict({"id": "m1"})
+
+
 def test_memory_entry_is_expired_respects_now() -> None:
     entry = _entry("m1", expires_at=100.0)
     assert entry.is_expired(now=200.0) is True
@@ -233,6 +243,13 @@ def test_materialise_stamps_provenance_namespace() -> None:
     assert cw["memory_source"]["confidence"] == 0.7
 
 
+def test_materialise_ignores_malformed_reserved_namespace() -> None:
+    entry = _entry("m1", metadata={"_contextweaver": "not-a-mapping", "keep": "yes"})
+    [item] = memory_entries_to_context_items([entry])
+    assert item.metadata["keep"] == "yes"
+    assert item.metadata["_contextweaver"]["memory_source"]["id"] == "m1"
+
+
 def test_materialise_forwards_tags_to_metadata() -> None:
     entry = _entry("m1", tags=["billing", "p1"])
     [item] = memory_entries_to_context_items([entry])
@@ -269,6 +286,12 @@ def test_select_for_phase_enforces_token_budget() -> None:
 def test_select_for_phase_zero_budget_returns_empty() -> None:
     source = JsonFixtureMemorySource([_entry("m1")])
     assert select_memory_for_phase(source, "x", Phase.answer, budget_tokens=0) == []
+
+
+def test_select_for_phase_charges_short_entries_at_least_one_token() -> None:
+    source = JsonFixtureMemorySource([_entry("a"), _entry("b"), _entry("c")])
+    items = select_memory_for_phase(source, "x", Phase.answer, budget_tokens=2)
+    assert len(items) == 2
 
 
 def test_select_for_phase_skips_oversized_but_packs_smaller_later() -> None:

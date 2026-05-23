@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Memory-source adapter interface — `context/memory_source.py`** (#293).
+- **Memory-source adapter interface — `context/memory_types.py`,
+  `context/memory_fixture.py`, `context/memory_source.py`** (#293).
   New `MemorySource` Protocol in `protocols.py` plus a stdlib-only
   `JsonFixtureMemorySource`, `MemoryEntry` dataclass with `to_dict` /
   `from_dict`, and `memory_entries_to_context_items` /
@@ -19,31 +20,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   budget pipeline with no invariant changes.  Phase selection is
   position-graded by scope (`route` prefers `routing` > `tool_preference` >
   `policy`; `call` prefers `tool_usage` > `tool_preference` > `domain`;
-  `interpret` prefers `domain` > `fact` > `convention`).  New
-  `ContextManager.ingest_memory_source(...)` /
-  `ingest_memory_source_sync(...)` / `ingest_memory_entries(...)`
-  convenience wrappers thread the manager's configured event log,
-  estimator, and per-phase budget.  Sensitive entries (≥ active floor)
-  are dropped or redacted by the existing `apply_sensitivity_filter` — no
-  new redaction path.  Reserved
+  `interpret` prefers `domain` > `fact` > `convention`).  Budgeting charges
+  every selected entry at least one token, so short memories cannot bypass
+  the cap.  Sensitive entries (≥ active floor) are dropped or redacted by the
+  existing `apply_sensitivity_filter` — no new redaction path.  Reserved
   `metadata['_contextweaver']['memory_source']` provenance namespace per
   `docs/agent-context/invariants.md`.
-- **Session handoff context pack — `context/handoff.py`** (#294).  New
-  `SessionHandoffPack` + `HandoffEntry` dataclasses with `to_dict` /
-  `from_dict`, the `build_session_handoff_pack(...)` builder, and a
-  `render_handoff_pack(...)` deterministic-Markdown renderer.  The pack
+- **Session handoff context pack — `context/handoff_types.py`,
+  `context/handoff.py`** (#294).  New `SessionHandoffPack` + `HandoffEntry`
+  dataclasses with `to_dict` / `from_dict`, the
+  `build_session_handoff_pack(...)` builder, and a `render_handoff_pack(...)`
+  deterministic-Markdown renderer.  The pack
   classifies event-log items into five canonical buckets — decisions,
   conventions, unresolved tasks, pitfalls, next inspections — driven by
   explicit `metadata['handoff_category']` tags with a kind-based heuristic
   fallback (`plan_state` → decision, `policy` → convention,
   `tool_result` with `status=failed` → pitfall).  Sensitivity enforcement
-  runs *before* classification using the active `ContextPolicy`, so the
-  pack cannot leak `restricted` / `confidential` content even when the
-  policy uses `"redact"` mode.  Dependency-closure preserved: every
-  included entry's `parent_id` chain is walked to collect deduplicated
-  `ArtifactRef` citations.  New `ContextManager.build_handoff(...)` /
-  `build_handoff_sync(...)` wrappers respect the manager's policy and
-  estimator.  Pack carries a `version` field (`HANDOFF_PACK_VERSION = "1"`)
+  runs *before* classification using the active `ContextPolicy`, then the
+  existing context firewall processes surviving `tool_result` items before
+  rendering, so the pack cannot leak `restricted` / `confidential` content
+  or raw tool-result bodies.  Dependency-closure preserved: every included
+  entry's `parent_id` chain is walked to collect deduplicated `ArtifactRef`
+  citations.  Pack carries a `version` field (`HANDOFF_PACK_VERSION = "1"`)
   for downstream drift detection.
 
 ## [0.9.0] - 2026-05-20

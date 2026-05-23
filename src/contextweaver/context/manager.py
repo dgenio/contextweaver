@@ -22,12 +22,6 @@ from contextweaver.context import ingest as _ingest
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
 from contextweaver.context.firewall import apply_firewall_to_batch
-from contextweaver.context.handoff import SessionHandoffPack, build_session_handoff_pack
-from contextweaver.context.memory_source import (
-    MemoryEntry,
-    memory_entries_to_context_items,
-    select_memory_for_phase,
-)
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
@@ -44,7 +38,6 @@ from contextweaver.protocols import (
     EventLog,
     Extractor,
     FactStore,
-    MemorySource,
     NoOpHook,
     Summarizer,
     TokenEstimator,
@@ -434,136 +427,6 @@ class ContextManager:
     ) -> str:
         """Synchronous alias for :meth:`drilldown`."""
         return self.drilldown(handle, selector, inject=inject, parent_id=parent_id)
-
-    # ------------------------------------------------------------------
-    # Memory source ingestion (issue #293)
-    # ------------------------------------------------------------------
-
-    def ingest_memory_source(
-        self,
-        source: MemorySource,
-        query: str,
-        phase: Phase,
-        *,
-        budget_tokens: int | None = None,
-        now: float | None = None,
-        max_entries: int | None = None,
-    ) -> list[ContextItem]:
-        """Pull entries from a :class:`MemorySource` and append them to the event log.
-
-        Each surviving entry lands as a
-        :class:`~contextweaver.types.ContextItem` of kind
-        :attr:`~contextweaver.types.ItemKind.memory_fact`.  The existing
-        pipeline (phase filter → sensitivity → firewall → scoring → dedup →
-        budget) then handles the rest unchanged.
-
-        Args:
-            source: Any object implementing
-                :class:`~contextweaver.protocols.MemorySource`.
-            query: Selection query forwarded to :meth:`MemorySource.select`.
-            phase: Active execution phase.
-            budget_tokens: Optional per-call token budget for the memory
-                slice.  Defaults to half of the active phase budget so the
-                injected memory never crowds out fresh candidates.
-            now: Optional UNIX-seconds reference time for ``expires_at``
-                filtering; pin in tests for determinism.
-            max_entries: Optional hard cap on entries returned by the
-                source before token budgeting.
-
-        Returns:
-            The list of newly-appended :class:`ContextItem` objects (in
-            the order they were appended), so callers can audit what was
-            injected without re-reading the event log.
-        """
-        if budget_tokens is None:
-            budget_tokens = max(1, self._budget.for_phase(phase) // 2)
-        items = select_memory_for_phase(
-            source,
-            query,
-            phase,
-            budget_tokens=budget_tokens,
-            estimator=self._estimator,
-            now=now,
-            max_entries=max_entries,
-        )
-        for item in items:
-            self._event_log.append(item)
-        return items
-
-    def ingest_memory_source_sync(
-        self,
-        source: MemorySource,
-        query: str,
-        phase: Phase,
-        *,
-        budget_tokens: int | None = None,
-        now: float | None = None,
-        max_entries: int | None = None,
-    ) -> list[ContextItem]:
-        """Synchronous alias for :meth:`ingest_memory_source`."""
-        return self.ingest_memory_source(
-            source,
-            query,
-            phase,
-            budget_tokens=budget_tokens,
-            now=now,
-            max_entries=max_entries,
-        )
-
-    def ingest_memory_entries(
-        self,
-        entries: list[MemoryEntry],
-        *,
-        now: float | None = None,
-    ) -> list[ContextItem]:
-        """Append a pre-selected list of :class:`MemoryEntry` to the event log.
-
-        Useful when callers want to drive selection themselves and skip the
-        :meth:`MemorySource.select` step (e.g. fixture-driven tests).
-
-        Args:
-            entries: Entries to materialise.  Expired entries (per
-                :meth:`MemoryEntry.is_expired`) are skipped.
-            now: Optional UNIX-seconds reference time for expiry.
-
-        Returns:
-            The newly-appended items.
-        """
-        items = memory_entries_to_context_items(entries, estimator=self._estimator, now=now)
-        for item in items:
-            self._event_log.append(item)
-        return items
-
-    # ------------------------------------------------------------------
-    # Session handoff (issue #294)
-    # ------------------------------------------------------------------
-
-    def build_handoff(self, *, budget_tokens: int = 1500) -> SessionHandoffPack:
-        """Build a :class:`SessionHandoffPack` from the current session state.
-
-        Thin wrapper that supplies the manager's configured
-        :attr:`event_log`, :attr:`artifact_store`, active
-        :class:`~contextweaver.config.ContextPolicy`, and token estimator
-        to :func:`build_session_handoff_pack`.
-
-        Args:
-            budget_tokens: Hard cap on the cumulative token cost of the
-                returned pack.  Defaults to ``1500``.
-
-        Returns:
-            A populated, deterministic :class:`SessionHandoffPack`.
-        """
-        return build_session_handoff_pack(
-            self._event_log,
-            self._artifact_store,
-            self._policy,
-            self._estimator,
-            budget_tokens=budget_tokens,
-        )
-
-    def build_handoff_sync(self, *, budget_tokens: int = 1500) -> SessionHandoffPack:
-        """Synchronous alias for :meth:`build_handoff`."""
-        return self.build_handoff(budget_tokens=budget_tokens)
 
     # ------------------------------------------------------------------
     # Core pipeline
