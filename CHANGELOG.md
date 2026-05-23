@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **README "When not to use contextweaver" section** (#290). New top-level
-  section after `## How contextweaver Solves It` covering the four
+  section after `## How contextweaver Solves It` covering the five
   honest non-fits: small tool catalogs (≤ 5 tools), single-shot Q&A
   agents, tiny tool outputs (firewall correctly no-ops), small token
   bills, and non-deterministic LLM-driven routing. Closes the last
