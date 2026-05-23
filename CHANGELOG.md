@@ -17,6 +17,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outstanding acceptance criterion of #290; the README opening,
   before/after example, and labelled benchmark claims landed earlier
   with the v0.9 launch-readiness pass.
+- **MCP-client integration recipes** (#278, #279). New `docs/recipes/`
+  section ships step-by-step guides for putting the contextweaver gateway
+  in front of Claude Desktop (`docs/recipes/claude_desktop.md`) and VS
+  Code's GitHub Copilot Chat agent mode
+  (`docs/recipes/github_copilot.md`). Each recipe links to a
+  copy-pasteable client config under `examples/recipes/` and a
+  minimal stdio launcher (`examples/recipes/serve_gateway.py`) that
+  wires `McpGatewayServer.run_stdio()` against the committed real-catalog
+  snapshots under `examples/architectures/mcp_context_gateway/real_catalogs/`
+  (`time.json`, `filesystem.json`, `everything.json`). The launcher
+  raises `RuntimeError` (not `SystemExit`) on malformed snapshots so
+  `main()` honours its documented `int` return contract; argparse-level
+  errors continue to exit via `SystemExit` as usual.
+  `tests/test_recipes_serve_gateway.py` pins the loader (happy path +
+  malformed JSON + missing key + non-list + array payload), the runtime
+  builders, the CLI parser, and every `main()` exit-code path
+  (clean / keyboard-interrupt / transport-error / malformed-snapshot)
+  via a stubbed `asyncio.run`.
+- **Pydantic AI adapter — `adapters/pydantic_ai.py`** (#272, child of #193).
+  Thin stateless converter turning Pydantic AI `Tool` definitions (live
+  instances or the equivalent plain-dict shape `Tool.model_dump()` emits)
+  into `SelectableItem`s, plus a lossless `from_pydantic_ai_messages` /
+  `to_pydantic_ai_messages` round-trip for `ModelMessage` history. Heavy
+  decode/encode helpers live in `adapters/_pydantic_ai_messages.py` to
+  keep `pydantic_ai.py` close to the 300-line module guideline. New
+  `[pydantic-ai]` optional-dependency group; plain-dict / message-dict
+  paths work without the extra installed. New
+  `docs/integration_pydantic_ai.md` integration guide,
+  `examples/pydantic_ai_adapter_demo.py` (wired into `make example`),
+  and 26 new test cases in `tests/test_adapters_pydantic_ai.py`.
+- **smolagents adapter — `adapters/smolagents.py`** (#274, child of #193).
+  Thin stateless converter turning Hugging Face smolagents `Tool`
+  definitions into `SelectableItem`s (with `inputs` → JSON-Schema
+  coercion) and a `from_smolagents_agent` step-log ingestor that pulls
+  `MultiStepAgent.memory.steps` into `ContextItem`s. `CodeAgent` code
+  blocks are intentionally not surfaced — only the executed tool calls
+  and their observations land in the event log. New `[smolagents]`
+  optional-dependency group; plain-dict / step-dict paths work without
+  the extra installed. New `docs/integration_smolagents.md`,
+  `examples/smolagents_adapter_demo.py`, and 27 new test cases in
+  `tests/test_adapters_smolagents.py`.
+- **Agno adapter — `adapters/agno.py`** (#275, child of #193). Thin
+  stateless converter turning Agno (formerly Phidata) `Function` and
+  `Toolkit` members into `SelectableItem`s, plus a `from_agno_session`
+  ingestor that walks an `AgentSession` (or `AgentRun.messages`) into
+  `ContextItem`s following the OpenAI Chat Completions message shape
+  Agno emits. New `[agno]` optional-dependency group; plain-dict /
+  message-dict paths work without the extra installed. The integration
+  guide explicitly addresses the contextweaver-vs-Agno-`Memory`
+  layering so users understand which layer owns what. New
+  `docs/integration_agno.md`, `examples/agno_adapter_demo.py`, and 29
+  new test cases in `tests/test_adapters_agno.py`.
+- README "Framework Integrations" table (both occurrences) and Examples
+  table gained rows for CrewAI, Pydantic AI, smolagents, and Agno.
+  `docs/interop.md` matrix promotes Pydantic AI / smolagents / Agno
+  from "Planned (#193)" to "Available". `mkdocs.yml` nav surfaces the
+  three new integration guides. The umbrella issue #193 closes with
+  this release.
 
 ### Changed
 
@@ -40,6 +98,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via the Discussions badge at the top of the README and the `## License`
   / `[CHANGELOG.md]` reference at the bottom.
 
+## [0.10.0] - 2026-05-22
+
+### Added
+
+- **`contextweaver.routing.hydration`** — public schema-hydration helpers
+  (`SchemaSource`, `hydrate_with_schema`, `lazy_schema_resolver`). Reference
+  architectures and gateway runtimes can resolve a tool's full input schema
+  from a sidecar source (raw dict, JSON file, MCP `tools/list` snapshot)
+  without hand-rolling a `_FULL_SCHEMAS` dict. Inline `args_schema` on the
+  catalog item still wins; sidecar only fills in when the entry is empty.
+  Issue #261.
+- **`contextweaver mcp serve` CLI** — new `_mcp_cli.py` Typer sub-app
+  (`contextweaver mcp serve`) boots `McpGatewayServer` or `McpProxyServer`
+  over stdio against any JSON / YAML catalog. Flags: `--mode {gateway,proxy}`,
+  `--gateway` / `--proxy` shortcuts, `--top-k`, `--beam-width`,
+  `--cache-stable`, `--name`, `--version`, `--dry-run` (catalog validation
+  without binding stdio). Loader accepts both native contextweaver and raw MCP
+  `tools/list` snapshot shapes. Marked `[experimental]` for v0.10.
+  Issues #243 / #246.
+- **Live-transport MCP gateway architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_live.py` runs the reference
+  architecture through a real `mcp.server.Server` + `ClientSession` paired via
+  `mcp.shared.memory` (in-process, deterministic, network-free). Issue #260.
+- **Multi-turn MCP gateway architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_multi.py` extends the
+  scenario to 4 turns (BigQuery → Linear → Slack → PagerDuty) with fact
+  accumulation across turns; the turn-1 artifact survives into the final answer
+  prompt via dependency closure. Issue #262.
+- **`contextweaver demo --scenario mcp-gateway-full`** — surfaces the 60-tool
+  reference architecture from the CLI so users can see the full launch
+  narrative without invoking the example script directly. The catalog ships
+  inside the wheel at `contextweaver/data/mcp_gateway_catalog.yaml`, exposed
+  via `contextweaver.data.gateway_catalog_path()`. Issue #264.
+- **Gateway-scenario benchmark suite** — `benchmarks/gateway_benchmark.py`
+  runs 5 deterministic gateway-shaped scenarios over the same 60-tool catalog
+  and emits `benchmarks/results/gateway_latest.json` +
+  `benchmarks/gateway_scorecard.md`. Headline firewall-reduction range:
+  **0.0 % – 98.8 %** across scenarios. `make benchmark-gateway` /
+  `make gateway-scorecard{,-check}` targets added. Issue #270.
+- **Real-MCP catalog architecture variant** —
+  `examples/architectures/mcp_context_gateway/main_real.py` runs the same
+  shape against committed snapshots of three real MCP servers
+  (`server-time`, `server-filesystem`, `server-everything`) under
+  `real_catalogs/`. `scripts/capture_mcp_catalog.py` is the offline-safe
+  regenerator. Issue #280.
+- **Asciinema recordings for the showcase demos** — `scripts/record_demo.py`
+  is a stdlib-only writer for the asciinema v2 cast format. Four committed
+  casts under `docs/assets/casts/` (default, large-catalog, huge-tool-output,
+  mcp-gateway-full) linked from `docs/showcase.md`. `make record-demos{,-check}`
+  targets added. Issue #281.
+- **`RouteResult.to_dict` / `from_dict`** — adds the missing serialization pair
+  to `RouteResult`. Default `include_items=True` embeds full `SelectableItem`
+  dicts; opt-in `include_items=False` emits the cheaper ID-only payload.
+  Issue #289.
+- **Context-pack explanation traces** — new `contextweaver.context.explanation`
+  module exposes `ContextBuildExplanation` + `CandidateExplanation` versioned
+  dataclasses capturing per-candidate scoring, drop reasons,
+  dependency-closure additions, and sensitivity / dedup drops. Surface is
+  opt-in: `ContextManager.build(..., explain=True)` returns a `(pack,
+  explanation)` tuple; the default `explain=False` return type is unchanged.
+  Issue #291.
+- **Sensitivity / firewall regression fixtures** — six explicit fixtures under
+  `tests/fixtures/sensitivity/` (public, internal, confidential, restricted,
+  PII-like, secret-like) driven through `apply_sensitivity_filter` at every
+  floor level in both drop and redact modes. Pins the conservative default
+  (`confidential` floor + `drop`) and the `MaskRedactionHook` invariant.
+  Issue #292.
+- **Weaver-spec payload fixtures** — checked-in `tests/fixtures/weaver_spec/`
+  fixtures driven through the `adapters.weaver_contracts` adapter. The CI
+  `weaver-spec conformance` step gained a `--fixtures-dir` flag that cites the
+  exact failing fixture path, JSON pointer, and schema on failure. Issue #295.
+- **Golden route-prompt + MCP-ingestion fixtures** — `tests/fixtures/golden/`
+  snapshots `ContextManager.build_route_prompt_sync` and
+  `mcp_result_to_envelope` outputs. Shared `tests/fixtures/_normalize.py`
+  strips volatile fields (timestamps, UUIDs, score floats > 4 dp) for
+  machine-stable comparisons. Issue #296.
+
+### Fixed
+
+- **MCP server call-tool result shape** — `McpGatewayServer` and
+  `McpProxyServer` now return fully-built `CallToolResult` objects instead of
+  `(content, is_error)` 2-tuples. Newer MCP SDK versions interpret a 2-tuple
+  as `(unstructured, structuredContent)` and reject the `bool` half via
+  JSON-schema validation, breaking the live-transport path. Surfaced while
+  landing #260.
+- **`SchemaSource.from_json_file` validation** — tightened schema-key checks
+  and narrowed the example error catch to `json.JSONDecodeError` (was bare
+  `Exception`). Issue #261 follow-up.
+- **`CallToolResult.content` type annotation** — narrowed from `Any` to
+  `list[ContentBlock]` for `mypy --strict` compliance. Issue #300.
+- **`ContextBuildExplanation` overload** — added `assert explanation is not
+  None` guard when `explain=True` so both `@overload` branches satisfy mypy.
+  Issue #291 follow-up.
+- **`PYTHONPATH` in pytest config** — added `pythonpath = ["src", "tests"]` to
+  `pyproject.toml` so `tests.fixtures` package imports resolve correctly in
+  all invocation styles. Issue #302.
+
+## [0.9.1] - 2026-05-21
+
+### Added
+
+- **Benchmark scorecard transparency suite** (#266 #267 #268 #269 #271 #277).
+  Seven scorecard expansions in a single cluster:
+  - `HashingEmbeddingBackend` — stdlib-only deterministic `EmbeddingBackend`
+    (blake2b hashing trick, L2-normalised vectors) so the embedding code path
+    runs in CI without pulling torch. Re-exported from
+    `contextweaver.extras.embeddings`. Issue #266.
+  - Hardware reference-rig disclosure — benchmark harness captures `platform` /
+    `sys` / `os.cpu_count` metadata; scorecard renderer emits the pinned
+    canonical rig and the measured-on host as separate blocks. Issue #267.
+  - Tiktoken parity check — `_run_tiktoken_parity` quantifies
+    `CharDivFourEstimator` vs `cl100k_base` drift (MAE, max, signed, ratio).
+    Issue #268.
+  - Optional end-to-end real-model probe — `--with-real-model` flag plus
+    `CW_BENCH_LLM_PROVIDER` / `CW_BENCH_LLM_API_KEY` env vars; off by default,
+    CI never invokes the network path. New `[e2e-eval]` extra. Issue #269.
+  - Small-payload scenarios — `benchmarks/scenarios/tiny_payload.jsonl` and
+    `mixed_payload.jsonl` make the firewall `compaction == 1.00×` no-op
+    behaviour explicit. Issue #271.
+  - Head-heavy + long-tail mixed-namespace catalog — new `--mixed-shapes`
+    matrix block at `catalog_size=500` against an asymmetric namespace
+    distribution. Issue #277.
+  - `benchmark_version` bumped to `1.2`; JSON output is purely additive.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added
@@ -52,23 +234,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rendered prompt token count against `--max-tokens`, exits 1 on budget
   overruns, and supports `--breakdown`, `--json`, and `--ratchet` baseline
   workflows for CI.
-- **Launch-readiness docs pass** (#239, #242, #244, #245, #247, #250, #251,
-  #252, #253, #255, #256, #257). Backfills the previously missing
-  `[0.5.0]` CHANGELOG section; restructures the README first screen so
-  the install, runnable demo link, and a hero architecture diagram are
-  above the fold; refreshes the README Roadmap table to reflect actual
-  ship status through v0.8 plus a v0.9 forward look; rewrites the README
-  Comparison table to the launch spec (contextweaver / naive concat /
-  LangGraph memory / LlamaIndex retrievers / raw MCP × Tool routing /
-  History compaction / Sensitivity firewall / Deterministic / MCP-native);
-  embeds a static before/after token-count comparison block; ships an
-  asciinema demo recording (`docs/assets/demo.cast` + animated
-  `docs/assets/demo.svg`, regenerated by `scripts/record_demo.py`);
-  promotes the Context Firewall and Tool Router to top-level mkdocs nav
-  with two new dedicated overview pages (`docs/context_firewall.md`,
-  `docs/tool_router.md`); and pins the `mkdocs-material` major in the
-  `[docs]` extra so docs builds do not silently regress on a future
-  major (10.x).
 
 ## [0.8.0] - 2026-05-19
 
@@ -419,73 +584,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cells with `status != "ok"` (e.g. `"skipped: rapidfuzz not installed"`)
   now render as `_skipped_ (reason)` instead of being treated as a
   zero-metric regression with false-positive ⚠️ markers.
-
-## [0.5.0] - 2026-05-17
-
-> Development-bridge release. `0.5.0` was cut on PyPI between the
-> persistent-store work that landed after `0.4.0` and the larger
-> adopter-inspection surface that shipped as `0.6.0`. This section is
-> a backfill (#239, #253); the full feature set is also reflected in
-> `[0.6.0]` because the cycle continued without an intermediate tag in
-> git. Reconstructed from the commit window `v0.4.0..v0.6.0` against
-> closed issues / merged PRs in the same window.
-
-### Added
-
-- **Persistent SQLite event log** (#174, #223). First persistent
-  `EventLog` backend (`store/sqlite_event_log.py`) layered on a small
-  shared `_sqlite_base.py` connection + migration helper that the rest
-  of the SQLite-stores epic will reuse. Sets `PRAGMA journal_mode=WAL`
-  and `PRAGMA foreign_keys=ON` on open, versions schema migrations
-  through a `_contextweaver_schema_version` table, and round-trips
-  every `ContextItem` field including nested `ArtifactRef`.
-  Constructor accepts a filesystem path or `":memory:"`; the parent
-  directory is created automatically. Single-process; sync only. New
-  `[sqlite]` extras-group placeholder.
-- **`JsonFileArtifactStore`** (#42). Filesystem-backed `ArtifactStore`
-  implementation that stores each artifact as a `{base_dir}/{handle}.data`
-  byte file plus a `{base_dir}/{handle}.json` metadata file.
-  Re-instantiating against the same directory recovers the metadata
-  index automatically. Handles containing path separators, `..`, `.`,
-  or null bytes are rejected at write time. Drilldown selectors
-  (`head` / `lines` / `json_keys` / `rows`) match `InMemoryArtifactStore`
-  byte-for-byte via a shared module-private helper `_apply_selector`
-  in `store/artifacts.py`.
-- **`EventLog` lifecycle methods** (#223). The `EventLog` protocol now
-  requires `close()`, `__enter__`, and `__exit__` so persistent backends
-  fit the contract cleanly. `InMemoryEventLog.close()` is a no-op so
-  existing callers are unaffected; the methods make
-  `with SqliteEventLog(path) as log:` the recommended idiom for the new
-  backend.
-- **`BuildStats.report()` and `BuildStats.report_dict()`** (#106). New
-  diagnostic-report surface on `BuildStats`: pure-data string rendering
-  (`"text"` or `"rich"` Rich-markup format) plus a versioned dict for
-  programmatic consumers. Includes phase, budget, candidate counts,
-  per-section token breakdown, drop reasons, and budget-utilisation
-  recommendations. Output is deterministic (sorted keys, stable spacing).
-- **`BuildStats.prompt_tokens` property** (#106). Single source of truth
-  for `sum(tokens_per_section.values()) + header_footer_tokens` —
-  replaces six inline computations across `extras/otel.py`, `__main__.py`,
-  `metrics.py`, and example scripts.
-- **`contextweaver stats` CLI subcommand** (#106). Renders the
-  `BuildStats` report from an ingested session JSON. Supports
-  `--phase` / `--budget` / `--format {rich,text}`.
-- **`RouteResult.explanation()`** (#226). New pure-data method on
-  `RouteResult` that renders a paste-friendly Markdown rationale of the
-  routing decision — top-k table, confidence gap, ambiguity flag,
-  applied context hints, excluded/gated filter counts. `format="dict"`
-  returns a versioned (`{"version": 1, ...}`) structured payload for
-  programmatic consumers. Logic lives in the new
-  `src/contextweaver/routing/explanation.py` module to keep `router.py`
-  under the soft 300-line cap. `docs/troubleshooting.md` gains a
-  paste-ready example.
-
-### Changed
-
-- **`mcp_tool_to_selectable` emits canonical `tool_id`** (§1.7 cutover).
-  Existing call sites that hard-coded `f"mcp:{name}"` consume the
-  canonical form (round-tripped through `parse_tool_id` /
-  `format_tool_id`).
 
 ## [0.4.0] - 2026-05-16
 

@@ -1,0 +1,15 @@
+{
+  "label": "Restricted item — highest sensitivity, filtered at every floor",
+  "item": {
+    "id": "rest-1",
+    "kind": "memory_fact",
+    "text": "Audit log entry: actor=admin, action=delete, resource=customer/123.",
+    "sensitivity": "restricted"
+  },
+  "expected_actions": {
+    "floor_public": "filtered",
+    "floor_internal": "filtered",
+    "floor_confidential": "filtered",
+    "floor_restricted": "filtered"
+  }
+}

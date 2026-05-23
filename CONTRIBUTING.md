@@ -104,6 +104,9 @@ Re-running after `pip install -e ".[dev]"` should resolve it.
 - Tests live in `tests/test_<module_name>.py`.
 - Use `pytest.mark.asyncio` for async tests (asyncio_mode = "auto" is set globally).
 - Do not mock internal modules; use real in-memory implementations.
+- Checked-in JSON fixtures live under [`tests/fixtures/`](tests/fixtures);
+  see [`docs/contributing_fixtures.md`](docs/contributing_fixtures.md) for the
+  layout, normalisation rules, and regeneration workflow.
 
 ## Adding a new store backend
 

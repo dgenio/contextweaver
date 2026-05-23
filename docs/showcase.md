@@ -40,6 +40,11 @@ agent picks.
 contextweaver demo --scenario large-catalog
 ```
 
+**Recording:** [`docs/assets/casts/large-catalog.cast`](assets/casts/large-catalog.cast) — replay locally with
+`asciinema play docs/assets/casts/large-catalog.cast`, or embed via
+`<asciinema-player src="…/large-catalog.cast">` in any page that
+loads the asciinema-player asset.
+
 **Key output:**
 
 ```text
@@ -94,6 +99,9 @@ demand.
 ```bash
 contextweaver demo --scenario huge-tool-output
 ```
+
+**Recording:** [`docs/assets/casts/huge-tool-output.cast`](assets/casts/huge-tool-output.cast) —
+deterministic v2 cast, regenerable via `python scripts/record_demo.py`.
 
 **Key output:**
 
@@ -152,6 +160,8 @@ as a pipeline stage, not as a hope.
 ```bash
 contextweaver demo
 ```
+
+**Recording:** [`docs/assets/casts/default.cast`](assets/casts/default.cast).
 
 …or for the long-conversation scenario specifically:
 
@@ -218,6 +228,15 @@ mocked upstream result, the firewall, and a 142-token final prompt.
 ```bash
 python examples/architectures/mcp_context_gateway/main.py
 ```
+
+Or from the CLI (lands the same 60-tool walk under
+`contextweaver demo --scenario mcp-gateway-full`, issue #264):
+
+```bash
+contextweaver demo --scenario mcp-gateway-full
+```
+
+**Recording:** [`docs/assets/casts/mcp-gateway-full.cast`](assets/casts/mcp-gateway-full.cast) — the same scenario captured as a v2 asciinema cast.
 
 **Key metrics block (captured at the end of every run):**
 

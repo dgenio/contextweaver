@@ -1,0 +1,124 @@
+{
+  "_source": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+  "_captured_with": "scripts/capture_mcp_catalog.py",
+  "tools": [
+    {
+      "name": "read_text_file",
+      "description": "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "read_multiple_files",
+      "description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {"paths": {"type": "array", "items": {"type": "string"}}},
+        "required": ["paths"]
+      }
+    },
+    {
+      "name": "write_file",
+      "description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "content": {"type": "string"}
+        },
+        "required": ["path", "content"]
+      }
+    },
+    {
+      "name": "edit_file",
+      "description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "oldText": {"type": "string"},
+                "newText": {"type": "string"}
+              },
+              "required": ["oldText", "newText"]
+            }
+          }
+        },
+        "required": ["path", "edits"]
+      }
+    },
+    {
+      "name": "create_directory",
+      "description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "list_directory",
+      "description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "directory_tree",
+      "description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes name, type (file/directory), and children for directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "move_file",
+      "description": "Move or rename files and directories. Can move files between directories and rename them in a single operation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {"type": "string"},
+          "destination": {"type": "string"}
+        },
+        "required": ["source", "destination"]
+      }
+    },
+    {
+      "name": "search_files",
+      "description": "Recursively search for files and directories matching a pattern. Searches through all subdirectories from the starting path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "pattern": {"type": "string"},
+          "excludePatterns": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["path", "pattern"]
+      }
+    },
+    {
+      "name": "get_file_info",
+      "description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "list_allowed_directories",
+      "description": "Returns the list of directories that this server is allowed to access. Use this to understand which directories are available before trying to access files.",
+      "inputSchema": {"type": "object", "properties": {}, "required": []}
+    }
+  ]
+}

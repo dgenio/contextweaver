@@ -1,0 +1,29 @@
+{
+  "expected": {
+    "binary_handles": [],
+    "envelope": {
+      "artifacts": [],
+      "facts": [
+        "Status: ok"
+      ],
+      "provenance": {
+        "protocol": "mcp",
+        "tool": "db.search"
+      },
+      "status": "ok",
+      "summary": "Status: ok\nFound 3 rows\nrow1\nrow2\nrow3",
+      "views": []
+    },
+    "full_text": "Status: ok\nFound 3 rows\nrow1\nrow2\nrow3"
+  },
+  "input": {
+    "content": [
+      {
+        "text": "Status: ok\nFound 3 rows\nrow1\nrow2\nrow3",
+        "type": "text"
+      }
+    ],
+    "isError": false
+  },
+  "tool_name": "db.search"
+}

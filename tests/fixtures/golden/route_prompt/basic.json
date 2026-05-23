@@ -1,0 +1,111 @@
+{
+  "cards": [
+    {
+      "cost_hint": 0.0,
+      "description": "Read records from the customer database",
+      "has_schema": false,
+      "id": "db_read",
+      "kind": "tool",
+      "name": "read_db",
+      "namespace": "db",
+      "score": 0.5644,
+      "side_effects": false,
+      "tags": [
+        "data",
+        "read"
+      ]
+    },
+    {
+      "cost_hint": 0.0,
+      "description": "Write records to the customer database",
+      "has_schema": false,
+      "id": "db_write",
+      "kind": "tool",
+      "name": "write_db",
+      "namespace": "db",
+      "score": 0.5644,
+      "side_effects": false,
+      "tags": [
+        "data",
+        "write"
+      ]
+    },
+    {
+      "cost_hint": 0.0,
+      "description": "Search documentation pages",
+      "has_schema": false,
+      "id": "search_docs",
+      "kind": "tool",
+      "name": "search_docs",
+      "namespace": "search",
+      "score": 0.0,
+      "side_effects": false,
+      "tags": [
+        "docs",
+        "search"
+      ]
+    }
+  ],
+  "pack": {
+    "phase": "route",
+    "prompt": "[GOAL]\nFind a customer record and email them a receipt\n\n[USER]\nPlease find customer 12345 in the database.\n\n[AVAILABLE TOOLS]\n[1/3] db_read (tool) — Read records from the customer database [data, read] score=0.56\n[2/3] db_write (tool) — Write records to the customer database [data, write] score=0.56\n[3/3] search_docs (tool) — Search documentation pages [docs, search] score=0.00",
+    "stats": {
+      "dedup_removed": 0,
+      "dependency_closures": 0,
+      "dropped_count": 0,
+      "dropped_reasons": {},
+      "header_footer_tokens": 81,
+      "included_count": 1,
+      "tokens_per_section": {
+        "user_turn": 10
+      },
+      "total_candidates": 1
+    }
+  },
+  "route_result": {
+    "candidate_ids": [
+      "db_read",
+      "db_write",
+      "search_docs"
+    ],
+    "clarifying_question": "Did you mean 'db', 'search'? Multiple namespaces matched 'find customer in database'.",
+    "context_boost_applied": false,
+    "context_hints": [],
+    "excluded_count": 0,
+    "gated_count": 0,
+    "history_adjustments": {},
+    "is_ambiguous": true,
+    "paths": [
+      [
+        "db_read"
+      ],
+      [
+        "db_write"
+      ],
+      [
+        "search_docs"
+      ]
+    ],
+    "scores": [
+      0.5644,
+      0.5644,
+      0.0
+    ],
+    "trace": {
+      "clarifying_question": "Did you mean 'db', 'search'? Multiple namespaces matched 'find customer in database'.",
+      "confidence_gap": 0.15,
+      "excluded_count": 0,
+      "extra": {
+        "context_boost_applied": false,
+        "context_hints": []
+      },
+      "gated_count": 0,
+      "is_ambiguous": true,
+      "query": "find customer in database",
+      "runner_up_score": 0.5644,
+      "steps": [],
+      "top_score": 0.5644,
+      "trace_version": 1
+    }
+  }
+}

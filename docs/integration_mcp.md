@@ -379,3 +379,10 @@ delivered as `isError=true` `CallToolResult` payloads.
   end-to-end gateway flow using `StubUpstream`.
 - [`examples/mcp_proxy_demo.py`](../examples/mcp_proxy_demo.py) —
   end-to-end proxy flow.
+- [Recipes > Claude Desktop](recipes/claude_desktop.md) — put a
+  contextweaver gateway in front of Claude Desktop's MCP client.
+- [Recipes > GitHub Copilot](recipes/github_copilot.md) — put a
+  contextweaver gateway in front of VS Code Copilot Chat (agent mode).
+- [`examples/architectures/mcp_context_gateway/main_real.py`](../examples/architectures/mcp_context_gateway/main_real.py)
+  — the reference architecture run against verbatim `tools/list`
+  snapshots of MIT-licensed reference MCP servers.

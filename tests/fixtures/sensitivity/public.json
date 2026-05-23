@@ -1,0 +1,15 @@
+{
+  "label": "Public item — passes all floors above public; filtered at floor=public",
+  "item": {
+    "id": "pub-1",
+    "kind": "doc_snippet",
+    "text": "The system is currently online.",
+    "sensitivity": "public"
+  },
+  "expected_actions": {
+    "floor_public": "filtered",
+    "floor_internal": "passes",
+    "floor_confidential": "passes",
+    "floor_restricted": "passes"
+  }
+}

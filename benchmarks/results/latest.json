@@ -1,7 +1,24 @@
 {
-  "benchmark_version": "1.1",
+  "benchmark_version": "1.2",
   "k": 5,
   "seed": 42,
+  "environment": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "processor": "x86_64",
+    "python_version": "3.11.15",
+    "python_implementation": "CPython",
+    "cpu_logical_cores": 4,
+    "platform_string": "Linux-6.18.5-x86_64-with-glibc2.39"
+  },
+  "reference_rig": {
+    "label": "GitHub Actions ubuntu-latest (2-core x86_64)",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu_logical_cores": 2,
+    "python_version": "3.10+",
+    "notes": "Absolute latency on other hardware will differ; the *relative* cost between catalog sizes and backends is portable."
+  },
   "routing": [
     {
       "catalog_size": 50,
@@ -9,9 +26,9 @@
       "precision_at_k": 0.1191,
       "recall_at_k": 0.5649,
       "mrr": 0.4978,
-      "latency_ms_p50": 0.328,
-      "latency_ms_p95": 0.398,
-      "latency_ms_p99": 0.463
+      "latency_ms_p50": 0.423,
+      "latency_ms_p95": 0.548,
+      "latency_ms_p99": 0.759
     },
     {
       "catalog_size": 83,
@@ -19,9 +36,9 @@
       "precision_at_k": 0.08,
       "recall_at_k": 0.3825,
       "mrr": 0.3242,
-      "latency_ms_p50": 0.521,
-      "latency_ms_p95": 0.608,
-      "latency_ms_p99": 0.876
+      "latency_ms_p50": 0.667,
+      "latency_ms_p95": 0.779,
+      "latency_ms_p99": 1.134
     },
     {
       "catalog_size": 1000,
@@ -29,9 +46,9 @@
       "precision_at_k": 0.031,
       "recall_at_k": 0.1475,
       "mrr": 0.1456,
-      "latency_ms_p50": 28.015,
-      "latency_ms_p95": 29.769,
-      "latency_ms_p99": 31.897
+      "latency_ms_p50": 36.007,
+      "latency_ms_p95": 37.467,
+      "latency_ms_p99": 41.711
     }
   ],
   "context": [
@@ -72,6 +89,24 @@
       }
     },
     {
+      "scenario": "mixed_payload",
+      "event_count": 15,
+      "items_included": 15,
+      "items_dropped": 0,
+      "dedup_removed": 0,
+      "prompt_tokens": 497,
+      "budget_tokens": 6000,
+      "budget_utilization_pct": 8.3,
+      "artifacts_created": 4,
+      "avg_compaction_ratio": 1.64,
+      "naive_delta": {
+        "naive_tokens": 2277,
+        "cw_tokens": 497,
+        "pct_reduction": 78.17,
+        "coverage_pct": 100.0
+      }
+    },
+    {
       "scenario": "short_conversation",
       "event_count": 18,
       "items_included": 18,
@@ -106,6 +141,24 @@
         "pct_reduction": 61.96,
         "coverage_pct": 92.52
       }
+    },
+    {
+      "scenario": "tiny_payload",
+      "event_count": 20,
+      "items_included": 20,
+      "items_dropped": 0,
+      "dedup_removed": 0,
+      "prompt_tokens": 267,
+      "budget_tokens": 6000,
+      "budget_utilization_pct": 4.5,
+      "artifacts_created": 5,
+      "avg_compaction_ratio": 1.0,
+      "naive_delta": {
+        "naive_tokens": 1704,
+        "cw_tokens": 267,
+        "pct_reduction": 84.33,
+        "coverage_pct": 100.0
+      }
     }
   ],
   "routing_matrix": [
@@ -116,9 +169,9 @@
       "precision_at_k": 0.08,
       "recall_at_k": 0.3825,
       "mrr": 0.3399,
-      "latency_ms_p50": 3.543,
-      "latency_ms_p95": 5.02,
-      "latency_ms_p99": 5.642,
+      "latency_ms_p50": 5.18,
+      "latency_ms_p95": 7.166,
+      "latency_ms_p99": 8.14,
       "status": "ok"
     },
     {
@@ -128,9 +181,9 @@
       "precision_at_k": 0.047,
       "recall_at_k": 0.225,
       "mrr": 0.2165,
-      "latency_ms_p50": 20.384,
-      "latency_ms_p95": 26.091,
-      "latency_ms_p99": 27.538,
+      "latency_ms_p50": 28.506,
+      "latency_ms_p95": 36.817,
+      "latency_ms_p99": 38.989,
       "status": "ok"
     },
     {
@@ -140,10 +193,82 @@
       "precision_at_k": 0.033,
       "recall_at_k": 0.1575,
       "mrr": 0.1525,
-      "latency_ms_p50": 50.757,
-      "latency_ms_p95": 61.891,
-      "latency_ms_p99": 78.368,
+      "latency_ms_p50": 70.705,
+      "latency_ms_p95": 86.805,
+      "latency_ms_p99": 111.716,
       "status": "ok"
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.105,
+      "recall_at_k": 0.5175,
+      "mrr": 0.436,
+      "latency_ms_p50": 0.898,
+      "latency_ms_p95": 6.847,
+      "latency_ms_p99": 7.225,
+      "status": "ok"
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.056,
+      "recall_at_k": 0.27,
+      "mrr": 0.2674,
+      "latency_ms_p50": 9.733,
+      "latency_ms_p95": 38.126,
+      "latency_ms_p99": 44.182,
+      "status": "ok"
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.042,
+      "recall_at_k": 0.2,
+      "mrr": 0.1931,
+      "latency_ms_p50": 36.778,
+      "latency_ms_p95": 93.261,
+      "latency_ms_p99": 98.277,
+      "status": "ok"
+    },
+    {
+      "backend": "embedding_st",
+      "catalog_size": 100,
+      "queries_evaluated": 0,
+      "precision_at_k": 0.0,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "latency_ms_p50": 0.0,
+      "latency_ms_p95": 0.0,
+      "latency_ms_p99": 0.0,
+      "status": "skipped: missing sentence-transformers"
+    },
+    {
+      "backend": "embedding_st",
+      "catalog_size": 500,
+      "queries_evaluated": 0,
+      "precision_at_k": 0.0,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "latency_ms_p50": 0.0,
+      "latency_ms_p95": 0.0,
+      "latency_ms_p99": 0.0,
+      "status": "skipped: missing sentence-transformers"
+    },
+    {
+      "backend": "embedding_st",
+      "catalog_size": 1000,
+      "queries_evaluated": 0,
+      "precision_at_k": 0.0,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "latency_ms_p50": 0.0,
+      "latency_ms_p95": 0.0,
+      "latency_ms_p99": 0.0,
+      "status": "skipped: missing sentence-transformers"
     },
     {
       "backend": "fuzzy",
@@ -188,9 +313,9 @@
       "precision_at_k": 0.08,
       "recall_at_k": 0.3825,
       "mrr": 0.322,
-      "latency_ms_p50": 0.74,
-      "latency_ms_p95": 0.835,
-      "latency_ms_p99": 0.872,
+      "latency_ms_p50": 0.93,
+      "latency_ms_p95": 1.039,
+      "latency_ms_p99": 1.102,
       "status": "ok"
     },
     {
@@ -200,9 +325,9 @@
       "precision_at_k": 0.049,
       "recall_at_k": 0.2325,
       "mrr": 0.2314,
-      "latency_ms_p50": 7.453,
-      "latency_ms_p95": 7.728,
-      "latency_ms_p99": 8.66,
+      "latency_ms_p50": 9.6,
+      "latency_ms_p95": 10.311,
+      "latency_ms_p99": 11.492,
       "status": "ok"
     },
     {
@@ -212,9 +337,9 @@
       "precision_at_k": 0.031,
       "recall_at_k": 0.1475,
       "mrr": 0.1456,
-      "latency_ms_p50": 27.636,
-      "latency_ms_p95": 28.58,
-      "latency_ms_p99": 30.071,
+      "latency_ms_p50": 36.059,
+      "latency_ms_p95": 39.739,
+      "latency_ms_p99": 50.755,
       "status": "ok"
     }
   ],
@@ -388,6 +513,174 @@
       "recall_at_k": 0.0
     },
     {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "admin",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.4
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "analytics",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.52
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "billing",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.32
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "comms",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.44
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "crm",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.64
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "docs",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.56
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "infra",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.68
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 100,
+      "namespace": "search",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.58
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "admin",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.5
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "analytics",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.44
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "billing",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.58
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "comms",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.32
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "crm",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.04
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "docs",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.16
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "infra",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.04
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "namespace": "search",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.08
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "admin",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.58
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "analytics",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.52
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "billing",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.38
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "comms",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "crm",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.04
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "docs",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "infra",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.0
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 1000,
+      "namespace": "search",
+      "queries_evaluated": 25,
+      "recall_at_k": 0.08
+    },
+    {
       "backend": "tfidf",
       "catalog_size": 100,
       "namespace": "admin",
@@ -555,5 +848,89 @@
       "queries_evaluated": 25,
       "recall_at_k": 0.0
     }
-  ]
+  ],
+  "routing_matrix_mixed_shape": [
+    {
+      "backend": "bm25",
+      "catalog_size": 500,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.026,
+      "recall_at_k": 0.12,
+      "mrr": 0.1065,
+      "latency_ms_p50": 19.612,
+      "latency_ms_p95": 23.858,
+      "latency_ms_p99": 25.717,
+      "status": "ok"
+    },
+    {
+      "backend": "embedding_hashing",
+      "catalog_size": 500,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.034,
+      "recall_at_k": 0.155,
+      "mrr": 0.1376,
+      "latency_ms_p50": 10.514,
+      "latency_ms_p95": 39.809,
+      "latency_ms_p99": 42.553,
+      "status": "ok"
+    },
+    {
+      "backend": "embedding_st",
+      "catalog_size": 500,
+      "queries_evaluated": 0,
+      "precision_at_k": 0.0,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "latency_ms_p50": 0.0,
+      "latency_ms_p95": 0.0,
+      "latency_ms_p99": 0.0,
+      "status": "skipped: missing sentence-transformers"
+    },
+    {
+      "backend": "fuzzy",
+      "catalog_size": 500,
+      "queries_evaluated": 0,
+      "precision_at_k": 0.0,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "latency_ms_p50": 0.0,
+      "latency_ms_p95": 0.0,
+      "latency_ms_p99": 0.0,
+      "status": "skipped: missing rapidfuzz"
+    },
+    {
+      "backend": "tfidf",
+      "catalog_size": 500,
+      "queries_evaluated": 200,
+      "precision_at_k": 0.026,
+      "recall_at_k": 0.12,
+      "mrr": 0.101,
+      "latency_ms_p50": 9.925,
+      "latency_ms_p95": 10.599,
+      "latency_ms_p99": 11.19,
+      "status": "ok"
+    }
+  ],
+  "tiktoken_parity": {
+    "samples": 0,
+    "mean_abs_error": 0.0,
+    "max_abs_error": 0,
+    "mean_signed_error": 0.0,
+    "mean_ratio": 0.0,
+    "status": "skipped: HTTPError"
+  },
+  "e2e_real_model": {
+    "provider": "",
+    "model": "",
+    "samples": 0,
+    "prompt_tokens_total": 0,
+    "completion_tokens_total": 0,
+    "estimated_usd_cost": 0.0,
+    "e2e_latency_ms_p50": 0.0,
+    "e2e_latency_ms_p95": 0.0,
+    "e2e_latency_ms_p99": 0.0,
+    "status": "skipped: offline by default",
+    "note": "Set CW_BENCH_LLM_PROVIDER + CW_BENCH_LLM_API_KEY and pass --with-real-model to enable.  See benchmarks/README.md.",
+    "per_call_results": []
+  }
 }
