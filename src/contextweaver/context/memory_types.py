@@ -10,6 +10,16 @@ from typing import Any
 from contextweaver.exceptions import ConfigError
 from contextweaver.types import Phase, Sensitivity
 
+
+def _coerce_float(data: Mapping[str, Any], field: str, default: float) -> float:
+    """Return *field* as a float, raising ConfigError on malformed input."""
+    try:
+        return float(data.get(field, default))
+    except (TypeError, ValueError) as exc:
+        msg = f"MemoryEntry: field {field!r} must be numeric"
+        raise ConfigError(msg) from exc
+
+
 #: Phase -> preferred memory ``scope`` tags.  Earlier tags rank higher.
 PHASE_SCOPE_PREFERENCES: dict[Phase, tuple[str, ...]] = {
     Phase.route: ("routing", "tool_preference", "policy"),
@@ -83,7 +93,7 @@ class MemoryEntry:
         sensitivity_raw = data.get("sensitivity", Sensitivity.public.value)
         try:
             sensitivity = Sensitivity(sensitivity_raw)
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             msg = f"MemoryEntry: invalid sensitivity {sensitivity_raw!r}"
             raise ConfigError(msg) from exc
 
@@ -101,11 +111,13 @@ class MemoryEntry:
             id=entry_id,
             text=text,
             source=str(data.get("source", "")),
-            timestamp=float(data.get("timestamp", 0.0)),
+            timestamp=_coerce_float(data, "timestamp", 0.0),
             scope=str(data.get("scope", "")),
             sensitivity=sensitivity,
-            confidence=float(data.get("confidence", 1.0)),
-            expires_at=(None if data.get("expires_at") is None else float(data["expires_at"])),
+            confidence=_coerce_float(data, "confidence", 1.0),
+            expires_at=(
+                None if data.get("expires_at") is None else _coerce_float(data, "expires_at", 0.0)
+            ),
             tags=list(tags_raw),
             metadata=dict(metadata_raw),
         )

@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 
+from contextweaver._utils import tokenize
 from contextweaver.context.memory_types import PHASE_SCOPE_PREFERENCES, MemoryEntry
 from contextweaver.exceptions import ConfigError
 from contextweaver.types import Phase
@@ -16,8 +17,8 @@ logger = logging.getLogger("contextweaver.context")
 def _entry_score(entry: MemoryEntry, query_tokens: set[str], scope_bonus: float) -> float:
     """Return a deterministic relevance score for *entry*."""
     if query_tokens:
-        text_tokens = {tok for tok in entry.text.lower().split() if tok}
-        tag_tokens = {tag.lower() for tag in entry.tags}
+        text_tokens = tokenize(entry.text)
+        tag_tokens = tokenize(" ".join(str(tag) for tag in entry.tags))
         overlap_count = len(query_tokens & (text_tokens | tag_tokens))
         overlap = overlap_count / max(len(query_tokens), 1)
     else:
@@ -27,7 +28,7 @@ def _entry_score(entry: MemoryEntry, query_tokens: set[str], scope_bonus: float)
 
 
 def _query_tokens(query: str) -> set[str]:
-    return {tok for tok in query.lower().split() if tok}
+    return tokenize(query)
 
 
 def _scope_bonus(entry_scope: str, phase_scopes: tuple[str, ...]) -> float:

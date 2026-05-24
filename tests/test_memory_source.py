@@ -95,6 +95,13 @@ def test_memory_entry_from_dict_missing_required_field_raises_config_error() -> 
         MemoryEntry.from_dict({"id": "m1"})
 
 
+@pytest.mark.parametrize("field", ["timestamp", "confidence", "expires_at"])
+def test_memory_entry_from_dict_invalid_numeric_raises_config_error(field: str) -> None:
+    payload = {"id": "m1", "text": "x", field: "not-a-number"}
+    with pytest.raises(ConfigError, match=field):
+        MemoryEntry.from_dict(payload)
+
+
 def test_memory_entry_is_expired_respects_now() -> None:
     entry = _entry("m1", expires_at=100.0)
     assert entry.is_expired(now=200.0) is True
@@ -175,6 +182,14 @@ def test_source_select_token_overlap_lifts_score() -> None:
     other = _entry("other", text="lorem ipsum dolor")
     source = JsonFixtureMemorySource([other, relevant])
     selected = source.select("database outage", Phase.answer)
+    assert selected[0].id == "rel"
+
+
+def test_source_select_uses_shared_tokenizer_for_compounds() -> None:
+    relevant = _entry("rel", text="billing.invoices.search failed", timestamp=100.0)
+    newer_but_irrelevant = _entry("other", text="lorem ipsum", timestamp=200.0)
+    source = JsonFixtureMemorySource([newer_but_irrelevant, relevant])
+    selected = source.select("invoices", Phase.answer)
     assert selected[0].id == "rel"
 
 

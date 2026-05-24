@@ -310,6 +310,41 @@ def test_build_includes_artifact_refs_from_dependency_chain() -> None:
     assert ref.handle in handles or "artifact:pit-1" in handles
 
 
+def test_build_does_not_cite_artifacts_from_sensitive_dropped_parent() -> None:
+    log = InMemoryEventLog()
+    artifacts = InMemoryArtifactStore()
+    ref = artifacts.put(
+        handle="secret-parent",
+        content=b"raw secret",
+        media_type="text/plain",
+        label="restricted tool output",
+    )
+    log.append(
+        _item(
+            "parent",
+            kind=ItemKind.tool_result,
+            text="API key: sk-12345",
+            sensitivity=Sensitivity.restricted,
+            artifact_ref=ref,
+        )
+    )
+    log.append(
+        _item(
+            "child",
+            kind=ItemKind.plan_state,
+            text="Use the public follow-up decision.",
+            parent_id="parent",
+            metadata={"handoff_category": "decision"},
+        )
+    )
+    pack = build_session_handoff_pack(
+        log, artifacts, ContextPolicy(), CharDivFourEstimator(), budget_tokens=10_000
+    )
+    assert [e.id for e in pack.decisions] == ["child"]
+    assert pack.sensitivity_dropped == 1
+    assert [a.handle for a in pack.artifact_refs] == []
+
+
 def test_build_artifact_refs_deduplicated() -> None:
     # Two entries sharing the same artifact handle should not duplicate it.
     log = InMemoryEventLog()

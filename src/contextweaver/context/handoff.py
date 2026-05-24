@@ -46,17 +46,15 @@ def _classify(item: ContextItem) -> tuple[str | None, float]:
 
 def _ancestor_artifacts(
     item: ContextItem,
-    event_log: EventLog,
     artifact_store: ArtifactStore,
     seen_handles: set[str],
     processed_by_id: dict[str, ContextItem],
 ) -> list[ArtifactRef]:
-    """Collect every ``ArtifactRef`` reachable from *item* via ``parent_id``."""
+    """Collect artifact refs from *item* through sensitivity-surviving parents."""
     out: list[ArtifactRef] = []
     cursor: ContextItem | None = item
     visited: set[str] = set()
     while cursor is not None and cursor.id not in visited:
-        cursor_id = cursor.id
         visited.add(cursor.id)
         if cursor.artifact_ref is not None and cursor.artifact_ref.handle not in seen_handles:
             try:
@@ -67,10 +65,7 @@ def _ancestor_artifacts(
             out.append(ref)
         if cursor.parent_id is None:
             break
-        parent_id = cursor.parent_id
-        cursor = processed_by_id.get(parent_id)
-        if cursor is None:
-            cursor = event_log.parent(cursor_id)
+        cursor = processed_by_id.get(cursor.parent_id)
     return out
 
 
@@ -140,7 +135,7 @@ def build_session_handoff_pack(
         pack.token_estimate += cost
         remaining -= cost
         pack.artifact_refs.extend(
-            _ancestor_artifacts(item, event_log, artifact_store, seen_handles, processed_by_id)
+            _ancestor_artifacts(item, artifact_store, seen_handles, processed_by_id)
         )
 
     logger.debug(
