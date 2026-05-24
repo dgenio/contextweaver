@@ -1,0 +1,15 @@
+{
+  "label": "Internal item — passes confidential floor, dropped/redacted at internal floor",
+  "item": {
+    "id": "int-1",
+    "kind": "doc_snippet",
+    "text": "Internal architecture notes (not for public sharing).",
+    "sensitivity": "internal"
+  },
+  "expected_actions": {
+    "floor_public": "filtered",
+    "floor_internal": "filtered",
+    "floor_confidential": "passes",
+    "floor_restricted": "passes"
+  }
+}

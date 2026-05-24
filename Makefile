@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -24,6 +24,9 @@ example:
 	python examples/mcp_proxy_demo.py
 	python examples/a2a_adapter_demo.py
 	python examples/crewai_adapter_demo.py
+	python examples/pydantic_ai_adapter_demo.py
+	python examples/smolagents_adapter_demo.py
+	python examples/agno_adapter_demo.py
 	python examples/fastmcp_discovery_demo.py
 	python examples/langchain_memory_demo.py
 	python examples/cookbook/byot_recipe.py
@@ -32,6 +35,9 @@ example:
 
 architectures:
 	python examples/architectures/mcp_context_gateway/main.py
+	python examples/architectures/mcp_context_gateway/main_live.py
+	python examples/architectures/mcp_context_gateway/main_multi.py
+	python examples/architectures/mcp_context_gateway/main_real.py
 	python examples/architectures/slack_ops_bot/main.py
 	python examples/architectures/code_review_bot/main.py
 	python examples/architectures/voice_agent/main.py
@@ -51,11 +57,26 @@ benchmark:
 benchmark-matrix:
 	python benchmarks/benchmark.py --matrix
 
+benchmark-gateway:
+	python benchmarks/gateway_benchmark.py
+
 scorecard:
 	python scripts/render_scorecard.py
 
 scorecard-check:
 	python scripts/render_scorecard.py --check
+
+gateway-scorecard:
+	python scripts/render_gateway_scorecard.py
+
+gateway-scorecard-check:
+	python scripts/render_gateway_scorecard.py --check
+
+record-demos:
+	python scripts/record_demo.py
+
+record-demos-check:
+	python scripts/record_demo.py --check
 
 sweep-scoring:
 	python scripts/sweep_scoring.py

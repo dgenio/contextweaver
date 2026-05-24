@@ -1,0 +1,39 @@
+{
+  "label": "Basic Frame — ResultEnvelope wrapped in a frame",
+  "kind": "frame",
+  "payload": {
+    "frame_id": "f-fixture-basic-1",
+    "capability_id": "db:search",
+    "created_at": "2026-05-14T12:00:00+00:00",
+    "envelope": {
+      "status": "partial",
+      "summary": "3 of 5 rows returned",
+      "facts": [
+        "count: 3",
+        "status: warning"
+      ],
+      "artifacts": [
+        {
+          "handle": "h1",
+          "media_type": "application/json",
+          "size_bytes": 42,
+          "label": "rows"
+        }
+      ],
+      "views": [
+        {
+          "view_id": "head",
+          "label": "first rows",
+          "selector": {
+            "start": 0,
+            "end": 3
+          }
+        }
+      ],
+      "provenance": {
+        "tool": "db.search",
+        "redaction_notes": "PII masked"
+      }
+    }
+  }
+}

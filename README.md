@@ -32,7 +32,7 @@ python -m contextweaver demo     # 5-step end-to-end demo
   <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
 </p>
 
-[📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Benchmark scorecard](benchmarks/scorecard.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
+[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
 
 ---
 
@@ -125,6 +125,38 @@ contextweaver provides two cooperating engines:
 2. **TreeBuilder** — convert a flat catalog into a bounded `ChoiceGraph` DAG.
 3. **Router** — beam-search over the graph; deterministic tie-breaking by ID.
 4. **ChoiceCards** — compact, LLM-friendly cards (never includes full schemas).
+
+---
+
+## When not to use contextweaver
+
+contextweaver is a context compiler for tool-using agents — its value scales
+with the size of the catalog and the length of the conversation. Reach for
+something simpler when none of that pressure exists:
+
+- **Small tool catalogs (≤ 5 tools).** Dumping every schema into the prompt
+  costs a few hundred tokens. Building a routing graph and running beam
+  search adds latency and a dependency you don't need.
+- **Single-shot Q&A or one-turn agents.** With no history to compact and no
+  follow-up phases (`call` / `interpret` / `answer`), phase-aware budgeting
+  is dead weight — pass the user's message straight to the model.
+- **Tiny tool outputs.** If every `tool_result` is comfortably under the
+  configured `firewall_threshold` (default 2000 characters), the
+  [context firewall](docs/context_firewall.md) correctly no-ops — you're
+  paying the conceptual cost of the firewall for zero token savings.
+- **Full context is cheaper than the engineering.** If your naïve prompt
+  fits comfortably under the model's context window and your token bill is
+  not a concern, the [before/after scorecard](benchmarks/scorecard.md)
+  numbers won't move the needle.
+- **You need non-deterministic, LLM-driven routing.** contextweaver's
+  routing engine is deterministic by design (tie-break by sorted ID). If
+  you want an LLM to decide which tool to call from free-form reasoning,
+  LangGraph or a plain `tool_choice="auto"` call is a better fit — see
+  [`docs/comparison.md`](docs/comparison.md) for the trade-offs.
+
+If you're not sure, the [10-minute Quickstart](#10-minute-quickstart) below
+is the cheapest way to find out: a 40-tool catalog and a 50-turn transcript
+is the smallest scenario where contextweaver clearly pays for itself.
 
 ---
 
@@ -255,6 +287,10 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
 ---
 
@@ -385,6 +421,10 @@ contextweaver works with any LLM provider and any agent framework:
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -441,45 +481,7 @@ validation. CI fetches the schemas from
 mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 (same content, different host). Run locally with `make weaver-conformance`.
 
-### 6. Roadmap & Community
-
-**v0.1 (✅ Complete)**
-
-- Context Engine: 8-stage pipeline (candidates → closure → sensitivity → firewall → score → dedup → select → render)
-- Routing Engine: Catalog, DAG builder, beam-search router, choice cards
-- Protocol adapters: MCP (full content types, structured content, output schemas) and A2A
-- Stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` with protocol-based interfaces
-- 1100+ passing tests, mypy strict, ruff clean, minimal core dependencies
-
-**v0.2 (🚧 In Progress — Q2 2026)**
-
-- Framework integration guides: LlamaIndex, LangChain, LangGraph, OpenAI Agents SDK, Google ADK, Pipecat
-- Benchmark suite: token reduction, latency, and accuracy vs. naive concatenation
-- Distributed stores: Redis-backed `EventLog`, S3-backed `ArtifactStore`
-
-**v0.3 (📋 Planned — Q3 2026)**
-
-- DAG visualization: interactive routing graph inspector
-- Merge compression: deduplicate similar tool results across turns
-- LLM-based labeler: auto-generate namespace labels for tool catalogs
-- LLM-based extractor: structured fact extraction with prompt-based schema
-
-**v1.0 (📋 Planned — Q4 2026)**
-
-- API freeze: no breaking changes in 1.x releases
-- Production benchmarks: 1M+ turn deployments
-- Enterprise features: audit logging, compliance tags, PII redaction
-
-**Community:**
-
-- [GitHub Discussions](https://github.com/dgenio/contextweaver/discussions) — ask questions, share patterns
-- [GitHub Issues](https://github.com/dgenio/contextweaver/issues) — report bugs, request features
-- [CHANGELOG](CHANGELOG.md) — track every release
-
-> contextweaver is under active development with a clear roadmap. v0.1 is feature-complete
-> for basic use cases; v0.2 adds production-ready integrations; v1.0 is the API stability milestone.
-
-### Comparison
+### 6. Comparison
 
 > _Snapshot of the launch landscape as of 2026-05-20 — see footnotes for the
 > versions referenced and the evidence behind each non-trivial claim. Will be
@@ -532,10 +534,16 @@ contextweaver replay --session session.json --phase answer
 | `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
 | `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
 | `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
+| `crewai_adapter_demo.py` | CrewAI adapter: `BaseTool` → catalog → routing |
+| `pydantic_ai_adapter_demo.py` | Pydantic AI adapter: tools + lossless message round-trip |
+| `smolagents_adapter_demo.py` | smolagents adapter: tools + `MultiStepAgent` step-log ingestion |
+| `agno_adapter_demo.py` | Agno adapter: toolkit → catalog + session-history ingestion |
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 | `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
 | `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
 | `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
+| `architectures/mcp_context_gateway/main_real.py` | Same flow, run against verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (`server-time`, `server-filesystem`, `server-everything`) committed under `real_catalogs/` |
+| `recipes/serve_gateway.py` | Minimal stdio launcher used by the [Claude Desktop](docs/recipes/claude_desktop.md) and [GitHub Copilot](docs/recipes/github_copilot.md) recipes |
 | `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
 ```bash
@@ -567,8 +575,12 @@ to any LLM or framework. See dedicated guides for
 [LlamaIndex](docs/integration_llamaindex.md),
 [LangChain + LangGraph](docs/integration_langchain.md),
 [OpenAI Agents SDK](docs/integration_openai_adk.md),
-[Google ADK / Vertex AI](docs/integration_google_adk.md), and
-[Pipecat](docs/integration_pipecat.md).  If your runtime isn't listed, the
+[Google ADK / Vertex AI](docs/integration_google_adk.md),
+[Pipecat](docs/integration_pipecat.md),
+[CrewAI](docs/integration_crewai.md),
+[Pydantic AI](docs/integration_pydantic_ai.md),
+[smolagents](docs/integration_smolagents.md), and
+[Agno](docs/integration_agno.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 

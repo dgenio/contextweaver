@@ -1,0 +1,29 @@
+{
+  "expected": {
+    "binary_handles": [],
+    "envelope": {
+      "artifacts": [],
+      "facts": [
+        "ERROR: rate limit exceeded"
+      ],
+      "provenance": {
+        "protocol": "mcp",
+        "tool": "api.call"
+      },
+      "status": "error",
+      "summary": "ERROR: rate limit exceeded",
+      "views": []
+    },
+    "full_text": "ERROR: rate limit exceeded"
+  },
+  "input": {
+    "content": [
+      {
+        "text": "ERROR: rate limit exceeded",
+        "type": "text"
+      }
+    ],
+    "isError": true
+  },
+  "tool_name": "api.call"
+}

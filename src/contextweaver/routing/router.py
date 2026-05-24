@@ -130,6 +130,86 @@ class RouteResult:
         """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape."""
         return self.trace.to_legacy_dicts()
 
+    def to_dict(self, *, include_items: bool = True) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict (issue #289).
+
+        Mirrors the :meth:`to_dict` / :meth:`from_dict` pattern that every
+        other public result dataclass in the routing module follows
+        (``RouteTrace``, ``RouteHistory``, ``ChoiceCard``, ``RoutingDecision``,
+        ``SelectableItem``).
+
+        Args:
+            include_items: When ``True`` (default) embed each
+                :class:`SelectableItem` as a full dict via
+                :meth:`SelectableItem.to_dict`.  When ``False`` emit only the
+                ``candidate_ids`` list, which is cheaper to persist and
+                avoids carrying ``args_schema`` content into structured logs
+                — useful when the catalog is the canonical source of truth
+                and the result is being persisted alongside it.
+
+        Returns:
+            A deterministic JSON-compatible dict.  Round-trips through
+            :meth:`from_dict` (when ``include_items=True``) without loss; in
+            ID-only mode the inverse path leaves ``candidate_items`` empty
+            because the items are not embedded.
+        """
+        payload: dict[str, Any] = {
+            "candidate_ids": list(self.candidate_ids),
+            "paths": [list(p) for p in self.paths],
+            "scores": [float(s) for s in self.scores],
+            "is_ambiguous": self.is_ambiguous,
+            "clarifying_question": self.clarifying_question,
+            "excluded_count": self.excluded_count,
+            "gated_count": self.gated_count,
+            "context_hints": list(self.context_hints),
+            "context_boost_applied": self.context_boost_applied,
+            "history_adjustments": {k: float(v) for k, v in self.history_adjustments.items()},
+            "trace": self.trace.to_dict(),
+        }
+        if include_items:
+            payload["candidate_items"] = [item.to_dict() for item in self.candidate_items]
+        return payload
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RouteResult:
+        """Deserialise from a JSON-compatible dict (issue #289).
+
+        Tolerates the ID-only payload produced by
+        :meth:`to_dict(include_items=False) <to_dict>`: the resulting
+        :class:`RouteResult` has the metadata fields populated but an empty
+        :attr:`candidate_items`.  Callers who need the full items must
+        re-resolve them against their catalog.
+
+        Missing keys fall back to dataclass defaults so older payloads
+        round-trip cleanly when the schema is extended.
+
+        Args:
+            data: A dict previously produced by :meth:`to_dict`.
+
+        Returns:
+            A :class:`RouteResult` reconstructed from *data*.
+        """
+        items_raw = data.get("candidate_items", [])
+        items = [SelectableItem.from_dict(raw) for raw in items_raw]
+        trace_raw = data.get("trace")
+        trace = RouteTrace.from_dict(trace_raw) if isinstance(trace_raw, dict) else RouteTrace()
+        return cls(
+            candidate_items=items,
+            candidate_ids=list(data.get("candidate_ids", [])),
+            paths=[list(p) for p in data.get("paths", [])],
+            scores=[float(s) for s in data.get("scores", [])],
+            is_ambiguous=bool(data.get("is_ambiguous", False)),
+            clarifying_question=data.get("clarifying_question"),
+            excluded_count=int(data.get("excluded_count", 0)),
+            gated_count=int(data.get("gated_count", 0)),
+            context_hints=list(data.get("context_hints", [])),
+            context_boost_applied=bool(data.get("context_boost_applied", False)),
+            history_adjustments={
+                str(k): float(v) for k, v in data.get("history_adjustments", {}).items()
+            },
+            trace=trace,
+        )
+
     @overload
     def explanation(self, format: Literal["md"] = "md") -> str: ...  # noqa: A002
     @overload

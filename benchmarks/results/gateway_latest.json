@@ -1,0 +1,85 @@
+{
+  "aggregate": {
+    "firewall_reduction_max_pct": 98.8,
+    "firewall_reduction_min_pct": 0.0,
+    "injected_summary_chars_max": 501,
+    "injected_summary_chars_min": 34,
+    "n_scenarios": 5,
+    "raw_chars_max": 16507,
+    "raw_chars_min": 34
+  },
+  "benchmark_version": "1.0",
+  "catalog_path": "examples/architectures/mcp_context_gateway/catalog.yaml",
+  "scenarios": [
+    {
+      "artifact_created": false,
+      "catalog_tools": 60,
+      "chosen_tool": "pagerduty.incidents.ack",
+      "exposed_choice_cards": 5,
+      "final_prompt_chars": 218,
+      "final_prompt_tokens": 34,
+      "firewall_reduction_pct": 0.0,
+      "injected_summary_chars": 34,
+      "raw_result_chars": 34,
+      "routing_query": "Acknowledge a PagerDuty incident",
+      "scenario": "tiny_ack",
+      "user_query": "Acknowledge the pending PagerDuty incident PD-9931"
+    },
+    {
+      "artifact_created": false,
+      "catalog_tools": 60,
+      "chosen_tool": "slack.dm.send",
+      "exposed_choice_cards": 5,
+      "final_prompt_chars": 244,
+      "final_prompt_tokens": 41,
+      "firewall_reduction_pct": 0.0,
+      "injected_summary_chars": 77,
+      "raw_result_chars": 77,
+      "routing_query": "Send a direct Slack message to alice",
+      "scenario": "small_post",
+      "user_query": "DM alice on Slack to confirm the rollback"
+    },
+    {
+      "artifact_created": false,
+      "catalog_tools": 60,
+      "chosen_tool": "linear.tickets.search",
+      "exposed_choice_cards": 5,
+      "final_prompt_chars": 423,
+      "final_prompt_tokens": 85,
+      "firewall_reduction_pct": 0.0,
+      "injected_summary_chars": 238,
+      "raw_result_chars": 238,
+      "routing_query": "Search Linear tickets matching customer C-12345 plan change",
+      "scenario": "medium_ticket",
+      "user_query": "Search Linear for the C-12345 plan-change ticket"
+    },
+    {
+      "artifact_created": true,
+      "catalog_tools": 60,
+      "chosen_tool": "analytics.events.query",
+      "exposed_choice_cards": 5,
+      "final_prompt_chars": 691,
+      "final_prompt_tokens": 153,
+      "firewall_reduction_pct": 96.5,
+      "injected_summary_chars": 501,
+      "raw_result_chars": 14206,
+      "routing_query": "Query the events table for api-gateway error logs",
+      "scenario": "large_log",
+      "user_query": "Pull recent error logs for the api-gateway outage window"
+    },
+    {
+      "artifact_created": true,
+      "catalog_tools": 60,
+      "chosen_tool": "bigquery.run_query",
+      "exposed_choice_cards": 5,
+      "final_prompt_chars": 377,
+      "final_prompt_tokens": 72,
+      "firewall_reduction_pct": 98.8,
+      "injected_summary_chars": 194,
+      "raw_result_chars": 16507,
+      "routing_query": "Execute a BigQuery query to find MRR delta rows for customer C-12345",
+      "scenario": "bigquery_rowset",
+      "user_query": "Why did customer C-12345's MRR drop last month?"
+    }
+  ]
+}

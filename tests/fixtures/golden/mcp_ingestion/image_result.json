@@ -1,0 +1,40 @@
+{
+  "expected": {
+    "binary_handles": [
+      "mcp:screenshot:image:0"
+    ],
+    "binary_sizes": {
+      "mcp:screenshot:image:0": 40
+    },
+    "envelope": {
+      "artifacts": [
+        {
+          "handle": "mcp:screenshot:image:0",
+          "label": "image from screenshot",
+          "media_type": "image/png",
+          "size_bytes": 40
+        }
+      ],
+      "facts": [],
+      "provenance": {
+        "protocol": "mcp",
+        "tool": "screenshot"
+      },
+      "status": "ok",
+      "summary": "(no content)",
+      "views": []
+    },
+    "full_text": "(no content)"
+  },
+  "input": {
+    "content": [
+      {
+        "data": "iVBORw0KGgoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+        "mimeType": "image/png",
+        "type": "image"
+      }
+    ],
+    "isError": false
+  },
+  "tool_name": "screenshot"
+}

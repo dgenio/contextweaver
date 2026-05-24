@@ -1,0 +1,30 @@
+{
+  "label": "Basic RoutingDecision — two ChoiceCards and a selected card",
+  "kind": "routing_decision",
+  "payload": {
+    "id": "rd-fixture-basic-1",
+    "choice_cards": [
+      {
+        "id": "db.search",
+        "name": "search",
+        "description": "Search the customer database",
+        "score": 0.91,
+        "kind": "tool"
+      },
+      {
+        "id": "db.list",
+        "name": "list",
+        "description": "List database records",
+        "score": 0.62,
+        "kind": "tool"
+      }
+    ],
+    "timestamp": "2026-05-14T12:00:00+00:00",
+    "selected_item_id": "db.search",
+    "selected_card_id": "db.search",
+    "context_summary": "user asked to find customers",
+    "metadata": {
+      "trace_id": "abc-123"
+    }
+  }
+}

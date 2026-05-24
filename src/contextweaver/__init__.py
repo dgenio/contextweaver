@@ -24,6 +24,11 @@ from contextweaver import config, envelope, exceptions, profiles, protocols, typ
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+from contextweaver.context.explanation import (
+    EXPLANATION_VERSION,
+    CandidateExplanation,
+    ContextBuildExplanation,
+)
 from contextweaver.context.handoff import (
     HANDOFF_CATEGORIES,
     HANDOFF_PACK_VERSION,
@@ -204,7 +209,10 @@ __all__ = [
     "SqliteEventLog",
     "StoreBundle",
     # context engine
+    "CandidateExplanation",
+    "ContextBuildExplanation",
     "ContextManager",
+    "EXPLANATION_VERSION",
     "HANDOFF_CATEGORIES",
     "HANDOFF_PACK_VERSION",
     "HandoffEntry",

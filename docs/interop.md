@@ -64,7 +64,9 @@ contextweaver never reaches outward.
 | Google ADK / Vertex AI | Tool list filter / pre-call hook | Router + Firewall | [Google ADK Integration](integration_google_adk.md) | Available |
 | Pipecat | Frame processor | ContextManager (async) | [Pipecat Integration](integration_pipecat.md) | Available |
 | CrewAI | Adapter (`BaseTool` → `SelectableItem`) | `adapters.crewai` + Router + Firewall | [CrewAI Integration](integration_crewai.md), `examples/crewai_adapter_demo.py` | Available |
-| Pydantic AI / smolagents / Agno | Adapter (tool object → `SelectableItem`) | `adapters.*` (planned) | — | Planned ([#193](https://github.com/dgenio/contextweaver/issues/193)) |
+| Pydantic AI | Adapter (`Tool` → `SelectableItem`, `ModelMessage` round-trip) | `adapters.pydantic_ai` + Router + ContextManager | [Pydantic AI Integration](integration_pydantic_ai.md), `examples/pydantic_ai_adapter_demo.py` | Available |
+| smolagents | Adapter (`Tool` → `SelectableItem`, step-log ingest) | `adapters.smolagents` + Router + ContextManager | [smolagents Integration](integration_smolagents.md), `examples/smolagents_adapter_demo.py` | Available |
+| Agno | Adapter (`Function` / `Toolkit` → `SelectableItem`, session ingest) | `adapters.agno` + Router + ContextManager | [Agno Integration](integration_agno.md), `examples/agno_adapter_demo.py` | Available |
 | Mem0 (external memory) | `EpisodicStore` / `FactStore` backend | `extras.memory.mem0` | [External Memory](integration_memory.md) | Available |
 | Zep / Graphiti (external memory) | `EpisodicStore` / `FactStore` backend | `extras.memory.zep` (planned) | [External Memory](integration_memory.md) | Planned ([#195](https://github.com/dgenio/contextweaver/issues/195)) |
 | LangMem (external memory) | `EpisodicStore` / `FactStore` backend | `extras.memory.langmem` (planned) | [External Memory](integration_memory.md) | Planned ([#195](https://github.com/dgenio/contextweaver/issues/195)) |

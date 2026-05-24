@@ -10,6 +10,11 @@ from __future__ import annotations
 from contextweaver.context.call_prompt import build_schema_header
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
+from contextweaver.context.explanation import (
+    EXPLANATION_VERSION,
+    CandidateExplanation,
+    ContextBuildExplanation,
+)
 from contextweaver.context.firewall import apply_firewall, apply_firewall_to_batch
 from contextweaver.context.handoff import (
     HANDOFF_CATEGORIES,
@@ -38,7 +43,10 @@ from contextweaver.context.sensitivity import (
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
 
 __all__ = [
+    "CandidateExplanation",
+    "ContextBuildExplanation",
     "ContextManager",
+    "EXPLANATION_VERSION",
     "HANDOFF_CATEGORIES",
     "HANDOFF_PACK_VERSION",
     "HandoffEntry",
