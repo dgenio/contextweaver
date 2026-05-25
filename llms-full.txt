@@ -208,6 +208,9 @@ Optional capabilities are gated behind extras so the core install stays small:
 | `contextweaver[weaver-spec]` | Weaver Stack contract adapters (`weaver_contracts`) |
 | `contextweaver[fastmcp]` | FastMCP catalog adapter and discovery helpers |
 | `contextweaver[crewai]` | CrewAI runtime integration |
+| `contextweaver[pydantic-ai]` | Pydantic AI runtime integration |
+| `contextweaver[smolagents]` | Hugging Face smolagents runtime integration |
+| `contextweaver[agno]` | Agno runtime integration |
 | `contextweaver[langchain]` | LangChain integration helpers |
 | `contextweaver[voice]` | Pipecat voice-agent integration |
 | `contextweaver[retrieval]` | Fuzzy lexical matching backend (`rapidfuzz`) |
