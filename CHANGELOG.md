@@ -132,6 +132,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via the Discussions badge at the top of the README and the `## License`
   / `[CHANGELOG.md]` reference at the bottom.
 
+### Fixed
+
+- **README / Quickstart onboarding docs refresh** — fixes the README CLI
+  `route` example to include required `--catalog`, updates stale version and
+  extras tables for the 0.10.x line, documents default sensitivity drops in
+  the Quickstart, and explains the offline `tiktoken` fallback /
+  `TIKTOKEN_CACHE_DIR` workflow. Issues #307, #309, #310, #311, #312.
+
 ## [0.10.0] - 2026-05-22
 
 ### Added

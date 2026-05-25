@@ -169,21 +169,33 @@ pip install contextweaver
 ```
 
 `contextweaver` ships with a minimal, opinionated core: `tiktoken`,
-`PyYAML`, and `rank-bm25`. These power accurate token budgeting, YAML
-catalog/config files, and the default lexical retrieval backend.
+`PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, Typer, and Rich. These power
+token budgeting, YAML catalog/config files, the default lexical retrieval
+backend, the MCP proxy/gateway runtime, schema validation, and the CLI.
 
 Optional capabilities are gated behind extras so the core install stays small:
 
 | Extra | What it adds |
 |---|---|
-| `contextweaver[cli]` | Rich-formatted CLI rendering (rich) |
-| `contextweaver[retrieval]` | Fuzzy lexical matching backend (rapidfuzz) |
+| `contextweaver[weaver-spec]` | Weaver Stack contract adapters (`weaver_contracts`) |
+| `contextweaver[fastmcp]` | FastMCP catalog adapter and discovery helpers |
+| `contextweaver[crewai]` | CrewAI runtime integration |
+| `contextweaver[pydantic-ai]` | Pydantic AI runtime integration |
+| `contextweaver[smolagents]` | Hugging Face smolagents runtime integration |
+| `contextweaver[agno]` | Agno runtime integration |
+| `contextweaver[langchain]` | LangChain integration helpers |
+| `contextweaver[voice]` | Pipecat voice-agent integration |
+| `contextweaver[retrieval]` | Fuzzy lexical matching backend (`rapidfuzz`) |
+| `contextweaver[embeddings]` | Sentence-transformers embedding backend |
+| `contextweaver[sqlite]` | SQLite store install contract (stdlib-backed today) |
+| `contextweaver[mem0]` | Mem0 external-memory backend |
 | `contextweaver[otel]` | OpenTelemetry tracing + metrics export |
+| `contextweaver[e2e-eval]` | Optional real-model benchmark hook (no dependency today) |
+| `contextweaver[docs]` | MkDocs documentation toolchain |
+| `contextweaver[dev]` | Test, lint, type-check, and fixture toolchain |
 | `contextweaver[ann]` | Approximate-nearest-neighbour backend (reserved) |
 | `contextweaver[graph]` | NetworkX-backed graph ops (reserved) |
-| `contextweaver[fastmcp]` | FastMCP catalog adapter |
-| `contextweaver[langchain]` | LangChain integration helpers |
-| `contextweaver[all]` | All optional capabilities |
+| `contextweaver[all]` | Convenience bundle for broad optional runtime capabilities |
 
 Or from source:
 
@@ -299,6 +311,7 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Concept | Description |
 |---|---|
 | `ContextItem` | Atomic event log entry: user turn, agent message, tool call, tool result, fact, plan state. |
+| `Sensitivity` | `ContextItem.sensitivity` defaults to `public`; the default policy drops `confidential` and `restricted` items before they reach the prompt. |
 | `Phase` | `route` / `call` / `interpret` / `answer` — each with its own token budget. |
 | `ContextFirewall` | Intercepts tool results: stores raw bytes out-of-band, injects compact summary (with truncation for large outputs). |
 | `ChoiceGraph` | Bounded DAG over the tool catalog. Router beam-searches it; LLM sees only a focused shortlist. |
@@ -440,10 +453,9 @@ contextweaver follows [Semantic Versioning](https://semver.org/):
 
 | Version | Status | Notes |
 |---|---|---|
-| **0.1.x** | ✅ Current | Foundation engines (context + routing), MCP/A2A adapters, CLI, sensitivity |
-| **0.2.0** | 🚧 In progress (Q2 2026) | Framework integration guides, benchmark suite, distributed stores |
-| **0.3.0** | 📋 Planned (Q3 2026) | DAG visualization, merge compression, LLM-assisted labeler |
-| **1.0.0** | 📋 Planned (Q4 2026) | API freeze, production benchmarks, enterprise features |
+| **0.1.x – 0.9.x** | Shipped | Foundation engines, benchmark scorecards, integration guides, MCP gateway/proxy runtime, provider adapters, persistent stores, reference architectures |
+| **0.10.x** | Current | Experimental `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations, launch fixtures |
+| **1.0.0** | Planned | API freeze and long-term compatibility commitments after the 0.x launch-polish line |
 
 > Adopting a library is a long-term commitment. contextweaver's versioning policy ensures you
 > can upgrade safely, and the roadmap shows where it's headed.
@@ -489,7 +501,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.9.0](https://pypi.org/project/contextweaver/0.9.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42–75 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.10.0](https://pypi.org/project/contextweaver/0.10.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42–75 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
@@ -517,7 +529,7 @@ contextweaver ships with a CLI for quick experimentation:
 contextweaver demo                                    # end-to-end demonstration
 contextweaver init                                    # scaffold config + sample catalog
 contextweaver build --catalog c.json --out g.json    # build routing graph
-contextweaver route --graph g.json --query "send email"
+contextweaver route --graph g.json --catalog c.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
@@ -588,7 +600,10 @@ is the canonical starting point.
 Typically 10–50 ms for a context build (depends on event log size and deduplication).
 For real-time / async agents, run `build_sync()` in a worker thread (e.g.
 `await asyncio.to_thread(mgr.build_sync, phase, query)`) so the synchronous
-pipeline does not block the event loop.
+pipeline does not block the event loop. If an offline or air-gapped run prints a
+`tiktoken cl100k_base encoding unavailable` warning, see the
+[troubleshooting note](docs/troubleshooting.md#offline-air-gapped-tiktoken-warning);
+the fallback keeps budget enforcement deterministic.
 
 See [docs/troubleshooting.md](docs/troubleshooting.md) for the full troubleshooting
 guide, debugging techniques, optimisation tips, and 10+ common issues with solutions.
@@ -623,7 +638,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
 | **v0.6 — Adopter surface** (2026-05-17) | ✅ complete | Typer + Rich CLI rewrite, OTel GenAI semconv, provider message adapters (OpenAI / Anthropic / Gemini), 5-line adoption snippet |
 | **v0.7 — Reference architectures + routing pipeline** (2026-05-18) | ✅ complete | Explicit routing pipeline, embedding backend, history-aware routing, code-review bot + voice agent architectures, FastMCP CodeMode hooks |
 | **v0.8 — CrewAI + Mem0** (2026-05-19) | ✅ complete | CrewAI adapter (Phase 1), Mem0 external-memory backend, provider-SDK-leak invariant tests |
-| **v0.9 — Launch polish + adapters** (2026-05) | 🚧 in progress | `contextweaver mcp serve` CLI, full MCP Context Gateway architecture, CrewAI/Pydantic AI/smolagents/Agno adapter Phase 2 |
+| **v0.9 — Launch polish + adapters** (2026-05-20) | ✅ complete | Budget checks, provider adapters, benchmark transparency suite, launch polish |
+| **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ current | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
 | **v1.0 — API stability** | 📋 planned | API freeze, semantic-versioning commitment, long-term support window |
 | **Future** | 📋 planned | DAG visualization, LLM-assisted labeler, distributed stores, multi-agent coordination |
 
