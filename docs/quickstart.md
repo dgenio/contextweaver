@@ -130,6 +130,15 @@ If you are working from a repository checkout instead, install the package in ed
 pip install -e ".[dev]"
 ```
 
+If your network blocks `openaipublic.blob.core.windows.net`, the demo or
+token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.
+That warning is harmless: contextweaver falls back to the deterministic
+chars/4 estimator and keeps enforcing budgets. To suppress it while keeping
+exact `tiktoken` counts, pre-warm a `TIKTOKEN_CACHE_DIR` on a connected
+machine and copy that cache into the offline environment; the
+[troubleshooting guide](troubleshooting.md#offline-air-gapped-tiktoken-warning)
+has the full workflow.
+
 ## 3. Your First Context Build (3 minutes)
 
 Scenario: an agent receives a question, decides to query a database, and builds
@@ -201,6 +210,47 @@ What just happened:
 - You ingested four events into the event log.
 - `build_sync()` ran the context pipeline for the `answer` phase.
 - The prompt was compiled from the most relevant items and returned with build stats.
+
+### Sensitivity & Default Drops
+
+Every `ContextItem` has a `sensitivity` level. It defaults to `public`, and
+the default policy is conservative: items at or above
+`Sensitivity.confidential` are dropped before scoring and rendering.
+
+```python
+from contextweaver.config import ContextPolicy
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
+
+mgr = ContextManager()
+mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="public"))
+mgr.ingest(
+    ContextItem(
+        id="c1",
+        kind=ItemKind.user_turn,
+        text="confidential",
+        sensitivity=Sensitivity.confidential,
+    )
+)
+
+pack = mgr.build_sync(phase=Phase.answer, query="any")
+print(pack.stats.dropped_reasons.get("sensitivity", 0))  # 1
+```
+
+If you want to keep `confidential` items but still drop `restricted` items,
+raise the floor:
+
+```python
+policy = ContextPolicy(sensitivity_floor=Sensitivity.restricted)
+mgr = ContextManager(policy=policy)
+```
+
+If you want sensitive items to remain visible only as masks, use redact mode:
+
+```python
+policy = ContextPolicy(sensitivity_action="redact")
+mgr = ContextManager(policy=policy)
+```
 
 ## 4. Try the Context Firewall (4 minutes)
 

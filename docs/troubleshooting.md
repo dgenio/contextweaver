@@ -334,6 +334,41 @@ total_estimated_tokens = (
 mgr = ContextManager(token_estimator=TiktokenEstimator(model="gpt-4"))
 ```
 
+#### Offline / Air-gapped Tiktoken Warning
+
+**Symptom:**
+```text
+tiktoken cl100k_base encoding unavailable (...); falling back to chars/4 token estimate
+```
+
+**Cause:** `tiktoken` is installed, but it downloads encoding data on first use.
+Sandboxes, corporate networks, and CI containers that block
+`openaipublic.blob.core.windows.net` cannot fetch `cl100k_base` on demand.
+contextweaver then falls back to `CharDivFourEstimator`, which preserves
+deterministic budget enforcement but is less exact than the real encoding.
+
+**Solution — pre-warm a cache on a connected machine, then copy it:**
+
+PowerShell:
+```powershell
+$env:TIKTOKEN_CACHE_DIR = "C:\path\to\tiktoken-cache"
+python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+```
+
+Bash:
+```bash
+export TIKTOKEN_CACHE_DIR=/path/to/tiktoken-cache
+python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+```
+
+Copy that cache directory into the offline environment and set
+`TIKTOKEN_CACHE_DIR` to the copied path before running contextweaver.
+
+If exact `tiktoken` parity is not required, no action is needed. The committed
+scorecard's headline context metrics intentionally use `CharDivFourEstimator`
+for network-independent reproducibility; the separate token-estimator parity
+section reports or skips `cl100k_base` drift depending on cache availability.
+
 **CI regression check:** after serialising a session with `contextweaver ingest`,
 pin a ceiling with `budget-check` so prompt-size regressions fail before they
 reach production:
