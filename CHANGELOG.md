@@ -7,6 +7,131 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Memory-source adapter interface — `context/memory_types.py`,
+  `context/memory_fixture.py`, `context/memory_source.py`** (#293).
+  New `MemorySource` Protocol in `protocols.py` plus a stdlib-only
+  `JsonFixtureMemorySource`, `MemoryEntry` dataclass with `to_dict` /
+  `from_dict`, and `memory_entries_to_context_items` /
+  `select_memory_for_phase` helpers.  Memory entries materialise into the
+  event log as `ContextItem` of kind `memory_fact` and then flow through
+  the existing phase filter → sensitivity → firewall → scoring → dedup →
+  budget pipeline with no invariant changes.  Phase selection is
+  position-graded by scope (`route` prefers `routing` > `tool_preference` >
+  `policy`; `call` prefers `tool_usage` > `tool_preference` > `domain`;
+  `interpret` prefers `domain` > `fact` > `convention`).  Budgeting charges
+  every selected entry at least one token, so short memories cannot bypass
+  the cap.  Sensitive entries (≥ active floor) are dropped or redacted by the
+  existing `apply_sensitivity_filter` — no new redaction path.  Reserved
+  `metadata['_contextweaver']['memory_source']` provenance namespace per
+  `docs/agent-context/invariants.md`.
+- **Session handoff context pack — `context/handoff_types.py`,
+  `context/handoff.py`** (#294).  New `SessionHandoffPack` + `HandoffEntry`
+  dataclasses with `to_dict` / `from_dict`, the
+  `build_session_handoff_pack(...)` builder, and a `render_handoff_pack(...)`
+  deterministic-Markdown renderer.  The pack
+  classifies event-log items into five canonical buckets — decisions,
+  conventions, unresolved tasks, pitfalls, next inspections — driven by
+  explicit `metadata['handoff_category']` tags with a kind-based heuristic
+  fallback (`plan_state` → decision, `policy` → convention,
+  `tool_result` with `status=failed` → pitfall).  Sensitivity enforcement
+  runs *before* classification using the active `ContextPolicy`, then the
+  existing context firewall processes surviving `tool_result` items before
+  rendering, so the pack cannot leak `restricted` / `confidential` content
+  or raw tool-result bodies.  Dependency-closure preserved: every included
+  entry's `parent_id` chain is walked to collect deduplicated `ArtifactRef`
+  citations.  Pack carries a `version` field (`HANDOFF_PACK_VERSION = "1"`)
+  for downstream drift detection.
+- **README "When not to use contextweaver" section** (#290). New top-level
+  section after `## How contextweaver Solves It` covering the five
+  honest non-fits: small tool catalogs (≤ 5 tools), single-shot Q&A
+  agents, tiny tool outputs (firewall correctly no-ops), small token
+  bills, and non-deterministic LLM-driven routing. Closes the last
+  outstanding acceptance criterion of #290; the README opening,
+  before/after example, and labelled benchmark claims landed earlier
+  with the v0.9 launch-readiness pass.
+- **MCP-client integration recipes** (#278, #279). New `docs/recipes/`
+  section ships step-by-step guides for putting the contextweaver gateway
+  in front of Claude Desktop (`docs/recipes/claude_desktop.md`) and VS
+  Code's GitHub Copilot Chat agent mode
+  (`docs/recipes/github_copilot.md`). Each recipe links to a
+  copy-pasteable client config under `examples/recipes/` and a
+  minimal stdio launcher (`examples/recipes/serve_gateway.py`) that
+  wires `McpGatewayServer.run_stdio()` against the committed real-catalog
+  snapshots under `examples/architectures/mcp_context_gateway/real_catalogs/`
+  (`time.json`, `filesystem.json`, `everything.json`). The launcher
+  raises `RuntimeError` (not `SystemExit`) on malformed snapshots so
+  `main()` honours its documented `int` return contract; argparse-level
+  errors continue to exit via `SystemExit` as usual.
+  `tests/test_recipes_serve_gateway.py` pins the loader (happy path +
+  malformed JSON + missing key + non-list + array payload), the runtime
+  builders, the CLI parser, and every `main()` exit-code path
+  (clean / keyboard-interrupt / transport-error / malformed-snapshot)
+  via a stubbed `asyncio.run`.
+- **Pydantic AI adapter — `adapters/pydantic_ai.py`** (#272, child of #193).
+  Thin stateless converter turning Pydantic AI `Tool` definitions (live
+  instances or the equivalent plain-dict shape `Tool.model_dump()` emits)
+  into `SelectableItem`s, plus a lossless `from_pydantic_ai_messages` /
+  `to_pydantic_ai_messages` round-trip for `ModelMessage` history. Heavy
+  decode/encode helpers live in `adapters/_pydantic_ai_messages.py` to
+  keep `pydantic_ai.py` close to the 300-line module guideline. New
+  `[pydantic-ai]` optional-dependency group; plain-dict / message-dict
+  paths work without the extra installed. New
+  `docs/integration_pydantic_ai.md` integration guide,
+  `examples/pydantic_ai_adapter_demo.py` (wired into `make example`),
+  and 26 new test cases in `tests/test_adapters_pydantic_ai.py`.
+- **smolagents adapter — `adapters/smolagents.py`** (#274, child of #193).
+  Thin stateless converter turning Hugging Face smolagents `Tool`
+  definitions into `SelectableItem`s (with `inputs` → JSON-Schema
+  coercion) and a `from_smolagents_agent` step-log ingestor that pulls
+  `MultiStepAgent.memory.steps` into `ContextItem`s. `CodeAgent` code
+  blocks are intentionally not surfaced — only the executed tool calls
+  and their observations land in the event log. New `[smolagents]`
+  optional-dependency group; plain-dict / step-dict paths work without
+  the extra installed. New `docs/integration_smolagents.md`,
+  `examples/smolagents_adapter_demo.py`, and 27 new test cases in
+  `tests/test_adapters_smolagents.py`.
+- **Agno adapter — `adapters/agno.py`** (#275, child of #193). Thin
+  stateless converter turning Agno (formerly Phidata) `Function` and
+  `Toolkit` members into `SelectableItem`s, plus a `from_agno_session`
+  ingestor that walks an `AgentSession` (or `AgentRun.messages`) into
+  `ContextItem`s following the OpenAI Chat Completions message shape
+  Agno emits. New `[agno]` optional-dependency group; plain-dict /
+  message-dict paths work without the extra installed. The integration
+  guide explicitly addresses the contextweaver-vs-Agno-`Memory`
+  layering so users understand which layer owns what. New
+  `docs/integration_agno.md`, `examples/agno_adapter_demo.py`, and 29
+  new test cases in `tests/test_adapters_agno.py`.
+- README "Framework Integrations" table (both occurrences) and Examples
+  table gained rows for CrewAI, Pydantic AI, smolagents, and Agno.
+  `docs/interop.md` matrix promotes Pydantic AI / smolagents / Agno
+  from "Planned (#193)" to "Available". `mkdocs.yml` nav surfaces the
+  three new integration guides. The umbrella issue #193 closes with
+  this release.
+
+### Changed
+
+- **`pyproject.toml` description + keywords** (#248). Project description
+  changed from `"Dynamic context management for tool-using AI agents"` to
+  `"Context firewall and tool router for tool-heavy AI agents."` to match
+  the launch positioning and the README tagline. Three new keywords
+  added: `context-firewall`, `tool-router`, `mcp-gateway`. PyPI search
+  and the GitHub social card render the description field directly.
+
+### Removed
+
+- **Stale `### 6. Roadmap & Community` block in README** (#242). The
+  legacy roadmap text (v0.2 🚧 In Progress — Q2 2026, v0.3 📋 Planned —
+  Q3 2026, v1.0 📋 Planned — Q4 2026) was a duplicate of and contradicted
+  the accurate `## Roadmap` table further down the README, which was
+  refreshed in the v0.9 launch-readiness pass (#252). Removing the stale
+  block; the `### Comparison` subsection is renumbered to `### 6.
+  Comparison` to keep the "Why Trust contextweaver?" parent section
+  numbering contiguous. The community links it previously hosted survive
+  via the Discussions badge at the top of the README and the `## License`
+  / `[CHANGELOG.md]` reference at the bottom.
+
 ### Fixed
 
 - **README / Quickstart onboarding docs refresh** — fixes the README CLI

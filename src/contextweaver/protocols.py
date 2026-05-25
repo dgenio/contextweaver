@@ -24,9 +24,10 @@ from contextweaver.store.protocols import EventLog as EventLog
 from contextweaver.store.protocols import FactStore as FactStore
 
 if TYPE_CHECKING:
+    from contextweaver.context.memory_source import MemoryEntry
     from contextweaver.envelope import ChoiceCard, ContextPack
     from contextweaver.routing.graph import ChoiceGraph
-    from contextweaver.types import ContextItem, SelectableItem
+    from contextweaver.types import ContextItem, Phase, SelectableItem
 
 
 _tiktoken_logger = _logging.getLogger("contextweaver.protocols")
@@ -189,6 +190,67 @@ class RedactionHook(Protocol):
 
     def redact(self, item: ContextItem) -> ContextItem:
         """Return a (possibly modified) copy of *item* with sensitive data removed."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# MemorySource (issue #293)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class MemorySource(Protocol):
+    """Pluggable source of persistent agent memory entries.
+
+    A memory source produces
+    :class:`~contextweaver.context.memory_source.MemoryEntry` records that can
+    be ingested into the Context Engine as ``memory_fact``
+    :class:`~contextweaver.types.ContextItem` candidates.  The Context Engine
+    treats memory entries like any other event-log item once they are
+    materialised — phase filtering, sensitivity enforcement, scoring,
+    deduplication, and budget selection all apply unchanged.
+
+    Implementations must be storage-agnostic in the first version: a memory
+    source may be backed by a JSON file, an in-memory list, or a thin shim
+    over an external long-lived backend (Mem0, Zep, LangMem — issue #195),
+    but the protocol itself does not assume any of those.  Sensitivity
+    metadata on entries must be preserved and is enforced by the existing
+    :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter` after
+    materialisation.
+
+    Determinism contract: for identical ``(query, phase, now, max_entries)``
+    inputs against an unchanged backend, :meth:`select` must return entries
+    in the same order.  Tie-break by entry ID, never insertion order.
+    """
+
+    def select(
+        self,
+        query: str,
+        phase: Phase,
+        *,
+        now: float | None = None,
+        max_entries: int | None = None,
+    ) -> list[MemoryEntry]:
+        """Return memory entries relevant to *query* under *phase*.
+
+        Args:
+            query: User / agent query string (already augmented if needed).
+            phase: Active execution phase.  Implementations should bias
+                selection toward entries whose ``scope`` matches the phase
+                (e.g. ``routing`` for :attr:`~contextweaver.types.Phase.route`,
+                ``domain`` / ``fact`` for
+                :attr:`~contextweaver.types.Phase.interpret`).
+            now: Optional UNIX timestamp used as the reference time for
+                ``expires_at`` filtering.  ``None`` means "use the current
+                wall clock"; tests should pin this for determinism.
+            max_entries: Optional upper bound on the number of entries
+                returned.  ``None`` means no cap (the caller is expected to
+                apply a token budget downstream).
+
+        Returns:
+            A list of :class:`MemoryEntry` objects sorted in deterministic
+            relevance order (best first; ties broken by ID).
+        """
         ...
 
 

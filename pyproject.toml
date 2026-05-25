@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "contextweaver"
 version = "0.10.0"
-description = "Dynamic context management for tool-using AI agents"
+description = "Context firewall and tool router for tool-heavy AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -15,10 +15,13 @@ keywords = [
     "agents",
     "context",
     "context-engineering",
+    "context-firewall",
     "llm",
     "tools",
     "tool-routing",
+    "tool-router",
     "mcp",
+    "mcp-gateway",
     "prompt-budgeting",
     "agent-infrastructure",
     "routing",
@@ -109,6 +112,30 @@ fastmcp = [
 # works without this extra installed.
 crewai = [
     "crewai>=0.80",
+]
+# Pydantic AI adapter integration (issue #272, child of #193).  Pulls the
+# pydantic-ai runtime so user applications can import the live-discovery
+# helper ``contextweaver.adapters.pydantic_ai.load_pydantic_ai_catalog`` and
+# the message round-trip helpers.  Plain-dict / message-dict paths work
+# without this extra installed.
+pydantic-ai = [
+    "pydantic-ai>=0.0.20",
+]
+# smolagents adapter integration (issue #274, child of #193).  Pulls the
+# Hugging Face smolagents runtime so user applications can import the
+# live-discovery helper ``contextweaver.adapters.smolagents.load_smolagents_catalog``
+# and the ``from_smolagents_agent`` step-log ingestor.  Plain-dict / step-dict
+# paths work without this extra installed.
+smolagents = [
+    "smolagents>=1.0",
+]
+# Agno adapter integration (issue #275, child of #193).  Pulls the Agno
+# (formerly Phidata) runtime so user applications can import the
+# live-discovery helper ``contextweaver.adapters.agno.load_agno_catalog`` and
+# the ``from_agno_session`` history ingestor.  Plain-dict / message-dict paths
+# work without this extra installed.
+agno = [
+    "agno>=1.0",
 ]
 # LangChain integration examples.
 langchain = [
@@ -218,6 +245,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py310"
@@ -243,6 +271,18 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "crewai.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pydantic_ai.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "smolagents.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "agno.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -279,10 +319,11 @@ ignore_missing_imports = true
 
 # Typer's ``@app.command()`` decorator is typed as a generic callable in 0.9-
 # 0.12, which trips ``disallow_untyped_decorators`` under strict mypy.
-# Carve out ``__main__`` (the only Typer consumer) rather than disable the
-# strictness globally.
+# Carve out the Typer consumers rather than disable the strictness globally.
+# ``__main__`` is the top-level CLI; ``_mcp_cli`` backs the ``mcp`` sub-app
+# mounted from ``__main__`` (issues #243/#246).
 [[tool.mypy.overrides]]
-module = "contextweaver.__main__"
+module = ["contextweaver.__main__", "contextweaver._mcp_cli"]
 disallow_untyped_decorators = false
 
 # weaver_contracts does not ship a py.typed marker; treat as untyped for mypy
