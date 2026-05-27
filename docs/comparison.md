@@ -11,6 +11,10 @@ not an agent framework, not a memory database, not an LLM SDK, and not a
 generic RAG library. The point of this page is to make those boundaries
 concrete.
 
+For an adopter-facing decision matrix with more public-positioning language,
+see the [Ecosystem Map](ecosystem.md). This page stays closer to the technical
+boundaries between layers.
+
 ## TL;DR
 
 ```text
@@ -151,6 +155,8 @@ summarised before the next turn.
 
 - [Showcase](showcase.md) — four runnable demos that exercise the above
   primitives in under a minute each.
+- [Ecosystem Map](ecosystem.md) — adopter-facing comparison and decision
+  matrix for agent frameworks, MCP, memory, RAG, and observability.
 - [Which pattern fits?](which_pattern.md) — symptom-driven routing into
   the right contextweaver primitive.
 - [How contextweaver fits (deeper)](interop.md) — policy-vs-execution

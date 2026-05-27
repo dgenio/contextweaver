@@ -203,8 +203,8 @@ def main() -> None:
 
     _print_header("Real-catalog scenarios complete")
     print(
-        "All three real-catalog scenarios walked the same route → call → "
-        "interpret → answer cycle that the offline 60-tool architecture uses. "
+        "All three real-catalog scenarios walked the same route -> call -> "
+        "interpret -> answer cycle that the offline 60-tool architecture uses. "
         "No catalog modifications were needed — the existing routing engine, "
         "schema-hydration helper (#261), and context firewall handle the real "
         "wire shape verbatim."

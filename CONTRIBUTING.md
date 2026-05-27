@@ -218,6 +218,10 @@ the most useful first reads (in order) are:
 3. `AGENTS.md` Module Map (around line 18).
 4. `docs/architecture.md` — pipeline detail.
 
+If you are writing about contextweaver publicly, use
+[`docs/launch_kit.md`](docs/launch_kit.md) for reusable copy, asset links,
+and responsible-claims guardrails.
+
 **Good first tasks for an agent on launch day:**
 
 - Pick up a [`good first issue`](https://github.com/dgenio/contextweaver/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)

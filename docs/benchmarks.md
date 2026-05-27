@@ -7,6 +7,7 @@
 
 | What | Where |
 |---|---|
+| The adopter-facing interpretation | [`docs/benchmark_report.md`](benchmark_report.md) — cost, prompt-size, latency, and failure-mode framing |
 | The numbers | [`benchmarks/scorecard.md`](https://github.com/dgenio/contextweaver/blob/main/benchmarks/scorecard.md) — committed, regeneratable in one command |
 | The raw output | [`benchmarks/results/latest.json`](https://github.com/dgenio/contextweaver/blob/main/benchmarks/results/latest.json) — machine-readable |
 | The harness | [`benchmarks/benchmark.py`](https://github.com/dgenio/contextweaver/blob/main/benchmarks/benchmark.py) |
@@ -65,7 +66,7 @@ something different and degrades under different conditions:
 Two practical reading rules:
 
 1. **Treat `recall@5` at catalog_size 1000 as a baseline number, not a ceiling.** The default `tfidf` and `bm25` scorers are lexical; they trade recall for transparency and zero-network determinism. A retriever-first shortlist (embedding ANN or LLM rerank) is the documented way to recover recall at scale — tracked under issue [#8](https://github.com/dgenio/contextweaver/issues/8).
-2. **Token-reduction percentages are scenario-bound.** "41.6%–74.5%" is the *range across the four committed scenarios*, not a guarantee for any specific workload. The right number for your agent is whatever you measure on your own event logs using `scripts/baseline_naive.py`.
+2. **Token-reduction percentages are scenario-bound.** "41.6 %-84.3 %" is the *range across the six committed scenarios*, not a guarantee for any specific workload. The right number for your agent is whatever you measure on your own event logs using `scripts/baseline_naive.py`.
 
 ## Known limits and honest framing
 
@@ -74,7 +75,7 @@ configuration does on the **default** benchmark fixtures. The
 following are deliberate, documented gaps — not bugs:
 
 - **Routing recall degrades with catalog size.** At catalog_size 50, `recall@5` is ~0.56. At 1000, it falls to ~0.15 with both `tfidf` and `bm25`. This is the well-known lexical-retrieval ceiling on large tool catalogs. contextweaver's response is to make the scorer **pluggable** (see `Router(scorer_backend=...)` and the `Retriever` protocol on the `EngineRegistry`), not to claim the default scorer is sufficient at scale. The scorecard exists so you can see this drop yourself, swap in a stronger backend, and re-measure.
-- **Token reduction is scenario-driven.** All percentages above are measured against the four committed scenarios under `benchmarks/scenarios/`. If your real conversations or tool outputs differ materially in shape (much shorter turns, much larger results, very different namespace distribution), expect different percentages.
+- **Token reduction is scenario-driven.** All percentages above are measured against the six committed scenarios under `benchmarks/scenarios/`. If your real conversations or tool outputs differ materially in shape (much shorter turns, much larger results, very different namespace distribution), expect different percentages.
 - **Latency is informational.** Treat the latency numbers as ordering between catalog sizes, not as a service-level objective for production deployments.
 - **No claim is made** about end-to-end agent cost, answer quality, or accuracy — those depend on the model and the agent loop, not on contextweaver alone.
 

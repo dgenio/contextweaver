@@ -75,7 +75,7 @@ def main() -> None:
     print("[1] Namespace inference:")
     for name in ["github_search_repos", "slack_send_message", "db_query", "search"]:
         ns = infer_fastmcp_namespace(name)
-        print(f"    {name!r:30s} → namespace={ns!r}")
+        print(f"    {name!r:30s} -> namespace={ns!r}")
 
     # 2. Single tool conversion
     print("\n[2] Single tool conversion:")

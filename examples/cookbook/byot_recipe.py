@@ -30,22 +30,22 @@ from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem
 
 def web_search(query: str) -> str:
     """Search the public web for *query* and return a short text summary."""
-    return f"web_search({query!r}) → 3 results: example.com, docs.example.com, blog.example.com"
+    return f"web_search({query!r}) -> 3 results: example.com, docs.example.com, blog.example.com"
 
 
 def db_query(sql: str) -> str:
     """Execute a read-only SQL query and return the result rows as JSON."""
-    return f"db_query({sql!r}) → 2 rows"
+    return f"db_query({sql!r}) -> 2 rows"
 
 
 def send_email(to: str, subject: str, body: str) -> str:
     """Send an email to *to* with *subject* and *body*."""
-    return f"send_email(to={to!r}, subject={subject!r}) → ok"
+    return f"send_email(to={to!r}, subject={subject!r}) -> ok"
 
 
 def schedule_meeting(participants: str, when: str) -> str:
     """Schedule a calendar meeting between *participants* at *when*."""
-    return f"schedule_meeting(participants={participants!r}, when={when!r}) → ok"
+    return f"schedule_meeting(participants={participants!r}, when={when!r}) -> ok"
 
 
 TOOLS: dict[str, Callable[..., str]] = {

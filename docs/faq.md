@@ -135,6 +135,16 @@ Three options, in order of effort:
   network-independent. Parity check is tracked under
   [issue #268](https://github.com/dgenio/contextweaver/issues/268).
 
+## Is this related to similarly named ContextWeaver projects or research?
+
+Not intentionally. This repository is the Python package
+[`dgenio/contextweaver`](https://github.com/dgenio/contextweaver), positioned
+as a context firewall and tool router for MCP and tool-heavy agents. The name
+"context weaver" is descriptive enough that other projects or papers may use
+similar phrasing. When citing this project publicly, use `dgenio/contextweaver`
+or `contextweaver` on PyPI and include the subtitle "context firewall + tool
+router for MCP and tool-heavy agents" to avoid confusion.
+
 ## See also
 
 - [Showcase](showcase.md) — four runnable demos in under a minute each.

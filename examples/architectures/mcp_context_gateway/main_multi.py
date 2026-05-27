@@ -92,7 +92,7 @@ TRANSCRIPT: list[tuple[str, str, str, dict[str, Any], dict[str, Any]]] = [
                 {
                     "type": "text",
                     "text": (
-                        "ticket TKT-742 — 'Self-serve downgrade for C-12345 (Growth → "
+                        "ticket TKT-742 — 'Self-serve downgrade for C-12345 (Growth -> "
                         "Starter)'\nstatus: closed\nowner: alice@example.com\n"
                         "closed_at: 2026-03-18T17:42Z\nlink: https://linear.app/ops/issue/TKT-742"
                     ),

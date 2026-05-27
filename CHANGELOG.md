@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Adopter positioning docs** — new adopter-facing benchmark report,
+  ecosystem comparison map, stability / Beta / 1.0 readiness checklist, and
+  launch kit for reusable public copy and asset links. Issues #323, #324,
+  #327, #328, #329.
+
+### Changed
+
+- **README / docs / PyPI positioning** — sharpened the first-screen category
+  around "context firewall + tool router for MCP and tool-heavy agents", added
+  quick use-fit framing, and aligned package/site descriptions with the same
+  wording. Issue #321.
+
 ## [0.10.0] - 2026-05-22
 
 ### Added

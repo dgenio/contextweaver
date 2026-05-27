@@ -95,7 +95,7 @@ async def main() -> int:
         {"name": "tool_execute", "arguments": {"tool_id": tool_id, "args": {}}},
     )
     bad_body = json.loads(bad["content"][0]["text"])
-    print(f"      missing path → error={bad_body['error']}, message={bad_body['message'][:50]}")
+    print(f"      missing path -> error={bad_body['error']}, message={bad_body['message'][:50]}")
 
     print("\n[4/4] tool_execute happy path:")
     ok = await dispatch_proxy_request(
