@@ -28,14 +28,18 @@ There is no bespoke type — the existing fields carry everything a card needs:
 | artifact id | `id` | Stable, unique. Reuse the card's own id so provenance round-trips. |
 | artifact text | `text` | The guidance itself — what the model should read. |
 | scope metadata | `metadata["scope"]` | Where the card applies (module, task type, phase hint). Free-form. |
-| sensitivity metadata | `sensitivity` | One of `Sensitivity.public` / `internal` / `confidential`. Drives the sensitivity floor. |
+| sensitivity metadata | `sensitivity` | One of `Sensitivity.public` / `internal` / `confidential` / `restricted`. Drives the sensitivity floor. |
 | provenance metadata | `metadata["provenance"]` | Who reviewed it, when, source commit/URL. Audit trail, not scored. |
 | task-matching notes | `text` (+ `metadata`) | Matching is lexical against `text`; see below. |
 
 `kind` should be `ItemKind.doc_snippet` for reference guidance (or
-`ItemKind.policy` when the card is a hard rule the answer phase must always
-see). Both flow through the standard phase-filter → sensitivity → firewall →
-scoring → dedup → budget pipeline with no special-casing.
+`ItemKind.policy` for high-priority guidance — `policy` carries a higher kind
+priority in scoring, but inclusion is still subject to per-kind limits
+(`max_items_per_kind`) and the phase token budget, so it is not guaranteed to
+appear in any given prompt). If a rule must always be present, inject it via the
+pack's `header`/`footer` or size the phase budget to accommodate it. Both kinds
+flow through the standard phase-filter → sensitivity → firewall → scoring →
+dedup → budget pipeline with no special-casing.
 
 ### Constructing a card
 
@@ -72,13 +76,18 @@ mgr.ingest_sync(card)
 ## Task matching
 
 contextweaver does **not** run a separate skill-card matcher. The card competes
-in the normal scoring pass: its `text` is scored lexically against the current
-query (default `tfidf` / `bm25`), and the highest-scoring items that fit the
-phase budget are kept. Two consequences worth designing for:
+in the normal scoring pass: its `text` is scored against the current query with
+tokenized Jaccard overlap, combined with tag overlap (`metadata["tags"]`),
+recency, item-kind priority, and a token-cost penalty (see
+[`context/scoring.py`](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/context/scoring.py)).
+This is **not** TF-IDF or BM25 — those are *routing* backends, a separate
+subsystem. The highest-scoring items that fit the phase budget are kept. Two
+consequences worth designing for:
 
 - **Matching quality is a function of the card's `text`.** Put the words a
   query would use into the guidance itself; do not hide the trigger only in
-  `metadata`, which is not scored.
+  free-form `metadata` such as `scope`, which is not scored. (The one scored
+  metadata field is `metadata["tags"]`, which contributes tag overlap.)
 - **`metadata["scope"]` is yours to enforce.** contextweaver preserves it but
   does not filter on it. If you want a card to apply only to one module, read
   `metadata["scope"]` in your own pre-ingest filter and skip cards that do not

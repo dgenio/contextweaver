@@ -54,7 +54,7 @@ or framework. The full checklist is in
 In short:
 
 1. Implement `src/contextweaver/adapters/<name>.py` using the
-   `from_<protocol>(...) -> ContextManager` / `to_<protocol>(pack) -> payload`
+   `from_<protocol>(..., into=...) -> list[ContextItem]` / `to_<protocol>(items) -> payload`
    convention.
 2. Re-export the public surface from `adapters/__init__.py`.
 3. Add `tests/test_adapters_<name>.py` covering both directions (round-trip

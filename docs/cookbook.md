@@ -376,10 +376,13 @@ mgr.ingest_tool_result_sync(
 )
 ```
 
-The gate output flows back through the context firewall like any other tool
-result: a compact summary enters the prompt and the full report is stored
-out-of-band under `mgr.artifact_store`. The model never sees the raw scanner
-output unless it drills into the artifact.
+Whether the gate output is firewalled depends on its size. `ingest_tool_result_sync`
+only intercepts output longer than `firewall_threshold` (default 2000 characters):
+above that threshold a compact summary enters the prompt and the full report is
+stored out-of-band under `mgr.artifact_store`, so the model only sees the raw
+scanner output if it drills into the artifact. Shorter output is kept inline as the
+item's `text` and stays eligible for the prompt — pass a lower `firewall_threshold`
+to `ingest_tool_result_sync` if you want gate output always summarised.
 
 ### As a CI step
 
