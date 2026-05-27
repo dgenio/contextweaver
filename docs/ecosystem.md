@@ -98,7 +98,7 @@ RAG retrieves documents. contextweaver compiles agent context.
 They compose cleanly:
 
 1. Run RAG against your document corpus.
-2. Ingest retrieved chunks as `ContextItem(kind=doc_snippet, ...)`.
+2. Ingest retrieved chunks as `ContextItem(kind=ItemKind.doc_snippet, ...)`.
 3. Let contextweaver score those chunks against facts, tool results, and recent
    history under the same token budget.
 
