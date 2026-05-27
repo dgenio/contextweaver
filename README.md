@@ -511,7 +511,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.10.0**.
+Current package version: **0.11.0**.
 
 Recent milestones:
 
@@ -520,6 +520,7 @@ Recent milestones:
 | **v0.8** | ✅ complete | CrewAI adapter Phase 1, Mem0 external-memory backend, provider-SDK-leak tests |
 | **v0.9** | ✅ complete | Provider message adapters, cache-stable routing, launch polish |
 | **v0.10** | ✅ complete | `contextweaver mcp serve`, MCP Context Gateway architecture, gateway benchmark suite, route/context explanations |
+| **v0.11** | ✅ complete | Memory-source adapter interface, session-handoff context pack, "when not to use" guidance |
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
 | **v1.0** | 📋 planned | API freeze, documented deprecation policy, long-term compatibility window |
 
@@ -680,7 +681,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
 | **v0.7 — Reference architectures + routing pipeline** (2026-05-18) | ✅ complete | Explicit routing pipeline, embedding backend, history-aware routing, code-review bot + voice agent architectures, FastMCP CodeMode hooks |
 | **v0.8 — CrewAI + Mem0** (2026-05-19) | ✅ complete | CrewAI adapter (Phase 1), Mem0 external-memory backend, provider-SDK-leak invariant tests |
 | **v0.9 — Launch polish + adapters** (2026-05-20) | ✅ complete | Budget checks, provider adapters, benchmark transparency suite, launch polish |
-| **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ current | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
+| **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ complete | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
+| **v0.11 — Memory source + session handoff** (2026-05-27) | ✅ current | `MemorySource` protocol + `JsonFixtureMemorySource`, session-handoff context pack, "when not to use" section |
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
 | **v1.0 — API stability** | 📋 planned | API freeze, semantic-versioning commitment, long-term support window |
 | **Future** | 📋 planned | DAG visualization, LLM-assisted labeler, distributed stores, multi-agent coordination |
