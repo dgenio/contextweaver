@@ -132,8 +132,10 @@ Three options, in order of effort:
 - **Token estimator is `CharDivFourEstimator`** in the benchmark, not
   real `tiktoken.cl100k_base`. Production paths can pass a real
   `tiktoken` estimator; the benchmark uses chars-÷-4 to stay
-  network-independent. Parity check is tracked under
-  [issue #268](https://github.com/dgenio/contextweaver/issues/268).
+  network-independent. The scorecard includes a token-estimator parity
+  section when `cl100k_base` is available, and the
+  [troubleshooting guide](troubleshooting.md#offline-air-gapped-tiktoken-warning)
+  explains the offline fallback warning.
 
 ## Is this related to similarly named ContextWeaver projects or research?
 

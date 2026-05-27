@@ -1,0 +1,14 @@
+{
+  "$schema": "https://aka.ms/vscode-mcp-schema",
+  "servers": {
+    "contextweaver-gateway": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "${workspaceFolder}/examples/recipes/serve_gateway.py",
+        "--catalog",
+        "${workspaceFolder}/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json"
+      ]
+    }
+  }
+}

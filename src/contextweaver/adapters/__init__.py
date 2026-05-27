@@ -5,7 +5,9 @@ Provides thin, pure stateless adapters across three responsibility groups:
 1. **Protocol adapters** — convert external protocol data into
    contextweaver-native types and back: MCP (:mod:`.mcp`),
    FastMCP (:mod:`.fastmcp`), A2A (:mod:`.a2a`), weaver-spec
-   (:mod:`.weaver_contracts`), and CrewAI (:mod:`.crewai`).
+   (:mod:`.weaver_contracts`), CrewAI (:mod:`.crewai`),
+   Pydantic AI (:mod:`.pydantic_ai`), smolagents (:mod:`.smolagents`),
+   and Agno (:mod:`.agno`).
 2. **Runtime modes** — front upstream MCP servers as a transparent
    proxy or two-tool gateway: :mod:`.proxy_runtime`, :mod:`.mcp_proxy`,
    :mod:`.mcp_gateway`, :mod:`.mcp_proxy_server`,
@@ -26,6 +28,15 @@ from contextweaver.adapters.a2a import (
     a2a_agent_to_selectable,
     a2a_result_to_envelope,
     load_a2a_session_jsonl,
+)
+from contextweaver.adapters.agno import (
+    agno_tool_to_selectable,
+    agno_tools_to_catalog,
+    from_agno_agent,
+    from_agno_session,
+    infer_agno_namespace,
+    load_agno_catalog,
+    selectable_from_agno_tool,
 )
 from contextweaver.adapters.anthropic_messages import (
     from_anthropic_messages,
@@ -77,6 +88,23 @@ from contextweaver.adapters.openai_messages import (
     to_openai_messages,
 )
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime, UpstreamCall
+from contextweaver.adapters.pydantic_ai import (
+    from_pydantic_ai_messages,
+    infer_pydantic_ai_namespace,
+    load_pydantic_ai_catalog,
+    pydantic_ai_tool_to_selectable,
+    pydantic_ai_tools_to_catalog,
+    selectable_from_pydantic_tool,
+    to_pydantic_ai_messages,
+)
+from contextweaver.adapters.smolagents import (
+    from_smolagents_agent,
+    infer_smolagents_namespace,
+    load_smolagents_catalog,
+    selectable_from_smolagents_tool,
+    smolagents_tool_to_selectable,
+    smolagents_tools_to_catalog,
+)
 from contextweaver.adapters.weaver_contracts import (
     from_weaver_choice_card,
     from_weaver_choice_card_single,
@@ -102,27 +130,39 @@ __all__ = [
     "UpstreamCall",
     "a2a_agent_to_selectable",
     "a2a_result_to_envelope",
+    "agno_tool_to_selectable",
+    "agno_tools_to_catalog",
     "crewai_tool_to_selectable",
     "crewai_tools_to_catalog",
     "dispatch_meta_tool",
     "dispatch_proxy_request",
     "fastmcp_tool_to_selectable",
     "fastmcp_tools_to_catalog",
+    "from_agno_agent",
+    "from_agno_session",
     "from_anthropic_messages",
     "from_gemini_contents",
     "from_openai_messages",
+    "from_pydantic_ai_messages",
+    "from_smolagents_agent",
     "from_weaver_choice_card",
     "from_weaver_choice_card_single",
     "from_weaver_frame",
     "from_weaver_routing_decision",
     "from_weaver_selectable_item",
+    "infer_agno_namespace",
     "infer_crewai_namespace",
     "infer_fastmcp_namespace",
     "infer_namespace",
+    "infer_pydantic_ai_namespace",
+    "infer_smolagents_namespace",
     "load_a2a_session_jsonl",
+    "load_agno_catalog",
     "load_crewai_catalog",
     "load_fastmcp_catalog",
     "load_mcp_session_jsonl",
+    "load_pydantic_ai_catalog",
+    "load_smolagents_catalog",
     "make_context_hook",
     "make_discovery_tool",
     "make_gateway_meta_tools",
@@ -130,9 +170,17 @@ __all__ = [
     "make_stripped_tools_list",
     "mcp_result_to_envelope",
     "mcp_tool_to_selectable",
+    "pydantic_ai_tool_to_selectable",
+    "pydantic_ai_tools_to_catalog",
+    "selectable_from_agno_tool",
+    "selectable_from_pydantic_tool",
+    "selectable_from_smolagents_tool",
+    "smolagents_tool_to_selectable",
+    "smolagents_tools_to_catalog",
     "to_anthropic_messages",
     "to_gemini_contents",
     "to_openai_messages",
+    "to_pydantic_ai_messages",
     "to_weaver_choice_card",
     "to_weaver_choice_cards",
     "to_weaver_frame",

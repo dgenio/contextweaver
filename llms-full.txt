@@ -73,7 +73,7 @@ python -m contextweaver demo     # 5-step end-to-end demo
   <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
 </p>
 
-[📖 Documentation](https://dgenio.github.io/contextweaver) · [🧭 Which pattern fits my use case?](docs/which_pattern.md) · [📊 Adopter benchmark report](docs/benchmark_report.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
+[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
 
 ---
 
@@ -169,6 +169,38 @@ contextweaver provides two cooperating engines:
 
 ---
 
+## When not to use contextweaver
+
+contextweaver is a context compiler for tool-using agents — its value scales
+with the size of the catalog and the length of the conversation. Reach for
+something simpler when none of that pressure exists:
+
+- **Small tool catalogs (≤ 5 tools).** Dumping every schema into the prompt
+  costs a few hundred tokens. Building a routing graph and running beam
+  search adds latency and a dependency you don't need.
+- **Single-shot Q&A or one-turn agents.** With no history to compact and no
+  follow-up phases (`call` / `interpret` / `answer`), phase-aware budgeting
+  is dead weight — pass the user's message straight to the model.
+- **Tiny tool outputs.** If every `tool_result` is comfortably under the
+  configured `firewall_threshold` (default 2000 characters), the
+  [context firewall](docs/context_firewall.md) correctly no-ops — you're
+  paying the conceptual cost of the firewall for zero token savings.
+- **Full context is cheaper than the engineering.** If your naïve prompt
+  fits comfortably under the model's context window and your token bill is
+  not a concern, the [before/after scorecard](benchmarks/scorecard.md)
+  numbers won't move the needle.
+- **You need non-deterministic, LLM-driven routing.** contextweaver's
+  routing engine is deterministic by design (tie-break by sorted ID). If
+  you want an LLM to decide which tool to call from free-form reasoning,
+  LangGraph or a plain `tool_choice="auto"` call is a better fit — see
+  [`docs/comparison.md`](docs/comparison.md) for the trade-offs.
+
+If you're not sure, the [10-minute Quickstart](#10-minute-quickstart) below
+is the cheapest way to find out: a 40-tool catalog and a 50-turn transcript
+is the smallest scenario where contextweaver clearly pays for itself.
+
+---
+
 ## Quickstart
 
 ### Install
@@ -177,23 +209,35 @@ contextweaver provides two cooperating engines:
 pip install contextweaver
 ```
 
-`contextweaver` ships with a small, opinionated core: `tiktoken`,
-`PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, and `rich`. These power
-accurate token budgeting, YAML catalog/config files, the default lexical
-retrieval backend, MCP gateway/proxy surfaces, schema validation, and the CLI.
+`contextweaver` ships with a minimal, opinionated core: `tiktoken`,
+`PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, Typer, and Rich. These power
+token budgeting, YAML catalog/config files, the default lexical retrieval
+backend, the MCP proxy/gateway runtime, schema validation, and the CLI.
 
 Optional capabilities are gated behind extras so the core install stays small:
 
 | Extra | What it adds |
 |---|---|
 | `contextweaver[cli]` | Deprecated no-op alias; Typer/Rich now ship in core |
-| `contextweaver[retrieval]` | Fuzzy lexical matching backend (rapidfuzz) |
+| `contextweaver[weaver-spec]` | Weaver Stack contract adapters (`weaver_contracts`) |
+| `contextweaver[fastmcp]` | FastMCP catalog adapter and discovery helpers |
+| `contextweaver[crewai]` | CrewAI runtime integration |
+| `contextweaver[pydantic-ai]` | Pydantic AI runtime integration |
+| `contextweaver[smolagents]` | Hugging Face smolagents runtime integration |
+| `contextweaver[agno]` | Agno runtime integration |
+| `contextweaver[langchain]` | LangChain integration helpers |
+| `contextweaver[voice]` | Pipecat voice-agent integration |
+| `contextweaver[retrieval]` | Fuzzy lexical matching backend (`rapidfuzz`) |
+| `contextweaver[embeddings]` | Sentence-transformers embedding backend |
+| `contextweaver[sqlite]` | SQLite store install contract (stdlib-backed today) |
+| `contextweaver[mem0]` | Mem0 external-memory backend |
 | `contextweaver[otel]` | OpenTelemetry tracing + metrics export |
+| `contextweaver[e2e-eval]` | Optional real-model benchmark hook (no dependency today) |
+| `contextweaver[docs]` | MkDocs documentation toolchain |
+| `contextweaver[dev]` | Test, lint, type-check, and fixture toolchain |
 | `contextweaver[ann]` | Approximate-nearest-neighbour backend (reserved) |
 | `contextweaver[graph]` | NetworkX-backed graph ops (reserved) |
-| `contextweaver[fastmcp]` | FastMCP catalog adapter |
-| `contextweaver[langchain]` | LangChain integration helpers |
-| `contextweaver[all]` | All optional capabilities |
+| `contextweaver[all]` | Convenience bundle for broad optional runtime capabilities |
 
 Or from source:
 
@@ -297,6 +341,10 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
 ---
 
@@ -305,6 +353,7 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 | Concept | Description |
 |---|---|
 | `ContextItem` | Atomic event log entry: user turn, agent message, tool call, tool result, fact, plan state. |
+| `Sensitivity` | `ContextItem.sensitivity` defaults to `public`; the default policy drops `confidential` and `restricted` items before they reach the prompt. |
 | `Phase` | `route` / `call` / `interpret` / `answer` — each with its own token budget. |
 | `ContextFirewall` | Intercepts tool results: stores raw bytes out-of-band, injects compact summary (with truncation for large outputs). |
 | `ChoiceGraph` | Bounded DAG over the tool catalog. Router beam-searches it; LLM sees only a focused shortlist. |
@@ -428,6 +477,10 @@ contextweaver works with any LLM provider and any agent framework:
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -509,7 +562,7 @@ Recent milestones:
 > [Beta readiness checklist](docs/stability.md#beta-readiness-checklist) is
 > complete or intentionally revised.
 
-### Comparison
+### 7. Comparison
 
 > _Snapshot of the launch landscape as of 2026-05-20 — see footnotes for the
 > versions referenced and the evidence behind each non-trivial claim. Will be
@@ -545,7 +598,7 @@ contextweaver ships with a CLI for quick experimentation:
 contextweaver demo                                    # end-to-end demonstration
 contextweaver init                                    # scaffold config + sample catalog
 contextweaver build --catalog c.json --out g.json    # build routing graph
-contextweaver route --graph g.json --query "send email"
+contextweaver route --graph g.json --catalog c.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
@@ -562,10 +615,16 @@ contextweaver replay --session session.json --phase answer
 | `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
 | `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
 | `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
+| `crewai_adapter_demo.py` | CrewAI adapter: `BaseTool` → catalog → routing |
+| `pydantic_ai_adapter_demo.py` | Pydantic AI adapter: tools + lossless message round-trip |
+| `smolagents_adapter_demo.py` | smolagents adapter: tools + `MultiStepAgent` step-log ingestion |
+| `agno_adapter_demo.py` | Agno adapter: toolkit → catalog + session-history ingestion |
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 | `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
 | `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
 | `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
+| `architectures/mcp_context_gateway/main_real.py` | Same flow, run against verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (`server-time`, `server-filesystem`, `server-everything`) committed under `real_catalogs/` |
+| `recipes/serve_gateway.py` | Minimal stdio launcher used by the [Claude Desktop](docs/recipes/claude_desktop.md) and [GitHub Copilot](docs/recipes/github_copilot.md) recipes |
 | `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
 ```bash
@@ -597,8 +656,12 @@ to any LLM or framework. See dedicated guides for
 [LlamaIndex](docs/integration_llamaindex.md),
 [LangChain + LangGraph](docs/integration_langchain.md),
 [OpenAI Agents SDK](docs/integration_openai_adk.md),
-[Google ADK / Vertex AI](docs/integration_google_adk.md), and
-[Pipecat](docs/integration_pipecat.md).  If your runtime isn't listed, the
+[Google ADK / Vertex AI](docs/integration_google_adk.md),
+[Pipecat](docs/integration_pipecat.md),
+[CrewAI](docs/integration_crewai.md),
+[Pydantic AI](docs/integration_pydantic_ai.md),
+[smolagents](docs/integration_smolagents.md), and
+[Agno](docs/integration_agno.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 
@@ -606,7 +669,10 @@ is the canonical starting point.
 Typically 10–50 ms for a context build (depends on event log size and deduplication).
 For real-time / async agents, run `build_sync()` in a worker thread (e.g.
 `await asyncio.to_thread(mgr.build_sync, phase, query)`) so the synchronous
-pipeline does not block the event loop.
+pipeline does not block the event loop. If an offline or air-gapped run prints a
+`tiktoken cl100k_base encoding unavailable` warning, see the
+[troubleshooting note](docs/troubleshooting.md#offline-air-gapped-tiktoken-warning);
+the fallback keeps budget enforcement deterministic.
 
 See [docs/troubleshooting.md](docs/troubleshooting.md) for the full troubleshooting
 guide, debugging techniques, optimisation tips, and 10+ common issues with solutions.
@@ -641,10 +707,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
 | **v0.6 — Adopter surface** (2026-05-17) | ✅ complete | Typer + Rich CLI rewrite, OTel GenAI semconv, provider message adapters (OpenAI / Anthropic / Gemini), 5-line adoption snippet |
 | **v0.7 — Reference architectures + routing pipeline** (2026-05-18) | ✅ complete | Explicit routing pipeline, embedding backend, history-aware routing, code-review bot + voice agent architectures, FastMCP CodeMode hooks |
 | **v0.8 — CrewAI + Mem0** (2026-05-19) | ✅ complete | CrewAI adapter (Phase 1), Mem0 external-memory backend, provider-SDK-leak invariant tests |
-| **v0.9 — Launch polish + adapters** (2026-05) | ✅ complete | Provider message adapters, cache-stable routing, launch polish |
-| **v0.10 — MCP gateway runtime + audit surfaces** (2026-05) | ✅ complete | `contextweaver mcp serve`, full MCP Context Gateway architecture, gateway benchmark suite, route/context explanations |
+| **v0.9 — Launch polish + adapters** (2026-05-20) | ✅ complete | Budget checks, provider adapters, benchmark transparency suite, launch polish |
+| **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ current | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
-| **v1.0 — API stability** | 📋 planned | API freeze, documented deprecation policy, long-term compatibility window |
+| **v1.0 — API stability** | 📋 planned | API freeze, semantic-versioning commitment, long-term support window |
 | **Future** | 📋 planned | DAG visualization, LLM-assisted labeler, distributed stores, multi-agent coordination |
 
 See [CHANGELOG.md](CHANGELOG.md) for the detailed release history.
@@ -1084,6 +1150,15 @@ If you are working from a repository checkout instead, install the package in ed
 pip install -e ".[dev]"
 ```
 
+If your network blocks `openaipublic.blob.core.windows.net`, the demo or
+token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.
+That warning is harmless: contextweaver falls back to the deterministic
+chars/4 estimator and keeps enforcing budgets. To suppress it while keeping
+exact `tiktoken` counts, pre-warm a `TIKTOKEN_CACHE_DIR` on a connected
+machine and copy that cache into the offline environment; the
+[troubleshooting guide](troubleshooting.md#offline-air-gapped-tiktoken-warning)
+has the full workflow.
+
 ## 3. Your First Context Build (3 minutes)
 
 Scenario: an agent receives a question, decides to query a database, and builds
@@ -1155,6 +1230,47 @@ What just happened:
 - You ingested four events into the event log.
 - `build_sync()` ran the context pipeline for the `answer` phase.
 - The prompt was compiled from the most relevant items and returned with build stats.
+
+### Sensitivity & Default Drops
+
+Every `ContextItem` has a `sensitivity` level. It defaults to `public`, and
+the default policy is conservative: items at or above
+`Sensitivity.confidential` are dropped before scoring and rendering.
+
+```python
+from contextweaver.config import ContextPolicy
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
+
+mgr = ContextManager()
+mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="public"))
+mgr.ingest(
+    ContextItem(
+        id="c1",
+        kind=ItemKind.user_turn,
+        text="confidential",
+        sensitivity=Sensitivity.confidential,
+    )
+)
+
+pack = mgr.build_sync(phase=Phase.answer, query="any")
+print(pack.stats.dropped_reasons.get("sensitivity", 0))  # 1
+```
+
+If you want to keep `confidential` items but still drop `restricted` items,
+raise the floor:
+
+```python
+policy = ContextPolicy(sensitivity_floor=Sensitivity.restricted)
+mgr = ContextManager(policy=policy)
+```
+
+If you want sensitive items to remain visible only as masks, use redact mode:
+
+```python
+policy = ContextPolicy(sensitivity_action="redact")
+mgr = ContextManager(policy=policy)
+```
 
 ## 4. Try the Context Firewall (4 minutes)
 
@@ -1684,6 +1800,13 @@ delivered as `isError=true` `CallToolResult` payloads.
   end-to-end gateway flow using `StubUpstream`.
 - [`examples/mcp_proxy_demo.py`](../examples/mcp_proxy_demo.py) —
   end-to-end proxy flow.
+- [Recipes > Claude Desktop](recipes/claude_desktop.md) — put a
+  contextweaver gateway in front of Claude Desktop's MCP client.
+- [Recipes > GitHub Copilot](recipes/github_copilot.md) — put a
+  contextweaver gateway in front of VS Code Copilot Chat (agent mode).
+- [`examples/architectures/mcp_context_gateway/main_real.py`](../examples/architectures/mcp_context_gateway/main_real.py)
+  — the reference architecture run against verbatim `tools/list`
+  snapshots of MIT-licensed reference MCP servers.
 
 ---
 
