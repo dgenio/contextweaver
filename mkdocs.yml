@@ -1,8 +1,8 @@
 site_name: contextweaver
 site_url: https://dgenio.github.io/contextweaver
 site_description: >-
-  Phase-specific, budget-aware context engineering for tool-using AI agents.
-  Minimal core dependencies. Python ≥ 3.10.
+  Context firewall + tool router for MCP and tool-heavy AI agents.
+  Phase-specific, budget-aware context engineering. Python ≥ 3.10.
 
 repo_url: https://github.com/dgenio/contextweaver
 repo_name: dgenio/contextweaver
@@ -64,6 +64,7 @@ nav:
   - Quickstart: quickstart.md
   - Showcase: showcase.md
   - Where it fits: comparison.md
+  - Ecosystem Map: ecosystem.md
   - FAQ: faq.md
   - Which pattern fits?: which_pattern.md
   - Context Firewall: context_firewall.md
@@ -98,6 +99,9 @@ nav:
       - External Memory: integration_memory.md
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md
+  - Adopter Benchmark Report: benchmark_report.md
+  - Stability: stability.md
+  - Launch Kit: launch_kit.md
   - Contracts: contracts.md
   - Observability: integration_otel.md
   - Troubleshooting: troubleshooting.md

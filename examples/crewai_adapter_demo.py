@@ -73,7 +73,7 @@ def main() -> None:
     # 1. Namespace inference picks the prefix before the first ``_`` / ``.``.
     print("[1] Namespace inference:")
     for name in ("github_search_repos", "slack_send_message", "calendar.create_event"):
-        print(f"    {name!r:30s} → namespace={infer_crewai_namespace(name)!r}")
+        print(f"    {name!r:30s} -> namespace={infer_crewai_namespace(name)!r}")
 
     # 2. Single conversion.
     print("\n[2] Single tool conversion:")

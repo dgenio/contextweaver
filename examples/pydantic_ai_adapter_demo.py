@@ -133,7 +133,7 @@ def main() -> None:
         "calendar.create_event",
         "weather_get_forecast",
     ):
-        print(f"    {name!r:30s} → namespace={infer_pydantic_ai_namespace(name)!r}")
+        print(f"    {name!r:30s} -> namespace={infer_pydantic_ai_namespace(name)!r}")
 
     # 2. Single conversion.
     print("\n[2] Single tool conversion:")

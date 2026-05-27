@@ -125,7 +125,7 @@ def main() -> None:
     # 1. Namespace inference.
     print("[1] Namespace inference:")
     for name in ("duckduckgo_search", "yfinance_get_company_info", "calculator_evaluate"):
-        print(f"    {name!r:35s} → namespace={infer_agno_namespace(name)!r}")
+        print(f"    {name!r:35s} -> namespace={infer_agno_namespace(name)!r}")
 
     # 2. Single conversion.
     print("\n[2] Single tool conversion:")

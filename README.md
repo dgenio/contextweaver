@@ -7,11 +7,24 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
 
-> **Context firewall + tool router for tool-heavy AI agents.** Phase-specific,
-> budget-aware **context engineering** with a deterministic core — large tool
-> outputs stay out of the prompt, large catalogs collapse to a few
-> `ChoiceCard`s, and your token bill drops 42–75 % on the committed
-> benchmarks.
+> **Context firewall + tool router for MCP and tool-heavy agents.** Keep huge
+> tool catalogs, tool schemas, tool results, and long histories out of the
+> prompt without losing the context your agent needs. Phase-specific,
+> budget-aware **context engineering** with a deterministic core: large
+> catalogs collapse to a few `ChoiceCard`s, large outputs stay artifact-backed,
+> and prompt tokens drop 42-84 % on the committed benchmarks.
+
+| If your agent has... | contextweaver gives you... |
+|---|---|
+| Too many MCP / FastMCP / Python tools | A bounded `ChoiceCard` shortlist instead of dumping every schema into the route prompt. |
+| Huge JSON, logs, tables, or binary tool results | An artifact-backed context firewall: compact summary in the prompt, raw bytes out of band. |
+| Long tool-using conversations | Phase-specific context packs with budgeted selection and dependency closure. |
+
+| Use this when... | Do not use this when... |
+|---|---|
+| You already have an agent loop and need runtime context control. | You need an agent framework, LLM SDK, or tool executor. |
+| Your model-visible tool list or tool-result payloads are getting too large. | Your agent has a handful of tiny tools and no context-budget pressure. |
+| You want deterministic prompt budgeting and traceable drops. | You only need long-term memory, RAG, or observability by itself. |
 
 <p align="center">
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
@@ -32,7 +45,7 @@ python -m contextweaver demo     # 5-step end-to-end demo
   <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
 </p>
 
-[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
+[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
 
 ---
 
@@ -73,12 +86,12 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
-Cost:         41.6%–74.5% fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
+Cost:         41.6 %-84.3 % fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
 ```
 
 [^naive-baseline]: Measured against the "concatenate all tool schemas + full
-    conversation history" baseline using `tiktoken.cl100k_base` on the four
-    committed benchmark scenarios. Range 41.6 %–74.5 %, average 55.8 %.
+    conversation history" baseline using `tiktoken.cl100k_base` on the six
+    committed benchmark scenarios. Range 41.6 %-84.3 %, average 64.3 %.
     Reproducible via `make benchmark-matrix && make scorecard` — see the
     *vs. naïve concat baseline* section of
     [`benchmarks/scorecard.md`](benchmarks/scorecard.md) and the
@@ -177,6 +190,7 @@ Optional capabilities are gated behind extras so the core install stays small:
 
 | Extra | What it adds |
 |---|---|
+| `contextweaver[cli]` | Deprecated no-op alias; Typer/Rich now ship in core |
 | `contextweaver[weaver-spec]` | Weaver Stack contract adapters (`weaver_contracts`) |
 | `contextweaver[fastmcp]` | FastMCP catalog adapter and discovery helpers |
 | `contextweaver[crewai]` | CrewAI runtime integration |
@@ -340,9 +354,10 @@ contextweaver is built for production use with comprehensive quality gates:
   produce identical outputs. Configurable retrieval backends (TF-IDF, BM25, fuzzy)
   preserve determinism within each mode.
 - **Public benchmark scorecard** — top-k recall, token savings, and routing latency at
-  catalog sizes 50 / 83 / 1000, plus context pipeline metrics across three reference
+  catalog sizes 50 / 83 / 1000, plus context pipeline metrics across six reference
   scenarios. See [`benchmarks/scorecard.md`](benchmarks/scorecard.md) (regenerate with
-  `make scorecard`).
+  `make scorecard`) and the adopter-facing
+  [`benchmark report`](docs/benchmark_report.md).
 
 Run the full suite yourself:
 
@@ -403,9 +418,9 @@ ChainWeaver, agent-kernel):
   (the source the gate fetches; the same documents are also published at
   `https://weaver-spec.dev/contracts/v0/`)
 
-> contextweaver is positioned to become the standard context management layer for AI agents.
-> Supporting MCP, A2A, and weaver-spec now means your codebase is future-proof as these
-> protocols mature and gain wider adoption.
+> contextweaver is designed as a protocol-friendly context management layer for
+> tool-using agents. Supporting MCP, A2A, and weaver-spec keeps the integration
+> boundary explicit as these protocols mature.
 
 - [MCP Integration](docs/integration_mcp.md)
 - [A2A Integration](docs/integration_a2a.md)
@@ -442,23 +457,24 @@ contextweaver works with any LLM provider and any agent framework:
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
 
-### 5. Versioning & Compatibility
+### 5. Stability & Compatibility
 
-contextweaver follows [Semantic Versioning](https://semver.org/):
+contextweaver is currently **Alpha** in package metadata because the project is
+still clarifying its pre-1.0 stability boundary. The core context/routing APIs
+are intentionally deterministic and heavily tested; newer runtime surfaces such
+as gateway commands, adapters, and extras are called out as experimental where
+appropriate. See the detailed [stability and 1.0 readiness checklist](docs/stability.md).
 
-- **Breaking changes** to public APIs only in major versions
-- **Deprecation policy**: deprecated public APIs are warned for at least one minor version and removed only in a later major release
-- **API stability**: public APIs in `contextweaver.*` are stable; internal `_*` modules may change
-- **Python support**: 3.10+ (aligned with Python's active security support lifecycle)
-
-| Version | Status | Notes |
+| Surface | Current promise | Notes |
 |---|---|---|
-| **0.1.x – 0.9.x** | Shipped | Foundation engines, benchmark scorecards, integration guides, MCP gateway/proxy runtime, provider adapters, persistent stores, reference architectures |
-| **0.10.x** | Current | Experimental `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations, launch fixtures |
-| **1.0.0** | Planned | API freeze and long-term compatibility commitments after the 0.x launch-polish line |
+| Documented public APIs | Change deliberately, with changelog/migration notes when behavior changes. | Dataclasses, stores, context/routing APIs, and documented adapters. |
+| Experimental runtime surfaces | May change before 1.0. | MCP gateway/proxy commands, newer optional extras, and reference architecture variants. |
+| Internal modules | No compatibility promise. | Modules beginning with `_` and test helpers are implementation details. |
+| Python support | Python 3.10+. | Aligned with the package metadata and CI matrix. |
 
-> Adopting a library is a long-term commitment. contextweaver's versioning policy ensures you
-> can upgrade safely, and the roadmap shows where it's headed.
+> Adopting a library is a long-term commitment. The stability page makes the
+> Alpha/Beta/1.0 line explicit so teams can decide which surfaces are ready for
+> their risk tolerance.
 
 #### Weaver Spec Compatibility
 
@@ -493,7 +509,33 @@ validation. CI fetches the schemas from
 mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 (same content, different host). Run locally with `make weaver-conformance`.
 
-### 6. Comparison
+### 6. Roadmap & Community
+
+Current package version: **0.11.0**.
+
+Recent milestones:
+
+| Milestone | Status | Highlights |
+|---|---|---|
+| **v0.8** | ✅ complete | CrewAI adapter Phase 1, Mem0 external-memory backend, provider-SDK-leak tests |
+| **v0.9** | ✅ complete | Provider message adapters, cache-stable routing, launch polish |
+| **v0.10** | ✅ complete | `contextweaver mcp serve`, MCP Context Gateway architecture, gateway benchmark suite, route/context explanations |
+| **v0.11** | ✅ complete | Memory-source adapter interface, session-handoff context pack, "when not to use" guidance |
+| **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
+| **v1.0** | 📋 planned | API freeze, documented deprecation policy, long-term compatibility window |
+
+**Community:**
+
+- [GitHub Discussions](https://github.com/dgenio/contextweaver/discussions) — ask questions, share patterns
+- [GitHub Issues](https://github.com/dgenio/contextweaver/issues) — report bugs, request features
+- [CHANGELOG](CHANGELOG.md) — track every release
+
+> contextweaver is under active development with a clear roadmap. The core is
+> usable today; the project remains Alpha until the
+> [Beta readiness checklist](docs/stability.md#beta-readiness-checklist) is
+> complete or intentionally revised.
+
+### 7. Comparison
 
 > _Snapshot of the launch landscape as of 2026-05-20 — see footnotes for the
 > versions referenced and the evidence behind each non-trivial claim. Will be
@@ -501,14 +543,14 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.10.0](https://pypi.org/project/contextweaver/0.10.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42–75 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.10.0](https://pypi.org/project/contextweaver/0.10.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
 | **Raw MCP** ([modelcontextprotocol v0.1](https://modelcontextprotocol.io)) | ❌ Servers expose tools; routing across many servers is the client's problem | ❌ Out of scope for the protocol | ❌ Out of scope for the protocol | ✅ Wire protocol is deterministic | ✅ — _is_ the protocol |
 
 [^cw-route]: `contextweaver.routing.router.Router` ships a four-stage pipeline (`retrieve → rerank → navigate → pack`) with deterministic tie-break by `id`. Locked by `tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`.
-[^cw-bench]: Range from the committed scorecard ([`benchmarks/scorecard.md`](benchmarks/scorecard.md)) using `tiktoken.cl100k_base` against the naïve baseline ([`scripts/baseline_naive.py`](scripts/baseline_naive.py)). Average 55.8 %; min 41.6 % on the smallest scenario; max 74.5 % on `stress_conversation.jsonl`.
+[^cw-bench]: Range from the committed scorecard ([`benchmarks/scorecard.md`](benchmarks/scorecard.md)) using `tiktoken.cl100k_base` against the naïve baseline ([`scripts/baseline_naive.py`](scripts/baseline_naive.py)). Average 64.3 %; min 41.6 % on `long_conversation.jsonl`; max 84.3 % on `tiny_payload.jsonl`.
 [^cw-fire]: `contextweaver.context.firewall.apply_firewall` plus `ArtifactRef` drilldown selectors (`head` / `lines` / `json_keys` / `rows`). See [`docs/context_firewall.md`](docs/context_firewall.md) and the [`firewall_drilldown_recipe`](examples/cookbook/firewall_drilldown_recipe.py).
 [^cw-det]: Determinism is an invariant — see `docs/agent-context/invariants.md` and `make scorecard-check` in the CI gate.
 [^cw-mcp]: `src/contextweaver/adapters/mcp_proxy.py`, `mcp_gateway.py`, `mcp_proxy_server.py`, `mcp_gateway_server.py`. Bound by `docs/gateway_spec.md`.
@@ -639,7 +681,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
 | **v0.7 — Reference architectures + routing pipeline** (2026-05-18) | ✅ complete | Explicit routing pipeline, embedding backend, history-aware routing, code-review bot + voice agent architectures, FastMCP CodeMode hooks |
 | **v0.8 — CrewAI + Mem0** (2026-05-19) | ✅ complete | CrewAI adapter (Phase 1), Mem0 external-memory backend, provider-SDK-leak invariant tests |
 | **v0.9 — Launch polish + adapters** (2026-05-20) | ✅ complete | Budget checks, provider adapters, benchmark transparency suite, launch polish |
-| **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ current | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
+| **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ complete | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
+| **v0.11 — Memory source + session handoff** (2026-05-27) | ✅ current | `MemorySource` protocol + `JsonFixtureMemorySource`, session-handoff context pack, "when not to use" section |
+| **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
 | **v1.0 — API stability** | 📋 planned | API freeze, semantic-versioning commitment, long-term support window |
 | **Future** | 📋 planned | DAG visualization, LLM-assisted labeler, distributed stores, multi-agent coordination |
 

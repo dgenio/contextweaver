@@ -112,7 +112,7 @@ def main() -> None:
     # 1. Namespace inference.
     print("[1] Namespace inference:")
     for name in ("web_search", "image_generator", "final_answer"):
-        print(f"    {name!r:25s} → namespace={infer_smolagents_namespace(name)!r}")
+        print(f"    {name!r:25s} -> namespace={infer_smolagents_namespace(name)!r}")
 
     # 2. Single conversion.
     print("\n[2] Single tool conversion:")
