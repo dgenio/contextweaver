@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Community & interop docs** — `CODE_OF_CONDUCT.md` (Contributor Covenant
+  2.1) for the GitHub community-standards check (#249); a contributor landing
+  page `docs/contributing_paths.md` mapping time-boxed contribution paths to
+  files, commands, and labels (#325); a cookbook recipe documenting a
+  post-generation safety gate for agent-generated diffs, with no runtime
+  dependency (#332); and `docs/interop_skill_cards.md` mapping a reviewed skill
+  card onto a `ContextItem` with matching / non-matching examples (#333).
 - **Adopter positioning docs** — new adopter-facing benchmark report,
   ecosystem comparison map, stability / Beta / 1.0 readiness checklist, and
   launch kit for reusable public copy and asset links. Issues #323, #324,

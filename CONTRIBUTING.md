@@ -27,6 +27,9 @@ instead.
 
 ## Where to start
 
+- **Not sure where to help?** [`docs/contributing_paths.md`](docs/contributing_paths.md)
+  maps concrete contribution paths (docs, adapters, benchmarks, examples,
+  good-first-issues, AI-assisted work) to the right files, commands, and labels.
 - **First time?** Look for issues labelled
   [`good first issue`](https://github.com/dgenio/contextweaver/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
   These are scoped, well-defined, and don't require deep architectural
@@ -255,3 +258,11 @@ Common labels you will see:
 
 If you want to claim a `good first issue`, comment on the issue first
 so it can be assigned to you — that avoids duplicate work.
+
+## Code of Conduct
+
+This project follows the
+[Contributor Covenant](https://www.contributor-covenant.org) v2.1. By
+participating you agree to uphold it — see
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for the full text and how to report
+unacceptable behaviour.

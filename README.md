@@ -664,7 +664,10 @@ make demo     # run the built-in demo
 make ci       # all of the above
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, and
+[docs/contributing_paths.md](docs/contributing_paths.md) to pick a contribution
+path (docs, adapters, benchmarks, examples, good-first-issues) by how much time
+you have. All contributors agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ---
 

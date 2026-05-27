@@ -71,6 +71,7 @@ nav:
   - Tool Router: tool_router.md
   - Concepts: concepts.md
   - How contextweaver Fits (deeper): interop.md
+  - Skill Cards (interop): interop_skill_cards.md
   - Cookbook: cookbook.md
   - Architectures:
       - Overview: architectures/index.md
@@ -105,6 +106,7 @@ nav:
   - Contracts: contracts.md
   - Observability: integration_otel.md
   - Troubleshooting: troubleshooting.md
+  - Contribution Paths: contributing_paths.md
   - API Reference: reference/
 
 exclude_docs: |
