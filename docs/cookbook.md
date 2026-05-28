@@ -361,7 +361,7 @@ pack = mgr.build_sync(phase=Phase.answer, query="fix the bug")
 
 # 2. Run the gate as a plain subprocess, OUTSIDE the LLM context path.
 result = subprocess.run(
-    ["vibeguard", "gate", "--diff", "--fail-on", "high"],
+    ["vibeguard", "gate", "--diff", "origin/main...HEAD", "--fail-on", "high"],
     capture_output=True,
     text=True,
 )
