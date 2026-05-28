@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docs accuracy follow-up to #337** — aligned the VibeGuard `--diff` shape
+  between the Python subprocess and YAML CI snippets in
+  `docs/cookbook.md` (both now pass `--diff origin/main...HEAD`), and
+  corrected the sensitivity row in `docs/interop_skill_cards.md` so it
+  matches the actual `apply_sensitivity_filter` semantics (items whose
+  sensitivity meets or exceeds the floor are dropped or redacted, per
+  `src/contextweaver/context/sensitivity.py:1-15,118,145-157`). (#338)
+
 ### Added
 
 - **Community & interop docs** — `CODE_OF_CONDUCT.md` (Contributor Covenant
