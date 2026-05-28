@@ -36,8 +36,10 @@ There is no bespoke type — the existing fields carry everything a card needs:
 `ItemKind.policy` for high-priority guidance — `policy` carries a higher kind
 priority in scoring, but inclusion is still subject to per-kind limits
 (`max_items_per_kind`) and the phase token budget, so it is not guaranteed to
-appear in any given prompt). If a rule must always be present, inject it via the
-pack's `header`/`footer` or size the phase budget to accommodate it. Both kinds
+appear in any given prompt). If a rule must always be present, pass it as the
+`header` or `footer` keyword argument to `build_sync()` (its token cost is
+reserved up front — see `BuildStats.header_footer_tokens`) or size the phase
+budget to accommodate it. Both kinds
 flow through the standard phase-filter → sensitivity → firewall → scoring →
 dedup → budget pipeline with no special-casing.
 
@@ -76,9 +78,11 @@ mgr.ingest_sync(card)
 ## Task matching
 
 contextweaver does **not** run a separate skill-card matcher. The card competes
-in the normal scoring pass: its `text` is scored against the current query with
-tokenized Jaccard overlap, combined with tag overlap (`metadata["tags"]`),
-recency, item-kind priority, and a token-cost penalty (see
+in the normal scoring pass: when the query carries tags, the similarity term
+is tokenized Jaccard between the card's `metadata["tags"]` and the query
+tags; otherwise it falls back to tokenized Jaccard between the card's `text`
+and the query text. That similarity term is then combined with recency,
+item-kind priority, and a token-cost penalty (see
 [`context/scoring.py`](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/context/scoring.py)).
 This is **not** TF-IDF or BM25 — those are *routing* backends, a separate
 subsystem. The highest-scoring items that fit the phase budget are kept. Two

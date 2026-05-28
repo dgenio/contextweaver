@@ -34,8 +34,10 @@ and the site is built with `make docs` (preview with `make docs-serve` at
 
 - **README clarity** — tighten [`README.md`](https://github.com/dgenio/contextweaver/blob/main/README.md);
   the first screen is the category pitch.
-- **Recipes** — add a copy-paste pattern to the [Cookbook](cookbook.md). Each
-  recipe is runnable core-only code, so it does not bitrot.
+- **Recipes** — add a copy-paste pattern to the [Cookbook](cookbook.md). Most
+  recipes are runnable core-only code, so they don't bitrot; a few drive an
+  external CLI as a `subprocess` for illustration (e.g. Recipe 7's safety
+  gate) and document that they add no runtime dependency.
 - **Integration pages** — `docs/integration_<framework>.md` explains wiring a
   specific runtime. Use an existing page (e.g. [MCP](integration_mcp.md)) as a
   template.
