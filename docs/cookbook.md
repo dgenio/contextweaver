@@ -12,6 +12,7 @@ The recipes:
 4. [Firewall + drilldown for large tool outputs](#4-firewall-drilldown-for-large-tool-outputs)
 5. [CrewAI routing — bounded tool shortlists for crews](#5-crewai-routing-bounded-tool-shortlists-for-crews)
 6. [External memory backend — Mem0 / Zep / LangMem](#6-external-memory-backend)
+7. [Post-generation safety gate for agent-generated diffs](#7-post-generation-safety-gate-for-agent-generated-diffs)
 
 If you are evaluating where contextweaver fits in your runtime, start with
 the [How contextweaver Fits](interop.md) page first; come back here for
@@ -316,6 +317,87 @@ ctx_mgr = ContextManager(stores=bundle)
 
 Full walkthrough, decision matrix, and the Zep / LangMem follow-up
 status: [External Memory Backends](integration_memory.md).
+
+---
+
+## 7. Post-generation safety gate for agent-generated diffs
+
+**Goal.** Pair contextweaver (which decides *what context the agent acts on*)
+with a deterministic safety gate (which checks *what the agent produced*) so an
+agent that edits files cannot quietly ship an unreviewed change.
+
+**Use this when:** your agent generates or edits code and you want a
+fail-closed check on the resulting diff before it reaches review or merge —
+without putting the scanner inside the LLM's context path.
+
+These are adjacent stages of the same loop, not competitors:
+
+1. contextweaver compiles phase-specific context (route → call → interpret →
+   answer) so the agent acts on the right, bounded information.
+2. The agent generates an artifact — a diff, a file edit, a patch.
+3. A deterministic gate inspects that artifact *outside* the model context.
+   This recipe uses [VibeGuard](https://github.com/dgenio/vibeguard) as the
+   gate, but any diff-aware checker works the same way.
+
+> **No runtime dependency.** contextweaver does not import or require the gate,
+> and contextweaver is **not** a security scanner. The gate is a separate
+> process you run after the agent step. Keep it that way — it is what makes the
+> check deterministic and auditable.
+
+### The loop
+
+```python
+import subprocess
+
+from contextweaver.context.manager import ContextManager
+from contextweaver.types import ContextItem, ItemKind, Phase
+
+mgr = ContextManager()
+mgr.ingest_sync(ContextItem(id="u1", kind=ItemKind.user_turn, text="fix the bug"))
+
+# 1. Compile the answer-phase prompt and let the agent produce a diff.
+pack = mgr.build_sync(phase=Phase.answer, query="fix the bug")
+# diff = your_llm(pack.prompt)  -> apply the edit to the working tree
+
+# 2. Run the gate as a plain subprocess, OUTSIDE the LLM context path.
+result = subprocess.run(
+    ["vibeguard", "gate", "--diff", "--fail-on", "high"],
+    capture_output=True,
+    text=True,
+)
+gate_passed = result.returncode == 0
+
+# 3. Record the gate verdict back into the event log as a tool_result, so a
+#    later interpret/answer turn can reason about *why* a change was blocked.
+mgr.ingest_tool_result_sync(
+    tool_call_id="gate-001",
+    raw_output=result.stdout,
+    tool_name="vibeguard_gate",
+)
+```
+
+Whether the gate output is firewalled depends on its size. `ingest_tool_result_sync`
+only intercepts output longer than `firewall_threshold` (default 2000 characters):
+above that threshold a compact summary enters the prompt and the full report is
+stored out-of-band under `mgr.artifact_store`, so the model only sees the raw
+scanner output if it drills into the artifact. Shorter output is kept inline as the
+item's `text` and stays eligible for the prompt — pass a lower `firewall_threshold`
+to `ingest_tool_result_sync` if you want gate output always summarised.
+
+### As a CI step
+
+The same gate belongs in CI, where it is the merge-blocking check rather than an
+in-loop signal:
+
+```yaml
+# .github/workflows/safety-gate.yml (sketch)
+- name: Safety gate on the proposed diff
+  run: vibeguard gate --diff origin/main...HEAD --fail-on high
+```
+
+This keeps the boundary clean: contextweaver shapes what the agent reads, the
+agent writes, and a deterministic gate — local or in CI — has the final say on
+what merges.
 
 ---
 

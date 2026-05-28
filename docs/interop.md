@@ -157,6 +157,8 @@ These are deliberate scope boundaries. Use your runtime for them.
 
 - [Cookbook](cookbook.md) — copy-paste recipes for FastMCP, A2A,
   bring-your-own-tools, and firewall + drilldown
+- [Skill Cards as Context Artifacts](interop_skill_cards.md) — how reviewed
+  guidance from another Weaver component maps onto a `ContextItem`
 - [MCP Integration](integration_mcp.md) ·
   [A2A Integration](integration_a2a.md)
 - [LlamaIndex](integration_llamaindex.md) ·
