@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sensitivity meets or exceeds the floor are dropped or redacted, per
   `src/contextweaver/context/sensitivity.py:1-15,118,145-157`). (#338)
 
+## [0.11.1] - 2026-05-28
+
 ### Added
 
 - **Community & interop docs** — `CODE_OF_CONDUCT.md` (Contributor Covenant
