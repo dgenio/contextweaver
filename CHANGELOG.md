@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Catalog showcase reference architecture** — a start-here, deterministic
+  example (`examples/architectures/catalog_showcase/`) that narrows a
+  65-tool catalog to a 5-card shortlist, hydrates only the selected tool's
+  schema, and firewalls a large result; wired into `make architectures` and
+  documented at `docs/architectures/catalog_showcase.md`. (#330)
+- **`contextweaver demo --scenario killer`** — the 60-second failure mode:
+  100 tools + a long history + a huge tool result, contrasting a naive loop
+  against contextweaver in character terms (92–99% reductions). New README
+  "The 60-second failure mode" section and `docs/killer_demo.md`. (#322)
+- **LangGraph agent-loop reference architecture** — contextweaver running
+  *inside* a LangGraph `StateGraph`
+  (`examples/architectures/langgraph_agent_loop/`): LangGraph owns control
+  flow, contextweaver owns route/firewall/answer. Guarded import with a
+  hand-rolled fallback so it runs without the framework; new `[langgraph]`
+  extra (also in `[dev]` so CI exercises the real path).
+  `docs/architectures/langgraph_agent_loop.md`. (#326)
+- **Agent-safe evaluation-artifact context profile** — a context-shaping
+  profile (`examples/architectures/eval_artifact_profile/`) with `ok` /
+  `caution` / `high_risk` fixtures that never surfaces `V_hat` without
+  support diagnostics and foregrounds caveats for high-risk artifacts, with
+  runtime-asserted invariants. `docs/architectures/eval_artifact_profile.md`. (#335)
+
 ### Fixed
 
 - **Docs accuracy follow-up to #337** — aligned the VibeGuard `--diff` shape

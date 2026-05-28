@@ -63,6 +63,7 @@ nav:
   - Home: index.md
   - Quickstart: quickstart.md
   - Showcase: showcase.md
+  - 60-second demo: killer_demo.md
   - Where it fits: comparison.md
   - Ecosystem Map: ecosystem.md
   - FAQ: faq.md
@@ -75,10 +76,13 @@ nav:
   - Cookbook: cookbook.md
   - Architectures:
       - Overview: architectures/index.md
+      - Catalog showcase: architectures/catalog_showcase.md
       - MCP Context Gateway: architectures/mcp_context_gateway.md
       - Slack ops bot: architectures/slack_ops_bot.md
       - Code-review bot: architectures/code_review_bot.md
       - Voice agent: architectures/voice_agent.md
+      - LangGraph agent loop: architectures/langgraph_agent_loop.md
+      - Evaluation-artifact profile: architectures/eval_artifact_profile.md
   - Recipes:
       - Overview: recipes/index.md
       - Claude Desktop: recipes/claude_desktop.md

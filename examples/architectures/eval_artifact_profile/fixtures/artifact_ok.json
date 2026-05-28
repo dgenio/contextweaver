@@ -1,0 +1,27 @@
+{
+  "artifact_type": "offline_policy_evaluation",
+  "evaluated": "candidate ranking policy v2 vs production baseline v1",
+  "decision_status": "ok",
+  "support_health": "healthy: effective sample size 18,432; action overlap good; no extrapolation needed",
+  "available_diagnostics": ["support", "uncertainty", "sensitivity", "overlap"],
+  "needs_interpretation": true,
+  "policy_gating": false,
+  "warnings": [],
+  "assumptions": [
+    "logged propensities are correct",
+    "no unobserved confounding in the logging policy"
+  ],
+  "limitations": [
+    "evaluation window covers 14 days of traffic only"
+  ],
+  "key_metrics": {
+    "baseline_value": 0.412,
+    "candidate_value": 0.447,
+    "delta": 0.035,
+    "delta_ci95": [0.011, 0.059]
+  },
+  "decision_stability": "stable across sensitivity sweeps (sign of delta unchanged)",
+  "value_estimate": {"name": "V_hat", "candidate": 0.447, "ci95": [0.421, 0.473]},
+  "provenance": {"producer": "skdr-eval", "run_id": "ope-2026-05-20-abc", "method": "doubly_robust"},
+  "full_artifact_handle": "artifact:ope:ope-2026-05-20-abc"
+}

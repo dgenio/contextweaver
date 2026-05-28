@@ -97,6 +97,13 @@ dev = [
     # ``[fastmcp]`` runtime extra below stays for end users who don't want
     # the dev toolchain.
     "fastmcp>=2.0",
+    # LangGraph is pulled into [dev] so the LangGraph agent-loop reference
+    # architecture (``examples/architectures/langgraph_agent_loop``, issue
+    # #326) exercises the *real* ``StateGraph`` under ``make example`` in CI.
+    # The example also ships a hand-rolled fallback so it still runs without
+    # this dependency; the ``[langgraph]`` runtime extra below is for end
+    # users who want the framework without the dev toolchain.
+    "langgraph>=0.2",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -143,6 +150,14 @@ agno = [
 # LangChain integration examples.
 langchain = [
     "langchain-core>=0.3",
+]
+# LangGraph agent-loop reference architecture (issue #326).  Pulls the
+# LangGraph runtime so ``examples/architectures/langgraph_agent_loop`` can
+# drive its route -> execute -> answer loop through a real ``StateGraph``.
+# The example ships a hand-rolled fallback, so it runs without this extra;
+# install it to exercise the framework path.
+langgraph = [
+    "langgraph>=0.2",
 ]
 # Real-time voice agents: Pipecat frame processors composed with the
 # contextweaver context engine.  Optional because pipecat-ai pulls heavy
@@ -236,6 +251,7 @@ all = [
     "contextweaver[graph]",
     "contextweaver[weaver-spec]",
     "contextweaver[voice]",
+    "contextweaver[langgraph]",
     "contextweaver[e2e-eval]",
 ]
 

@@ -14,7 +14,7 @@ from typing import Any
 
 from contextweaver.context.firewall import apply_firewall
 from contextweaver.context.manager import ContextManager
-from contextweaver.routing.cards import make_choice_cards, render_cards_text
+from contextweaver.routing.cards import count_tokens, make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import Catalog, generate_sample_catalog
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
@@ -235,6 +235,122 @@ def run_huge_tool_output() -> None:
 
     saving = 100.0 * (1.0 - len(processed.text) / max(len(raw_text), 1))
     print(f"\nToken savings vs raw: {saving:.1f}%")
+    _footer()
+
+
+def _pct_reduction(before: str, after: str) -> str:
+    """Return a ``NN.N%`` character-reduction string for *before* → *after*."""
+    saving = 100.0 * (1.0 - len(after) / max(len(before), 1))
+    return f"{saving:.1f}%"
+
+
+def _killer_history() -> list[ContextItem]:
+    """Build a long prior conversation (the kind that floods a naive prompt)."""
+    turns: list[ContextItem] = []
+    chatter = [
+        ("u", "Morning — can you help me chase some overdue accounts today?"),
+        ("a", "Of course. I can search billing, read CRM notes, and draft comms."),
+        ("u", "Great. Last week we talked about the enterprise tier renewals."),
+        ("a", "Right — three accounts were flagged for manual follow-up."),
+        ("u", "One of them, Northwind, disputed an invoice. Did that resolve?"),
+        ("a", "The dispute was closed; the invoice is valid and still unpaid."),
+        ("u", "Also remember the finance team wants reminders to stay polite."),
+        ("a", "Noted — I keep a friendly, non-threatening tone on all reminders."),
+    ]
+    for idx, (who, text) in enumerate(chatter, start=1):
+        kind = ItemKind.user_turn if who == "u" else ItemKind.agent_msg
+        turns.append(ContextItem(id=f"h{idx}", kind=kind, text=text))
+    return turns
+
+
+def _killer_big_result() -> str:
+    """Return a ~12 KB invoice/account-notes dump (floods a naive answer prompt)."""
+    rows = [
+        f'{{"invoice_id":"INV-{2000 + i}","account":"ACME-{i % 40:03d}",'
+        f'"amount_usd":{(i * 317) % 9000 + 100},"days_overdue":{(i * 7) % 95},'
+        f'"status":"unpaid","last_note":"left voicemail; awaiting AP confirmation #{i}"}}'
+        for i in range(90)
+    ]
+    return (
+        "status: ok\n"
+        f"rows_returned: {len(rows)}\n"
+        "source: billing.invoices.search\n\n" + "\n".join(rows) + "\n"
+    )
+
+
+def run_killer() -> None:
+    """The 60-second failure mode: 100 tools + long history + a huge result (#322).
+
+    A single deterministic, network-free scenario that makes the pain of a
+    naive agent loop obvious in under a minute: a 100-tool catalog bloats
+    the route prompt, a long conversation competes for budget, and a huge
+    tool result floods the answer prompt.  contextweaver narrows the
+    catalog to a handful of :class:`ChoiceCard` objects and firewalls the
+    big result out-of-band, so the prompt stays bounded.
+
+    Sizes are reported in **characters** (deterministic everywhere); the
+    closing token estimate uses the active tokeniser and is informational.
+    """
+    _banner("killer scenario (100 tools + huge output)")
+
+    catalog = Catalog()
+    for item in _synth_catalog(100, seed=42):
+        catalog.register(item)
+    items = catalog.all()
+    query = "Find unpaid invoices, check the account notes, and draft a reminder."
+    print(f"\nCatalog: {len(items)} tools across {len({i.namespace for i in items})} namespaces")
+    print(f"User:    {query!r}")
+
+    # ---- 1. Tool catalog: naive dump vs ChoiceCard shortlist --------------
+    naive_tools = "\n".join(f"- {it.id} ({it.namespace}): {it.description}" for it in items)
+    graph = TreeBuilder(max_children=20).build(items)
+    router = Router(graph, items=items, beam_width=3, top_k=5)
+    result = router.route(query)
+    cards = make_choice_cards(
+        result.candidate_items,
+        scores=dict(zip(result.candidate_ids, result.scores, strict=False)),
+    )
+    cw_tools = render_cards_text(cards)
+    chosen = result.candidate_ids[0]
+    print("\n[1/3] Tools in the route prompt")
+    print(f"      naive (all {len(items)} tools):        {len(naive_tools):,} chars")
+    print(f"      contextweaver ({len(cards)} ChoiceCards):    {len(cw_tools):,} chars")
+    print(f"      reduction: {_pct_reduction(naive_tools, cw_tools)}")
+    print(f"      shortlist: {result.candidate_ids}")
+
+    # ---- 2. Huge tool output: raw vs firewalled ---------------------------
+    mgr = ContextManager()
+    for turn in _killer_history():
+        mgr.ingest_sync(turn)
+    mgr.ingest_sync(ContextItem(id="u-now", kind=ItemKind.user_turn, text=query))
+    mgr.ingest_sync(
+        ContextItem(
+            id="tc1", kind=ItemKind.tool_call, text=f"{chosen}(status='unpaid')", parent_id="u-now"
+        )
+    )
+    big = _killer_big_result()
+    result_item, _envelope = mgr.ingest_tool_result_sync(
+        tool_call_id="tc1", raw_output=big, tool_name=chosen, firewall_threshold=2000
+    )
+    handle = result_item.artifact_ref.handle if result_item.artifact_ref else "<none>"
+    print("\n[2/3] The huge tool result")
+    print(f"      naive (raw):             {len(big):,} chars")
+    print(f"      contextweaver (summary):  {len(result_item.text):,} chars  (artifact {handle})")
+    print(f"      reduction: {_pct_reduction(big, result_item.text)}")
+
+    # ---- 3. The whole answer prompt: everything raw vs compiled -----------
+    raw_history = "\n".join(t.text for t in _killer_history())
+    naive_prompt = f"{naive_tools}\n\n{raw_history}\n\n{query}\n\n{big}"
+    pack = mgr.build_sync(phase=Phase.answer, query=query)
+    print("\n[3/3] The full answer prompt")
+    print(f"      naive (everything raw):   {len(naive_prompt):,} chars")
+    print(f"      contextweaver (compiled):  {len(pack.prompt):,} chars")
+    print(f"      reduction: {_pct_reduction(naive_prompt, pack.prompt)}")
+
+    print(
+        f"\nToken estimate: naive ~{count_tokens(naive_prompt):,} tokens "
+        f"-> contextweaver ~{count_tokens(pack.prompt):,} tokens"
+    )
     _footer()
 
 

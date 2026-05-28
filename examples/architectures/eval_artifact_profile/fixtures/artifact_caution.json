@@ -1,0 +1,31 @@
+{
+  "artifact_type": "offline_policy_evaluation",
+  "evaluated": "candidate pricing policy v5 vs production baseline v4",
+  "decision_status": "caution",
+  "support_health": "moderate: effective sample size 2,140; partial action overlap on high-value segment",
+  "available_diagnostics": ["support", "uncertainty", "sensitivity", "overlap"],
+  "needs_interpretation": true,
+  "policy_gating": true,
+  "warnings": [
+    "confidence interval for the delta crosses zero",
+    "high-value customer segment is thinly supported"
+  ],
+  "assumptions": [
+    "logged propensities are correct",
+    "segment membership is stable over the window"
+  ],
+  "limitations": [
+    "evaluation window covers 7 days only",
+    "no holiday traffic represented"
+  ],
+  "key_metrics": {
+    "baseline_value": 0.318,
+    "candidate_value": 0.339,
+    "delta": 0.021,
+    "delta_ci95": [-0.006, 0.048]
+  },
+  "decision_stability": "unstable: sign of delta flips under the pessimistic sensitivity sweep",
+  "value_estimate": {"name": "V_hat", "candidate": 0.339, "ci95": [0.291, 0.387]},
+  "provenance": {"producer": "skdr-eval", "run_id": "ope-2026-05-22-def", "method": "doubly_robust"},
+  "full_artifact_handle": "artifact:ope:ope-2026-05-22-def"
+}

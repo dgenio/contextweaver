@@ -34,6 +34,7 @@ example:
 	$(MAKE) architectures
 
 architectures:
+	python examples/architectures/catalog_showcase/main.py
 	python examples/architectures/mcp_context_gateway/main.py
 	python examples/architectures/mcp_context_gateway/main_live.py
 	python examples/architectures/mcp_context_gateway/main_multi.py
@@ -41,6 +42,8 @@ architectures:
 	python examples/architectures/slack_ops_bot/main.py
 	python examples/architectures/code_review_bot/main.py
 	python examples/architectures/voice_agent/main.py
+	python examples/architectures/langgraph_agent_loop/main.py
+	python examples/architectures/eval_artifact_profile/main.py
 
 demo:
 	python -m contextweaver demo
