@@ -28,7 +28,7 @@ There is no bespoke type — the existing fields carry everything a card needs:
 | artifact id | `id` | Stable, unique. Reuse the card's own id so provenance round-trips. |
 | artifact text | `text` | The guidance itself — what the model should read. |
 | scope metadata | `metadata["scope"]` | Where the card applies (module, task type, phase hint). Free-form. |
-| sensitivity metadata | `sensitivity` | One of `Sensitivity.public` / `internal` / `confidential` / `restricted`. Drives the sensitivity floor. |
+| sensitivity metadata | `sensitivity` | One of `Sensitivity.public` / `internal` / `confidential` / `restricted`. Checked against the active `ContextPolicy.sensitivity_floor` — items below the floor are dropped or redacted. |
 | provenance metadata | `metadata["provenance"]` | Who reviewed it, when, source commit/URL. Audit trail, not scored. |
 | task-matching notes | `text` (+ `metadata`) | Matching is lexical against `text`; see below. |
 
