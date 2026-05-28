@@ -264,7 +264,7 @@ def _killer_history() -> list[ContextItem]:
 
 
 def _killer_big_result() -> str:
-    """Return a ~12 KB invoice/account-notes dump (floods a naive answer prompt)."""
+    """Return a large invoice/account-notes dump (floods a naive answer prompt)."""
     rows = [
         f'{{"invoice_id":"INV-{2000 + i}","account":"ACME-{i % 40:03d}",'
         f'"amount_usd":{(i * 317) % 9000 + 100},"days_overdue":{(i * 7) % 95},'
