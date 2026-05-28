@@ -95,11 +95,15 @@ consequences worth designing for:
 
 ### Matching example
 
-Query: *"I'm about to edit the sensitivity module — anything I should know?"*
+Query: *"I'm editing context/sensitivity.py — anything I should know?"*
 
-The card above scores highly: its `text` shares "edit", "sensitivity", and the
-module name with the query, so it survives scoring and lands in the compiled
-context. The model sees the security-grade warning before it proposes a change.
+The card above scores well: its `text` shares the `editing`, `context`,
+`sensitivity.py`, `sensitivity`, and `context/sensitivity.py` tokens with the
+query (contextweaver's `tokenize()` helper lowercases input and splits
+compounds on `.`, `/`, and `-`, but does **not** stem — so write cards and
+queries with overlapping word forms). With little competition from other items
+on this query, the card survives scoring and lands in the compiled context.
+The model sees the security-grade warning before it proposes a change.
 
 ### Non-matching example
 
