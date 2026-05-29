@@ -68,7 +68,7 @@ contains tool call?       yes
 [FACTS]
 - customer.C-12345.plan_change: growth -> starter (self-serve, day 47, -$450 MRR)
 
-[TOOL RESULT [artifact:artifact:result:tc1]]
+[TOOL RESULT [artifact:result:tc1]]
 rowset: bigquery.run_query
 project: ops-analytics-prod
 rows_returned: 90

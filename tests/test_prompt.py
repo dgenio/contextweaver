@@ -26,6 +26,50 @@ def test_render_item_with_artifact_ref() -> None:
     assert "artifact:h1" in rendered
 
 
+def test_render_item_artifact_handle_not_double_prefixed() -> None:
+    # #313: firewall stores handles already namespaced as ``artifact:<id>``;
+    # the renderer must not produce ``[artifact:artifact:...]``.
+    ref = ArtifactRef(handle="artifact:tr1", media_type="text/plain", size_bytes=100)
+    item = ContextItem(id="tr1", kind=ItemKind.tool_result, text="summary", artifact_ref=ref)
+    rendered = render_item(item)
+    assert "[artifact:tr1]" in rendered
+    assert "artifact:artifact:" not in rendered
+
+
+def test_render_item_artifact_handle_prefixed_when_bare() -> None:
+    # A bare handle (no ``artifact:`` namespace) is still framed as an artifact.
+    ref = ArtifactRef(handle="h1", media_type="text/plain", size_bytes=100)
+    item = ContextItem(id="i1", kind=ItemKind.tool_result, text="summary", artifact_ref=ref)
+    assert "[artifact:h1]" in render_item(item)
+
+
+def test_render_item_tool_call_includes_function_name() -> None:
+    # #308: adapters keep the tool name in metadata, not text; surface it.
+    item = ContextItem(
+        id="c1",
+        kind=ItemKind.tool_call,
+        text='{"city":"NYC"}',
+        metadata={"function_name": "get_weather"},
+    )
+    assert render_item(item) == '[TOOL CALL]\nget_weather({"city":"NYC"})'
+
+
+def test_render_item_tool_result_includes_function_name() -> None:
+    item = ContextItem(
+        id="r1",
+        kind=ItemKind.tool_result,
+        text="Sunny, 72F",
+        metadata={"function_name": "get_weather"},
+    )
+    assert render_item(item) == "[TOOL RESULT]\nget_weather: Sunny, 72F"
+
+
+def test_render_item_tool_call_without_function_name_unchanged() -> None:
+    # No metadata -> body is the raw text (back-compatible default).
+    item = ContextItem(id="c1", kind=ItemKind.tool_call, text='{"city":"NYC"}')
+    assert render_item(item) == '[TOOL CALL]\n{"city":"NYC"}'
+
+
 def test_render_context_empty() -> None:
     assert render_context([]) == ""
 

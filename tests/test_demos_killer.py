@@ -65,11 +65,11 @@ def test_huge_result_is_firewalled() -> None:
 
 
 def test_full_answer_prompt_reduction() -> None:
-    """The whole naive answer prompt (21,332 chars) compiles down to 823 chars."""
+    """The whole naive answer prompt (21,332 chars) compiles down to 814 chars."""
     out = _run()
     assert "naive (everything raw):   21,332 chars" in out
-    assert "contextweaver (compiled):  823 chars" in out
-    assert "reduction: 96.1%" in out
+    assert "contextweaver (compiled):  814 chars" in out
+    assert "reduction: 96.2%" in out
 
 
 def test_token_estimate_line_present() -> None:

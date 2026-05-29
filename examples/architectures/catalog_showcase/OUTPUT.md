@@ -47,7 +47,7 @@ artifacts kept (addressable for drilldown): 1
 [USER]
 search the product catalog for 4k monitors under 400 dollars and show the top matches
 
-[TOOL RESULT [artifact:artifact:result:tc1]]
+[TOOL RESULT [artifact:result:tc1]]
 {
   "query": "4k monitors",
   "max_price": 400,

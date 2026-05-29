@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Prompt renderer: doubled `artifact:` prefix** — tool-result snippets now
+  render `[TOOL RESULT [artifact:tr1]]` instead of
+  `[TOOL RESULT [artifact:artifact:tr1]]`. Stored artifact handles are
+  unchanged, so `artifact_store.get("artifact:…")` still works. Demo casts,
+  quickstart/showcase samples, and architecture `OUTPUT.md` snapshots
+  refreshed. (#313)
+- **Prompt renderer: missing tool function name** — provider adapters keep the
+  tool name in `metadata["function_name"]`; the renderer now surfaces it for
+  tool calls (`[TOOL CALL]\nget_weather(<args>)`) and tool results
+  (`[TOOL RESULT]\nget_weather: <result>`) so the model can pair a call with
+  the result it produced. `item.text` is left untouched, preserving the
+  adapter round-trip invariant (#219). (#308)
+
 ## [0.12.0] - 2026-05-29
 
 ### Added

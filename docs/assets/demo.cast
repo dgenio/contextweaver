@@ -33,7 +33,7 @@
 [21.4, "o", "[TOOL CALL]\r\n"]
 [22.1, "o", "invoices.search(status='open')\r\n"]
 [22.8, "o", "\r\n"]
-[23.5, "o", "[TOOL RESULT [artifact:artifact:tr1]]\r\n"]
+[23.5, "o", "[TOOL RESULT [artifact:tr1]]\r\n"]
 [24.2, "o", "invoice_id: INV-001\r\n"]
 [24.9, "o", "status: open\r\n"]
 [25.6, "o", "amount: 5000\r\n"]
