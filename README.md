@@ -49,6 +49,32 @@ python -m contextweaver demo     # 5-step end-to-end demo
 
 ---
 
+## The 60-second failure mode
+
+See why a naive tool-using agent loop breaks down — and what contextweaver
+does about it — in one command (no API keys, no network):
+
+```bash
+contextweaver demo --scenario killer
+```
+
+An internal ops agent with **100 tools** and a running conversation is asked
+to *"find unpaid invoices, check the account notes, and draft a reminder."*
+A naive loop pays for all 100 tool descriptions, the full history, and a
+huge raw tool result at once:
+
+| | Naive | contextweaver | Reduction |
+|---|---|---|---|
+| Tools in the route prompt | all 100 (6,326 chars) | 5 ChoiceCards (491 chars) | **92.2%** |
+| The huge tool result | raw (14,430 chars) | firewalled summary (60 chars) | **99.6%** |
+| The full answer prompt | everything raw (21,332 chars) | compiled (823 chars) | **96.1%** |
+
+Full walkthrough: [The 60-second failure mode](docs/killer_demo.md). For the
+same story as a runnable, inspectable script, see the
+[catalog showcase architecture](docs/architectures/catalog_showcase.md).
+
+---
+
 ## The Problem
 
 Even with 200K-token context windows, dumping everything into the prompt is expensive,
@@ -569,6 +595,7 @@ contextweaver ships with a CLI for quick experimentation:
 
 ```bash
 contextweaver demo                                    # end-to-end demonstration
+contextweaver demo --scenario killer                  # the 60-second failure mode (100 tools + huge output)
 contextweaver init                                    # scaffold config + sample catalog
 contextweaver build --catalog c.json --out g.json    # build routing graph
 contextweaver route --graph g.json --catalog c.json --query "send email"
@@ -595,6 +622,9 @@ contextweaver replay --session session.json --phase answer
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
 | `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
 | `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
+| `architectures/catalog_showcase/` | **Start-here** reference architecture — 65-tool catalog → 5-card shortlist, single-tool schema hydration, firewall on a ~3 KB result, final `BuildStats` ([guide](docs/architectures/catalog_showcase.md)) |
+| `architectures/langgraph_agent_loop/` | contextweaver **inside** a LangGraph `StateGraph` (route → execute → answer), firewall on a ~21 KB log dump, cross-turn retention; optional framework with a hand-rolled fallback ([guide](docs/architectures/langgraph_agent_loop.md)) |
+| `architectures/eval_artifact_profile/` | Agent-safe context shaping for offline-evaluation reports — never surfaces `V_hat` without support diagnostics ([guide](docs/architectures/eval_artifact_profile.md)) |
 | `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
 | `architectures/mcp_context_gateway/main_real.py` | Same flow, run against verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (`server-time`, `server-filesystem`, `server-everything`) committed under `real_catalogs/` |
 | `recipes/serve_gateway.py` | Minimal stdio launcher used by the [Claude Desktop](docs/recipes/claude_desktop.md) and [GitHub Copilot](docs/recipes/github_copilot.md) recipes |

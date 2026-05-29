@@ -1,0 +1,33 @@
+{
+  "artifact_type": "offline_policy_evaluation",
+  "evaluated": "candidate aggressive-retention policy v9 vs production baseline v8",
+  "decision_status": "high_risk",
+  "support_health": "poor: effective sample size 184; severe action mismatch; heavy extrapolation",
+  "available_diagnostics": ["support", "uncertainty", "overlap"],
+  "needs_interpretation": true,
+  "policy_gating": true,
+  "warnings": [
+    "estimate relies on heavy extrapolation outside the logged action distribution",
+    "effective sample size is below the reliability floor (184 < 500)",
+    "importance weights are extreme (max weight 1,920)"
+  ],
+  "assumptions": [
+    "logged propensities are correct",
+    "the model extrapolates correctly to unsupported actions (UNVERIFIED)"
+  ],
+  "limitations": [
+    "evaluation window covers 3 days only",
+    "no sensitivity sweep available for this run",
+    "candidate policy visits actions never taken by the logging policy"
+  ],
+  "key_metrics": {
+    "baseline_value": 0.205,
+    "candidate_value": 0.488,
+    "delta": 0.283,
+    "delta_ci95": [-0.140, 0.706]
+  },
+  "decision_stability": "not assessable: insufficient support to run a meaningful sensitivity sweep",
+  "value_estimate": {"name": "V_hat", "candidate": 0.488, "ci95": [0.061, 0.915]},
+  "provenance": {"producer": "skdr-eval", "run_id": "ope-2026-05-25-ghi", "method": "ips"},
+  "full_artifact_handle": "artifact:ope:ope-2026-05-25-ghi"
+}

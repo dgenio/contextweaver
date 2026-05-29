@@ -88,7 +88,8 @@ Adapters MUST emit `tool_id` values that round-trip through the canonical `parse
 
 ## Cross-Cutting Rules
 
-- **Module size ≤ 300 lines** — exempt: `types.py`, `envelope.py`, `__main__.py`.
+- **Module size ≤ 300 lines** — exempt: `types.py`, `envelope.py`, `__main__.py`,
+  `_mcp_cli.py` (experimental Typer sub-app), `_demos.py` (CLI demo-output module).
 - **`from __future__ import annotations`** — every source file.
 - **Google-style docstrings** — every public class and function.
 - **Type hints** — every public function and method.
