@@ -193,7 +193,9 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 - **≤ 300 lines per module** — exempt: `types.py`, `envelope.py`, `__main__.py`,
   `_mcp_cli.py` (experimental Typer sub-app; size is dominated by Typer
   parameter declarations + docstrings and is expected to shrink once
-  `mcp serve` graduates from `[experimental]` to stable).
+  `mcp serve` graduates from `[experimental]` to stable), and `_demos.py`
+  (CLI demo-output module — print-heavy walkthrough scripts backing the
+  `demo` subcommand, same rationale as `__main__.py`).
 - **Core runtime dependencies.** The core install pulls `tiktoken`, `PyYAML`, `rank-bm25`, plus `mcp` and `jsonschema` (added when the proxy / gateway runtimes landed — both are load-bearing for `docs/gateway_spec.md` §4.4 schema validation and the MCP transport binding).  Adding *another* core dependency requires explicit justification: broad ecosystem use, small wheel, and a default the library would otherwise have to approximate.  Heavy or runtime-specific packages (CLI, OpenTelemetry, fuzzy retrieval, ANN, NetworkX, FastMCP, LangChain) live under `[project.optional-dependencies]` and are loaded via guarded imports.
 
 ## Testing

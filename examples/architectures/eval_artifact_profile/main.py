@@ -211,10 +211,14 @@ def compile_eval_context(artifact: dict[str, Any], phase: Phase) -> list[Context
 def check_invariants(artifact: dict[str, Any]) -> list[str]:
     """Return human-readable PASS/FAIL lines for the profile's safety rules.
 
+    The asserts below are a best-effort in-demo guard so an obvious
+    regression trips ``make example``; they are not a hardened runtime gate
+    (Python's ``-O`` strips ``assert``). The authoritative regression gate
+    is ``tests/test_architectures_eval_artifact_profile.py``.
+
     Raises:
-        AssertionError: if any safety invariant is violated, so a
-            regression breaks ``make example`` rather than shipping unsafe
-            context shaping silently.
+        AssertionError: if any safety invariant is violated (when run
+            without ``-O``).
     """
     lines: list[str] = []
 
