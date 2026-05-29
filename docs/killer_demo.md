@@ -31,7 +31,7 @@ contextweaver narrows each one:
 |---|---|---|---|
 | Tools in the route prompt | all 100 descriptions (6,326 chars) | 5 ChoiceCards (491 chars) | **92.2%** |
 | The huge tool result | raw (14,430 chars) | firewalled summary (60 chars) | **99.6%** |
-| The full answer prompt | everything raw (21,332 chars) | compiled (823 chars) | **96.1%** |
+| The full answer prompt | everything raw (21,332 chars) | compiled (814 chars) | **96.2%** |
 
 Sizes are reported in **characters** (deterministic everywhere). The demo
 also prints a token estimate using the active tokeniser.

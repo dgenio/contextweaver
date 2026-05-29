@@ -11,6 +11,7 @@ from contextweaver.adapters.openai_messages import (
     to_openai_messages,
 )
 from contextweaver.context.manager import ContextManager
+from contextweaver.context.prompt import render_context
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ItemKind, Phase
 
@@ -136,6 +137,17 @@ def test_from_openai_messages_tool_call_id_roundtrips_to_item_id() -> None:
     # invariant required by issue #219).
     assert tool_call_item.id.endswith("call_abc123")
     assert tool_call_item.metadata["function_name"] == "get_weather"
+
+
+def test_from_openai_messages_function_name_reaches_rendered_prompt() -> None:
+    # #308 acceptance: after ``from_openai_messages`` adoption, the rendered
+    # prompt must surface the tool name. This locks the producer->consumer
+    # contract end-to-end — the adapter writes ``metadata["function_name"]``
+    # and the renderer reads the same key — so a drift on either side is caught
+    # here, not just in the two halves' separate unit tests.
+    items = from_openai_messages(CHAT_WITH_TOOL_CALL)
+    rendered = render_context(items)
+    assert 'get_weather({"city": "Paris"})' in rendered
 
 
 # ---------------------------------------------------------------------------

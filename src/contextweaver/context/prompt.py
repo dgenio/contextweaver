@@ -33,8 +33,37 @@ def render_item(item: ContextItem) -> str:
     label = _SECTION_LABELS.get(item.kind, item.kind.value.upper())
     artifact_note = ""
     if item.artifact_ref:
-        artifact_note = f" [artifact:{item.artifact_ref.handle}]"
-    return f"[{label}{artifact_note}]\n{item.text}"
+        handle = item.artifact_ref.handle
+        # Handles are already namespaced as ``artifact:<id>`` by the firewall
+        # (#313); avoid doubling the prefix when wrapping for display.
+        inner = handle if handle.startswith("artifact:") else f"artifact:{handle}"
+        artifact_note = f" [{inner}]"
+    body = _render_body(item)
+    return f"[{label}{artifact_note}]\n{body}"
+
+
+def _render_body(item: ContextItem) -> str:
+    """Render the body of a context item, surfacing the tool function name.
+
+    Provider adapters keep the tool's function name in
+    ``metadata["function_name"]`` rather than in ``text`` (#308). Fold it into
+    the rendered body for tool calls and results so the model can pair a call
+    with the result it produced, without mutating ``item.text`` (which would
+    break the adapter round-trip invariant from #219).
+
+    Args:
+        item: The item whose body is being rendered.
+
+    Returns:
+        The body string for inclusion after the section label.
+    """
+    function_name = item.metadata.get("function_name")
+    if isinstance(function_name, str) and function_name:
+        if item.kind is ItemKind.tool_call:
+            return f"{function_name}({item.text})"
+        if item.kind is ItemKind.tool_result:
+            return f"{function_name}: {item.text}"
+    return item.text
 
 
 def render_context(

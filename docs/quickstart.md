@@ -186,7 +186,7 @@ Expected output excerpt:
 
 ```text
 === Compiled Context ===
-[TOOL RESULT [artifact:artifact:tr1]]
+[TOOL RESULT [artifact:tr1]]
 count: 1042
 
 [TOOL CALL]
@@ -301,7 +301,7 @@ Raw tool result size: 6087 chars
 [USER]
 List all users
 
-[TOOL RESULT [artifact:artifact:tr1]]
+[TOOL RESULT [artifact:tr1]]
 {"users": [{"id": 1, "name": "User1", "email": "user1@example.com"}, ...
 
 [TOOL CALL]

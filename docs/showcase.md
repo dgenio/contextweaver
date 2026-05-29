@@ -184,7 +184,7 @@ How many open invoices do we have?
 [TOOL CALL]
 invoices.search(status='open')
 
-[TOOL RESULT [artifact:artifact:tr1]]
+[TOOL RESULT [artifact:tr1]]
 summary: 2 open invoices, total $8,200
 ```
 
