@@ -70,6 +70,28 @@ def test_render_item_tool_call_without_function_name_unchanged() -> None:
     assert render_item(item) == '[TOOL CALL]\n{"city":"NYC"}'
 
 
+def test_render_item_tool_call_empty_args_renders_bare_call() -> None:
+    # #308 edge case: empty args -> ``name()`` with no argument body.
+    item = ContextItem(
+        id="c1",
+        kind=ItemKind.tool_call,
+        text="",
+        metadata={"function_name": "now"},
+    )
+    assert render_item(item) == "[TOOL CALL]\nnow()"
+
+
+def test_render_item_empty_function_name_falls_back_to_text() -> None:
+    # #308 edge case: an empty function_name is ignored (treated as absent).
+    item = ContextItem(
+        id="c1",
+        kind=ItemKind.tool_call,
+        text='{"city":"NYC"}',
+        metadata={"function_name": ""},
+    )
+    assert render_item(item) == '[TOOL CALL]\n{"city":"NYC"}'
+
+
 def test_render_context_empty() -> None:
     assert render_context([]) == ""
 
