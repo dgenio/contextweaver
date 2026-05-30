@@ -78,7 +78,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `extras/otel.py` | OpenTelemetry GenAI integration (`OTelEventHook` — `invoke_agent` / `execute_tool` spans + GenAI SemConv attributes, gated behind the `[otel]` extra, issue #224). |
 | `extras/memory/` | External-memory backend adapters that implement `EpisodicStore` / `FactStore` against an existing long-lived memory deployment without widening the Protocols (issue #195). |
 | `extras/memory/mem0.py` | `Mem0EpisodicStore` + `Mem0FactStore` — wrap a `mem0.Memory` instance scoped by `user_id`; writes go through `Memory.add(infer=False)` and items are stamped with `cw_episode_id` / `cw_fact_id` metadata for canonical-ID resolution. Gated behind the `[mem0]` extra (issue #195). |
-| `__main__.py` | CLI: 9 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`) plus the `mcp` Typer sub-app (`mcp serve`, [experimental] stdio MCP gateway/proxy entrypoint; issues #243/#246). Typer + Rich (both core deps as of v0.5, issue #221). |
+| `eval/` | Evaluation harness (issue #12): `EvalCase` / `EvalDataset` (gold datasets), `evaluate_routing` → `RoutingEvalReport` (top-k recall, MRR, confidence gap, beam steps), `evaluate_context` → `ContextEvalReport` (budget utilisation + token savings vs naive concat). Pure-stdlib, deterministic; backs the `eval` CLI subcommand. |
+| `__main__.py` | CLI: 10 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`, `eval`) plus the `mcp` Typer sub-app (`mcp serve`, [experimental] stdio MCP gateway/proxy entrypoint; issues #243/#246). Typer + Rich (both core deps as of v0.5, issue #221). |
 | `_mcp_cli.py` | Backs the `mcp` Typer sub-app mounted from `__main__.py`. Hosts `mcp serve` (stdio MCP gateway or transparent proxy) and the catalog loader that accepts both native contextweaver and raw MCP `tools/list` shapes. Marked `[experimental]` in `--help` for v0.9. Uses `typer.echo(..., err=True)` for stderr output (library-code `print()` is forbidden). |
 | `data/` | Packaged data files shipped inside the wheel via `[tool.setuptools.package-data]`. Exposes `gateway_catalog_path()` (resolves `mcp_gateway_catalog.yaml` to a concrete `Path` for both editable installs and zipped wheels — falls back to a persistent cache under `tempfile.gettempdir()/contextweaver/` for zipimport). Issue #264. |
 | `examples/recipes/` | MCP-client integration recipes: `serve_gateway.py` launcher + `claude_desktop_config.json` / `copilot_mcp.json` example configs referenced from `docs/recipes/` (issues #278, #279). |
@@ -150,6 +151,7 @@ make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
 make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
+make smoke-eval       # optional, non-gating smoke-evaluation over fixed fixtures (#331); deterministic, credential-free
 make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
 make schemas         # regenerate schemas/ + docs/schemas/v0/ (issue #225)

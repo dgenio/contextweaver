@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Evaluation harness (`contextweaver.eval`)** — a deterministic, pure-stdlib
+  package for measuring routing and context quality (#12). `EvalDataset` /
+  `EvalCase` load gold-standard `query → expected tool id` data;
+  `evaluate_routing` reports top-1/3/5 recall, MRR, average candidates,
+  confidence gap, and beam steps; `evaluate_context` reports budget
+  utilisation and token savings versus naive concatenation. Exposed via a new
+  `contextweaver eval --dataset … --catalog …` CLI subcommand and a sample
+  dataset at `examples/data/eval_routing.json`. Added a read-only
+  `ContextManager.budget` property.
+- **Smoke-evaluation suite (`benchmarks/smoke_eval.py`, `make smoke-eval`)** —
+  an optional, non-gating suite over fixed fixtures that checks whether
+  compiled context and routing remain usable (#331). Deterministic and
+  credential-free by default; the model-dependent section is off unless
+  `CW_SMOKE_LLM=1` and is reported separately. Kept distinct from the
+  deterministic benchmark scorecard.
+- **Routing invariant tests (`tests/test_routing_invariants.py`)** — assert
+  routing stability under irrelevant, sensitive, catalog-growth, and
+  equivalent-description perturbations, with the injection-resistance gap
+  captured as a documented `strict xfail` ratchet (#341). Invariant model
+  documented in `docs/agent-context/routing-invariants.md`.
+
 ### Fixed
 
 - **Prompt renderer: doubled `artifact:` prefix** — tool-result snippets now

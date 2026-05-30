@@ -1,0 +1,7 @@
+[
+  {"query": "send an email message to a customer", "expected": ["comms.email.send"], "namespace": "comms"},
+  {"query": "export the audit log entries", "expected": ["admin.audit.export"], "namespace": "admin"},
+  {"query": "create a new user account", "expected": ["admin.users.create"], "namespace": "admin"},
+  {"query": "refund a completed payment", "expected": ["billing.payments.refund"], "namespace": "billing"},
+  {"query": "post a message to a slack channel", "expected": ["comms.slack.post"], "namespace": "comms"}
+]

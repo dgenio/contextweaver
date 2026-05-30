@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway smoke-eval scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -62,6 +62,9 @@ benchmark-matrix:
 
 benchmark-gateway:
 	python benchmarks/gateway_benchmark.py
+
+smoke-eval:
+	python benchmarks/smoke_eval.py
 
 scorecard:
 	python scripts/render_scorecard.py
