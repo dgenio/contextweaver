@@ -41,8 +41,10 @@ from rich.tree import Tree as RichTree
 from contextweaver._mcp_cli import mcp_app
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
+from contextweaver.eval.dataset import EvalDataset
+from contextweaver.eval.routing import evaluate_routing
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
-from contextweaver.routing.catalog import generate_sample_catalog, load_catalog_json
+from contextweaver.routing.catalog import generate_sample_catalog, load_catalog, load_catalog_json
 from contextweaver.routing.graph_io import load_graph, save_graph
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
@@ -552,6 +554,34 @@ def budget_check(
                 print(f"  {name}: {tokens}")
 
     raise typer.Exit(0 if ok else 1)
+
+
+@app.command("eval")
+def eval_cmd(
+    dataset: Annotated[
+        Path, typer.Option(..., help="Path to the gold-standard dataset JSON file.")
+    ],
+    catalog: Annotated[Path, typer.Option(..., help="Path to the tool catalog JSON/YAML file.")],
+    top_k: Annotated[int, typer.Option("--top-k", help="Max routing results per query.")] = 10,
+    beam_width: Annotated[int, typer.Option("--beam-width", help="Beam width.")] = 3,
+    max_children: Annotated[
+        int, typer.Option("--max-children", help="Max children per node when building the graph.")
+    ] = 10,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Evaluate routing quality against a gold-standard dataset (issue #12)."""
+    items = load_catalog(str(catalog))
+    graph = TreeBuilder(max_children=max_children).build(items)
+    router = Router(graph, items=items, beam_width=beam_width, top_k=top_k)
+    ds = EvalDataset.load(dataset)
+    report = evaluate_routing(router, ds, catalog_ids={it.id for it in items})
+
+    if json_output:
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        print(report.summary())
 
 
 # ---------------------------------------------------------------------------

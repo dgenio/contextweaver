@@ -1,0 +1,3 @@
+{"type": "user_turn", "id": "u1", "text": "Refund the last payment for ACME Corp"}
+{"type": "tool_call", "id": "c1", "text": "{\"payment_id\": \"pay_42\"}", "parent_id": "u1", "metadata": {"function_name": "refund_payment"}}
+{"type": "agent_msg", "id": "a1", "text": "I issued the refund for payment pay_42."}

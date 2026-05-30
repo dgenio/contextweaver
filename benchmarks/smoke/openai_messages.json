@@ -1,0 +1,15 @@
+[
+  {"role": "user", "content": "Refund the last payment"},
+  {
+    "role": "assistant",
+    "content": null,
+    "tool_calls": [
+      {
+        "id": "tc1",
+        "type": "function",
+        "function": {"name": "refund_payment", "arguments": "{\"payment_id\": \"pay_42\"}"}
+      }
+    ]
+  },
+  {"role": "tool", "tool_call_id": "tc1", "content": "refunded pay_42"}
+]

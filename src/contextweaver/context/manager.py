@@ -194,6 +194,11 @@ class ContextManager:
         """Active determinism :class:`Mode` (default :attr:`Mode.strict`)."""
         return self._mode
 
+    @property
+    def budget(self) -> ContextBudget:
+        """The active per-phase :class:`~contextweaver.config.ContextBudget`."""
+        return self._budget
+
     # ------------------------------------------------------------------
     # Ingestion helpers
     # ------------------------------------------------------------------
