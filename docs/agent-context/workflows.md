@@ -18,11 +18,19 @@ make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and pe
 make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits non-zero on drift)
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
+make context-rot       # render context-rot demo JSON + docs/assets/context_rot.svg (#349)
+make context-rot-check # verify context_rot.svg matches its committed JSON (gating CI step; exits non-zero on drift)
+make readme-version-check  # verify README version references match pyproject.toml (gating CI step; #347)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
+
+> Gating CI steps beyond `make ci`: `make scorecard-check`,
+> `make readme-version-check` (#347), `make context-rot-check` (#349),
+> and `make weaver-conformance`. (`make schemas-check` also gates, but it
+> runs *inside* `make ci`.)
 
 `make ci` runs all six targets in sequence. It is the single validation gate.
 

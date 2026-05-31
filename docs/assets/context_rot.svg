@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="470" viewBox="0 0 720 470" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+<style>.axis{stroke:#94a3b8;stroke-width:1}.grid{stroke:#e2e8f0;stroke-width:1}.title{font-size:18px;font-weight:700;fill:#0f172a}.sub{font-size:12px;fill:#475569}.ptitle{font-size:13px;font-weight:600;fill:#0f172a}.ytick{font-size:10px;fill:#64748b;text-anchor:end}.xtick{font-size:10px;fill:#64748b;text-anchor:middle}.legend{font-size:11px;fill:#334155}</style>
+<rect width="720" height="470" fill="#ffffff" />
+<text x="80" y="28" class="title">Context rot: more tools ≠ better routing</text>
+<text x="80" y="46" class="sub">Gold set: 200 queries · top_k=5 · seed=42 · deterministic (no live model)</text>
+<rect x="455" y="151" width="14" height="3" fill="#dc2626" />
+<text x="473" y="158" class="legend">naive (all tool schemas)</text>
+<rect x="455" y="167" width="14" height="3" fill="#2563eb" />
+<text x="473" y="174" class="legend">contextweaver (ChoiceCards)</text>
+<text x="80" y="68" class="ptitle">Tools visible to the model per route prompt (log scale)</text>
+<line x1="80" y1="228" x2="690" y2="228" class="axis" />
+<line x1="80" y1="78" x2="80" y2="228" class="axis" />
+<line x1="80" y1="194.4" x2="690" y2="194.4" class="grid" />
+<text x="72" y="198.4" class="ytick">5</text>
+<line x1="80" y1="146.4" x2="690" y2="146.4" class="grid" />
+<text x="72" y="150.4" class="ytick">50</text>
+<line x1="80" y1="98.4" x2="690" y2="98.4" class="grid" />
+<text x="72" y="102.4" class="ytick">500</text>
+<line x1="80" y1="78.0" x2="690" y2="78.0" class="grid" />
+<text x="72" y="82.0" class="ytick">1328</text>
+<polyline fill="none" stroke="#dc2626" stroke-width="2.5" points="80.0,135.8 232.5,121.4 385.0,106.9 537.5,92.5 690.0,78.0" />
+<circle cx="80.0" cy="135.8" r="3.5" fill="#dc2626" /><circle cx="232.5" cy="121.4" r="3.5" fill="#dc2626" /><circle cx="385.0" cy="106.9" r="3.5" fill="#dc2626" /><circle cx="537.5" cy="92.5" r="3.5" fill="#dc2626" /><circle cx="690.0" cy="78.0" r="3.5" fill="#dc2626" />
+<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="80.0,194.4 232.5,194.4 385.0,194.4 537.5,194.4 690.0,194.4" />
+<circle cx="80.0" cy="194.4" r="3.5" fill="#2563eb" /><circle cx="232.5" cy="194.4" r="3.5" fill="#2563eb" /><circle cx="385.0" cy="194.4" r="3.5" fill="#2563eb" /><circle cx="537.5" cy="194.4" r="3.5" fill="#2563eb" /><circle cx="690.0" cy="194.4" r="3.5" fill="#2563eb" />
+<text x="80" y="290" class="ptitle">contextweaver correct-tool recall@5 (right tool in the shortlist)</text>
+<line x1="80" y1="440" x2="690" y2="440" class="axis" />
+<line x1="80" y1="300" x2="80" y2="440" class="axis" />
+<line x1="80" y1="440.0" x2="690" y2="440.0" class="grid" />
+<text x="72" y="444.0" class="ytick">0%</text>
+<line x1="80" y1="405.0" x2="690" y2="405.0" class="grid" />
+<text x="72" y="409.0" class="ytick">25%</text>
+<line x1="80" y1="370.0" x2="690" y2="370.0" class="grid" />
+<text x="72" y="374.0" class="ytick">50%</text>
+<line x1="80" y1="300.0" x2="690" y2="300.0" class="grid" />
+<text x="72" y="304.0" class="ytick">100%</text>
+<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="80.0,389.6 232.5,400.1 385.0,392.4 537.5,415.5 690.0,426.0" />
+<circle cx="80.0" cy="389.6" r="3.5" fill="#2563eb" /><circle cx="232.5" cy="400.1" r="3.5" fill="#2563eb" /><circle cx="385.0" cy="392.4" r="3.5" fill="#2563eb" /><circle cx="537.5" cy="415.5" r="3.5" fill="#2563eb" /><circle cx="690.0" cy="426.0" r="3.5" fill="#2563eb" />
+<text x="80.0" y="458" class="xtick">83</text>
+<text x="232.5" y="458" class="xtick">166</text>
+<text x="385.0" y="458" class="xtick">332</text>
+<text x="537.5" y="458" class="xtick">664</text>
+<text x="690.0" y="458" class="xtick">1328</text>
+<text x="385" y="468" class="sub" text-anchor="middle">catalog size (tools)</text>
+</svg>
