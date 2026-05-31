@@ -29,7 +29,8 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 
 > Gating CI steps beyond `make ci`: `make scorecard-check`,
 > `make readme-version-check` (#347), `make context-rot-check` (#349),
-> `make schemas-check`, and `make weaver-conformance`.
+> and `make weaver-conformance`. (`make schemas-check` also gates, but it
+> runs *inside* `make ci`.)
 
 `make ci` runs all six targets in sequence. It is the single validation gate.
 

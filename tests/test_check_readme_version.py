@@ -27,6 +27,18 @@ def test_read_pyproject_version_matches_semver() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+\S*", version)
 
 
+def test_read_pyproject_version_is_scoped_to_project_table(tmp_path: Path) -> None:
+    """A ``version`` in another table must not shadow the [project] version."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[build-system]\nrequires = ["setuptools"]\nversion = "9.9.9"\n\n'
+        '[project]\nname = "x"\nversion = "1.2.3"\n\n'
+        '[tool.whatever]\nversion = "0.0.1"\n',
+        encoding="utf-8",
+    )
+    assert check_readme_version.read_pyproject_version(pyproject) == "1.2.3"
+
+
 def test_find_drift_flags_mismatch() -> None:
     """Both tracked references are flagged when they lag the version."""
     readme = "Current package version: **0.11.0**.\n... (this repo, [v0.10.0](url)) ..."

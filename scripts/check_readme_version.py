@@ -33,7 +33,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PYPROJECT = REPO_ROOT / "pyproject.toml"
 DEFAULT_README = REPO_ROOT / "README.md"
 
-# A top-level ``version = "X"`` assignment (column 0) — the [project] version.
+# The ``[project]`` table body: from the ``[project]`` header up to the next
+# top-level table header (``[...]`` at column 0) or end of file.
+_PROJECT_TABLE_RE = re.compile(r"^\[project\][^\n]*\n(.*?)(?=^\[|\Z)", re.MULTILINE | re.DOTALL)
+# A ``version = "X"`` assignment (column 0) — scoped to the [project] table so a
+# ``version`` in another table (build-system, a tool section) is never matched.
 _VERSION_RE = re.compile(r'^version = "([^"]+)"', re.MULTILINE)
 # ``Current package version: **X.Y.Z**`` (Roadmap section).
 _README_CURRENT_RE = re.compile(r"Current package version: \*\*([^*]+)\*\*")
@@ -42,10 +46,18 @@ _README_COMPARE_RE = re.compile(r"this repo,\s*\[v([0-9][^\]]*)\]")
 
 
 def read_pyproject_version(pyproject: Path) -> str:
-    """Return the ``[project]`` version string from *pyproject*."""
-    match = _VERSION_RE.search(pyproject.read_text(encoding="utf-8"))
+    """Return the ``[project]`` version string from *pyproject*.
+
+    Scans only the ``[project]`` table, so a ``version`` assignment in any other
+    top-level table cannot be mistaken for the package version.
+    """
+    text = pyproject.read_text(encoding="utf-8")
+    table = _PROJECT_TABLE_RE.search(text)
+    if table is None:
+        raise ValueError(f"could not find a [project] table in {pyproject}")
+    match = _VERSION_RE.search(table.group(1))
     if not match:
-        raise ValueError(f"could not find a top-level version in {pyproject}")
+        raise ValueError(f"could not find a version in the [project] table of {pyproject}")
     return match.group(1)
 
 
