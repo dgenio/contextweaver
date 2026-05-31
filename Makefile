@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway smoke-eval scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway smoke-eval scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -86,6 +86,15 @@ record-demos-check:
 
 sweep-scoring:
 	python scripts/sweep_scoring.py
+
+context-rot:
+	python scripts/context_rot_demo.py
+
+context-rot-check:
+	python scripts/context_rot_demo.py --check
+
+readme-version-check:
+	python scripts/check_readme_version.py
 
 ci: fmt lint type test schemas-check example demo
 

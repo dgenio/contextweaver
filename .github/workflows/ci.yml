@@ -60,6 +60,19 @@ jobs:
         # numbers, which would otherwise make the check non-portable.
         run: python scripts/render_scorecard.py --check
 
+      - name: README version drift check (gating, issue #347)
+        # Fails when a tracked README version reference (the "Current package
+        # version" line or the comparison-table self-reference) lags the
+        # version in pyproject.toml. Stdlib-only; no install required.
+        run: python scripts/check_readme_version.py
+
+      - name: Context-rot SVG drift check (gating, issue #349)
+        # Re-renders docs/assets/context_rot.svg from the committed
+        # benchmarks/results/context_rot.json and fails on drift (mirrors the
+        # scorecard-check contract). The compute path is exercised by
+        # tests/test_context_rot_demo.py.
+        run: python scripts/context_rot_demo.py --check
+
       - name: Schema drift check (gating, issue #225)
         # Regenerates schemas from dataclasses and fails the build if the
         # committed files differ.  This is the contract gate that catches

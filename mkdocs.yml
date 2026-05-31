@@ -105,6 +105,7 @@ nav:
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md
   - Adopter Benchmark Report: benchmark_report.md
+  - Context Rot Demo: context_rot.md
   - Stability: stability.md
   - Launch Kit: launch_kit.md
   - Contracts: contracts.md

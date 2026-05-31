@@ -7,24 +7,26 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
 
-> **Context firewall + tool router for MCP and tool-heavy agents.** Keep huge
-> tool catalogs, tool schemas, tool results, and long histories out of the
-> prompt without losing the context your agent needs. Phase-specific,
-> budget-aware **context engineering** with a deterministic core: large
-> catalogs collapse to a few `ChoiceCard`s, large outputs stay artifact-backed,
-> and prompt tokens drop 42-84 % on the committed benchmarks.
+> **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
+> front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
+> instead of every tool schema, plus an artifact-backed firewall that swaps a
+> huge raw tool result for a compact summary. Deterministic, no model in the
+> loop, and 42-84 % fewer prompt tokens on the committed benchmarks.
 
-| If your agent has... | contextweaver gives you... |
-|---|---|
-| Too many MCP / FastMCP / Python tools | A bounded `ChoiceCard` shortlist instead of dumping every schema into the route prompt. |
-| Huge JSON, logs, tables, or binary tool results | An artifact-backed context firewall: compact summary in the prompt, raw bytes out of band. |
-| Long tool-using conversations | Phase-specific context packs with budgeted selection and dependency closure. |
+**Who it's for:** anyone whose agent — Claude Desktop, Cursor, VS Code, or a
+custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
+blew up my prompt."*
 
-| Use this when... | Do not use this when... |
-|---|---|
-| You already have an agent loop and need runtime context control. | You need an agent framework, LLM SDK, or tool executor. |
-| Your model-visible tool list or tool-result payloads are getting too large. | Your agent has a handful of tiny tools and no context-budget pressure. |
-| You want deterministic prompt budgeting and traceable drops. | You only need long-term memory, RAG, or observability by itself. |
+```bash
+pip install contextweaver
+contextweaver demo --scenario killer   # 60-second taste — no API key, no network
+```
+
+**Use it for real →** the **[MCP gateway quickstart](docs/recipes/index.md)**
+(Claude Desktop / Copilot / custom MCP clients), backed by the
+[MCP Context Gateway architecture](docs/architectures/mcp_context_gateway.md).
+Already have a loop and not sure which piece you need? The two engines also work
+[routing-only or firewall-only](docs/which_pattern.md).
 
 <p align="center">
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
@@ -32,10 +34,17 @@
 
 **1150+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
 
-```bash
-pip install contextweaver        # install
-python -m contextweaver demo     # 5-step end-to-end demo
-```
+#### More tools ≠ better answers
+
+<p align="center">
+  <img src="docs/assets/context_rot.svg" width="660" alt="Context-rot curve: as the tool catalog grows from 83 to 1328 tools, a naive route prompt carries every schema (line climbs on a log scale) while contextweaver stays flat at 5 ChoiceCards; contextweaver's correct-tool recall@5 erodes from 36 percent to 10 percent as distractor tools accumulate."/>
+</p>
+
+> As an agent's tool catalog grows, a naive "show every schema" route prompt
+> balloons while the right tool gets harder to find — *context rot*.
+> contextweaver keeps the model-visible surface bounded (5 `ChoiceCard`s, not
+> 1,328 schemas), so the route prompt stays flat and deterministic. Reproduce
+> the curve with no API key: [`docs/context_rot.md`](docs/context_rot.md).
 
 <p align="center">
   <img src="docs/assets/demo.svg" alt="Animated terminal recording of `python -m contextweaver demo`: load a 40-tool catalog, build a 9-node routing graph, narrow to 5 ChoiceCards for the query 'find unpaid invoices and send a reminder email', build a phase-answer context pack, and print the 321-character compiled prompt."/>
@@ -45,7 +54,32 @@ python -m contextweaver demo     # 5-step end-to-end demo
   <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
 </p>
 
-[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
+[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [📉 Context rot demo](docs/context_rot.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
+
+---
+
+## Part of the Weaver Stack
+
+contextweaver is the **context** layer of the **Weaver Stack** — small,
+deterministic, independently-usable building blocks for tool-using agents. The
+core request path runs:
+
+```text
+contextweaver ─▶ ChainWeaver ─▶ agent-kernel ─▶ agentfence
+```
+
+| Stage | Component | Responsibility |
+|---|---|---|
+| **Context** | **contextweaver** (this repo) | Route a catalog to bounded `ChoiceCard`s, firewall large tool results, compile a budgeted prompt. |
+| Execution | ChainWeaver | Run the selected capability as a deterministic tool/flow. |
+| Boundary | agent-kernel | Own the execution boundary; hand contextweaver `Frame`s, not raw output. |
+| Guardrails | agentfence | Apply output guardrails to the response. |
+
+Adjacent tools: **vibeguard** (code-diff safety gate), **lessonweaver** (lesson
+capture), and **skdr-eval** (offline evaluation). Every piece works
+**standalone** — contextweaver has **no hard dependency** on any sibling, so you
+can use it on its own or slot it into the stack. See the
+[Ecosystem Map](docs/ecosystem.md) for how the pieces compose.
 
 ---
 
@@ -164,6 +198,30 @@ contextweaver provides two cooperating engines:
 2. **TreeBuilder** — convert a flat catalog into a bounded `ChoiceGraph` DAG.
 3. **Router** — beam-search over the graph; deterministic tie-breaking by ID.
 4. **ChoiceCards** — compact, LLM-friendly cards (never includes full schemas).
+
+---
+
+## Also works as routing-only or firewall-only
+
+The MCP gateway is the headline, but those are really **two cooperating engines**
+you can adopt independently — a context compiler and a tool router. Reach for
+whichever your agent needs:
+
+| If your agent has... | contextweaver gives you... |
+|---|---|
+| Too many MCP / FastMCP / Python tools | A bounded `ChoiceCard` shortlist instead of dumping every schema into the route prompt. |
+| Huge JSON, logs, tables, or binary tool results | An artifact-backed context firewall: compact summary in the prompt, raw bytes out of band. |
+| Long tool-using conversations | Phase-specific context packs with budgeted selection and dependency closure. |
+
+| Use this when... | Do not use this when... |
+|---|---|
+| You already have an agent loop and need runtime context control. | You need an agent framework, LLM SDK, or tool executor. |
+| Your model-visible tool list or tool-result payloads are getting too large. | Your agent has a handful of tiny tools and no context-budget pressure. |
+| You want deterministic prompt budgeting and traceable drops. | You only need long-term memory, RAG, or observability by itself. |
+
+Not sure which piece fits? The [which-pattern decision tree](docs/which_pattern.md)
+maps each symptom (long conversations → full pipeline; 50+ tools → routing-only;
+huge tool outputs → firewall-only) to one concrete next step.
 
 ---
 
@@ -537,7 +595,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.11.0**.
+Current package version: **0.12.0**.
 
 Recent milestones:
 
@@ -563,13 +621,13 @@ Recent milestones:
 
 ### 7. Comparison
 
-> _Snapshot of the launch landscape as of 2026-05-20 — see footnotes for the
+> _Snapshot of the launch landscape as of 2026-05-31 — see footnotes for the
 > versions referenced and the evidence behind each non-trivial claim. Will be
 > refreshed each minor release._
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.10.0](https://pypi.org/project/contextweaver/0.10.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.12.0](https://pypi.org/project/contextweaver/0.12.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |

@@ -157,6 +157,9 @@ make scorecard-check  # verify scorecard.md is up to date (exits non-zero on dri
 make schemas         # regenerate schemas/ + docs/schemas/v0/ (issue #225)
 make schemas-check    # verify published schemas match dataclasses (gating, in `make ci`)
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
+make context-rot       # render the context-rot demo: benchmarks/results/context_rot.json + docs/assets/context_rot.svg (#349)
+make context-rot-check # verify context_rot.svg matches its committed JSON (gating in CI; exits non-zero on drift)
+make readme-version-check  # verify README version references match pyproject.toml (gating in CI; #347)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter (CI gating, fetches schemas)

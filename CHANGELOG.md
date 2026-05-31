@@ -29,6 +29,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equivalent-description perturbations, with the injection-resistance gap
   captured as a documented `strict xfail` ratchet (#341). Invariant model
   documented in `docs/agent-context/routing-invariants.md`.
+- **Context-rot demo (`scripts/context_rot_demo.py`, `make context-rot`)** — a
+  deterministic, no-API-key demo that grows a tool catalog with distractor
+  variants and measures naive-vs-contextweaver model-visible tool count plus
+  correct-tool recall@5, rendering a committed `docs/assets/context_rot.svg`
+  from `benchmarks/results/context_rot.json` (#349). A new CI gate
+  (`context-rot-check`) fails on SVG drift, mirroring the scorecard contract.
+  Documented in `docs/context_rot.md`; an optional, credential-gated real-model
+  variant lives in `notebooks/context_rot_live.ipynb` (not run in CI).
+- **README "Part of the Weaver Stack" section** — standardized ecosystem block
+  with the stack request-path diagram and a standalone-use note, cross-linked
+  to `docs/ecosystem.md` (#351).
+
+### Changed
+
+- **README hero leads with the MCP context gateway** — restructured the first
+  screen around a single hero use case and one try-it command; the
+  context-compiler-vs-router duality is now a secondary "also works as
+  routing-only or firewall-only" section linking `docs/which_pattern.md` (#344).
+- **README version references are guarded against drift** — refreshed the
+  "Current package version" line and comparison snapshot to 0.12.0 and added
+  `scripts/check_readme_version.py` (`make readme-version-check`), a stdlib CI
+  gate that fails when a tracked README version reference lags
+  `pyproject.toml` (#347).
 
 ### Fixed
 
