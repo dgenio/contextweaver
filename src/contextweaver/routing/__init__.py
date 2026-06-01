@@ -19,6 +19,12 @@ from contextweaver.routing.cards import (
     truncate_description_to_tokens,
 )
 from contextweaver.routing.catalog import Catalog
+from contextweaver.routing.feedback import (
+    DeterministicScoreProvider,
+    ExecutionFeedback,
+    FeedbackAwareScoreProvider,
+    aggregate_feedback,
+)
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.graph_io import load_graph, save_graph
 from contextweaver.routing.graph_node import ChoiceNode
@@ -45,12 +51,16 @@ __all__ = [
     "ChoiceNode",
     "DEFAULT_CARD_HARD_CAP_TOKENS",
     "DEFAULT_CARD_TARGET_TOKENS",
+    "DeterministicScoreProvider",
+    "ExecutionFeedback",
+    "FeedbackAwareScoreProvider",
     "KeywordLabeler",
     "RouteResult",
     "Router",
     "SchemaSource",
     "ToolIdParts",
     "TreeBuilder",
+    "aggregate_feedback",
     "bound_browse_response",
     "canonical_tool_id",
     "cards_for_route",

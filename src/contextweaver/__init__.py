@@ -84,6 +84,7 @@ from contextweaver.protocols import (
     RedactionHook,
     Reranker,
     Retriever,
+    RoutingScoreProvider,
     Summarizer,
     TokenEstimator,
 )
@@ -95,6 +96,12 @@ from contextweaver.routing.catalog import (
     load_catalog_dicts,
     load_catalog_json,
     load_catalog_yaml,
+)
+from contextweaver.routing.feedback import (
+    DeterministicScoreProvider,
+    ExecutionFeedback,
+    FeedbackAwareScoreProvider,
+    aggregate_feedback,
 )
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.graph_node import ChoiceNode
@@ -186,6 +193,7 @@ __all__ = [
     "RedactionHook",
     "Reranker",
     "Retriever",
+    "RoutingScoreProvider",
     "Summarizer",
     "TokenEstimator",
     # exceptions
@@ -239,7 +247,10 @@ __all__ = [
     "ChoiceGraph",
     "ChoiceNode",
     "DefaultCardPacker",
+    "DeterministicScoreProvider",
     "EngineRegistry",
+    "ExecutionFeedback",
+    "FeedbackAwareScoreProvider",
     "GraphManifest",
     "JaccardClusteringEngine",
     "KeywordLabeler",
@@ -253,6 +264,7 @@ __all__ = [
     "TfIdfRetriever",
     "TraceStep",
     "TreeBuilder",
+    "aggregate_feedback",
     "compute_catalog_hash",
     "default_registry",
     "generate_sample_catalog",

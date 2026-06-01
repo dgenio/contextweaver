@@ -367,6 +367,42 @@ class ClusteringEngine(Protocol):
 
 
 # ---------------------------------------------------------------------------
+# RoutingScoreProvider (issue #318)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class RoutingScoreProvider(Protocol):
+    """Optional feedback-aware adjuster for routing scores (issue #318).
+
+    A score provider takes the navigator's ranked ``(item_id, score)`` pairs
+    and returns adjusted pairs — typically folding in historical execution
+    signals (success rate, latency, token cost, result quality) via
+    :class:`~contextweaver.routing.feedback.ExecutionFeedback`.  It is the
+    routing engine's opt-in seam for *learned* or *feedback-aware* ranking;
+    the default :class:`~contextweaver.routing.router.Router` applies no
+    provider and stays purely deterministic.
+
+    Implementations MUST be deterministic: identical ``(query, scored)``
+    inputs must yield identical outputs, and ties must break by ascending
+    ``item_id`` (re-sort by ``(-score, id)``), exactly like the rest of the
+    routing engine.  The bundled
+    :class:`~contextweaver.routing.feedback.DeterministicScoreProvider` is a
+    no-op reference implementation;
+    :class:`~contextweaver.routing.feedback.FeedbackAwareScoreProvider`
+    applies bounded feedback deltas.
+    """
+
+    def adjust(
+        self,
+        query: str,
+        scored: list[tuple[str, float]],
+    ) -> list[tuple[str, float]]:
+        """Return *scored* re-scored and re-ranked (ties broken by id)."""
+        ...
+
+
+# ---------------------------------------------------------------------------
 # Navigator (issue #56)
 # ---------------------------------------------------------------------------
 
