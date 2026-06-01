@@ -42,6 +42,11 @@ from contextweaver.adapters.anthropic_messages import (
     from_anthropic_messages,
     to_anthropic_messages,
 )
+from contextweaver.adapters.chainweaver import (
+    chainweaver_flow_to_selectable,
+    chainweaver_flows_to_catalog,
+    load_chainweaver_export,
+)
 from contextweaver.adapters.crewai import (
     crewai_tool_to_selectable,
     crewai_tools_to_catalog,
@@ -132,6 +137,8 @@ __all__ = [
     "a2a_result_to_envelope",
     "agno_tool_to_selectable",
     "agno_tools_to_catalog",
+    "chainweaver_flow_to_selectable",
+    "chainweaver_flows_to_catalog",
     "crewai_tool_to_selectable",
     "crewai_tools_to_catalog",
     "dispatch_meta_tool",
@@ -158,6 +165,7 @@ __all__ = [
     "infer_smolagents_namespace",
     "load_a2a_session_jsonl",
     "load_agno_catalog",
+    "load_chainweaver_export",
     "load_crewai_catalog",
     "load_fastmcp_catalog",
     "load_mcp_session_jsonl",

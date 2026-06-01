@@ -58,10 +58,15 @@ class Phase(str, Enum):
 
 @dataclass
 class SelectableItem:
-    """A unified representation of a tool, agent, skill, or internal function.
+    """A unified representation of a tool, agent, skill, flow, or internal function.
 
     This is the single vocabulary the Routing Engine operates on.  Use the
     :data:`ToolCard` alias when you want to emphasise the tool-card framing.
+
+    ``kind="flow"`` denotes a multi-step capability executed by an external
+    runtime (e.g. a ChainWeaver flow imported via
+    :mod:`contextweaver.adapters.chainweaver`); contextweaver routes to it
+    like any other candidate but never executes it.
 
     The optional ``depends_on`` / ``provides`` / ``requires`` fields (issue
     #27 Phase 2) carry tool-dependency metadata used by history-aware
@@ -70,7 +75,7 @@ class SelectableItem:
     """
 
     id: str
-    kind: Literal["tool", "agent", "skill", "internal"]
+    kind: Literal["tool", "agent", "skill", "internal", "flow"]
     name: str
     description: str
     tags: list[str] = field(default_factory=list)

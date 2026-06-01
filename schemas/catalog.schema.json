@@ -3,7 +3,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "items": {
     "additionalProperties": false,
-    "description": "A unified representation of a tool, agent, skill, or internal function.",
+    "description": "A unified representation of a tool, agent, skill, flow, or internal function.",
     "properties": {
       "args_schema": {
         "additionalProperties": {},
@@ -46,7 +46,8 @@
           "tool",
           "agent",
           "skill",
-          "internal"
+          "internal",
+          "flow"
         ]
       },
       "metadata": {
