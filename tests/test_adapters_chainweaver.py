@@ -117,6 +117,17 @@ def test_invalid_flow_raises(bad: dict[str, object]) -> None:
         chainweaver_flow_to_selectable(bad)
 
 
+def test_non_dict_flow_raises_catalog_error() -> None:
+    # A malformed export element must raise CatalogError, not AttributeError.
+    with pytest.raises(CatalogError):
+        chainweaver_flow_to_selectable("not a dict")  # type: ignore[arg-type]
+
+
+def test_flows_to_catalog_with_non_dict_element_raises_catalog_error() -> None:
+    with pytest.raises(CatalogError):
+        chainweaver_flows_to_catalog([_flow(), "oops"])  # type: ignore[list-item]
+
+
 # ---------------------------------------------------------------------------
 # Catalog / export loading
 # ---------------------------------------------------------------------------

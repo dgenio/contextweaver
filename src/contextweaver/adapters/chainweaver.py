@@ -100,8 +100,11 @@ def chainweaver_flow_to_selectable(
         ChainWeaver flow.
 
     Raises:
-        CatalogError: If a required field is missing or non-string.
+        CatalogError: If *flow* is not a dict, or a required field is missing
+            or non-string.
     """
+    if not isinstance(flow, dict):
+        raise CatalogError(f"ChainWeaver flow export must be a dict; got {type(flow).__name__}.")
     raw_id = flow.get("id") or flow.get("flow_id")
     if not isinstance(raw_id, str) or not raw_id:
         raise CatalogError(

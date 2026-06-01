@@ -5,35 +5,22 @@ contextweaver routes deterministically by default.  This module adds an
 rate, latency, token cost, result quality — into the routing score without
 giving up determinism or coupling the library to any external router.
 
-The pieces:
+The pieces: :class:`ExecutionFeedback` (a contextweaver-native record of one
+past execution — **not** a weaver-spec contract type; the spec defines none),
+:class:`~contextweaver.protocols.RoutingScoreProvider` (the plug-point),
+:class:`DeterministicScoreProvider` (no-op default, byte-equivalent to passing
+no provider), :class:`FeedbackAwareScoreProvider` (bounded feedback deltas),
+and :func:`aggregate_feedback` (folds a history list into one record per id).
 
-* :class:`ExecutionFeedback` — a contextweaver-native record of one past
-  execution of a routable item.  **It is not a weaver-spec contract type**;
-  weaver-spec does not (yet) define an ``ExecutionFeedback`` shape, so this
-  dataclass deliberately makes no spec-compliance claim.
-* :class:`RoutingScoreProvider` (defined in
-  :mod:`contextweaver.protocols`) — the plug-point a custom provider
-  implements.
-* :class:`DeterministicScoreProvider` — the default provider.  Re-sorts by
-  ``(-score, id)`` and changes nothing else; passing it to
-  :class:`~contextweaver.routing.router.Router` is byte-equivalent to passing
-  no provider at all.
-* :class:`FeedbackAwareScoreProvider` — nudges base scores using an
-  aggregated :class:`ExecutionFeedback` per item, then re-sorts
-  deterministically.
-* :func:`aggregate_feedback` — folds a history list of
-  :class:`ExecutionFeedback` into one aggregated record per item id.
-
-Determinism guarantee: every provider here re-sorts results by
-``(-score, item_id)``, so ties always break by ascending id — identical to
-the rest of the routing engine.
+Determinism guarantee: every provider re-sorts by ``(-score, item_id)``, so
+ties always break by ascending id — identical to the rest of the engine.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from contextweaver.exceptions import ConfigError
@@ -109,7 +96,13 @@ class ExecutionFeedback:
         payloads round-trip cleanly.
         """
         raw_ts = data.get("timestamp")
-        timestamp = datetime.fromisoformat(raw_ts) if isinstance(raw_ts, str) and raw_ts else None
+        timestamp: datetime | None = None
+        if isinstance(raw_ts, str) and raw_ts:
+            timestamp = datetime.fromisoformat(raw_ts)
+            # Match RoutingDecision/Frame handling: coerce naive timestamps to
+            # UTC so a restored ``ExecutionFeedback`` is always tz-aware.
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
         raw_cost = data.get("token_cost")
         raw_quality = data.get("quality_score")
         raw_latency = data.get("latency_ms")
@@ -190,8 +183,11 @@ class FeedbackAwareScoreProvider:
 
         delta  = +success_weight        if feedback.success else -failure_penalty
         delta += quality_weight  * (2 * clamp01(quality_score) - 1)   # in [-w, +w]
-        delta -= latency_weight  * (latency_ms / latency_ref_ms)      # if weight > 0
-        delta -= cost_weight     * (token_cost / token_cost_ref)      # if weight > 0
+        delta -= latency_weight  * clamp01(latency_ms / latency_ref_ms)   # if weight > 0
+        delta -= cost_weight     * clamp01(token_cost / token_cost_ref)   # if weight > 0
+
+    The latency/cost ratios are clamped to ``[0, 1]`` so every term is bounded
+    by its weight — an outlier can never swamp the base retrieval score.
 
     Candidates with no feedback keep their base score.  Results are re-sorted
     by ``(-score, id)`` so ties still break by ascending id — feedback never
@@ -261,10 +257,12 @@ class FeedbackAwareScoreProvider:
         delta = self._success_weight if feedback.success else -self._failure_penalty
         if feedback.quality_score is not None:
             delta += self._quality_weight * (2.0 * _clamp01(feedback.quality_score) - 1.0)
+        # Clamp the latency/cost ratios to [0, 1] so each penalty is bounded by
+        # its weight; an outlier latency/cost can never swamp the base score.
         if self._latency_weight > 0 and feedback.latency_ms is not None:
-            delta -= self._latency_weight * (feedback.latency_ms / self._latency_ref_ms)
+            delta -= self._latency_weight * _clamp01(feedback.latency_ms / self._latency_ref_ms)
         if self._cost_weight > 0 and feedback.token_cost is not None:
-            delta -= self._cost_weight * (feedback.token_cost / self._token_cost_ref)
+            delta -= self._cost_weight * _clamp01(feedback.token_cost / self._token_cost_ref)
         return delta
 
     def adjust(self, query: str, scored: list[tuple[str, float]]) -> list[tuple[str, float]]:

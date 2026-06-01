@@ -701,11 +701,20 @@ class Router:
             id_to_path = {iid: path for iid, (_, path) in all_sorted}
             provider_input = [(iid, score) for iid, (score, _) in all_sorted]
             provider_output = self._score_provider.adjust(scoring_query, provider_input)
-            all_sorted = [
-                (iid, (score, id_to_path[iid]))
-                for iid, score in provider_output
-                if iid in id_to_path
-            ]
+            # Defend the router's invariants against buggy custom providers:
+            # the output must carry exactly the input candidate ids — no
+            # additions, drops, or duplicates — or downstream slicing/ranking
+            # silently corrupts the result.
+            if sorted(iid for iid, _ in provider_output) != sorted(id_to_path):
+                raise RouteError(
+                    f"{type(self._score_provider).__name__}.adjust must return exactly the "
+                    "input candidate ids (no additions, drops, or duplicates)."
+                )
+            # Re-impose the canonical (-score, id) ordering regardless of how
+            # the provider ordered its output, so the determinism guarantee
+            # holds even if a provider forgets to re-sort.
+            reordered = sorted(provider_output, key=lambda pair: (-pair[1], pair[0]))
+            all_sorted = [(iid, (score, id_to_path[iid])) for iid, score in reordered]
         top = all_sorted[: self._top_k]
 
         # Ambiguity reads from the untrimmed sorted view so that callers

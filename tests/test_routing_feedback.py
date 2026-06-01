@@ -241,6 +241,81 @@ def test_router_deterministic_provider_matches_default() -> None:
     assert with_det.trace.extra.get("score_provider") == "DeterministicScoreProvider"
 
 
+def test_execution_feedback_from_dict_coerces_naive_timestamp_to_utc() -> None:
+    # A naive ISO string (no offset) must restore as tz-aware UTC.
+    restored = ExecutionFeedback.from_dict({"item_id": "x", "timestamp": "2026-01-02T03:04:05"})
+    assert restored.timestamp is not None
+    assert restored.timestamp.tzinfo is timezone.utc
+
+
+def test_feedback_latency_ratio_is_clamped() -> None:
+    # latency far above the reference must not penalise beyond the weight.
+    provider = FeedbackAwareScoreProvider(
+        {"x": ExecutionFeedback("x", success=True, latency_ms=10_000)},
+        success_weight=0.0,
+        latency_weight=0.1,
+        latency_ref_ms=1000.0,  # ratio would be 10.0 unclamped
+    )
+    out = dict(provider.adjust("q", [("x", 0.5)]))
+    assert out["x"] == pytest.approx(0.5 - 0.1)  # clamped to exactly one weight
+
+
+def test_feedback_cost_ratio_is_clamped() -> None:
+    provider = FeedbackAwareScoreProvider(
+        {"x": ExecutionFeedback("x", success=True, token_cost=50_000)},
+        success_weight=0.0,
+        cost_weight=0.1,
+        token_cost_ref=1000,  # ratio would be 50.0 unclamped
+    )
+    out = dict(provider.adjust("q", [("x", 0.5)]))
+    assert out["x"] == pytest.approx(0.5 - 0.1)
+
+
+class _BadProvider:
+    """A provider that violates the id-preservation contract."""
+
+    def __init__(self, output: list[tuple[str, float]]) -> None:
+        self._output = output
+
+    def adjust(self, query: str, scored: list[tuple[str, float]]) -> list[tuple[str, float]]:
+        return self._output
+
+
+class _UnsortedProvider:
+    """A provider that returns the right ids+scores but in scrambled order."""
+
+    def adjust(self, query: str, scored: list[tuple[str, float]]) -> list[tuple[str, float]]:
+        return list(reversed(scored))  # deliberately not re-sorted
+
+
+def test_router_rejects_provider_that_drops_ids() -> None:
+    from contextweaver.exceptions import RouteError
+
+    bad = _BadProvider([("db_read", 0.9)])  # drops the other candidates
+    with pytest.raises(RouteError):
+        _build_router(score_provider=bad).route("database rows data")
+
+
+def test_router_rejects_provider_that_duplicates_ids() -> None:
+    from contextweaver.exceptions import RouteError
+
+    # Capture the real candidate ids, then return a duplicate-laden output.
+    real = _build_router().route("database rows data").candidate_ids
+    dup = _BadProvider([(real[0], 0.9)] * len(real))
+    with pytest.raises(RouteError):
+        _build_router(score_provider=dup).route("database rows data")
+
+
+def test_router_reimposes_canonical_order_when_provider_skips_resort() -> None:
+    # The provider returns the same scores in reversed order; the router must
+    # re-impose the canonical (-score, id) ordering, matching the no-provider
+    # baseline exactly.
+    baseline = _build_router().route("database rows data")
+    routed = _build_router(score_provider=_UnsortedProvider()).route("database rows data")
+    assert routed.candidate_ids == baseline.candidate_ids
+    assert routed.scores == pytest.approx(baseline.scores)
+
+
 def test_router_feedback_provider_promotes_successful_item() -> None:
     # Heavily penalise db_read so it sinks below db_write for a "data" query.
     provider = FeedbackAwareScoreProvider(
