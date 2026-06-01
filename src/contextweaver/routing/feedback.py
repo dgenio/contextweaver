@@ -110,7 +110,7 @@ class ExecutionFeedback:
             item_id=data["item_id"],
             success=bool(data.get("success", True)),
             latency_ms=float(raw_latency) if raw_latency is not None else None,
-            token_cost=int(raw_cost) if raw_cost is not None else None,
+            token_cost=round(float(raw_cost)) if raw_cost is not None else None,
             quality_score=float(raw_quality) if raw_quality is not None else None,
             timestamp=timestamp,
             metadata=dict(data.get("metadata", {})),

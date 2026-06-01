@@ -63,6 +63,13 @@ def test_execution_feedback_round_trip_minimal() -> None:
     assert restored.timestamp is None
 
 
+def test_execution_feedback_from_dict_rounds_float_token_cost() -> None:
+    # A malformed payload carrying a float token_cost is rounded (matching
+    # aggregate_feedback) rather than silently truncated toward zero.
+    restored = ExecutionFeedback.from_dict({"item_id": "db_read", "token_cost": 100.7})
+    assert restored.token_cost == 101
+
+
 # ------------------------------------------------------------------
 # aggregate_feedback
 # ------------------------------------------------------------------
@@ -108,6 +115,17 @@ def test_aggregate_feedback_independent_of_order() -> None:
         ExecutionFeedback("a", success=True, latency_ms=30),
     ]
     assert aggregate_feedback(entries) == aggregate_feedback(list(reversed(entries)))
+
+
+def test_aggregate_feedback_tie_counts_as_success() -> None:
+    # A 50/50 success_rate is treated as success (rule: success_rate >= 0.5).
+    entries = [
+        ExecutionFeedback("x", success=True),
+        ExecutionFeedback("x", success=False),
+    ]
+    record = aggregate_feedback(entries)["x"]
+    assert record.success is True
+    assert record.metadata["success_rate"] == pytest.approx(0.5)
 
 
 # ------------------------------------------------------------------
