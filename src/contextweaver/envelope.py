@@ -395,7 +395,7 @@ class ContextPack:
 CHOICE_CARD_NAME_MAX_LEN: int = 64
 CHOICE_CARD_TAG_MAX_LEN: int = 24
 CHOICE_CARD_TAGS_MAX_COUNT: int = 5
-CHOICE_CARD_KINDS: tuple[str, ...] = ("tool", "agent", "skill", "internal")
+CHOICE_CARD_KINDS: tuple[str, ...] = ("tool", "agent", "skill", "internal", "flow")
 
 
 @dataclass
@@ -422,7 +422,7 @@ class ChoiceCard:
     name: str
     description: str
     tags: list[str] = field(default_factory=list)
-    kind: Literal["tool", "agent", "skill", "internal"] = "tool"
+    kind: Literal["tool", "agent", "skill", "internal", "flow"] = "tool"
     namespace: str = ""
     has_schema: bool = False
     score: float | None = None

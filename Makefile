@@ -44,6 +44,7 @@ architectures:
 	python examples/architectures/voice_agent/main.py
 	python examples/architectures/langgraph_agent_loop/main.py
 	python examples/architectures/eval_artifact_profile/main.py
+	python examples/architectures/contextweaver_to_chainweaver/main.py
 
 demo:
 	python -m contextweaver demo

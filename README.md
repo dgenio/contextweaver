@@ -75,6 +75,15 @@ contextweaver ─▶ ChainWeaver ─▶ agent-kernel ─▶ agentfence
 | Boundary | agent-kernel | Own the execution boundary; hand contextweaver `Frame`s, not raw output. |
 | Guardrails | agentfence | Apply output guardrails to the response. |
 
+The contextweaver → ChainWeaver handoff is **advisory**: contextweaver routes
+(it recommends a capability) and ingests results behind its firewall; the
+runtime owns authorization and execution. A runnable end-to-end example —
+route a catalog of tools + imported ChainWeaver flows, hand the selection to a
+(stubbed) ChainWeaver runtime, then ingest the result — lives at
+[`examples/architectures/contextweaver_to_chainweaver/`](examples/architectures/contextweaver_to_chainweaver/),
+and the contract boundary is documented in
+[`docs/weaver_spec_mapping.md`](docs/weaver_spec_mapping.md).
+
 Adjacent tools: **vibeguard** (code-diff safety gate), **lessonweaver** (lesson
 capture), and **skdr-eval** (offline evaluation). Every piece works
 **standalone** — contextweaver has **no hard dependency** on any sibling, so you

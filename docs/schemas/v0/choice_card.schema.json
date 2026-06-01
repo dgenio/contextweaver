@@ -21,7 +21,8 @@
         "tool",
         "agent",
         "skill",
-        "internal"
+        "internal",
+        "flow"
       ]
     },
     "name": {

@@ -27,7 +27,7 @@ from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer
 from contextweaver.envelope import RoutingDecision
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
-from contextweaver.protocols import EmbeddingBackend, Retriever
+from contextweaver.protocols import EmbeddingBackend, Retriever, RoutingScoreProvider
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.explanation import explain_route, explain_route_dict
 from contextweaver.routing.filters import (
@@ -430,6 +430,15 @@ class Router:
             not called by :meth:`route` itself — cards are produced
             externally by :meth:`RouteResult.to_routing_decision`.
             Issue #56.
+        score_provider: Keyword-only.  Optional
+            :class:`~contextweaver.protocols.RoutingScoreProvider`
+            (issue #318).  When supplied, it adjusts the ranked
+            ``(item_id, score)`` pairs after navigation, reranking, and
+            history adjustment — typically folding in historical execution
+            feedback via
+            :class:`~contextweaver.routing.feedback.FeedbackAwareScoreProvider`.
+            ``None`` (default) keeps routing purely deterministic and is
+            byte-equivalent to pre-#318 behaviour.
 
     Raises:
         ConfigError: If *confidence_gap* is outside ``[0.0, 1.0]`` or
@@ -453,6 +462,7 @@ class Router:
         engine_registry: EngineRegistry | None = None,
         embedding_backend: EmbeddingBackend | None = None,
         pipeline: RoutingPipeline | None = None,
+        score_provider: RoutingScoreProvider | None = None,
     ) -> None:
         if routing_config is not None:
             beam_width = routing_config.beam_width
@@ -500,6 +510,7 @@ class Router:
         else:
             self._retriever = self._engine_registry.resolve("retriever")
             self._retriever_engine_name = self._engine_registry.default_for("retriever") or "tfidf"
+        self._score_provider = score_provider
         self._indexed = False
         self._doc_id_to_idx: dict[str, int] = {}
         self._pipeline = self._build_pipeline(pipeline)
@@ -681,6 +692,29 @@ class Router:
                 result_similarity=result_similarity,
             )
             all_sorted = [(iid, (score, id_to_path[iid])) for iid, score in adjusted]
+
+        # Feedback-aware scoring stage (issue #318): apply the optional
+        # score provider last so it has the final word over the ranking.
+        # ``None`` (default) leaves ``all_sorted`` untouched, keeping routing
+        # purely deterministic and byte-equivalent to pre-#318 behaviour.
+        if self._score_provider is not None and all_sorted:
+            id_to_path = {iid: path for iid, (_, path) in all_sorted}
+            provider_input = [(iid, score) for iid, (score, _) in all_sorted]
+            provider_output = self._score_provider.adjust(scoring_query, provider_input)
+            # Defend the router's invariants against buggy custom providers:
+            # the output must carry exactly the input candidate ids — no
+            # additions, drops, or duplicates — or downstream slicing/ranking
+            # silently corrupts the result.
+            if sorted(iid for iid, _ in provider_output) != sorted(id_to_path):
+                raise RouteError(
+                    f"{type(self._score_provider).__name__}.adjust must return exactly the "
+                    "input candidate ids (no additions, drops, or duplicates)."
+                )
+            # Re-impose the canonical (-score, id) ordering regardless of how
+            # the provider ordered its output, so the determinism guarantee
+            # holds even if a provider forgets to re-sort.
+            reordered = sorted(provider_output, key=lambda pair: (-pair[1], pair[0]))
+            all_sorted = [(iid, (score, id_to_path[iid])) for iid, score in reordered]
         top = all_sorted[: self._top_k]
 
         # Ambiguity reads from the untrimmed sorted view so that callers
@@ -705,6 +739,8 @@ class Router:
         trace.is_ambiguous = is_ambiguous
         trace.extra["context_hints"] = list(applied_hints)
         trace.extra["context_boost_applied"] = boost_applied
+        if self._score_provider is not None:
+            trace.extra["score_provider"] = type(self._score_provider).__name__
         if history_adjustments:
             trace.extra["history_adjustments"] = dict(history_adjustments)
         top_items = [active_items[iid] for iid, _ in top if iid in active_items]
