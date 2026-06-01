@@ -12,8 +12,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # fail-fast disabled so every Python cell reports its own status even
+      # when one version fails — important now that the matrix spans the full
+      # supported range (issue #339).
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # Full supported range, 3.10–3.14 inclusive (issue #339). All cells are
+        # gating: a release is only claimed as supported once its cell is green.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +101,37 @@ jobs:
       - name: Benchmark (informational, non-gating)
         continue-on-error: true
         run: python benchmarks/benchmark.py
+
+  floor-deps:
+    # Floor-deps proof (issue #356). A normal CI run resolves the *latest*
+    # dependencies, so it never proves the declared ``>=`` lower bounds are
+    # truthful. This job installs the *minimum* declared direct versions via
+    # ``uv pip install --resolution lowest-direct`` and runs the full suite on
+    # Python 3.10 (the floor interpreter). Gating: if a declared floor is
+    # secretly too low, this job goes red and the floor must be bumped (e.g.
+    # the ``pytest-asyncio>=0.23.8`` bump that landed with this job).
+    name: Floor deps (lowest-direct, 3.10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install minimum declared dependency versions
+        # ``--resolution lowest-direct`` pins each *direct* dependency to its
+        # declared floor while letting transitive deps resolve normally — the
+        # canonical way to prove ``>=X`` bounds without hand-maintaining a
+        # constraints-min.txt.
+        run: uv pip install --system --resolution lowest-direct -e ".[dev,langchain]"
+
+      - name: Test (floor versions)
+        run: pytest --cov=contextweaver --cov-report=term-missing -q
 
   benchmark-comment:
     # Sticky regression-feedback comment (issue #211). Runs on a single

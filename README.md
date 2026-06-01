@@ -32,7 +32,7 @@ Already have a loop and not sure which piece you need? The two engines also work
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
 </p>
 
-**1150+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
+**1150+ tests passing · minimal core dependencies · deterministic by default · Python 3.10–3.14**
 
 #### More tools ≠ better answers
 
@@ -563,7 +563,7 @@ appropriate. See the detailed [stability and 1.0 readiness checklist](docs/stabi
 | Documented public APIs | Change deliberately, with changelog/migration notes when behavior changes. | Dataclasses, stores, context/routing APIs, and documented adapters. |
 | Experimental runtime surfaces | May change before 1.0. | MCP gateway/proxy commands, newer optional extras, and reference architecture variants. |
 | Internal modules | No compatibility promise. | Modules beginning with `_` and test helpers are implementation details. |
-| Python support | Python 3.10+. | Aligned with the package metadata and CI matrix. |
+| Python support | Python 3.10–3.14 (inclusive). | Every version is exercised as a gating CI matrix cell; dependencies use library-grade lower-bound-only constraints (a floor-deps CI job proves the floors). |
 
 > Adopting a library is a long-term commitment. The stability page makes the
 > Alpha/Beta/1.0 line explicit so teams can decide which surfaces are ready for
