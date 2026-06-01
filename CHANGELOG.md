@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Feedback-aware routing score extension point (`contextweaver.routing.feedback`)**
+  (#318) — an opt-in seam for folding historical execution signals into the
+  routing score while keeping deterministic routing the default. Adds the
+  `RoutingScoreProvider` protocol, the contextweaver-native `ExecutionFeedback`
+  record (success / latency / token cost / quality), a `DeterministicScoreProvider`
+  (no-op default), a `FeedbackAwareScoreProvider` (bounded, deterministic
+  feedback deltas), and `aggregate_feedback`. Wired into `Router` via the new
+  optional `score_provider=` argument; `None` (default) is byte-equivalent to
+  prior behaviour. **Note:** `ExecutionFeedback` is a contextweaver type, not a
+  weaver-spec contract — weaver-spec does not define one.
+- **ChainWeaver flow import (`contextweaver.adapters.chainweaver`)** (#334) —
+  ingest a ChainWeaver flow export (plain data, no ChainWeaver install) into a
+  catalog. `chainweaver_flow_to_selectable` / `chainweaver_flows_to_catalog` /
+  `load_chainweaver_export` convert each flow into a `SelectableItem` with the
+  new `kind="flow"`, preserving name, description, and input/output schemas and
+  stamping the flow id/version under `metadata`. Imported flows route like any
+  other candidate and are tagged `"flow"` for gating.
+- **`kind="flow"` selectable kind** — `SelectableItem` and `ChoiceCard` now
+  accept `"flow"` (external multi-step capability). Published JSON Schemas
+  (`catalog`, `choice_card`) regenerated accordingly.
+- **`contextweaver → ChainWeaver` reference architecture** (#353) —
+  `examples/architectures/contextweaver_to_chainweaver/` demonstrates the
+  route (contextweaver, advisory) → execute (ChainWeaver, stubbed) → ingest
+  (contextweaver firewall) seam end-to-end, including the weaver-spec
+  `RoutingDecision` / `Frame` contract mapping. No hard ChainWeaver dependency.
+- **Routing-as-advisory-contract docs (#320)** — `docs/weaver_spec_mapping.md`
+  now documents the advisory routing boundary, how a host projects a
+  `RoutingDecision` into a neutral execution candidate (and why contextweaver
+  ships no `ExecutionCandidate` type while weaver-spec lacks one), and when to
+  route to a ChainWeaver flow vs a single-step tool.
 - **Evaluation harness (`contextweaver.eval`)** — a deterministic, pure-stdlib
   package for measuring routing and context quality (#12). `EvalDataset` /
   `EvalCase` load gold-standard `query → expected tool id` data;

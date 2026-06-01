@@ -23,7 +23,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
-| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine` (store protocols re-exported from `store/protocols.py`) |
+| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`) |
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
 | `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
@@ -54,6 +54,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/navigator.py` | `BeamSearchNavigator` (lifted from `router.py`) + `rank_collected` (issue #56) |
 | `routing/packer.py` | `DefaultCardPacker` wrapping `make_choice_cards` for the pipeline pack stage (issue #56) |
 | `routing/history.py` | `RouteHistory` dataclass + `adjust_scores` (history-aware re-routing, issue #27) |
+| `routing/feedback.py` | Optional feedback-aware routing scores (issue #318): `ExecutionFeedback` (contextweaver-native, **not** a weaver-spec type), `DeterministicScoreProvider` (default no-op), `FeedbackAwareScoreProvider`, `aggregate_feedback`. Plugs into `Router(score_provider=...)`; default `None` keeps routing deterministic. |
 | `extras/embeddings.py` | `SentenceTransformerBackend` + `HybridEmbeddingRetriever` + `HashingEmbeddingBackend` (re-exported) behind the `[embeddings]` extra (issue #8) |
 | `extras/embeddings_hashing.py` | `HashingEmbeddingBackend` — stdlib-only deterministic `EmbeddingBackend` using blake2b hashing trick; no extras required (issue #266) |
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
@@ -61,6 +62,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
 | `routing/hydration.py` | Public schema-hydration helpers — `SchemaSource` (from raw dict / JSON file / MCP tools-list), `hydrate_with_schema`, `lazy_schema_resolver`. Reference architectures use these to resolve a tool's full input schema from a sidecar source rather than hand-rolling a `_FULL_SCHEMAS` dict. Inline `args_schema` on the catalog item wins; sidecar only fills empties. Issue #261. |
 | `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI, Pydantic AI, smolagents, Agno protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #193, #194, #219, #222, #272, #274, #275) |
+| `adapters/chainweaver.py` | ChainWeaver flow-export → `SelectableItem(kind="flow")` import (`chainweaver_flow_to_selectable`, `chainweaver_flows_to_catalog`, `load_chainweaver_export`, issue #334). Pure data; no ChainWeaver dependency. Preserves name/description/input+output schemas; stamps `metadata["runtime"]="chainweaver"` + flow id/version. |
 | `adapters/crewai.py` | CrewAI `BaseTool` (or equivalent plain-dict shape) ↔ `SelectableItem` (`crewai_tool_to_selectable`, `crewai_tools_to_catalog`, `infer_crewai_namespace`, `load_crewai_catalog`, issue #193) |
 | `adapters/pydantic_ai.py` | Pydantic AI `Tool` ↔ `SelectableItem` and `ModelMessage` ↔ `ContextItem` lossless round-trip (`pydantic_ai_tool_to_selectable`, `pydantic_ai_tools_to_catalog`, `load_pydantic_ai_catalog`, `from_/to_pydantic_ai_messages`, issue #272) — heavy decode/encode helpers live in `adapters/_pydantic_ai_messages.py` |
 | `adapters/smolagents.py` | Hugging Face smolagents `Tool` ↔ `SelectableItem` and `MultiStepAgent.memory.steps` → `ContextItem`s (`smolagents_tool_to_selectable`, `smolagents_tools_to_catalog`, `load_smolagents_catalog`, `from_smolagents_agent`, issue #274) |
@@ -110,7 +112,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 
 | Type | Purpose |
 |---|---|
-| `SelectableItem` | Unified tool/agent/skill/internal item. Alias: `ToolCard` (use `SelectableItem` in code). |
+| `SelectableItem` | Unified tool/agent/skill/flow/internal item (`kind="flow"` = external multi-step capability, e.g. a ChainWeaver flow). Alias: `ToolCard` (use `SelectableItem` in code). |
 | `ContextItem` | Event log entry with `parent_id` for dependency closure |
 | `ResultEnvelope` | Processed tool output: summary + facts + artifacts + views |
 | `ContextPack` | Rendered prompt + stats from a context build |

@@ -129,6 +129,80 @@ contextweaver (no `_contextweaver` metadata key). In that case:
   entries.
 - `provenance` carries `redaction_notes` when the source set them.
 
+## Routing as an advisory Weaver contract (issue #320)
+
+contextweaver is **one compatible router** in the Weaver ecosystem: it emits a
+neutral `RoutingDecision`, and a host application resolves the selected
+candidate to a concrete runtime target (a ChainWeaver flow, an agent-kernel
+capability, an MCP tool, …). Two boundaries are load-bearing:
+
+- **Routing is advisory.** A `RoutingDecision` *recommends* a candidate. It
+  does **not** grant permission to execute. Authorization, policy enforcement,
+  audit logging, and execution stay with the host/runtime. Nothing in
+  `to_weaver_routing_decision` changes that — it only reshapes the
+  recommendation.
+- **contextweaver does not execute.** It routes (advisory) and ingests results
+  (the firewall). The execution layer is a separate runtime.
+
+### Mapping a routing result to an execution candidate
+
+A host typically resolves the **top card** of a `RoutingDecision` into an
+*execution candidate* — the neutral "this is the capability to run" record the
+runtime consumes. The conceptual shape (from issue #320) is:
+
+```json
+{
+  "candidate_id": "chainweaver:customer_summary_flow",
+  "candidate_type": "flow",
+  "name": "Summarize customer history",
+  "confidence": 0.58,
+  "reason_codes": ["choicecard_match", "phase_route"],
+  "metadata": {"runtime": "chainweaver", "runtime_flow_id": "customer_summary_flow"}
+}
+```
+
+> **No `ExecutionCandidate` library type (yet).** `weaver_contracts` does not
+> currently define an `ExecutionCandidate` (nor an `ExecutionFeedback`) type.
+> contextweaver therefore does **not** ship one — introducing a contextweaver
+> dataclass that mirrored an unreleased spec type would risk diverging from it.
+> The candidate above is a **host-side projection**: derive it from
+> `decision.choice_cards[0]` (id, score) plus the selected item's `kind` and
+> `metadata`. When the spec publishes an `ExecutionCandidate` contract, the
+> mapping moves into `adapters.weaver_contracts`. See issue #320 for status.
+
+### Routing to ChainWeaver flows (issue #334)
+
+A ChainWeaver **flow** is a multi-step capability. Import a flow export into a
+catalog with the ChainWeaver adapter; each flow becomes a `SelectableItem`
+with `kind="flow"` that routes like any other candidate:
+
+```python
+from contextweaver.adapters.chainweaver import load_chainweaver_export
+
+catalog = load_chainweaver_export(chainweaver_export)  # list or {"flows": [...]}
+```
+
+The adapter preserves `name`, `description`, input schema (`args_schema`),
+and output schema, and stamps `metadata["runtime"]="chainweaver"` plus the
+flow id/version so a host can resolve the candidate back to a concrete flow.
+Every imported flow is tagged `"flow"`, so a caller can gate them with
+`Router.route(..., allowed_tags={"flow"})` or exclude them with
+`exclude_tags={"flow"}`.
+
+**When to route to a flow vs a tool:** prefer a flow when the request needs a
+*deterministic multi-step sequence* (fetch → join → summarise) that no single
+tool answers, and you want the runtime — not the LLM — to own the step order.
+Prefer single-step tools when the LLM should compose the steps itself.
+
+### End-to-end example
+
+`examples/architectures/contextweaver_to_chainweaver/` shows the full seam:
+route a query over a mixed tool+flow catalog → map the decision to a
+weaver-spec `RoutingDecision` → hand the flow to a (stubbed) ChainWeaver
+runtime → ingest the result back through the firewall as a `Frame`. There is
+**no hard dependency on ChainWeaver** — the executor is a canned stub and the
+weaver-spec mapping degrades gracefully without the `[weaver-spec]` extra.
+
 ## Verifying conformance
 
 Round-trip + JSON-Schema validation runs in CI on every PR. To reproduce
