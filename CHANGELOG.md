@@ -7,121 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-02
+
 ### Added
 
-- **Python 3.13 support** (#339) — trove classifiers and the CI matrix now
-  cover 3.10–3.13 inclusive (gating, with `fail-fast` disabled so every cell
-  reports independently). `requires-python` stays `>=3.10`; the README/docs
-  Python-support statement is updated to match. 3.14 is deferred: the heavy
-  dev/adapter stack (crewai, mem0ai, fastmcp, langgraph, langchain-core) still
-  declares `Requires-Python <3.14`, so the test extras cannot resolve on 3.14
-  yet — tracked as a follow-up.
-- **Library-grade dependency-constraint policy + CI proofs** (#356) — core
-  dependencies are documented as lower-bound-only (no `==` pins, no speculative
-  upper caps); the only retained caps (`weaver_contracts<1`, the docs-extra
-  major pins) now carry inline rationale. Adds a gating **floor-deps** CI job
-  (`uv pip install --resolution lowest-direct` on Python 3.10, full suite) that proves the
-  declared `>=` bounds are truthful, and a non-gating weekly
-  **latest/pre-release** workflow (`.github/workflows/deps-latest-weekly.yml`)
-  as the safety net that justifies omitting upper caps. The floor-deps job runs
-  `uv pip install --resolution lowest-direct`. The policy is documented in
-  `CONTRIBUTING.md`.
-
-- **Feedback-aware routing score extension point (`contextweaver.routing.feedback`)**
-  (#318) — an opt-in seam for folding historical execution signals into the
-  routing score while keeping deterministic routing the default. Adds the
-  `RoutingScoreProvider` protocol, the contextweaver-native `ExecutionFeedback`
-  record (success / latency / token cost / quality), a `DeterministicScoreProvider`
-  (no-op default), a `FeedbackAwareScoreProvider` (bounded, deterministic
-  feedback deltas), and `aggregate_feedback`. Wired into `Router` via the new
-  optional `score_provider=` argument; `None` (default) is byte-equivalent to
-  prior behaviour. **Note:** `ExecutionFeedback` is a contextweaver type, not a
-  weaver-spec contract — weaver-spec does not define one.
-- **ChainWeaver flow import (`contextweaver.adapters.chainweaver`)** (#334) —
-  ingest a ChainWeaver flow export (plain data, no ChainWeaver install) into a
-  catalog. `chainweaver_flow_to_selectable` / `chainweaver_flows_to_catalog` /
-  `load_chainweaver_export` convert each flow into a `SelectableItem` with the
-  new `kind="flow"`, preserving name, description, and input/output schemas and
-  stamping the flow id/version under `metadata`. Imported flows route like any
-  other candidate and are tagged `"flow"` for gating.
-- **`kind="flow"` selectable kind** — `SelectableItem` and `ChoiceCard` now
-  accept `"flow"` (external multi-step capability). Published JSON Schemas
-  (`catalog`, `choice_card`) regenerated accordingly.
-- **`contextweaver → ChainWeaver` reference architecture** (#353) —
-  `examples/architectures/contextweaver_to_chainweaver/` demonstrates the
-  route (contextweaver, advisory) → execute (ChainWeaver, stubbed) → ingest
-  (contextweaver firewall) seam end-to-end, including the weaver-spec
-  `RoutingDecision` / `Frame` contract mapping. No hard ChainWeaver dependency.
-- **Routing-as-advisory-contract docs (#320)** — `docs/weaver_spec_mapping.md`
-  now documents the advisory routing boundary, how a host projects a
-  `RoutingDecision` into a neutral execution candidate (and why contextweaver
-  ships no `ExecutionCandidate` type while weaver-spec lacks one), and when to
-  route to a ChainWeaver flow vs a single-step tool.
-- **Evaluation harness (`contextweaver.eval`)** — a deterministic, pure-stdlib
-  package for measuring routing and context quality (#12). `EvalDataset` /
-  `EvalCase` load gold-standard `query → expected tool id` data;
-  `evaluate_routing` reports top-1/3/5 recall, MRR, average candidates,
-  confidence gap, and beam steps; `evaluate_context` reports budget
-  utilisation and token savings versus naive concatenation. Exposed via a new
-  `contextweaver eval --dataset … --catalog …` CLI subcommand and a sample
-  dataset at `examples/data/eval_routing.json`. Added a read-only
-  `ContextManager.budget` property.
-- **Smoke-evaluation suite (`benchmarks/smoke_eval.py`, `make smoke-eval`)** —
-  an optional, non-gating suite over fixed fixtures that checks whether
-  compiled context and routing remain usable (#331). Deterministic and
-  credential-free by default; the model-dependent section is off unless
-  `CW_SMOKE_LLM=1` and is reported separately. Kept distinct from the
-  deterministic benchmark scorecard.
-- **Routing invariant tests (`tests/test_routing_invariants.py`)** — assert
-  routing stability under irrelevant, sensitive, catalog-growth, and
-  equivalent-description perturbations, with the injection-resistance gap
-  captured as a documented `strict xfail` ratchet (#341). Invariant model
-  documented in `docs/agent-context/routing-invariants.md`.
-- **Context-rot demo (`scripts/context_rot_demo.py`, `make context-rot`)** — a
-  deterministic, no-API-key demo that grows a tool catalog with distractor
-  variants and measures naive-vs-contextweaver model-visible tool count plus
-  correct-tool recall@5, rendering a committed `docs/assets/context_rot.svg`
-  from `benchmarks/results/context_rot.json` (#349). A new CI gate
-  (`context-rot-check`) fails on SVG drift, mirroring the scorecard contract.
-  Documented in `docs/context_rot.md`; an optional, credential-gated real-model
-  variant lives in `notebooks/context_rot_live.ipynb` (not run in CI).
-- **README "Part of the Weaver Stack" section** — standardized ecosystem block
-  with the stack request-path diagram and a standalone-use note, cross-linked
-  to `docs/ecosystem.md` (#351).
+- **Evaluation harness — `eval/` module** (#343).  `EvalCase` / `EvalDataset`
+  gold-dataset types, `evaluate_routing` → `RoutingEvalReport` (top-k recall,
+  MRR, confidence gap, beam steps), and `evaluate_context` →
+  `ContextEvalReport` (budget utilisation + token savings vs naive concat).
+  Pure-stdlib, deterministic; backs the new `eval` CLI subcommand and the
+  `make smoke-eval` target.
+- **Feedback-aware routing score extension point** (#318).
+  `ExecutionFeedback` (contextweaver-native), `DeterministicScoreProvider`
+  (default no-op), `FeedbackAwareScoreProvider`, and `aggregate_feedback`.
+  Plugs into `Router(score_provider=...)`; default `None` keeps routing
+  deterministic.
+- **ChainWeaver flow adapter — `adapters/chainweaver.py`** (#334).
+  `chainweaver_flow_to_selectable`, `chainweaver_flows_to_catalog`, and
+  `load_chainweaver_export` import ChainWeaver flow exports as
+  `SelectableItem(kind="flow")`.  Pure data; no ChainWeaver dependency.
+  Preserves name/description/input+output schemas; stamps
+  `metadata["runtime"]="chainweaver"` + flow id/version.
+- **contextweaver → ChainWeaver reference architecture**
+  (`examples/architectures/chainweaver_gateway/`, #353).  Demonstrates
+  contextweaver routing narrowing a catalog before handing off to a
+  ChainWeaver flow executor; wired into `make architectures`.
+- **Python 3.10–3.14 support + library-grade dependency constraints**
+  (#339, #356).  Lower-bound-only (`>=`) specifiers set to the lowest
+  version actually known to work.  Gating `floor-deps` CI job proves the
+  floors; non-gating weekly job (`deps-latest-weekly.yml`) runs latest +
+  pre-releases as the no-upper-cap safety net.  Python 3.14 support later
+  reverted (upstream adapters cap `<3.14`; see Fixed).
 
 ### Changed
 
-- **Dependency floors corrected to tested minimums** (#356) — the new floor-deps
-  job revealed several declared `>=` floors were lower than any version that
-  actually works. Bumped: `mcp` `>=1.0` → `>=1.19.0` (tool-call result decode
-  shape), `typer` `>=0.9` → `>=0.16.0` (CLI vs modern `click` 8.2+), `fastmcp`
-  `>=2.0` → `>=2.12.0` (vs modern `pydantic` 2.x), and the dev tool
-  `pytest-asyncio` `>=0.23` → `>=0.23.8` (collection crash on `pytest` 8.x). No
-  effect on latest-deps installs — only the lower bounds moved.
-- **README hero leads with the MCP context gateway** — restructured the first
-  screen around a single hero use case and one try-it command; the
-  context-compiler-vs-router duality is now a secondary "also works as
-  routing-only or firewall-only" section linking `docs/which_pattern.md` (#344).
-- **README version references are guarded against drift** — refreshed the
-  "Current package version" line and comparison snapshot to 0.12.0 and added
-  `scripts/check_readme_version.py` (`make readme-version-check`), a stdlib CI
-  gate that fails when a tracked README version reference lags
-  `pyproject.toml` (#347).
+- **Docs positioning** — README now leads with the MCP gateway hero; new
+  context-rot live demo with drift guards (`make context-rot` /
+  `make context-rot-check`).
+- **Routing documented as advisory Weaver contract** (#320).
 
 ### Fixed
 
-- **Prompt renderer: doubled `artifact:` prefix** — tool-result snippets now
-  render `[TOOL RESULT [artifact:tr1]]` instead of
-  `[TOOL RESULT [artifact:artifact:tr1]]`. Stored artifact handles are
-  unchanged, so `artifact_store.get("artifact:…")` still works. Demo casts,
-  quickstart/showcase samples, and architecture `OUTPUT.md` snapshots
-  refreshed. (#313)
-- **Prompt renderer: missing tool function name** — provider adapters keep the
-  tool name in `metadata["function_name"]`; the renderer now surfaces it for
-  tool calls (`[TOOL CALL]\nget_weather(<args>)`) and tool results
-  (`[TOOL RESULT]\nget_weather: <result>`) so the model can pair a call with
-  the result it produced. `item.text` is left untouched, preserving the
-  adapter round-trip invariant (#219). (#308)
+- **Prompt rendering of artifact handles and tool names** (#313, #308).
+  Corrected the adapter-to-render contract so artifact handles and tool
+  names are rendered accurately in the compiled prompt; end-to-end test
+  locked.
+- **README version-guard scope** — pinned to `[project]` table only; fixed
+  false gate note.
+- **`ExecutionFeedback.from_dict`** — rounds `float token_cost` to avoid
+  JSON-serialisation drift.
+- **Context-rot notebook** — catalog now grows per size so the live demo
+  behaves correctly.
+- **Packaging follow-up** — dropped Python 3.14 claim after upstream
+  adapters capped `<3.14`; fixed floor-deps job; addressed review.
+- **`CHANGELOG.md`** — switched to a runnable `uv pip install` snippet for
+  the floor-deps entry.
+
+### CI
+
+- Weekly latest/pre-release job now fails visibly instead of silently.
 
 ## [0.12.0] - 2026-05-29
 
@@ -1427,7 +1371,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected all runnable snippets in `docs/troubleshooting.md` to match actual APIs:
   - `ArtifactStore.get()` returns `bytes`, not an object with `.content`
   - `ArtifactRef` field is `handle`, not `ref_id`
-  - `EventLog` exposes `all()` / `filter_by_kind()` / `count()`, not `list()`
+  - `EventLog` exposes `all()` / `filter_by_kind()` / `count()` / `tail()`, not `list()`
   - `FactStore.get_by_key(key)` is the correct API for key-based fact lookup
   - `EpisodicStore` items use `episode_id` / `summary`, not `id` / `text`
   - `ContextPack` has no `token_count`; totals computed from `pack.stats`

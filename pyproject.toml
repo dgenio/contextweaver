@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.12.0"
+version = "0.13.0"
 description = "Context firewall + tool router for MCP and tool-heavy AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,7 +38,6 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
@@ -55,29 +54,13 @@ classifiers = [
 # is one of the project's primary user touchpoints and the ``_HAS_RICH``
 # guarded-import dance had become its own maintenance burden.  Other heavy
 # or runtime-specific packages remain under [project.optional-dependencies].
-#
-# Dependency-constraint policy (issue #356): as a *library*, contextweaver
-# constrains dependencies as loosely as correctness allows — **lower bounds
-# only** (``>=``), set to the lowest version actually known to work, with **no
-# exact pins (``==``)** and **no speculative upper caps**.  The only caps kept
-# are deliberate and carry an inline rationale (pre-1.0 SemVer caps, or a
-# docs-only major pin).  A floor-deps CI job proves these lower bounds and a
-# scheduled latest/pre-release job (``.github/workflows/deps-latest-weekly.yml``)
-# is the safety net that justifies omitting upper caps.  See CONTRIBUTING.md.
 dependencies = [
     "tiktoken>=0.5",
     "PyYAML>=6.0",
     "rank-bm25>=0.2",
-    # Floor bumped 1.0 -> 1.19.0 (issue #356 floor-deps proof): the MCP
-    # tool-call result content shape that the gateway client path decodes
-    # settled at 1.19; mcp <1.19 returns content the live gateway suite cannot
-    # round-trip ("Extra data" on json.loads). 1.19.0 is the lowest green floor.
-    "mcp>=1.19.0",
+    "mcp>=1.0",
     "jsonschema>=4.0",
-    # Floor bumped 0.9 -> 0.16.0 (issue #356 floor-deps proof): typer 0.9/0.15
-    # break the CLI against modern ``click`` (8.2 made breaking changes); 0.16.0
-    # is the lowest release that drives the Typer CLI cleanly on current click.
-    "typer>=0.16.0",
+    "typer>=0.9",
     "rich>=13.0",
 ]
 
@@ -97,19 +80,11 @@ Discussions = "https://github.com/dgenio/contextweaver/discussions"
 # (#195) are exercised against real upstream wire shapes on every CI run.
 dev = [
     "pytest>=8.0",
-    # Floor bumped from 0.23 to 0.23.8 (issue #356 floor-deps job): 0.23.0
-    # crashes during collection against pytest 8.x ("'Package' object has no
-    # attribute 'obj'"); 0.23.8 is the lowest release compatible with the
-    # pytest>=8.0 floor.
-    "pytest-asyncio>=0.23.8",
+    "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.10",
     "pre-commit>=3.7",
-    # Cap rationale (issue #356): ``weaver_contracts`` is pre-1.0, so a ``<1``
-    # SemVer cap is a justified exception to the no-upper-cap policy — a 1.0
-    # release may break the contract shapes the adapter round-trips.  The
-    # scheduled latest/pre-release CI job is what flags when this cap can move.
     "weaver_contracts>=0.2,<1",
     # 4.18 ships ``referencing`` — the conformance script's local $ref
     # resolver depends on it (PR #201 review).
@@ -120,11 +95,8 @@ dev = [
     # test (``tests/test_adapters_fastmcp_discovery.py``) — which spins up a
     # real in-memory FastMCP server — runs on every CI matrix cell.  The
     # ``[fastmcp]`` runtime extra below stays for end users who don't want
-    # the dev toolchain.  Floor 2.12.0 (issue #356 floor-deps proof): fastmcp
-    # <2.12 crashes against modern ``pydantic`` 2.x ("cannot specify both
-    # default and default_factory") and earlier 2.x rejects the bare ``@tool``
-    # decorator the discovery tests use; 2.12.0 is the lowest working release.
-    "fastmcp>=2.12.0",
+    # the dev toolchain.
+    "fastmcp>=2.0",
     # LangGraph is pulled into [dev] so the LangGraph agent-loop reference
     # architecture (``examples/architectures/langgraph_agent_loop``, issue
     # #326) exercises the *real* ``StateGraph`` under ``make example`` in CI.
@@ -139,10 +111,9 @@ dev = [
 weaver-spec = [
     "weaver_contracts>=0.2,<1",
 ]
-# FastMCP adapter integration.  Floor 2.12.0 — see the rationale on the [dev]
-# ``fastmcp`` entry (issue #356): <2.12 breaks against modern pydantic 2.x.
+# FastMCP adapter integration.
 fastmcp = [
-    "fastmcp>=2.12.0",
+    "fastmcp>=2.0",
 ]
 # CrewAI adapter integration (issue #193).  Pulls the CrewAI runtime so user
 # applications can import the live-discovery helper
