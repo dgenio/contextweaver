@@ -94,6 +94,24 @@ Re-running after `pip install -e ".[dev]"` should resolve it.
   runtime-specific packages go under `[project.optional-dependencies]` (e.g. `cli`,
   `otel`, `retrieval`, `ann`, `graph`) and must be loaded via guarded imports
   (`try: import x ... except ImportError: ...`).
+- **Dependency-constraint policy** (issue #356) — as a *library*, contextweaver
+  constrains dependencies as loosely as correctness allows so it composes in a
+  downstream app's environment:
+  - **Lower bounds only** (`>=`), set to the lowest version actually known to
+    work. **No exact pins (`==`)** and **no speculative upper caps** in the
+    install requirements — those belong in applications and lockfiles, not a
+    library.
+  - The only caps kept are deliberate and carry an **inline comment citing the
+    rationale**: the pre-1.0 `weaver_contracts<1` SemVer cap and the docs-extra
+    major pins (`mkdocs-material<10`, etc.).
+  - Two CI jobs make the policy real: a gating **floor-deps** job
+    (`uv pip install --resolution lowest-direct`, Python 3.10) proves every
+    `>=X` floor is truthful, and a non-gating weekly
+    [`deps-latest-weekly.yml`](.github/workflows/deps-latest-weekly.yml) job
+    (latest + pre-releases) is the safety net that justifies omitting upper
+    caps and flags when a retained cap can move. **If you raise a floor, verify
+    it with the floor-deps job** (or `uv pip install --resolution lowest-direct
+    -e ".[dev,langchain]" && pytest`).
 - **Type hints everywhere** — all public functions and methods must be fully annotated.
 - **Docstrings** — use Google-style docstrings on all public classes and functions.
 - **Line length** — 100 characters maximum (enforced by ruff).

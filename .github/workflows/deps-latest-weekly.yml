@@ -1,0 +1,52 @@
+name: Weekly Latest / Pre-release Deps
+
+# The safety net that justifies shipping no upper-bound caps (issue #356).
+# A normal CI run resolves the latest *stable* deps; this job goes further and
+# installs the newest releases *including pre-releases* on the newest supported
+# Python, then runs the suite. It is non-gating — it runs only on a schedule and
+# is not a required status check, so a failure blocks no development. A red run
+# is the point: it is the early warning that an upstream release (or a
+# pre-release) breaks contextweaver, and tells us when a deliberately retained
+# cap (e.g. the pre-1.0 ``weaver_contracts<1``) is safe to move. See pyproject.toml's
+# dependency-constraint policy comment and CONTRIBUTING.md.
+
+on:
+  schedule:
+    # Tuesday 06:00 UTC. Off-hours; staggered a day after the weekly scorecard
+    # job (Monday) to keep runner contention low.
+    - cron: "0 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  latest-prerelease:
+    name: Latest + pre-release deps (3.13)
+    runs-on: ubuntu-latest
+    # Non-gating by construction: scheduled-only and not a required status
+    # check, so a failure blocks no PR or merge. The run is allowed to go red on
+    # purpose — that red is the early-warning signal (it fires the usual Actions
+    # failure notification); a job-level continue-on-error would only hide it.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          # Newest *supported* Python (3.14 is pending — the heavy dev/adapter
+          # stack still caps at Requires-Python <3.14). Bump to 3.14 once that
+          # ecosystem ships 3.14 wheels.
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install newest deps (incl. pre-releases)
+        # ``--prerelease allow`` + ``--upgrade`` pulls the absolute newest
+        # releases, pre-releases included — the most aggressive resolution, so
+        # a green run here is strong evidence the no-upper-cap policy holds.
+        run: uv pip install --system --prerelease allow --upgrade -e ".[dev,langchain]"
+
+      - name: Test (latest / pre-release versions)
+        run: pytest -q

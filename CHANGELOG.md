@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Python 3.13 support** (#339) — trove classifiers and the CI matrix now
+  cover 3.10–3.13 inclusive (gating, with `fail-fast` disabled so every cell
+  reports independently). `requires-python` stays `>=3.10`; the README/docs
+  Python-support statement is updated to match. 3.14 is deferred: the heavy
+  dev/adapter stack (crewai, mem0ai, fastmcp, langgraph, langchain-core) still
+  declares `Requires-Python <3.14`, so the test extras cannot resolve on 3.14
+  yet — tracked as a follow-up.
+- **Library-grade dependency-constraint policy + CI proofs** (#356) — core
+  dependencies are documented as lower-bound-only (no `==` pins, no speculative
+  upper caps); the only retained caps (`weaver_contracts<1`, the docs-extra
+  major pins) now carry inline rationale. Adds a gating **floor-deps** CI job
+  (`uv pip install --resolution lowest-direct` on Python 3.10, full suite) that proves the
+  declared `>=` bounds are truthful, and a non-gating weekly
+  **latest/pre-release** workflow (`.github/workflows/deps-latest-weekly.yml`)
+  as the safety net that justifies omitting upper caps. The floor-deps job runs
+  `uv pip install --resolution lowest-direct`. The policy is documented in
+  `CONTRIBUTING.md`.
+
 - **Feedback-aware routing score extension point (`contextweaver.routing.feedback`)**
   (#318) — an opt-in seam for folding historical execution signals into the
   routing score while keeping deterministic routing the default. Adds the
@@ -73,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dependency floors corrected to tested minimums** (#356) — the new floor-deps
+  job revealed several declared `>=` floors were lower than any version that
+  actually works. Bumped: `mcp` `>=1.0` → `>=1.19.0` (tool-call result decode
+  shape), `typer` `>=0.9` → `>=0.16.0` (CLI vs modern `click` 8.2+), `fastmcp`
+  `>=2.0` → `>=2.12.0` (vs modern `pydantic` 2.x), and the dev tool
+  `pytest-asyncio` `>=0.23` → `>=0.23.8` (collection crash on `pytest` 8.x). No
+  effect on latest-deps installs — only the lower bounds moved.
 - **README hero leads with the MCP context gateway** — restructured the first
   screen around a single hero use case and one try-it command; the
   context-compiler-vs-router duality is now a secondary "also works as
