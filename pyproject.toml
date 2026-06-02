@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.13.2"
+version = "0.13.3"
 description = "Context firewall + tool router for MCP and tool-heavy AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -96,7 +96,12 @@ dev = [
     # real in-memory FastMCP server — runs on every CI matrix cell.  The
     # ``[fastmcp]`` runtime extra below stays for end users who don't want
     # the dev toolchain.
-    "fastmcp>=2.0",
+    #
+    # Floor 2.12.0 (issue #356 floor-deps proof): fastmcp <2.12 uses the
+    # bare ``@server.tool`` (no-call) pattern which was removed in later
+    # pydantic/mcp releases.  2.12+ requires ``@server.tool()`` and is the
+    # lowest version compatible with the rest of the transitive stack.
+    "fastmcp>=2.12.0",
     # LangGraph is pulled into [dev] so the LangGraph agent-loop reference
     # architecture (``examples/architectures/langgraph_agent_loop``, issue
     # #326) exercises the *real* ``StateGraph`` under ``make example`` in CI.
@@ -112,8 +117,12 @@ weaver-spec = [
     "weaver_contracts>=0.2,<1",
 ]
 # FastMCP adapter integration.
+# Floor 2.12.0 — see rationale on the [dev] ``fastmcp`` entry (issue #356):
+#   <2.12 uses bare ``@server.tool`` (no-call) pattern; 2.12+ requires
+#   ``@server.tool()`` and is the lowest version compatible with the
+#   rest of the transitive stack.
 fastmcp = [
-    "fastmcp>=2.0",
+    "fastmcp>=2.12.0",
 ]
 # CrewAI adapter integration (issue #193).  Pulls the CrewAI runtime so user
 # applications can import the live-discovery helper

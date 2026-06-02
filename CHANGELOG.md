@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-06-02
+
+### Fixed
+
+- **Restore `fastmcp` floor to `>=2.12.0`** (was incorrectly reverted to
+  `>=2.0` in v0.13.0).  FastMCP `<2.12` uses the bare ``@server.tool``
+  (no-call) decorator pattern which breaks at lowest-direct resolution;
+  `2.12+` requires ``@server.tool()`` and is the proven minimum from the
+  original floor-deps commit (`b27eb1b`).
+
 ## [0.13.2] - 2026-06-02
 
 ### Fixed
