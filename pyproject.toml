@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.13.1"
+version = "0.13.2"
 description = "Context firewall + tool router for MCP and tool-heavy AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -80,7 +80,7 @@ Discussions = "https://github.com/dgenio/contextweaver/discussions"
 # (#195) are exercised against real upstream wire shapes on every CI run.
 dev = [
     "pytest>=8.0",
-    "pytest-asyncio>=0.23.3",
+    "pytest-asyncio>=0.23.8",
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.10",

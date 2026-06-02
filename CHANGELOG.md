@@ -7,15 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-06-02
+
+### Fixed
+
+- **`pytest-asyncio` floor corrected from `>=0.23.3` to `>=0.23.8`**.
+  The `0.23.3` bump in `0.13.1` still resolved to a broken version under
+  `--resolution lowest-direct`.  The `>=0.23.8` bound is the proven
+  minimum from the original floor-deps commit (`e8b2cfc`) and was
+  accidentally reverted in a subsequent merge.
+
 ## [0.13.1] - 2026-06-02
 
 ### Fixed
 
-- **`pytest-asyncio` floor raised from `>=0.23` to `>=0.23.3`** to fix a
+- **`pytest-asyncio` floor raised from `>=0.23` to `>=0.23.8`** to fix a
   `pytest` internal `AttributeError` (`'Package' object has no attribute 'obj'`)
   that breaks test collection under `--resolution lowest-direct` / `pytest>=8.0`.
   The gating floor-deps CI job (Python 3.10) was failing with `INTERNALERROR`
-  before this.
+  before this.  The `>=0.23.8` bound was first proven when the floor-deps job
+  landed in commit `e8b2cfc` and was accidentally reverted in a later merge.
 
 ## [0.13.0] - 2026-06-02
 
@@ -1314,7 +1325,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ContextPolicy(extra={"ttl_behavior": "drop"})`.
 - Named configuration presets in `config.py` (#133)
   - `RoutingConfig` dataclass bundling `beam_width`, `max_depth`, `top_k`, `confidence_gap`, `max_children`; includes `routing_kwargs()`, `to_dict()`, `from_dict()`
-  - `ProfileConfig` dataclass bundling `budget`, `policy`, `scoring`, `routing`; includes `from_preset()`, `to_dict()`, `from_dict()`
+  - `ProfileConfig` dataclass bundling `budget`, `policy`, `scoring`, `routing`; includes `from_preset()``, `to_dict()`, `from_dict()`
   - Three named presets: `"fast"` (low-latency), `"balanced"` (general-purpose), `"accurate"` (high-recall)
   - `Router` now accepts a keyword-only `routing_config: RoutingConfig` parameter that overrides individual beam-search kwargs
   - `ConfigError` exception added to `contextweaver.exceptions` for invalid config/preset names
