@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependencies are documented as lower-bound-only (no `==` pins, no speculative
   upper caps); the only retained caps (`weaver_contracts<1`, the docs-extra
   major pins) now carry inline rationale. Adds a gating **floor-deps** CI job
-  (`uv --resolution lowest-direct` on Python 3.10, full suite) that proves the
+  (`uv pip install --resolution lowest-direct` on Python 3.10, full suite) that proves the
   declared `>=` bounds are truthful, and a non-gating weekly
   **latest/pre-release** workflow (`.github/workflows/deps-latest-weekly.yml`)
   as the safety net that justifies omitting upper caps. The floor-deps job runs
