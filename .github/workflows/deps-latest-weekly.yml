@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   latest-prerelease:
-    name: Latest + pre-release deps (3.14)
+    name: Latest + pre-release deps (3.13)
     runs-on: ubuntu-latest
     # Non-gating: an upstream breakage here must not block development. It is an
     # early-warning signal, not a merge gate.
@@ -29,10 +29,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.14
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          # Newest *supported* Python (3.14 is pending — the heavy dev/adapter
+          # stack still caps at Requires-Python <3.14). Bump to 3.14 once that
+          # ecosystem ships 3.14 wheels.
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -44,4 +47,4 @@ jobs:
         run: uv pip install --system --prerelease allow --upgrade -e ".[dev,langchain]"
 
       - name: Test (latest / pre-release versions)
-        run: pytest --cov=contextweaver --cov-report=term-missing -q
+        run: pytest -q

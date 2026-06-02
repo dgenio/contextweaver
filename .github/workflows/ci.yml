@@ -17,9 +17,13 @@ jobs:
       # supported range (issue #339).
       fail-fast: false
       matrix:
-        # Full supported range, 3.10–3.14 inclusive (issue #339). All cells are
+        # Supported range 3.10–3.13 inclusive (issue #339). All cells are
         # gating: a release is only claimed as supported once its cell is green.
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # 3.14 is deliberately excluded for now — the heavy dev/adapter stack
+        # (crewai, mem0ai, fastmcp, langgraph, langchain-core) still caps at
+        # Requires-Python <3.14, so the [dev,langchain] suite cannot resolve on
+        # 3.14. Tracked for re-add once those upstreams ship 3.14 wheels.
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +135,12 @@ jobs:
         run: uv pip install --system --resolution lowest-direct -e ".[dev,langchain]"
 
       - name: Test (floor versions)
-        run: pytest --cov=contextweaver --cov-report=term-missing -q
+        # No ``--cov`` here: this job exists to prove the *runtime* dependency
+        # floors are truthful (the suite passes at the declared minimums), not
+        # to measure coverage — the matrix ``test`` job does that at latest
+        # deps. Running coverage here also trips a spurious
+        # statement-vs-branch combine error from subprocess-spawning tests.
+        run: pytest -q
 
   benchmark-comment:
     # Sticky regression-feedback comment (issue #211). Runs on a single
