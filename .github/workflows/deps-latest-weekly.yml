@@ -3,10 +3,11 @@ name: Weekly Latest / Pre-release Deps
 # The safety net that justifies shipping no upper-bound caps (issue #356).
 # A normal CI run resolves the latest *stable* deps; this job goes further and
 # installs the newest releases *including pre-releases* on the newest supported
-# Python, then runs the suite. It is non-gating (continue-on-error) — its job is
-# to give early warning when an upstream release (or a pre-release) breaks
-# contextweaver, and to tell us when a deliberately retained cap (e.g. the
-# pre-1.0 ``weaver_contracts<1``) is safe to move. See pyproject.toml's
+# Python, then runs the suite. It is non-gating — it runs only on a schedule and
+# is not a required status check, so a failure blocks no development. A red run
+# is the point: it is the early warning that an upstream release (or a
+# pre-release) breaks contextweaver, and tells us when a deliberately retained
+# cap (e.g. the pre-1.0 ``weaver_contracts<1``) is safe to move. See pyproject.toml's
 # dependency-constraint policy comment and CONTRIBUTING.md.
 
 on:
@@ -23,9 +24,10 @@ jobs:
   latest-prerelease:
     name: Latest + pre-release deps (3.13)
     runs-on: ubuntu-latest
-    # Non-gating: an upstream breakage here must not block development. It is an
-    # early-warning signal, not a merge gate.
-    continue-on-error: true
+    # Non-gating by construction: scheduled-only and not a required status
+    # check, so a failure blocks no PR or merge. The run is allowed to go red on
+    # purpose — that red is the early-warning signal (it fires the usual Actions
+    # failure notification); a job-level continue-on-error would only hide it.
     steps:
       - uses: actions/checkout@v4
 
