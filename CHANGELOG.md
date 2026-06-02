@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-06-02
+
+### Fixed
+
+- **`pytest-asyncio` floor raised from `>=0.23` to `>=0.23.3`** to fix a
+  `pytest` internal `AttributeError` (`'Package' object has no attribute 'obj'`)
+  that breaks test collection under `--resolution lowest-direct` / `pytest>=8.0`.
+  The gating floor-deps CI job (Python 3.10) was failing with `INTERNALERROR`
+  before this.
+
 ## [0.13.0] - 2026-06-02
 
 ### Added
