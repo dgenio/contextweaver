@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.4] - 2026-06-02
+
+### Fixed
+
+- **Restore `mcp` floor to `>=1.19.0` and `typer` floor to `>=0.16.0`**
+  (both incorrectly reverted to `>=1.0` / `>=0.9` in v0.13.0).
+  The `>=1.19.0` bound is the proven minimum for the live MCP gateway
+  suite; the `>=0.16.0` bound is the lowest release that drives the
+  Typer CLI cleanly on current click (issue #356 floor-deps commit
+  `b27eb1b`).
+
 ## [0.13.3] - 2026-06-02
 
 ### Fixed

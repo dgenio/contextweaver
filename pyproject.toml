@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.13.3"
+version = "0.13.4"
 description = "Context firewall + tool router for MCP and tool-heavy AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -58,9 +58,15 @@ dependencies = [
     "tiktoken>=0.5",
     "PyYAML>=6.0",
     "rank-bm25>=0.2",
-    "mcp>=1.0",
+    # Floor 1.19.0 (issue #356 floor-deps proof): mcp <1.19 returns content
+    # the live gateway suite cannot parse; in-memory transport changed
+    # wire format between 1.0 and 1.19.
+    "mcp>=1.19.0",
     "jsonschema>=4.0",
-    "typer>=0.9",
+    # Floor 0.16.0 (issue #356 floor-deps proof): typer <0.16 breaks the
+    # CLI against modern click (8.2 made breaking changes); 0.16.0 is the
+    # lowest release that drives the Typer CLI cleanly on current click.
+    "typer>=0.16.0",
     "rich>=13.0",
 ]
 
