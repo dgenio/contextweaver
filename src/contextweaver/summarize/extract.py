@@ -14,8 +14,6 @@ import json
 import re
 from typing import Any
 
-# FUTURE: LLM-backed extractor for richer entity/relation extraction.
-
 
 def extract_key_value_pairs(text: str) -> dict[str, str]:
     """Extract ``key: value`` or ``key = value`` pairs from *text*.
