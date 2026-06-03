@@ -4,158 +4,58 @@ Adapts the [Zep Cloud](https://www.getzep.com/) Python client (``zep-cloud``)
 so an existing Zep deployment can back contextweaver's optional long-lived
 stores.  The two classes implement the existing
 :class:`~contextweaver.store.protocols.EpisodicStore` and
-:class:`~contextweaver.store.protocols.FactStore` Protocols verbatim — the
-Protocols are not widened.
+:class:`~contextweaver.store.protocols.FactStore` Protocols verbatim (the
+Protocols are not widened).
 
-This module requires the ``[zep]`` optional extra::
+Requires the ``[zep]`` optional extra (``pip install 'contextweaver[zep]'``);
+without it, importing this module raises :class:`ImportError` with that hint.
+Shared constants, payload helpers, and the store base class live in
+:mod:`contextweaver.extras.memory._zep_common` to keep this module cohesive.
 
-    pip install 'contextweaver[zep]'
+**Persistence.** Zep extracts edges/nodes from **episodes** (the raw inputs you
+add); episodes are the one surface that round-trips the exact input, so this
+adapter uses them as the lossless system of record.  Each
+:class:`~contextweaver.store.episodic.Episode` and
+:class:`~contextweaver.store.facts.Fact` is written via
+:meth:`graph.add(type="json") <zep_cloud.Zep.graph>` as a JSON episode embedding
+the canonical ID (``cw_episode_id`` / ``cw_fact_id``) and a ``cw_kind``
+discriminator; reads scan :meth:`graph.episode.get_by_user_id` and resolve that
+ID back to Zep's episode ``uuid_``, staying lossless and deterministic.
 
-Without it, importing this module raises :class:`ImportError` with the exact
-install hint above.  The rest of contextweaver works unchanged.
-
-How items are persisted
------------------------
-
-Zep's knowledge graph is built around **episodes** (raw inputs you add) from
-which it extracts **edges** (facts) and **nodes** (entities).  Episodes are
-the one surface that round-trips your exact input, so this adapter — like the
-Mem0 backend — uses them as the lossless system of record:
-
-1. Each :class:`~contextweaver.store.episodic.Episode` and
-   :class:`~contextweaver.store.facts.Fact` is written via
-   :meth:`graph.add(type="json") <zep_cloud.Zep.graph>` as a JSON episode that
-   embeds the canonical ID (``cw_episode_id`` / ``cw_fact_id``) and a
-   ``cw_kind`` discriminator.
-2. ``get`` / ``get_by_key`` / ``list_keys`` / ``all`` / ``delete`` resolve the
-   canonical ID back to Zep's episode ``uuid_`` by scanning
-   :meth:`graph.episode.get_by_user_id`, then act on that uuid.
-
-This keeps every Protocol method lossless and deterministic regardless of how
-Zep's extraction layer reshapes the data into edges/nodes.
-
-Out of scope (this cycle)
--------------------------
-
-Zep's native semantic recall (:meth:`graph.search`) operates over extracted
-**edges / nodes**, which do not map onto the Episode/Fact key-value contract.
-:meth:`EpisodicStore.search` therefore performs a deterministic client-side
-match over the persisted episodes rather than calling ``graph.search``.
-Surfacing Zep's graph search is tracked as a follow-up against a widened
-search-options Protocol (the Protocol is intentionally not widened here).
-When the configured ``user_id`` holds more than ``scan_limit`` episodes the
-scanning methods raise :class:`NotImplementedError` rather than truncating.
+**Out of scope (this cycle).** Zep's native semantic recall
+(:meth:`graph.search`) operates over extracted edges/nodes, which do not map
+onto the Episode/Fact key-value contract, so :meth:`EpisodicStore.search` does a
+deterministic client-side match over the persisted episodes instead (widening
+the search Protocol is a tracked follow-up).  When the ``user_id`` scope holds
+more than ``scan_limit`` episodes the scanning methods raise
+:class:`NotImplementedError` rather than truncating.
 """
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
-from contextweaver.exceptions import ContextWeaverError, ItemNotFoundError
+from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.extras.memory._zep_common import (
+    _CW_EPISODE_ID,
+    _CW_FACT_ID,
+    _CW_FACT_KEY,
+    _CW_KIND,
+    _DEFAULT_SCAN_LIMIT,
+    _KIND_EPISODE,
+    _KIND_FACT,
+    ZepBackendError,
+    _coerce_metadata,
+    _coerce_str_tags,
+    _episode_payload,
+    _episode_uuid,
+    _ZepStoreBase,
+)
 from contextweaver.store.episodic import Episode
 from contextweaver.store.facts import Fact
 
 if TYPE_CHECKING:
     from zep_cloud.client import Zep
-
-
-try:
-    from zep_cloud.client import Zep as _Zep  # noqa: F401
-except ImportError as _zep_import_err:  # pragma: no cover - exercised only when extra is missing
-    raise ImportError(
-        "Zep external-memory backend requires the [zep] extra. "
-        "Install with: pip install 'contextweaver[zep]'"
-    ) from _zep_import_err
-
-
-_CW_KIND = "cw_kind"
-_CW_EPISODE_ID = "cw_episode_id"
-_CW_FACT_ID = "cw_fact_id"
-_CW_FACT_KEY = "cw_key"
-_KIND_EPISODE = "episode"
-_KIND_FACT = "fact"
-_DEFAULT_SCAN_LIMIT = 1000
-
-
-class ZepBackendError(ContextWeaverError):
-    """Raised when the Zep backend cannot honour a store operation."""
-
-
-def _episode_records(raw: object) -> list[object]:
-    """Coerce a ``graph.episode.get_by_user_id`` response into an episode list.
-
-    Accepts both the SDK's response object (``.episodes``) and a bare list /
-    ``{"episodes": [...]}`` dict for resilience across client versions.
-    """
-    if raw is None:
-        return []
-    episodes = getattr(raw, "episodes", None)
-    if episodes is None and isinstance(raw, dict):
-        episodes = raw.get("episodes")
-    if episodes is None and isinstance(raw, list):
-        episodes = raw
-    return list(episodes) if episodes is not None else []
-
-
-def _episode_uuid(record: object) -> str | None:
-    """Return the Zep episode uuid of *record*, tolerating attr/key variants."""
-    for attr in ("uuid_", "uuid", "id"):
-        value = getattr(record, attr, None)
-        if value is None and isinstance(record, dict):
-            value = record.get(attr)
-        if isinstance(value, str) and value:
-            return value
-    return None
-
-
-def _episode_payload(record: object) -> dict[str, Any]:
-    """Return the JSON payload contextweaver stored in a Zep episode's content."""
-    content = getattr(record, "content", None)
-    if content is None and isinstance(record, dict):
-        content = record.get("content")
-    if not isinstance(content, str):
-        return {}
-    try:
-        loaded = json.loads(content)
-    except (json.JSONDecodeError, ValueError):
-        return {}
-    return loaded if isinstance(loaded, dict) else {}
-
-
-class _ZepStoreBase:
-    """Shared scope, scan, and write helpers for the Zep stores."""
-
-    def __init__(self, client: Zep, *, user_id: str, scan_limit: int) -> None:
-        if not user_id:
-            raise ZepBackendError(f"{type(self).__name__} requires a non-empty user_id.")
-        self._client = client
-        self._user_id = user_id
-        self._scan_limit = scan_limit
-
-    def _add_json(self, payload: dict[str, Any]) -> None:
-        self._client.graph.add(
-            user_id=self._user_id,
-            type="json",
-            data=json.dumps(payload),
-        )
-
-    def _scan(self) -> list[object]:
-        raw = self._client.graph.episode.get_by_user_id(
-            user_id=self._user_id, lastn=self._scan_limit
-        )
-        records = _episode_records(raw)
-        if len(records) >= self._scan_limit:
-            raise NotImplementedError(
-                f"{type(self).__name__}: {self._user_id!r} scope has at least "
-                f"{self._scan_limit} episodes; scanning ops are no longer "
-                "lossless. Narrow scope via user_id partitioning or use a "
-                "dedicated store backend."
-            )
-        return records
-
-    def _delete_uuid(self, uuid: str) -> None:
-        self._client.graph.episode.delete(uuid_=uuid)
 
 
 class ZepEpisodicStore(_ZepStoreBase):
@@ -192,8 +92,8 @@ class ZepEpisodicStore(_ZepStoreBase):
         return Episode(
             episode_id=str(payload.get(_CW_EPISODE_ID, "")),
             summary=str(payload.get("summary", "")),
-            tags=[t for t in payload.get("tags", []) if isinstance(t, str)],
-            metadata=dict(payload.get("metadata", {})),
+            tags=_coerce_str_tags(payload.get("tags")),
+            metadata=_coerce_metadata(payload.get("metadata")),
         )
 
     def add(self, episode: Episode) -> None:
@@ -259,7 +159,11 @@ class ZepEpisodicStore(_ZepStoreBase):
             return []
         recent = list(reversed(self._all_payloads()))[:n]
         return [
-            (str(p.get(_CW_EPISODE_ID)), str(p.get("summary", "")), dict(p.get("metadata", {})))
+            (
+                str(p.get(_CW_EPISODE_ID)),
+                str(p.get("summary", "")),
+                _coerce_metadata(p.get("metadata")),
+            )
             for p in recent
         ]
 
@@ -306,8 +210,8 @@ class ZepFactStore(_ZepStoreBase):
             fact_id=str(payload.get(_CW_FACT_ID, "")),
             key=str(payload.get(_CW_FACT_KEY, "")),
             value=str(payload.get("value", "")),
-            tags=[t for t in payload.get("tags", []) if isinstance(t, str)],
-            metadata=dict(payload.get("metadata", {})),
+            tags=_coerce_str_tags(payload.get("tags")),
+            metadata=_coerce_metadata(payload.get("metadata")),
         )
 
     def _fact_payloads(self) -> list[dict[str, Any]]:

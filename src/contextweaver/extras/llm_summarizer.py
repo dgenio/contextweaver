@@ -111,8 +111,8 @@ class LlmSummarizer:
             if not isinstance(result, str) or not result.strip():
                 raise ValueError("LLM summariser returned an empty completion")
             return result.strip()
-        except Exception:  # noqa: BLE001 - any model failure must degrade safely
-            logger.warning("LlmSummarizer: call_fn failed; using rule-based fallback")
+        except Exception as exc:  # noqa: BLE001 - any model failure must degrade safely
+            logger.warning("LlmSummarizer: call_fn failed (%s); using rule-based fallback", exc)
             return self._fallback.summarize(raw, meta)
 
 
@@ -155,6 +155,6 @@ class LlmExtractor:
             if not facts:
                 raise ValueError("LLM extractor produced no facts")
             return facts
-        except Exception:  # noqa: BLE001 - any model failure must degrade safely
-            logger.warning("LlmExtractor: call_fn failed; using rule-based fallback")
+        except Exception as exc:  # noqa: BLE001 - any model failure must degrade safely
+            logger.warning("LlmExtractor: call_fn failed (%s); using rule-based fallback", exc)
             return self._fallback.extract(raw, meta)

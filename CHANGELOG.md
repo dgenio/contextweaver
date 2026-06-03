@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Split `extras/memory/zep.py` into `zep.py` + `_zep_common.py`** so each
+  module stays within the repo's ≤300-lines-per-module rule (PR #360 review).
+  The public import path (`contextweaver.extras.memory.zep`) and its exports
+  (`ZepBackendError`, `ZepEpisodicStore`, `ZepFactStore`) are unchanged.
+
+### Fixed
+
+- **Zep backend defensively coerces scanned `tags` / `metadata`** when rebuilding
+  `Episode` / `Fact` from persisted episodes: a non-list `tags` (e.g. a bare
+  string, which previously iterated into characters) yields `[]`, and a non-dict
+  `metadata` (which previously raised in `dict(...)`) yields `{}` (PR #360 review).
+- **`LlmSummarizer` / `LlmExtractor` fallback warnings now include the underlying
+  exception text**, so a degraded LLM path is diagnosable (timeout vs auth vs
+  parsing) instead of opaque (PR #360 review).
+
 ## [0.13.4] - 2026-06-02
 
 ### Fixed

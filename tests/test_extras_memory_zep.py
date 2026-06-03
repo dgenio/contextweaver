@@ -15,6 +15,7 @@ One test always runs: it asserts the friendly ``ImportError`` surfaces when
 from __future__ import annotations
 
 import importlib
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -163,6 +164,35 @@ def test_episodic_requires_user_id(client: _FakeZep) -> None:
         ZepEpisodicStore(client, user_id="")
 
 
+def _inject_raw(client: _FakeZep, user_id: str, payload: dict[str, Any]) -> None:
+    """Append a raw episode (as a stale/foreign Zep deployment might hold)."""
+    client.graph._records.append(
+        {"uuid": "raw-1", "user_id": user_id, "content": json.dumps(payload)}
+    )
+
+
+def test_episodic_coerces_malformed_tags_and_metadata(client: _FakeZep) -> None:
+    """A scanned episode with non-list tags / non-dict metadata must not corrupt rebuild."""
+    s = ZepEpisodicStore(client, user_id="alice")
+    _inject_raw(
+        client,
+        "alice",
+        {
+            "cw_kind": "episode",
+            "cw_episode_id": "e-bad",
+            "summary": "s",
+            "tags": "oops",  # a bare string would otherwise iterate into characters
+            "metadata": "nope",  # a non-dict would otherwise raise in dict(...)
+        },
+    )
+    got = s.get("e-bad")
+    assert got is not None
+    assert got.tags == []
+    assert got.metadata == {}
+    # latest() rebuilds metadata via the same coercion path.
+    assert s.latest(n=1) == [("e-bad", "s", {})]
+
+
 def test_episodic_scan_limit_raises(client: _FakeZep) -> None:
     s = ZepEpisodicStore(client, user_id="alice", scan_limit=2)
     s.add(Episode("a1", "x"))
@@ -187,6 +217,27 @@ def test_fact_put_get_and_overwrite(client: _FakeZep) -> None:
 def test_fact_get_missing_raises(client: _FakeZep) -> None:
     with pytest.raises(ItemNotFoundError, match="nope"):
         ZepFactStore(client, user_id="alice").get("nope")
+
+
+def test_fact_coerces_malformed_tags_and_metadata(client: _FakeZep) -> None:
+    """A scanned fact with non-list tags / non-dict metadata must not corrupt rebuild."""
+    s = ZepFactStore(client, user_id="alice")
+    _inject_raw(
+        client,
+        "alice",
+        {
+            "cw_kind": "fact",
+            "cw_fact_id": "f-bad",
+            "cw_key": "user.role",
+            "value": "admin",
+            "tags": "oops",
+            "metadata": ["not", "a", "dict"],
+        },
+    )
+    got = s.get("f-bad")
+    assert (got.fact_id, got.key, got.value) == ("f-bad", "user.role", "admin")
+    assert got.tags == []
+    assert got.metadata == {}
 
 
 def test_fact_get_by_key_sorted(client: _FakeZep) -> None:
