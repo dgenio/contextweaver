@@ -9,15 +9,16 @@ pip command to install it) when the extra is missing.  Importing
 imports — the per-backend modules are reached via attribute access
 (e.g. ``from contextweaver.extras.memory.mem0 import Mem0EpisodicStore``).
 
-Currently shipped:
+Currently shipped (same protocol shape; see ``docs/integration_memory.md``):
 
 - :mod:`contextweaver.extras.memory.mem0` — Mem0
-  (``contextweaver[mem0]``).
-
-Planned (same protocol shape; see ``docs/integration_memory.md``):
-
-- Zep / Graphiti (``contextweaver[zep]``)
-- LangMem (``contextweaver[langmem]``)
+  (``contextweaver[mem0]``); wraps a ``mem0.Memory`` scoped by ``user_id``.
+- :mod:`contextweaver.extras.memory.zep` — Zep / Graphiti
+  (``contextweaver[zep]``); wraps a ``zep_cloud.Zep`` scoped by ``user_id``,
+  persisting items as JSON graph episodes.
+- :mod:`contextweaver.extras.memory.langmem` — LangMem / LangGraph
+  (``contextweaver[langmem]``); wraps any LangGraph ``BaseStore`` scoped by a
+  ``namespace`` tuple.
 
 The adapters honour the existing ``store/protocols.py`` Protocols
 without widening them — methods that an upstream backend cannot

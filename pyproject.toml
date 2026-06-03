@@ -230,11 +230,25 @@ sqlite = []
 # External-memory backend interop (issue #195).  Each backend implements the
 # existing ``EpisodicStore`` / ``FactStore`` protocols from
 # ``contextweaver.store.protocols`` without widening them.  Adapters live
-# under ``contextweaver.extras.memory.*``.  Only Mem0 is shipped today; Zep
-# and LangMem rows are listed in ``docs/integration_memory.md`` as
-# follow-ups against the same protocol surface.
+# under ``contextweaver.extras.memory.*``.  Mem0, Zep, and LangMem are shipped
+# against the same protocol surface; see ``docs/integration_memory.md``.
 mem0 = [
     "mem0ai>=0.1",
+]
+# Zep Cloud knowledge-graph memory.  The adapter wraps a ``zep_cloud.Zep``
+# client and persists episodes/facts via the graph API (``graph.add`` /
+# ``graph.episode``).  Pinned at >=2 because the graph client surface this
+# adapter uses (``graph.add(type="json")``, ``graph.episode.get_by_user_id``)
+# stabilised in the 2.x line.
+zep = [
+    "zep-cloud>=2.0",
+]
+# LangMem / LangGraph long-term memory.  The adapter wraps any LangGraph
+# ``BaseStore`` (``langgraph.store.base``); installing ``langmem`` pulls a
+# compatible ``langgraph`` transitively.  Pinned at >=0.0.1 (the BaseStore
+# interface the adapter binds to is stable across the langgraph 0.2+ line).
+langmem = [
+    "langmem>=0.0.1",
 ]
 # OpenTelemetry tracing + metrics export with native GenAI semantic
 # conventions (#224).  Pinned at >=1.27 because the
@@ -321,6 +335,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "mem0.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "zep_cloud.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "langgraph.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

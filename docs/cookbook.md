@@ -296,9 +296,9 @@ per-turn prompts over memory you've already invested in — instead of
 the bundled in-memory or SQLite stores.
 
 **Use this when:** your agent already maintains long-lived memory in
-Mem0 (or [Zep](https://www.getzep.com/) / [LangMem](https://langchain-ai.github.io/langmem/)
-when those adapters land) and you don't want a second persistence
-layer to keep in sync.
+Mem0, [Zep](https://www.getzep.com/), or [LangMem](https://langchain-ai.github.io/langmem/)
+and you don't want a second persistence layer to keep in sync. All three
+ship under `contextweaver.extras.memory` behind the same protocols.
 
 ```python
 from mem0 import Memory
