@@ -114,7 +114,12 @@ dev = [
     # The example also ships a hand-rolled fallback so it still runs without
     # this dependency; the ``[langgraph]`` runtime extra below is for end
     # users who want the framework without the dev toolchain.
-    "langgraph>=0.2",
+    #
+    # Floor 0.2.32 (PR #360 floor-deps proof): the langmem adapter test
+    # (``tests/test_extras_memory_langmem.py``) imports
+    # ``langgraph.store.memory.InMemoryStore``, which first appears in 0.2.32;
+    # ``>=0.2`` resolved to 0.2.17 and failed collection at lowest-direct.
+    "langgraph>=0.2.32",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -171,8 +176,10 @@ langchain = [
 # drive its route -> execute -> answer loop through a real ``StateGraph``.
 # The example ships a hand-rolled fallback, so it runs without this extra;
 # install it to exercise the framework path.
+# Floor 0.2.32 — the langgraph store API (``langgraph.store.memory.InMemoryStore``)
+# the langmem adapter/test relies on first appears in 0.2.32 (PR #360).
 langgraph = [
-    "langgraph>=0.2",
+    "langgraph>=0.2.32",
 ]
 # Real-time voice agents: Pipecat frame processors composed with the
 # contextweaver context engine.  Optional because pipecat-ai pulls heavy
@@ -244,11 +251,14 @@ zep = [
     "zep-cloud>=2.0",
 ]
 # LangMem / LangGraph long-term memory.  The adapter wraps any LangGraph
-# ``BaseStore`` (``langgraph.store.base``); installing ``langmem`` pulls a
-# compatible ``langgraph`` transitively.  Pinned at >=0.0.1 (the BaseStore
-# interface the adapter binds to is stable across the langgraph 0.2+ line).
+# ``BaseStore`` (``langgraph.store.base``).  ``langgraph>=0.2.32`` is pinned
+# explicitly because the store API the adapter and its tests bind to — notably
+# ``langgraph.store.memory.InMemoryStore`` used as the reference store — first
+# appears in 0.2.32 (PR #360 floor-deps proof); a bare ``langmem>=0.0.1`` could
+# otherwise resolve a too-old ``langgraph`` transitively.
 langmem = [
     "langmem>=0.0.1",
+    "langgraph>=0.2.32",
 ]
 # OpenTelemetry tracing + metrics export with native GenAI semantic
 # conventions (#224).  Pinned at >=1.27 because the
