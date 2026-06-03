@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ContextItem
@@ -137,6 +137,62 @@ def sort_key_by_meta_index(meta_key: str) -> Callable[[ContextItem], int]:
             return 0
 
     return key_fn
+
+
+def is_blank_content(value: Any) -> bool:  # noqa: ANN401 — provider-shaped JSON
+    """True when *value* carries no renderable content.
+
+    Treats ``None``, an empty / whitespace-only string, and an empty list or
+    tuple as blank. Non-empty collections and any other type are considered
+    non-blank. Used by the ``to_*`` encoders to detect message turns that
+    would serialise to empty content (which provider chat APIs reject).
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple)):
+        return len(value) == 0
+    return False
+
+
+def content_blocks_are_empty(text_values: list[str | None]) -> bool:
+    """True when a message's content blocks carry no renderable content.
+
+    *text_values* holds one entry per content block: the block's text when it
+    is a text block, or ``None`` when it is a non-text block (tool call / tool
+    result / function call — inherently non-empty). A message is empty when it
+    has no blocks at all, or every block is a blank text block. Shared by the
+    Anthropic (``blocks``) and Gemini (``parts``) encoders.
+    """
+    if not text_values:
+        return True
+    return all(value is not None and is_blank_content(value) for value in text_values)
+
+
+def raise_empty_message_content(*, provider: str, locator: str, role: str) -> NoReturn:
+    """Raise :class:`CatalogError` for a message that would serialise empty.
+
+    Provider chat APIs reject messages whose content is empty (e.g. Anthropic
+    returns ``400 ... messages: ... must have non-empty content``). The
+    encoders fail fast here so the misuse surfaces at conversion time with an
+    actionable locator, rather than as an opaque HTTP 400 from the provider.
+
+    Args:
+        provider: Human-readable provider name (e.g. ``"Anthropic"``).
+        locator: Position hint for the offending message (e.g.
+            ``"at msg_index=3"`` or ``"for item 'x'"``).
+        role: The message's role, included for context.
+
+    Raises:
+        CatalogError: Always.
+    """
+    raise CatalogError(
+        f"{provider} message {locator} (role={role!r}) would serialise to empty "
+        "content, which the provider API rejects (e.g. '400 ... messages: ... must "
+        "have non-empty content'). Remove the empty turn before conversion, or give "
+        "it text."
+    )
 
 
 def strip_prefix(value: str, prefix: str) -> str:

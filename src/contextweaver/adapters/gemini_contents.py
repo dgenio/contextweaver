@@ -48,11 +48,13 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from contextweaver.adapters._messages_common import (
+    content_blocks_are_empty,
     expect_dict,
     expect_list,
     group_items_by_msg_index,
     ingest_into_manager,
     json_args_dumps,
+    raise_empty_message_content,
     sort_key_by_meta_index,
 )
 from contextweaver.exceptions import CatalogError
@@ -145,7 +147,8 @@ def to_gemini_contents(items: list[ContextItem]) -> list[dict[str, Any]]:
         A list of Gemini content dicts.
 
     Raises:
-        CatalogError: If items lack the required round-trip metadata.
+        CatalogError: If items lack the required round-trip metadata, or a
+            content would serialise to empty / blank-text parts (API-rejected).
     """
     groups = group_items_by_msg_index(items, target_label="Gemini contents")
 
@@ -157,6 +160,11 @@ def to_gemini_contents(items: list[ContextItem]) -> list[dict[str, Any]]:
         if role not in ("user", "model", "function"):
             raise CatalogError(f"ContextItem group msg_index={msg_idx} has invalid role={role!r}")
         parts = [_item_to_part(item) for item in group]
+        # Blank/empty parts would emit content the Gemini API rejects; fail fast.
+        if content_blocks_are_empty([p.get("text") if "text" in p else None for p in parts]):
+            raise_empty_message_content(
+                provider="Gemini", locator=f"at msg_index={msg_idx}", role=role
+            )
         out.append({"role": role, "parts": parts})
     return out
 

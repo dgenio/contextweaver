@@ -300,6 +300,76 @@ def test_roundtrip_preserves_unknown_block_fields_like_cache_control() -> None:
     assert rebuilt[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
 
 
+def test_to_anthropic_messages_rejects_empty_text_message() -> None:
+    """A user turn that renders to a blank text block must not emit empty content.
+
+    Anthropic returns ``400 ... messages: ... must have non-empty content`` for
+    such a message; the adapter fails fast at conversion time instead.
+    """
+    from contextweaver.types import ContextItem
+
+    items = [
+        ContextItem(
+            id="x",
+            kind=ItemKind.user_turn,
+            text="",
+            metadata={
+                "role": "user",
+                "msg_index": 0,
+                "block_index": 0,
+                "block_type": "text",
+            },
+        )
+    ]
+    with pytest.raises(CatalogError, match="non-empty content"):
+        to_anthropic_messages(items)
+
+
+def test_to_anthropic_messages_rejects_whitespace_only_message() -> None:
+    """Whitespace-only text is treated as empty (the API strips and rejects it)."""
+    from contextweaver.types import ContextItem
+
+    items = [
+        ContextItem(
+            id="x",
+            kind=ItemKind.user_turn,
+            text="   \n\t ",
+            metadata={
+                "role": "user",
+                "msg_index": 0,
+                "block_index": 0,
+                "block_type": "text",
+            },
+        )
+    ]
+    with pytest.raises(CatalogError, match="non-empty content"):
+        to_anthropic_messages(items)
+
+
+def test_roundtrip_empty_string_content_raises_on_reencode() -> None:
+    """Decoding ``content: ""`` is tolerated, but re-encoding it raises.
+
+    The empty-string message is invalid Anthropic input in the first place;
+    failing on the way back out surfaces it with an actionable error rather
+    than letting the opaque API 400 escape.
+    """
+    items = from_anthropic_messages([{"role": "user", "content": ""}])
+    with pytest.raises(CatalogError, match="non-empty content"):
+        to_anthropic_messages(items)
+
+
+def test_to_anthropic_messages_allows_tool_use_only_message() -> None:
+    """A message carrying a tool_use block is non-empty even without text."""
+    msgs = [
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "toolu_y", "name": "f", "input": {}}],
+        }
+    ]
+    # Round-trips cleanly — the tool_use block makes the content non-empty.
+    assert to_anthropic_messages(from_anthropic_messages(msgs)) == msgs
+
+
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
     """No provider SDK leaked into sys.modules through the adapter import.
 
