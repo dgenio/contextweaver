@@ -158,7 +158,8 @@ class NoOpHook:
 # ---------------------------------------------------------------------------
 
 
-# FUTURE: LLM-backed summarizer/extractor for higher-quality summarization.
+# LLM-backed implementations live in ``contextweaver.extras.llm_summarizer``
+# (``LlmSummarizer`` / ``LlmExtractor``); see issue #26.
 
 
 @runtime_checkable
