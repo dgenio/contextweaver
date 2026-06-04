@@ -24,48 +24,16 @@ from benchmark import (
     _make_mixed_namespace_catalog,
     _matrix_cell_skip_reason,
     _parse_args,
-    _precision_at_k,
-    _recall_at_k,
-    _reciprocal_rank,
     _run_e2e_real_model,
     _run_tiktoken_parity,
 )
 
+# precision@k / recall@k / reciprocal_rank moved to contextweaver.eval.metrics
+# (issue #354) — their exact-math tests now live in tests/test_eval_metrics.py.
+
 # Synthetic variant IDs always end with .vN (e.g. billing.charge_customer.v2).
 # Natural IDs never match this pattern (billing.invoices.void contains .v but not .vN at end).
 _SYNTHETIC_PAT = re.compile(r"[.]v[0-9]+\Z")
-
-
-def test_precision_at_k() -> None:
-    assert _precision_at_k(["a", "b", "c"], ["b"], k=3) == pytest.approx(1 / 3)
-
-
-def test_precision_at_k_zero_k() -> None:
-    assert _precision_at_k(["a"], ["a"], k=0) == 0.0
-
-
-def test_recall_at_k_full() -> None:
-    assert _recall_at_k(["a", "b"], ["a", "b"], k=2) == 1.0
-
-
-def test_recall_at_k_partial() -> None:
-    assert _recall_at_k(["a", "b", "c"], ["a", "d"], k=3) == pytest.approx(0.5)
-
-
-def test_recall_at_k_empty_expected() -> None:
-    assert _recall_at_k(["a"], [], k=1) == 1.0
-
-
-def test_reciprocal_rank_first_hit() -> None:
-    assert _reciprocal_rank(["a", "b"], ["a"]) == 1.0
-
-
-def test_reciprocal_rank_second_hit() -> None:
-    assert _reciprocal_rank(["a", "b"], ["b"]) == pytest.approx(0.5)
-
-
-def test_reciprocal_rank_no_hit() -> None:
-    assert _reciprocal_rank(["a", "b"], ["c"]) == 0.0
 
 
 def test_make_catalog_natural_pool_no_synthetic() -> None:
