@@ -40,7 +40,10 @@ def test_token_reduction_holds_naive_competent_contextweaver() -> None:
 
 def test_tool_and_answer_accuracy_with_oracle_model() -> None:
     # An oracle that always returns each task's gold tool + a matching answer
-    # must score perfectly on every strategy.
+    # scores perfect tool/answer accuracy on every strategy. Hallucination is
+    # 0 only for `naive`, which offers every catalog tool; a shortlisting
+    # strategy that fails to surface a gold tool makes even the oracle's choice
+    # an unavailable (hallucinated) call — see the offered-set test below.
     tasks = e2e.load_tasks()
     lookup = {t.query: t for t in tasks}
 
@@ -53,7 +56,8 @@ def test_tool_and_answer_accuracy_with_oracle_model() -> None:
     for r in report.results:
         assert r.tool_accuracy == 1.0
         assert r.answer_accuracy == 1.0
-        assert r.hallucination_rate == 0.0
+    naive = next(r for r in report.results if r.strategy == "naive")
+    assert naive.hallucination_rate == 0.0
 
 
 def test_hallucination_rate_detects_unknown_tool() -> None:
@@ -64,6 +68,27 @@ def test_hallucination_rate_detects_unknown_tool() -> None:
     for r in report.results:
         assert r.hallucination_rate == 1.0
         assert r.tool_accuracy == 0.0
+
+
+def test_hallucination_scored_against_offered_not_catalog() -> None:
+    # billing.invoices.search is a real catalog tool, but here it is NOT in the
+    # prompt's offered set. A model naming it must be flagged as a hallucinated
+    # (unavailable) call even though the tool exists globally — tool accuracy
+    # still credits the match against the gold tool.
+    task = e2e.Task(
+        query="search invoices",
+        expected_tool="billing.invoices.search",
+        answer_contains="invoice",
+    )
+    prompt = "Available tools:\ncomms.email.send — Send an email\n\nUser request: search invoices"
+    offered = ["comms.email.send"]
+
+    def picks_real_but_unoffered(_prompt: str) -> str:
+        return json.dumps({"tool": "billing.invoices.search", "answer": "found the invoice"})
+
+    result = e2e._score_strategy("t", [(prompt, offered)], [task], picks_real_but_unoffered, 1.0)
+    assert result.hallucination_rate == 1.0
+    assert result.tool_accuracy == 1.0
 
 
 def test_cost_scales_linearly_with_price() -> None:

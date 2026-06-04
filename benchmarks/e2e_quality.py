@@ -252,19 +252,26 @@ def _render_history(items: list[ContextItem]) -> str:
     return "Conversation so far:\n" + "\n".join(f"- {it.text}" for it in items)
 
 
+# Each builder returns ``(prompt, offered_tool_ids)``. The offered set is the
+# tools the prompt actually exposes to the model; the scorer treats a chosen
+# tool outside it as a hallucinated (unavailable) call — for the shortlisting
+# strategies that is stricter than, and a superset of, the global-catalog check.
+
+
 def build_naive_prompt(
     task: Task, catalog: list[SelectableItem], history: list[ContextItem]
-) -> str:
+) -> tuple[str, list[str]]:
     """Every tool + the full history — the strawman everyone already beats."""
-    return (
+    prompt = (
         f"{_PREAMBLE}\n{_render_history(history)}\n\n"
         f"{_render_tools(catalog)}\n\nUser request: {task.query}"
     )
+    return prompt, [it.id for it in catalog]
 
 
 def build_competent_prompt(
     task: Task, catalog: list[SelectableItem], history: list[ContextItem]
-) -> str:
+) -> tuple[str, list[str]]:
     """A careful hand-built baseline: truncated history + keyword-shortlisted tools."""
     q_tokens = tokenize(task.query)
     ranked = sorted(
@@ -276,10 +283,11 @@ def build_competent_prompt(
     )
     shortlist = ranked[:_COMPETENT_TOOL_CAP]
     recent = history[-_COMPETENT_HISTORY_TURNS:]
-    return (
+    prompt = (
         f"{_PREAMBLE}\n{_render_history(recent)}\n\n"
         f"{_render_tools(shortlist)}\n\nUser request: {task.query}"
     )
+    return prompt, [it.id for it in shortlist]
 
 
 def build_contextweaver_prompt(
@@ -287,7 +295,7 @@ def build_contextweaver_prompt(
     catalog: list[SelectableItem],
     history: list[ContextItem],
     router: Router,
-) -> str:
+) -> tuple[str, list[str]]:
     """Router-shortlisted tools + a budgeted ContextManager history build."""
     result = router.route(task.query)
     by_id = {it.id: it for it in catalog}
@@ -303,9 +311,10 @@ def build_contextweaver_prompt(
     )
     pack = mgr.build_sync(phase=Phase.answer, query=task.query)
     history_block = "Conversation so far:\n" + pack.prompt
-    return (
+    prompt = (
         f"{_PREAMBLE}\n{history_block}\n\n{_render_tools(shortlist)}\n\nUser request: {task.query}"
     )
+    return prompt, [it.id for it in shortlist]
 
 
 # ---------------------------------------------------------------------------
@@ -315,22 +324,24 @@ def build_contextweaver_prompt(
 
 def _score_strategy(
     strategy: str,
-    prompts: list[str],
+    items: list[tuple[str, list[str]]],
     tasks: list[Task],
     call_fn: CallFn,
-    catalog_ids: set[str],
     price_per_mtok: float,
 ) -> StrategyResult:
     estimator = CharDivFourEstimator()
     tool_hits = answer_hits = hallucinations = 0
     total_tokens = 0
 
-    for prompt, task in zip(prompts, tasks, strict=True):
+    for (prompt, offered), task in zip(items, tasks, strict=True):
+        offered_ids = set(offered)
         total_tokens += estimator.estimate(prompt)
         response = _parse_response(call_fn(prompt))
         if response.chosen_tool == task.expected_tool:
             tool_hits += 1
-        if response.chosen_tool is not None and response.chosen_tool not in catalog_ids:
+        # A chosen tool the prompt did not offer is a hallucinated/unavailable
+        # call — even when it is a real tool elsewhere in the catalog.
+        if response.chosen_tool is not None and response.chosen_tool not in offered_ids:
             hallucinations += 1
         if task.answer_contains.lower() in response.answer.lower():
             answer_hits += 1
@@ -366,21 +377,18 @@ def run(
     """
     tasks = tasks if tasks is not None else load_tasks()
     catalog = _build_catalog()
-    catalog_ids = {it.id for it in catalog}
     history = _synthetic_history()
     router = Router(TreeBuilder().build(catalog), items=catalog, top_k=_CW_TOP_K, beam_width=3)
 
-    builders: dict[str, list[str]] = {
+    builders: dict[str, list[tuple[str, list[str]]]] = {
         "naive": [build_naive_prompt(t, catalog, history) for t in tasks],
         "competent": [build_competent_prompt(t, catalog, history) for t in tasks],
         "contextweaver": [build_contextweaver_prompt(t, catalog, history, router) for t in tasks],
     }
 
     report = E2EReport(model=model, price_per_mtok=price_per_mtok)
-    for strategy, prompts in builders.items():
-        report.results.append(
-            _score_strategy(strategy, prompts, tasks, call_fn, catalog_ids, price_per_mtok)
-        )
+    for strategy, items in builders.items():
+        report.results.append(_score_strategy(strategy, items, tasks, call_fn, price_per_mtok))
     return report
 
 

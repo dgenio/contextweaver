@@ -44,9 +44,14 @@ def test_recall_at_k_dedupes_expected() -> None:
 
 
 def test_recall_at_k_matches_historical_benchmark_formula() -> None:
-    # Regression guard: the canonical recall must equal the exact formula
-    # ``benchmarks/benchmark.py`` used before #354, so scorecard numbers
-    # are unchanged by the consolidation.
+    # Regression guard: for the unique-expected shape the benchmark fixtures
+    # use (routing_gold.json never repeats an expected id within a case), the
+    # canonical recall equals the exact formula ``benchmarks/benchmark.py`` used
+    # before #354, so scorecard numbers are unchanged by the consolidation. The
+    # canonical version additionally dedupes ``expected`` (see
+    # ``test_recall_at_k_dedupes_expected``) — an intentional hardening that
+    # only diverges from the legacy formula on the non-benchmark duplicate case,
+    # so every case below uses unique expected ids.
     def _legacy_recall(predicted: list[str], expected: list[str], k: int) -> float:
         if not expected:
             return 1.0
