@@ -370,6 +370,24 @@ def test_to_anthropic_messages_allows_tool_use_only_message() -> None:
     assert to_anthropic_messages(from_anthropic_messages(msgs)) == msgs
 
 
+def test_to_anthropic_messages_allows_blank_text_with_tool_use() -> None:
+    """A blank text block does not empty a turn that also carries a tool_use block.
+
+    ``content_blocks_are_empty`` treats any non-text block as content, so the
+    ``tool_use`` keeps the message non-empty even though the text block is blank.
+    """
+    msgs = [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": ""},
+                {"type": "tool_use", "id": "toolu_z", "name": "f", "input": {}},
+            ],
+        }
+    ]
+    assert to_anthropic_messages(from_anthropic_messages(msgs)) == msgs
+
+
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
     """No provider SDK leaked into sys.modules through the adapter import.
 
