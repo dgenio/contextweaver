@@ -50,10 +50,12 @@ from contextweaver.adapters._anthropic_decode import (
 )
 from contextweaver.adapters._anthropic_encode import _block_index_sort_key, _item_to_block
 from contextweaver.adapters._messages_common import (
+    content_blocks_are_empty,
     expect_dict,
     expect_list,
     group_items_by_msg_index,
     ingest_into_manager,
+    raise_empty_message_content,
 )
 from contextweaver.exceptions import CatalogError
 from contextweaver.types import ContextItem
@@ -126,7 +128,9 @@ def to_anthropic_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
 
     Raises:
         CatalogError: If items are missing the round-trip metadata
-            (``msg_index``, ``block_index``, ``role``).
+            (``msg_index``, ``block_index``, ``role``), or if a message would
+            serialise to empty content (empty / blank-text blocks), which the
+            Anthropic API rejects with ``400 ... must have non-empty content``.
     """
     groups = group_items_by_msg_index(items, target_label="Anthropic messages")
 
@@ -138,6 +142,15 @@ def to_anthropic_messages(items: list[ContextItem]) -> list[dict[str, Any]]:
         if role not in ("user", "assistant"):
             raise CatalogError(f"ContextItem group msg_index={msg_idx} has invalid role={role!r}")
         blocks = [_item_to_block(item) for item in group]
+        # A user/assistant turn whose blocks render to nothing (empty list, or
+        # only blank text blocks) would emit content="" / content=[] — which
+        # the Anthropic API rejects with a 400. Fail fast at conversion time.
+        if content_blocks_are_empty(
+            [b.get("text") if b.get("type") == "text" else None for b in blocks]
+        ):
+            raise_empty_message_content(
+                provider="Anthropic", locator=f"at msg_index={msg_idx}", role=role
+            )
         was_string_shorthand = bool(first_meta.get("was_string_shorthand", False))
         if was_string_shorthand and len(blocks) == 1 and blocks[0].get("type") == "text":
             out.append({"role": role, "content": blocks[0]["text"]})

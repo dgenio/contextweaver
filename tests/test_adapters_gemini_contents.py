@@ -212,6 +212,77 @@ def test_two_function_calls_with_same_name_get_distinct_ids() -> None:
     assert to_gemini_contents(items) == msgs
 
 
+def test_to_gemini_contents_rejects_empty_text_content() -> None:
+    """A turn that renders to a blank text part must not emit empty content.
+
+    Gemini rejects contents whose parts carry no renderable text; the adapter
+    fails fast at conversion time instead of letting the API 400 escape.
+    """
+    from contextweaver.types import ContextItem
+
+    items = [
+        ContextItem(
+            id="g",
+            kind=ItemKind.agent_msg,
+            text="",
+            metadata={
+                "role": "model",
+                "msg_index": 0,
+                "part_index": 0,
+                "part_type": "text",
+            },
+        )
+    ]
+    with pytest.raises(CatalogError, match="non-empty content"):
+        to_gemini_contents(items)
+
+
+def test_to_gemini_contents_allows_function_call_only_content() -> None:
+    """A content carrying a functionCall part is non-empty even without text."""
+    msgs = [
+        {
+            "role": "model",
+            "parts": [{"functionCall": {"name": "fetch", "args": {"q": "a"}}}],
+        }
+    ]
+    assert to_gemini_contents(from_gemini_contents(msgs)) == msgs
+
+
+def test_to_gemini_contents_rejects_whitespace_only_text_content() -> None:
+    """Whitespace-only text is treated as empty, mirroring the Anthropic encoder."""
+    from contextweaver.types import ContextItem
+
+    items = [
+        ContextItem(
+            id="g",
+            kind=ItemKind.agent_msg,
+            text="   \n\t ",
+            metadata={
+                "role": "model",
+                "msg_index": 0,
+                "part_index": 0,
+                "part_type": "text",
+            },
+        )
+    ]
+    with pytest.raises(CatalogError, match="non-empty content"):
+        to_gemini_contents(items)
+
+
+def test_to_gemini_contents_allows_blank_text_with_function_call() -> None:
+    """A blank text part does not empty a content that also carries a functionCall."""
+    msgs = [
+        {
+            "role": "model",
+            "parts": [
+                {"text": ""},
+                {"functionCall": {"name": "fetch", "args": {"q": "a"}}},
+            ],
+        }
+    ]
+    assert to_gemini_contents(from_gemini_contents(msgs)) == msgs
+
+
 def test_module_does_not_import_provider_sdk_at_load_time() -> None:
     """Issue #222 design constraint: no provider SDK import at module level.
 

@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Provider message encoders no longer emit empty-content messages.**
+  `to_anthropic_messages` and `to_gemini_contents` now raise a clear
+  `CatalogError` (with the offending `msg_index`) when a turn would
+  serialise to empty or blank-text content, instead of letting the
+  provider reject it later with an opaque
+  `400 ... messages: ... must have non-empty content`. Messages that
+  carry tool-use / tool-result / function-call blocks remain valid.
+  OpenAI is intentionally left untouched: its Chat Completions API
+  tolerates empty content and the empty-string assistant-content
+  round-trip is an existing invariant (PR #230).
 - **Zep backend defensively coerces scanned `tags` / `metadata`** when rebuilding
   `Episode` / `Fact` from persisted episodes: a non-list `tags` (e.g. a bare
   string, which previously iterated into characters) yields `[]`, and a non-dict
