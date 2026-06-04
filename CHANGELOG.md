@@ -7,8 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **End-to-end quality + cost benchmark vs a competent baseline (#345).** New
+  `benchmarks/e2e_quality.py` runs realistic tool-using tasks three ways —
+  naive concat, a hand-built competent baseline, and contextweaver — scoring
+  tool-selection accuracy, hallucinated-tool rate, end-task answer accuracy,
+  prompt tokens, and estimated cost per strategy. Ships with a deterministic
+  stub model (default, exercised in CI) and an opt-in real-model path
+  (`CW_E2E_LLM=1` + a user-supplied `call_fn`, no LLM SDK dependency). New
+  `make e2e-quality` target (non-gating) and `benchmarks/e2e/tasks.json`
+  fixtures. The published real-model headline is produced from a credentialed
+  maintainer run.
+
 ### Changed
 
+- **Unified routing metrics into `contextweaver.eval.metrics` (#354).**
+  `benchmarks/benchmark.py` and `contextweaver.eval.routing` previously
+  defined `recall@k` / `reciprocal_rank` under the same names with different
+  semantics (fractional recall vs boolean hit-rate). They now share one
+  canonical source of truth — `recall_at_k` (classic fractional recall),
+  `precision_at_k`, `reciprocal_rank` — re-exported from `contextweaver.eval`.
+  The benchmark scorecard numbers are unchanged; `evaluate_routing` now reports
+  fractional recall for multi-expected cases (identical for the common
+  single-expected case).
 - **Split `extras/memory/zep.py` into `zep.py` + `_zep_common.py`** so each
   module stays within the repo's ≤300-lines-per-module rule (PR #360 review).
   The public import path (`contextweaver.extras.memory.zep`) and its exports
