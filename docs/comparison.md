@@ -63,12 +63,55 @@ integration guides for wiring patterns.
 | Question | Answer |
 |---|---|
 | Does contextweaver replace a memory database? | **No** — it does not persist memory across sessions out of the box. |
-| Does it have facts / episodes? | **Yes**, in-session: `ContextManager.add_fact_sync(...)` and `add_episode_sync(...)`. |
-| How do I get cross-session persistence? | Plug a persistent backend behind the `FactStore` / `EpisodicStore` / `EventLog` protocols. SQLite-backed `EventLog` / `ArtifactStore` ship today; external backends (Mem0 / Zep / LangMem) are tracked under issue #195. |
+| Does it have facts / episodes? | **Yes**, in-session: `ContextManager.add_fact_sync(...)` and `add_episode_sync(...)`, backed by an append-only `EventLog`. |
+| How do I get cross-session persistence? | Plug a persistent backend behind the `FactStore` / `EpisodicStore` / `EventLog` protocols. SQLite-backed `EventLog` / `ArtifactStore` ship today; first-class **Mem0 / Zep / LangMem** adapters ship under `contextweaver.extras.memory` (issue #195). |
 
-contextweaver's stores are protocol-based interfaces, not concrete
-backends. A real deployment usually points the `FactStore` /
-`EpisodicStore` at a memory system designed for cross-session persistence.
+contextweaver's stores are protocol-based interfaces
+(`contextweaver.store.protocols`), not concrete backends. The two layers are
+**complementary**: an external memory system persists facts/episodes across
+sessions; contextweaver compiles whatever it surfaces — plus the current
+turn's tool calls and results — into a phase-budgeted prompt every turn. It
+does *not* replace your memory system; it sits in front of it.
+
+#### Which backend fits
+
+The three shipped backends have different recall shapes — pick the one whose
+semantics you want; contextweaver's pipeline is unchanged either way. They
+solve different problems, so this is a fit question, not a ranking.
+
+| You want… | Backend | Install | Notes |
+|---|---|---|---|
+| Passive memory extraction from conversations; multi-tenant scoping | **Mem0** | `pip install 'contextweaver[mem0]'` | Vector + reranker recall; scope by `user_id`. |
+| A temporal knowledge graph / time-aware facts | **Zep / Graphiti** | `pip install 'contextweaver[zep]'` | Episodes are the lossless record; scope by `user_id`. |
+| LangGraph-native long-term memory shared across threads | **LangMem** | `pip install 'contextweaver[langmem]'` | Wraps any LangGraph `BaseStore`; scope by namespace tuple. |
+| Just durable local storage, no external service | **Custom store** | built-in / SQLite | Implement the protocol yourself (below) or use the SQLite `EventLog`. |
+
+#### The plug-in shape
+
+Any object matching the `FactStore` / `EpisodicStore` protocol drops straight
+into a `StoreBundle` — no pipeline changes:
+
+```python
+from contextweaver.context.manager import ContextManager
+from contextweaver.store import StoreBundle
+from contextweaver.store.facts import Fact
+
+class MyFactStore:                       # conforms to contextweaver.store.protocols.FactStore
+    def put(self, fact: Fact) -> None: ...
+    def get(self, fact_id: str) -> Fact: ...
+    def get_by_key(self, key: str) -> list[Fact]: ...
+    def list_keys(self, prefix: str = "") -> list[str]: ...
+    def delete(self, fact_id: str) -> None: ...
+    def all(self) -> list[Fact]: ...
+
+ctx_mgr = ContextManager(stores=StoreBundle(fact_store=MyFactStore()))
+```
+
+See the [External Memory Backends](integration_memory.md) guide for the full
+decision matrix and per-backend wiring, [`faq.md`](faq.md) for the short
+answer, and `concepts.md → FactStore / EpisodicStore` for the protocol
+definitions. Tracker for first-class integrations: issue
+[#195](https://github.com/dgenio/contextweaver/issues/195).
 
 ### RAG / vector retrieval
 

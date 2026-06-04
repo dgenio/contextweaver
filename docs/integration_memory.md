@@ -28,13 +28,13 @@ oversized tool outputs (the context firewall).
 | Backend | Best for | Status | Install |
 |---|---|---|---|
 | **Mem0** | Passive memory extraction from conversations, multi-tenant deployments | Available | `pip install 'contextweaver[mem0]'` |
-| **Zep / Graphiti** | Temporal knowledge graphs, time-aware fact retrieval | Planned (issue [#195](https://github.com/dgenio/contextweaver/issues/195)) | `pip install 'contextweaver[zep]'` |
-| **LangMem** | LangGraph-native episodic / semantic / procedural memory split | Planned (issue [#195](https://github.com/dgenio/contextweaver/issues/195)) | `pip install 'contextweaver[langmem]'` |
+| **Zep / Graphiti** | Temporal knowledge graphs, time-aware fact retrieval | Available | `pip install 'contextweaver[zep]'` |
+| **LangMem** | LangGraph-native long-term memory shared across threads | Available | `pip install 'contextweaver[langmem]'` |
 
 All three implement the **same** existing protocols
 (`EpisodicStore` / `FactStore` from `contextweaver.store.protocols`)
-without widening them, so the wiring is identical across backends
-once their respective adapters land.
+without widening them, so the wiring is identical across backends — only
+the constructor and its scope argument differ.
 
 ## Boundary diagram
 
@@ -134,24 +134,64 @@ intentionally does not widen the Protocol).
 
 ## Zep / Graphiti
 
-Same protocol shape as Mem0; deferred to a follow-up cycle. See issue
-[#195](https://github.com/dgenio/contextweaver/issues/195) for the
-acceptance criteria. The adapter will live at
-`contextweaver.extras.memory.zep` once it lands.
+`contextweaver.extras.memory.zep` ships `ZepEpisodicStore` and
+`ZepFactStore`, wrapping a `zep_cloud.Zep` client scoped by `user_id`.
 
-When implemented, the wiring becomes:
+Zep's knowledge graph is built around **episodes** (raw inputs) from which it
+extracts edges (facts) and nodes (entities). Episodes are the one surface that
+round-trips your exact input, so — like the Mem0 backend — this adapter uses
+them as the lossless system of record: each `Episode` / `Fact` is written via
+`graph.add(type="json")` stamped with its canonical ID, and `get` / `delete` /
+`all` resolve that ID back to Zep's episode `uuid_` by scanning
+`graph.episode.get_by_user_id`.
 
 ```python
-# Planned — module not shipped yet.
-# from contextweaver.extras.memory.zep import ZepEpisodicStore, ZepFactStore
+from zep_cloud.client import Zep
+
+from contextweaver.extras.memory.zep import ZepEpisodicStore, ZepFactStore
+from contextweaver.store import StoreBundle
+
+client = Zep(api_key="...")  # your existing Zep client
+bundle = StoreBundle(
+    episodic_store=ZepEpisodicStore(client, user_id="agent:support-bot"),
+    fact_store=ZepFactStore(client, user_id="agent:support-bot"),
+)
 ```
+
+**Search note.** Zep's native `graph.search` operates over extracted
+edges/nodes, which don't map onto the Episode/Fact key-value contract, so
+`ZepEpisodicStore.search` performs a deterministic client-side match over the
+persisted episodes. Surfacing Zep's graph search is a follow-up that needs a
+widened search-options Protocol (intentionally not widened here).
 
 ## LangMem
 
-Same shape; deferred. Will live at
-`contextweaver.extras.memory.langmem` once landed. Issue
-[#195](https://github.com/dgenio/contextweaver/issues/195) covers the
-acceptance criteria.
+`contextweaver.extras.memory.langmem` ships `LangMemEpisodicStore` and
+`LangMemFactStore`, wrapping any LangGraph `BaseStore`
+(`langgraph.store.base`) — an `InMemoryStore`, a `PostgresStore`, or
+LangMem's own store-backed managers. Because a `BaseStore` is a faithful
+namespaced KV store, the mapping is direct and lossless: the canonical
+`episode_id` / `fact_id` is the store key and the value is the dataclass'
+`to_dict()` payload. Episodes live under `(*namespace, "episodes")` and facts
+under `(*namespace, "facts")`. `EpisodicStore.search` delegates to
+`BaseStore.search`, giving semantic recall when the store has a vector index.
+
+```python
+from langgraph.store.memory import InMemoryStore
+
+from contextweaver.extras.memory.langmem import (
+    LangMemEpisodicStore,
+    LangMemFactStore,
+)
+from contextweaver.store import StoreBundle
+
+store = InMemoryStore()  # or any LangGraph BaseStore (Postgres, etc.)
+ns = ("agent", "support-bot")
+bundle = StoreBundle(
+    episodic_store=LangMemEpisodicStore(store, namespace=ns),
+    fact_store=LangMemFactStore(store, namespace=ns),
+)
+```
 
 ## See also
 

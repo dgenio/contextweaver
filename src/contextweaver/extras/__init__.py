@@ -12,10 +12,13 @@ Currently shipped:
 - :mod:`contextweaver.extras.embeddings` — sentence-transformers embedding
   backend + hybrid embedding/TF-IDF retriever (``contextweaver[embeddings]``,
   issue #8).
-- :mod:`contextweaver.extras.memory.mem0` — Mem0 ``EpisodicStore`` /
-  ``FactStore`` implementations (``contextweaver[mem0]``).  See
-  :mod:`contextweaver.extras.memory` for the external-memory backend
-  sub-package layout (issue #195).
+- :mod:`contextweaver.extras.llm_summarizer` — optional LLM-backed
+  ``Summarizer`` / ``Extractor`` plugins for the context firewall; **no extra
+  required** (the caller supplies its own model call function, issue #26).
+- :mod:`contextweaver.extras.memory` — external long-lived memory backends
+  implementing ``EpisodicStore`` / ``FactStore``: ``mem0`` (``[mem0]``),
+  ``zep`` (``[zep]``), and ``langmem`` (``[langmem]``).  See the sub-package
+  for the layout (issue #195).
 """
 
 from __future__ import annotations

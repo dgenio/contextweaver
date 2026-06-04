@@ -114,7 +114,12 @@ dev = [
     # The example also ships a hand-rolled fallback so it still runs without
     # this dependency; the ``[langgraph]`` runtime extra below is for end
     # users who want the framework without the dev toolchain.
-    "langgraph>=0.2",
+    #
+    # Floor 0.2.32 (PR #360 floor-deps proof): the langmem adapter test
+    # (``tests/test_extras_memory_langmem.py``) imports
+    # ``langgraph.store.memory.InMemoryStore``, which first appears in 0.2.32;
+    # ``>=0.2`` resolved to 0.2.17 and failed collection at lowest-direct.
+    "langgraph>=0.2.32",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -171,8 +176,10 @@ langchain = [
 # drive its route -> execute -> answer loop through a real ``StateGraph``.
 # The example ships a hand-rolled fallback, so it runs without this extra;
 # install it to exercise the framework path.
+# Floor 0.2.32 — the langgraph store API (``langgraph.store.memory.InMemoryStore``)
+# the langmem adapter/test relies on first appears in 0.2.32 (PR #360).
 langgraph = [
-    "langgraph>=0.2",
+    "langgraph>=0.2.32",
 ]
 # Real-time voice agents: Pipecat frame processors composed with the
 # contextweaver context engine.  Optional because pipecat-ai pulls heavy
@@ -230,11 +237,28 @@ sqlite = []
 # External-memory backend interop (issue #195).  Each backend implements the
 # existing ``EpisodicStore`` / ``FactStore`` protocols from
 # ``contextweaver.store.protocols`` without widening them.  Adapters live
-# under ``contextweaver.extras.memory.*``.  Only Mem0 is shipped today; Zep
-# and LangMem rows are listed in ``docs/integration_memory.md`` as
-# follow-ups against the same protocol surface.
+# under ``contextweaver.extras.memory.*``.  Mem0, Zep, and LangMem are shipped
+# against the same protocol surface; see ``docs/integration_memory.md``.
 mem0 = [
     "mem0ai>=0.1",
+]
+# Zep Cloud knowledge-graph memory.  The adapter wraps a ``zep_cloud.Zep``
+# client and persists episodes/facts via the graph API (``graph.add`` /
+# ``graph.episode``).  Pinned at >=2 because the graph client surface this
+# adapter uses (``graph.add(type="json")``, ``graph.episode.get_by_user_id``)
+# stabilised in the 2.x line.
+zep = [
+    "zep-cloud>=2.0",
+]
+# LangMem / LangGraph long-term memory.  The adapter wraps any LangGraph
+# ``BaseStore`` (``langgraph.store.base``).  ``langgraph>=0.2.32`` is pinned
+# explicitly because the store API the adapter and its tests bind to — notably
+# ``langgraph.store.memory.InMemoryStore`` used as the reference store — first
+# appears in 0.2.32 (PR #360 floor-deps proof); a bare ``langmem>=0.0.1`` could
+# otherwise resolve a too-old ``langgraph`` transitively.
+langmem = [
+    "langmem>=0.0.1",
+    "langgraph>=0.2.32",
 ]
 # OpenTelemetry tracing + metrics export with native GenAI semantic
 # conventions (#224).  Pinned at >=1.27 because the
@@ -321,6 +345,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "mem0.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "zep_cloud.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "langgraph.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
