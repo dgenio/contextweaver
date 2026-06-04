@@ -41,14 +41,19 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT / "src"))
 
+from contextweaver._utils import FuzzyScorer  # noqa: E402
 from contextweaver.config import ContextBudget  # noqa: E402
 from contextweaver.context.manager import ContextManager  # noqa: E402
+from contextweaver.eval.metrics import (  # noqa: E402
+    precision_at_k,
+    recall_at_k,
+    reciprocal_rank,
+)
 from contextweaver.protocols import CharDivFourEstimator  # noqa: E402
 from contextweaver.routing.catalog import (  # noqa: E402
     generate_sample_catalog,
     load_catalog_dicts,
 )
-from contextweaver._utils import FuzzyScorer  # noqa: E402
 from contextweaver.routing.router import Router  # noqa: E402
 from contextweaver.routing.tree import TreeBuilder  # noqa: E402
 from contextweaver.store.event_log import InMemoryEventLog  # noqa: E402
@@ -125,9 +130,7 @@ _MIXED_NAMESPACE_SMALL = (
 _MIXED_NAMESPACE_TAIL_NS_COUNT = 100  # 100 namespaces × 1 item each
 
 
-def _make_mixed_namespace_catalog(
-    n: int = 500, seed: int = 42
-) -> list[SelectableItem]:
+def _make_mixed_namespace_catalog(n: int = 500, seed: int = 42) -> list[SelectableItem]:
     """Return a catalog of *n* items with a head-heavy + long-tail namespace shape.
 
     Issue #277.  Real production catalogs are rarely shaped like the uniform
@@ -265,25 +268,13 @@ def _matrix_cell_skip_reason(backend: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Routing metrics
 # ---------------------------------------------------------------------------
-
-
-def _precision_at_k(predicted: list[str], expected: list[str], k: int) -> float:
-    hits = sum(1 for p in predicted[:k] if p in expected)
-    return hits / k if k > 0 else 0.0
-
-
-def _recall_at_k(predicted: list[str], expected: list[str], k: int) -> float:
-    if not expected:
-        return 1.0
-    hits = sum(1 for e in expected if e in set(predicted[:k]))
-    return hits / len(expected)
-
-
-def _reciprocal_rank(predicted: list[str], expected: list[str]) -> float:
-    for rank, pid in enumerate(predicted, start=1):
-        if pid in expected:
-            return 1.0 / rank
-    return 0.0
+#
+# precision@k / recall@k / reciprocal_rank are imported from
+# ``contextweaver.eval.metrics`` — the single source of truth shared with the
+# library evaluation harness (``contextweaver.eval.routing``) so the two can no
+# longer drift (issue #354).  ``recall_at_k`` here is the same classic
+# fractional definition this script has always used, so scorecard numbers are
+# unchanged by the consolidation.
 
 
 @dataclass
@@ -366,9 +357,9 @@ def _run_routing_benchmark(
             if last_result is None:
                 continue
             predicted = last_result.candidate_ids
-            precisions.append(_precision_at_k(predicted, expected, k))
-            recalls.append(_recall_at_k(predicted, expected, k))
-            rrs.append(_reciprocal_rank(predicted, expected))
+            precisions.append(precision_at_k(predicted, expected, k))
+            recalls.append(recall_at_k(predicted, expected, k))
+            rrs.append(reciprocal_rank(predicted, expected))
 
         latencies_ms.sort()
         _lat = list(latencies_ms)
@@ -496,10 +487,10 @@ def _run_matrix_cell(
             continue
 
         predicted = last_result.candidate_ids
-        rec = _recall_at_k(predicted, expected, k)
-        precisions.append(_precision_at_k(predicted, expected, k))
+        rec = recall_at_k(predicted, expected, k)
+        precisions.append(precision_at_k(predicted, expected, k))
         recalls.append(rec)
-        rrs.append(_reciprocal_rank(predicted, expected))
+        rrs.append(reciprocal_rank(predicted, expected))
         ns_recalls.setdefault(ns, []).append(rec)
 
     latencies_ms.sort()
@@ -1064,9 +1055,7 @@ def _estimate_usd_cost(
 
 
 _DEFAULT_MATRIX_BACKENDS = "tfidf,bm25,fuzzy,embedding_hashing,embedding_st"
-_SUPPORTED_BACKENDS = frozenset(
-    {"tfidf", "bm25", "fuzzy", "embedding_hashing", "embedding_st"}
-)
+_SUPPORTED_BACKENDS = frozenset({"tfidf", "bm25", "fuzzy", "embedding_hashing", "embedding_st"})
 _DEFAULT_MATRIX_SIZES = "100,500,1000"
 
 
@@ -1242,9 +1231,7 @@ def main(argv: list[str] | None = None) -> int:
     # Mixed-namespace head-heavy + long-tail matrix (issue #277).
     mixed_shape_cells: list[MatrixCell] = []
     if args.mixed_shapes:
-        backends_for_mixed = _csv_str_list(args.backends) or _csv_str_list(
-            _DEFAULT_MATRIX_BACKENDS
-        )
+        backends_for_mixed = _csv_str_list(args.backends) or _csv_str_list(_DEFAULT_MATRIX_BACKENDS)
         mixed_shape_cells = _run_matrix_mixed_shape(
             gold=gold,
             backends=backends_for_mixed,
