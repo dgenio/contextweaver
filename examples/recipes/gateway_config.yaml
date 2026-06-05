@@ -1,0 +1,33 @@
+# contextweaver gateway — single-file config for `mcp serve --config`.
+#
+# Launch a zero-Python drop-in MCP gateway in front of an upstream catalog:
+#
+#     contextweaver mcp serve --config examples/recipes/gateway_config.yaml
+#
+# Explicit CLI flags still win over anything set here, so you can override a
+# single field without editing the file:
+#
+#     contextweaver mcp serve --config examples/recipes/gateway_config.yaml --top-k 5
+#
+# Every key is optional except `catalog`. Defaults match the CLI defaults.
+
+# Tool catalog to front. Either a contextweaver-native catalog or a raw MCP
+# `tools/list` snapshot (.json / .yaml / .yml). The path is resolved relative
+# to your current working directory.
+catalog: examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json
+
+# Server mode: `gateway` (3 meta-tools: browse / execute / view) or
+# `proxy` (stripped tool list, transparent passthrough).
+mode: gateway
+
+# Max ChoiceCards returned per `tool_browse`.
+top_k: 10
+
+# Router beam width.
+beam_width: 3
+
+# Byte-stable browse prefix for prompt-cache hits.
+cache_stable: false
+
+# MCP server display name advertised on init.
+name: contextweaver

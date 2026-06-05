@@ -104,6 +104,12 @@ The spec's `Frame` has three required fields with no preimage in
 `ResultEnvelope`: `frame_id`, `capability_id`, `created_at`. The caller
 supplies them.
 
+> **Canonical ingestion (I-05).** Once you have a `ResultEnvelope` (via
+> `from_weaver_frame`), feed it through `ContextManager.ingest_envelope()` —
+> the canonical, no-re-firewall seam. See
+> [Firewall Boundary (Frame seam)](context_firewall_boundary.md) for how this
+> differs from the raw-output `ingest_tool_result` / `ingest_mcp_result` APIs.
+
 | contextweaver `ResultEnvelope` | weaver-spec `Frame` | Notes |
 |---|---|---|
 | (caller-supplied) | `frame_id` | Required, non-empty. |

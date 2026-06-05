@@ -18,6 +18,7 @@ import pytest
 
 from contextweaver._mcp_cli import (
     _build_runtime,
+    _load_serve_config,
     _load_tool_defs_from_catalog,
     _ServeMode,
 )
@@ -79,6 +80,7 @@ def test_mcp_serve_help_shows_required_catalog_flag() -> None:
     assert result.returncode == 0
     out = _strip_ansi(result.stdout)
     assert "--catalog" in out
+    assert "--config" in out
     assert "--mode" in out
     assert "--gateway" in out
     assert "--proxy" in out
@@ -204,6 +206,73 @@ def test_serve_rejects_empty_catalog(tmp_path: Path) -> None:
 
 
 # ------------------------------------------------------------------
+# Config-file launch (issue #346 — zero-Python drop-in)
+# ------------------------------------------------------------------
+
+
+def test_serve_config_file_drives_dry_run(tmp_path: Path) -> None:
+    """A single ``--config`` file supplies catalog + options for a dry run."""
+    config = tmp_path / "gateway.yaml"
+    config.write_text(
+        f"catalog: {gateway_catalog_path()}\nmode: proxy\ntop_k: 7\nbeam_width: 2\n",
+        encoding="utf-8",
+    )
+    result = _run("mcp", "serve", "--config", str(config), "--dry-run")
+    assert result.returncode == 0, result.stderr
+    combined = result.stderr + result.stdout
+    assert "mode=proxy" in combined
+    assert "top_k=7" in combined
+    assert "beam_width=2" in combined
+    assert "tools=60" in combined
+
+
+def test_serve_cli_flag_overrides_config(tmp_path: Path) -> None:
+    """Explicit CLI flags win over config-file values."""
+    config = tmp_path / "gateway.yaml"
+    config.write_text(
+        f"catalog: {gateway_catalog_path()}\nmode: proxy\ntop_k: 7\n",
+        encoding="utf-8",
+    )
+    result = _run("mcp", "serve", "--config", str(config), "--top-k", "3", "--gateway", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    combined = result.stderr + result.stdout
+    assert "top_k=3" in combined
+    assert "mode=gateway" in combined
+
+
+def test_serve_without_catalog_or_config_is_usage_error() -> None:
+    """Neither ``--catalog`` nor ``--config`` is a clean usage error."""
+    result = _run("mcp", "serve", "--dry-run")
+    assert result.returncode != 0
+    assert "catalog" in (result.stderr + result.stdout).lower()
+
+
+def test_load_serve_config_rejects_unknown_key(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("catalog: x.json\nbogus: 1\n", encoding="utf-8")
+    with pytest.raises(Exception) as exc_info:
+        _load_serve_config(cfg)
+    assert "unknown config key" in str(exc_info.value).lower()
+
+
+def test_load_serve_config_requires_catalog(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("top_k: 5\n", encoding="utf-8")
+    with pytest.raises(Exception) as exc_info:
+        _load_serve_config(cfg)
+    assert "catalog" in str(exc_info.value).lower()
+
+
+def test_load_serve_config_valid_roundtrip(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.json"
+    cfg.write_text('{"catalog": "x.json", "top_k": 9, "mode": "gateway"}', encoding="utf-8")
+    loaded = _load_serve_config(cfg)
+    assert loaded["catalog"] == "x.json"
+    assert loaded["top_k"] == 9
+    assert loaded["mode"] == "gateway"
+
+
+# ------------------------------------------------------------------
 # Catalog loader unit tests (programmatic, no subprocess)
 # ------------------------------------------------------------------
 
@@ -230,6 +299,19 @@ def test_load_tool_defs_accepts_mcp_shape(tmp_path: Path) -> None:
     assert len(defs) == 1
     assert defs[0]["name"] == "x.y"
     assert defs[0]["inputSchema"] == {"type": "object"}
+
+
+def test_load_tool_defs_accepts_snapshot_tools_object(tmp_path: Path) -> None:
+    """A real-MCP snapshot object ({"_source": ..., "tools": [...]}) is unwrapped."""
+    snapshot = tmp_path / "snap.json"
+    snapshot.write_text(
+        '{"_source": "demo", "tools": '
+        '[{"name": "fs.read", "description": "read", "inputSchema": {"type": "object"}}]}',
+        encoding="utf-8",
+    )
+    defs = _load_tool_defs_from_catalog(snapshot)
+    assert len(defs) == 1
+    assert defs[0]["name"] == "fs.read"
 
 
 def test_load_tool_defs_rejects_non_list_root(tmp_path: Path) -> None:

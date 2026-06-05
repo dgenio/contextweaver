@@ -19,19 +19,10 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context import ingest as _ingest
-from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
-from contextweaver.context.dedup import deduplicate_candidates
-from contextweaver.context.explanation import (
-    ContextBuildExplanation,
-)
-from contextweaver.context.explanation import (
-    build_explanation as _build_explanation,
-)
-from contextweaver.context.firewall import apply_firewall_to_batch
-from contextweaver.context.prompt import render_context
-from contextweaver.context.scoring import score_candidates
-from contextweaver.context.selection import select_and_pack
-from contextweaver.context.sensitivity import apply_sensitivity_filter
+from contextweaver.context import route_build as _route_build
+from contextweaver.context.build import run_build_pipeline
+from contextweaver.context.call_prompt import run_call_prompt_build
+from contextweaver.context.explanation import ContextBuildExplanation
 from contextweaver.context.views import ViewRegistry
 from contextweaver.envelope import ContextPack, ResultEnvelope
 from contextweaver.metrics import MetricsCollector
@@ -53,11 +44,7 @@ from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import Episode, InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import Fact, InMemoryFactStore
-from contextweaver.types import ContextItem, ItemKind, Phase
-
-# Maximum facts injected into the prompt header to prevent unbounded growth.
-_MAX_FACT_LINES: int = 64
-_MAX_FACT_CHARS: int = 2000
+from contextweaver.types import ContextItem, Phase
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
@@ -219,6 +206,55 @@ class ContextManager:
         """Async alias for :meth:`ingest`."""
         self.ingest(item)
 
+    def ingest_envelope(
+        self,
+        tool_call_id: str,
+        envelope: ResultEnvelope,
+        tool_name: str = "",
+    ) -> ContextItem:
+        """Ingest an already-firewalled :class:`ResultEnvelope` (canonical path).
+
+        This is the **canonical, Frame-shaped ingestion path** for the Weaver
+        Stack (weaver-spec I-05).  The execution boundary (e.g. agent-kernel)
+        owns firewalling and hands contextweaver a :class:`ResultEnvelope` —
+        the native preimage of a weaver-spec ``Frame``.  contextweaver appends
+        a summary-only :class:`ContextItem` carrying the envelope's artifact
+        handle and performs budgeted selection/packing; it does **not**
+        re-derive firewalling from raw output.
+
+        weaver-spec users convert a ``Frame`` first::
+
+            from contextweaver.adapters.weaver_contracts import from_weaver_frame
+            mgr.ingest_envelope(tool_call_id, from_weaver_frame(frame))
+
+        See :doc:`the context-firewall boundary doc </context_firewall_boundary>`
+        for who firewalls what and where the seam sits.
+
+        Args:
+            tool_call_id: ID of the originating tool call.
+            envelope: An already-firewalled :class:`ResultEnvelope`.
+            tool_name: Human-readable tool name.
+
+        Returns:
+            The appended :class:`ContextItem` (summary text + artifact handle).
+        """
+        return _ingest.ingest_envelope(
+            event_log=self._event_log,
+            estimator=self._estimator,
+            tool_call_id=tool_call_id,
+            envelope=envelope,
+            tool_name=tool_name,
+        )
+
+    def ingest_envelope_sync(
+        self,
+        tool_call_id: str,
+        envelope: ResultEnvelope,
+        tool_name: str = "",
+    ) -> ContextItem:
+        """Synchronous alias for :meth:`ingest_envelope`."""
+        return self.ingest_envelope(tool_call_id, envelope, tool_name)
+
     def ingest_tool_result(
         self,
         tool_call_id: str,
@@ -227,7 +263,17 @@ class ContextManager:
         media_type: str = "text/plain",
         firewall_threshold: int = 2000,
     ) -> tuple[ContextItem, ResultEnvelope]:
-        """Ingest a raw tool result through the context firewall.
+        """Ingest a *raw* tool result, running the context firewall locally.
+
+        .. note::
+
+            **Non-canonical for spec compliance (weaver-spec I-05).** This API
+            accepts raw output and re-derives firewalling inside contextweaver.
+            The canonical seam is :meth:`ingest_envelope`, where the execution
+            boundary firewalls and hands over a :class:`ResultEnvelope` /
+            ``Frame``.  Prefer :meth:`ingest_envelope` when integrating with an
+            agent-kernel-style execution boundary; this method remains for
+            standalone use where contextweaver owns the firewall.
 
         If the raw output exceeds *firewall_threshold* characters it is stored
         in the artifact store and the LLM sees only a summary.  Small outputs
@@ -282,9 +328,19 @@ class ContextManager:
         tool_name: str,
         firewall_threshold: int = 2000,
     ) -> tuple[ContextItem, ResultEnvelope]:
-        """Ingest an MCP tool result with full artifact persistence.
+        """Ingest a raw MCP tool result with full artifact persistence.
 
-        This is the recommended happy-path API for MCP integration.  It:
+        .. note::
+
+            **Non-canonical for spec compliance (weaver-spec I-05).** Like
+            :meth:`ingest_tool_result`, this accepts a raw upstream payload and
+            re-derives firewalling inside contextweaver.  When the execution
+            boundary already produces a :class:`ResultEnvelope` / ``Frame``, use
+            :meth:`ingest_envelope` instead.  This method remains the
+            happy-path for direct MCP integration where contextweaver owns the
+            firewall.
+
+        It:
 
         1. Parses the MCP result via :func:`mcp_result_to_envelope`.
         2. Stores binary artifacts (images, resources) in the artifact store.
@@ -411,22 +467,15 @@ class ContextManager:
             ArtifactNotFoundError: If *handle* is not in the store.
             ContextWeaverError: If the selector type is unknown.
         """
-        result = self._artifact_store.drilldown(handle, selector)
-
-        if inject:
-            sel_type = selector.get("type", "unknown")
-            item_id = f"drilldown:{handle}:{sel_type}:{self._event_log.count()}"
-            item = ContextItem(
-                id=item_id,
-                kind=ItemKind.tool_result,
-                text=result,
-                token_estimate=self._estimator.estimate(result),
-                metadata={"drilldown_handle": handle, "selector": selector},
-                parent_id=parent_id,
-            )
-            self._event_log.append(item)
-
-        return result
+        return _ingest.drilldown(
+            artifact_store=self._artifact_store,
+            event_log=self._event_log,
+            estimator=self._estimator,
+            handle=handle,
+            selector=selector,
+            inject=inject,
+            parent_id=parent_id,
+        )
 
     def drilldown_sync(
         self,
@@ -480,182 +529,18 @@ class ContextManager:
             A 2-tuple ``(pack, explanation)``.  *explanation* is
             ``None`` when *explain* is ``False``.
         """
-        _ = extra  # reserved
-        _tags = sorted(set(list(query_tags or []) + list(hints or [])))
-
-        # Override budget if requested
-        effective_budget = self._budget
-        if budget_tokens is not None:
-            effective_budget = ContextBudget(
-                route=budget_tokens if phase == Phase.route else self._budget.route,
-                call=budget_tokens if phase == Phase.call else self._budget.call,
-                interpret=budget_tokens if phase == Phase.interpret else self._budget.interpret,
-                answer=budget_tokens if phase == Phase.answer else self._budget.answer,
-            )
-
-        # 1. Generate candidates
-        candidates = generate_candidates(self._event_log, phase, self._policy)
-
-        # 2. Dependency closure
-        if explain:
-            pre_closure_ids = {c.id for c in candidates}
-        candidates, closures = resolve_dependency_closure(candidates, self._event_log)
-        closure_added_ids = {c.id for c in candidates} - pre_closure_ids if explain else set()
-
-        # 3. Sensitivity filter
-        if explain:
-            pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in candidates}
-        candidates, sensitivity_drops = apply_sensitivity_filter(candidates, self._policy)
-        if explain:
-            post_sens_ids = {c.id for c in candidates}
-            sensitivity_dropped_records: list[tuple[str, str, str]] = sorted(
-                (cid, kind, sens) for (cid, kind, sens) in pre_sens_ids if cid not in post_sens_ids
-            )
-        else:
-            sensitivity_dropped_records = []
-
-        # 4. Firewall
-        candidates, envelopes = apply_firewall_to_batch(
-            candidates,
-            self._artifact_store,
-            self._hook,
-            summarizer=self._summarizer,
-            extractor=self._extractor,
+        return run_build_pipeline(
+            self,
+            phase=phase,
+            query=query,
+            query_tags=query_tags,
+            header=header,
+            footer=footer,
+            budget_tokens=budget_tokens,
+            hints=hints,
+            extra=extra,
+            explain=explain,
         )
-
-        # 5. Score
-        scored = score_candidates(candidates, query, _tags, self._scoring)
-
-        # 6. Dedup
-        if explain:
-            pre_dedup_view: list[tuple[str, str, str, float]] = [
-                (item.id, item.kind.value, item.sensitivity.value, score) for score, item in scored
-            ]
-        scored, dedup_removed = deduplicate_candidates(
-            scored, similarity_threshold=self._scoring.dedup_threshold
-        )
-        if explain:
-            post_dedup_ids = {item.id for _score, item in scored}
-            dedup_dropped_records: list[tuple[str, str, str, float]] = [
-                (iid, kind, sens, sc)
-                for (iid, kind, sens, sc) in pre_dedup_view
-                if iid not in post_dedup_ids
-            ]
-        else:
-            dedup_dropped_records = []
-
-        # Pre-build episodic + fact injection text so we can estimate its
-        # token cost and subtract it from the budget *before* selection.
-        extra_sections: list[str] = []
-
-        # Episodic summaries (latest 3)
-        episodic_entries = self._episodic_store.latest(3)
-        if episodic_entries:
-            ep_lines = ["[EPISODIC MEMORY]"]
-            for _ep_id, ep_summary, _meta in episodic_entries:
-                ep_lines.append(f"- {ep_summary}")
-            extra_sections.append("\n".join(ep_lines))
-
-        # Facts snapshot — capped to avoid unbounded prompt growth.
-        all_facts = self._fact_store.all()
-        if all_facts:
-            fact_lines: list[str] = ["[FACTS]"]
-            total_chars = len(fact_lines[0])
-            for idx, fact in enumerate(all_facts):
-                if idx >= _MAX_FACT_LINES:
-                    remaining = len(all_facts) - idx
-                    if remaining > 0:
-                        fact_lines.append(f"- ... ({remaining} more facts omitted)")
-                    break
-                line = f"- {fact.key}: {fact.value}"
-                if total_chars + len(line) > _MAX_FACT_CHARS:
-                    fact_lines.append("- ... (facts truncated to fit header budget)")
-                    break
-                fact_lines.append(line)
-                total_chars += len(line)
-            extra_sections.append("\n".join(fact_lines))
-
-        # Build full header with injected sections
-        full_header = header
-        if extra_sections:
-            prefix = "\n\n".join(extra_sections)
-            full_header = f"{prefix}\n\n{header}" if header else prefix
-
-        # Estimate token cost of header/footer so we can reserve budget.
-        hf_tokens = 0
-        if full_header:
-            hf_tokens += self._estimator.estimate(full_header)
-        if footer:
-            hf_tokens += self._estimator.estimate(footer)
-
-        # Subtract header/footer overhead from the effective budget so that
-        # select_and_pack only fills the remaining space.
-        if hf_tokens > 0:
-            adjusted = ContextBudget(
-                route=max(effective_budget.route - hf_tokens, 0)
-                if phase == Phase.route
-                else effective_budget.route,
-                call=max(effective_budget.call - hf_tokens, 0)
-                if phase == Phase.call
-                else effective_budget.call,
-                interpret=max(effective_budget.interpret - hf_tokens, 0)
-                if phase == Phase.interpret
-                else effective_budget.interpret,
-                answer=max(effective_budget.answer - hf_tokens, 0)
-                if phase == Phase.answer
-                else effective_budget.answer,
-            )
-        else:
-            adjusted = effective_budget
-
-        # 7. Select (budget already accounts for header/footer overhead)
-        selected, stats = select_and_pack(scored, phase, adjusted, self._policy, self._estimator)
-        stats.dedup_removed = dedup_removed
-        stats.dependency_closures = closures
-        stats.header_footer_tokens = hf_tokens
-        if sensitivity_drops > 0:
-            # Account for items dropped by sensitivity filtering in both the
-            # total candidate count and the drop breakdown so that
-            # dropped_count + included_count <= total_candidates remains true.
-            stats.total_candidates += sensitivity_drops
-            stats.dropped_count += sensitivity_drops
-            stats.dropped_reasons["sensitivity"] = (
-                stats.dropped_reasons.get("sensitivity", 0) + sensitivity_drops
-            )
-
-        # 8. Render
-        prompt = render_context(selected, header=full_header, footer=footer)
-
-        pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
-
-        # Assemble the explanation (issue #291) only when requested.
-        explanation: ContextBuildExplanation | None = None
-        if explain:
-            explanation = _build_explanation(
-                phase=phase,
-                query=query,
-                stats=stats,
-                sensitivity_dropped=sensitivity_dropped_records,
-                sensitivity_drops=sensitivity_drops,
-                dedup_dropped=dedup_dropped_records,
-                dedup_removed=dedup_removed,
-                closures=closures,
-                closure_added_ids=closure_added_ids,
-                scored=scored,
-                selected_ids={item.id for item in selected},
-                budget_tokens=adjusted.for_phase(phase),
-            )
-
-        self._hook.on_context_built(pack)
-        logger.info(
-            "context build: phase=%s, included=%d, dropped=%d, tokens=%d/%d",
-            phase.value,
-            stats.included_count,
-            stats.dropped_count,
-            sum(stats.tokens_per_section.values()),
-            effective_budget.for_phase(phase),
-        )
-        return pack, explanation
 
     @overload
     async def build(
@@ -864,39 +749,15 @@ class ContextManager:
         Returns:
             A 3-tuple ``(pack, cards, route_result)``.
         """
-        from contextweaver.routing.cards import make_choice_cards, render_cards_text
-
-        if history is None and history_from_log:
-            history = self._build_route_history_from_log()
-        route_result = (
-            router.route(query, history=history) if history is not None else router.route(query)
+        return _route_build.build_route_prompt(
+            self,
+            goal,
+            query,
+            router,
+            budget_tokens,
+            history=history,
+            history_from_log=history_from_log,
         )
-
-        # Build choice cards from route results
-        cards = make_choice_cards(
-            route_result.candidate_items,
-            scores={
-                cid: score
-                for cid, score in zip(route_result.candidate_ids, route_result.scores, strict=False)
-            },
-        )
-
-        # Render cards as text for the prompt footer
-        cards_text = render_cards_text(cards)
-        footer = f"[AVAILABLE TOOLS]\n{cards_text}" if cards_text else ""
-
-        pack, _explanation = self._build(
-            phase=Phase.route,
-            query=query,
-            header=f"[GOAL]\n{goal}",
-            footer=footer,
-            budget_tokens=budget_tokens,
-        )
-
-        self._hook.on_route_completed(route_result.candidate_ids)
-        if self._metrics is not None:
-            self._metrics.record_route(route_result)
-        return pack, cards, route_result
 
     def build_route_prompt_sync(
         self,
@@ -917,72 +778,6 @@ class ContextManager:
             history=history,
             history_from_log=history_from_log,
         )
-
-    def _build_route_history_from_log(self) -> RouteHistory | None:
-        """Construct a :class:`RouteHistory` from the event log (issue #27).
-
-        Returns ``None`` when the log contains no ``tool_result`` entries
-        (the very first routing call in a session) so the router runs in
-        pre-#27 stateless mode.
-
-        The summary is the most recent ``tool_result`` body truncated to
-        500 characters — the same heuristic suggested in the issue body.
-        ``called_tool_ids`` is derived from each ``tool_result``'s
-        originating tool call's ``function_name`` metadata — the canonical
-        catalog item id.  Resolution order:
-
-        1. ``tool_result.metadata["function_name"]`` (Gemini adapter sets
-           this directly on the result).
-        2. Resolve the parent ``tool_call`` item via
-           ``event_log.get(parent_id)`` and read its
-           ``metadata["function_name"]`` (OpenAI / Anthropic adapters).
-        3. Fallback: use ``parent_id`` verbatim (backward-compatible for
-           simple event logs where ``parent_id`` *is* the tool id).
-        """
-        from contextweaver.routing.history import RouteHistory as _RouteHistory
-
-        items = self._event_log.all()
-        tool_results = [i for i in items if i.kind == ItemKind.tool_result]
-        if not tool_results:
-            return None
-        called_ids: list[str] = []
-        seen: set[str] = set()
-        for item in tool_results:
-            tid = self._resolve_tool_id_from_result(item)
-            if tid in seen:
-                continue
-            seen.add(tid)
-            called_ids.append(tid)
-        last = tool_results[-1]
-        summary = (last.text or "")[:500] or None
-        return _RouteHistory(
-            called_tool_ids=called_ids,
-            last_result_summary=summary,
-            step_number=len(called_ids) + 1,
-        )
-
-    def _resolve_tool_id_from_result(self, item: ContextItem) -> str:
-        """Derive the catalog tool id from a tool_result ContextItem.
-
-        Resolution order:
-        1. item.metadata["function_name"] (set by Gemini adapter)
-        2. Parent tool_call item's metadata["function_name"] (OpenAI/Anthropic)
-        3. Fallback to parent_id (backward-compat for simple logs)
-        """
-        meta = item.metadata or {}
-        fn = meta.get("function_name")
-        if isinstance(fn, str) and fn:
-            return fn
-        parent_id = item.parent_id or item.id
-        try:
-            parent = self._event_log.get(parent_id)
-            parent_meta = parent.metadata or {}
-            parent_fn = parent_meta.get("function_name")
-            if isinstance(parent_fn, str) and parent_fn:
-                return parent_fn
-        except Exception:  # noqa: BLE001 — ItemNotFoundError or any store issue
-            pass
-        return parent_id
 
     # ------------------------------------------------------------------
     # Call-phase prompt (schema injection)
@@ -1023,23 +818,16 @@ class ContextManager:
         Raises:
             ItemNotFoundError: If *tool_id* is not in *catalog*.
         """
-        from contextweaver.context.call_prompt import build_schema_header
-
-        hydration = catalog.hydrate(tool_id)
-        header = build_schema_header(
-            hydration,
+        return run_call_prompt_build(
+            self,
+            tool_id=tool_id,
+            query=query,
+            catalog=catalog,
             schema=schema,
             examples=examples,
             constraints=constraints,
-        )
-
-        pack, _explanation = self._build(
-            phase=Phase.call,
-            query=query,
-            header=header,
             budget_tokens=budget_tokens,
         )
-        return pack
 
     async def build_call_prompt(
         self,

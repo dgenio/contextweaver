@@ -69,6 +69,7 @@ nav:
   - FAQ: faq.md
   - Which pattern fits?: which_pattern.md
   - Context Firewall: context_firewall.md
+  - Firewall Boundary (Frame seam): context_firewall_boundary.md
   - Tool Router: tool_router.md
   - Concepts: concepts.md
   - How contextweaver Fits (deeper): interop.md
@@ -87,6 +88,7 @@ nav:
       - Overview: recipes/index.md
       - Claude Desktop: recipes/claude_desktop.md
       - GitHub Copilot: recipes/github_copilot.md
+      - Cursor: recipes/cursor.md
   - Gateway Spec: gateway_spec.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md

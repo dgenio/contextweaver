@@ -36,7 +36,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `store/json_file_artifacts.py` | `JsonFileArtifactStore` — filesystem `ArtifactStore` backend; `{handle}.data` + `{handle}.json` per artifact, re-instantiable against an existing directory (issue #42). |
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
-| `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline) |
+| `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline). Includes `ingest_envelope` — the canonical Frame-shaped seam (weaver-spec I-05) that ingests an already-firewalled `ResultEnvelope` without re-deriving firewalling; raw-output `ingest_tool_result` / `ingest_mcp_result` are non-canonical for spec compliance (issue #352). |
 | `context/memory_types.py` | `MemoryEntry` dataclass + `PHASE_SCOPE_PREFERENCES` constants for phase-aware memory ingestion (issue #293). |
 | `context/memory_fixture.py` | `JsonFixtureMemorySource` — deterministic stdlib fixture adapter implementing the `MemorySource` Protocol from `protocols.py` (issue #293). |
 | `context/memory_source.py` | `memory_entries_to_context_items` / `select_memory_for_phase` helpers that materialise memory entries into budgeted `memory_fact` candidates (issue #293). |
@@ -51,7 +51,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
 | `routing/explanation.py` | `RouteResult.explanation()` Markdown / dict rendering (issue #226) |
 | `routing/pipeline.py` | `RoutingPipeline` composer — explicit retrieve → rerank → navigate → pack stages (issue #56) |
-| `routing/navigator.py` | `BeamSearchNavigator` (lifted from `router.py`) + `rank_collected` (issue #56) |
+| `routing/navigator.py` | `BeamSearchNavigator` (lifted from `router.py`) + `rank_collected` — the score-sort/active-filter helper is re-exported from `routing/__init__.py` for custom Navigator implementations (issues #56, #288) |
 | `routing/packer.py` | `DefaultCardPacker` wrapping `make_choice_cards` for the pipeline pack stage (issue #56) |
 | `routing/history.py` | `RouteHistory` dataclass + `adjust_scores` (history-aware re-routing, issue #27) |
 | `routing/feedback.py` | Optional feedback-aware routing scores (issue #318): `ExecutionFeedback` (contextweaver-native, **not** a weaver-spec type), `DeterministicScoreProvider` (default no-op), `FeedbackAwareScoreProvider`, `aggregate_feedback`. Plugs into `Router(score_provider=...)`; default `None` keeps routing deterministic. |
@@ -87,9 +87,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | `eval/` | Evaluation harness (issue #12): `EvalCase` / `EvalDataset` (gold datasets), `evaluate_routing` → `RoutingEvalReport` (top-k recall, MRR, confidence gap, beam steps), `evaluate_context` → `ContextEvalReport` (budget utilisation + token savings vs naive concat). Pure-stdlib, deterministic; backs the `eval` CLI subcommand. |
 | `eval/metrics.py` | Canonical rank-based routing metrics — `recall_at_k` (classic fractional recall@k), `precision_at_k`, `reciprocal_rank` (issue #354). Single source of truth imported by both `eval/routing.py` and `benchmarks/benchmark.py` so the harness and the benchmark script can no longer define the same names with different semantics. |
 | `__main__.py` | CLI: 10 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`, `eval`) plus the `mcp` Typer sub-app (`mcp serve`, [experimental] stdio MCP gateway/proxy entrypoint; issues #243/#246). Typer + Rich (both core deps as of v0.5, issue #221). |
-| `_mcp_cli.py` | Backs the `mcp` Typer sub-app mounted from `__main__.py`. Hosts `mcp serve` (stdio MCP gateway or transparent proxy) and the catalog loader that accepts both native contextweaver and raw MCP `tools/list` shapes. Marked `[experimental]` in `--help` for v0.9. Uses `typer.echo(..., err=True)` for stderr output (library-code `print()` is forbidden). |
+| `_mcp_cli.py` | Backs the `mcp` Typer sub-app mounted from `__main__.py`. Hosts `mcp serve` (stdio MCP gateway or transparent proxy) and the catalog loader that accepts native contextweaver, raw MCP `tools/list`, and `{tools:[...]}` snapshot shapes. `mcp serve --config FILE` loads catalog + serve options from one JSON/YAML file (zero-Python drop-in launch, issue #346); explicit CLI flags win. Marked `[experimental]` in `--help` for v0.9. Uses `typer.echo(..., err=True)` for stderr output (library-code `print()` is forbidden). |
 | `data/` | Packaged data files shipped inside the wheel via `[tool.setuptools.package-data]`. Exposes `gateway_catalog_path()` (resolves `mcp_gateway_catalog.yaml` to a concrete `Path` for both editable installs and zipped wheels — falls back to a persistent cache under `tempfile.gettempdir()/contextweaver/` for zipimport). Issue #264. |
-| `examples/recipes/` | MCP-client integration recipes: `serve_gateway.py` launcher + `claude_desktop_config.json` / `copilot_mcp.json` example configs referenced from `docs/recipes/` (issues #278, #279). |
+| `examples/recipes/` | MCP-client integration recipes: `serve_gateway.py` launcher + `claude_desktop_config.json` / `copilot_mcp.json` / `cursor_mcp.json` client configs + `gateway_config.yaml` (single-file config for the zero-Python `mcp serve --config` launch) referenced from `docs/recipes/` (issues #278, #279, #346). |
 
 ## Pipelines (summary)
 

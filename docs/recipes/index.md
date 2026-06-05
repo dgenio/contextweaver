@@ -5,13 +5,19 @@
 > `pip install contextweaver` to a working integration end-to-end.
 
 contextweaver's gateway runtime is a regular MCP server, so any MCP client
-can point at it. The recipes here cover the two most common clients
-people ask about:
+can point at it. The recipes here cover the most common clients people ask
+about:
 
 | Client | Recipe | Config file |
 |---|---|---|
 | Claude Desktop | [Claude Desktop](claude_desktop.md) | [`examples/recipes/claude_desktop_config.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_desktop_config.json) |
 | GitHub Copilot (VS Code) | [GitHub Copilot](github_copilot.md) | [`examples/recipes/copilot_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/copilot_mcp.json) |
+| Cursor | [Cursor](cursor.md) | [`examples/recipes/cursor_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/cursor_mcp.json) + [`gateway_config.yaml`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/gateway_config.yaml) |
+
+> **Zero-Python launch.** `contextweaver mcp serve --config gateway.yaml`
+> starts the gateway from a single config file (catalog + `top_k` + mode +
+> …) with no Python authoring — explicit CLI flags still win. See the
+> [Cursor recipe](cursor.md) for the config-file walkthrough.
 
 Both recipes share the same launcher:
 [`examples/recipes/serve_gateway.py`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/serve_gateway.py).

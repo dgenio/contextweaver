@@ -34,6 +34,7 @@ from contextweaver.routing.hydration import (
     lazy_schema_resolver,
 )
 from contextweaver.routing.labeler import KeywordLabeler
+from contextweaver.routing.navigator import rank_collected
 from contextweaver.routing.path import parse_path, resolve_path
 from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tool_id import (
@@ -75,6 +76,7 @@ __all__ = [
     "make_choice_cards",
     "parse_path",
     "parse_tool_id",
+    "rank_collected",
     "render_cards",
     "render_cards_text",
     "resolve_path",

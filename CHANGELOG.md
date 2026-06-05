@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Canonical Frame-shaped ingestion seam — `ContextManager.ingest_envelope()`
+  (#352).** The execution boundary (e.g. agent-kernel) firewalls and hands
+  contextweaver an already-firewalled `ResultEnvelope` (the native preimage of
+  a weaver-spec `Frame`); contextweaver appends a summary-only `ContextItem`
+  carrying the artifact handle and does **not** re-derive firewalling from raw
+  output. The raw-output APIs (`ingest_tool_result`, `ingest_mcp_result`)
+  remain for standalone use but are now labelled non-canonical for spec
+  compliance. New [firewall boundary doc](docs/context_firewall_boundary.md)
+  explains the contextweaver-firewall vs agent-kernel-firewall split and the
+  seam; weaver-spec I-05 status updated accordingly.
+- **Zero-Python config-file launch for the MCP gateway (#346).**
+  `contextweaver mcp serve --config gateway.yaml` reads the catalog and serve
+  options (`mode`, `top_k`, `beam_width`, `cache_stable`, `name`, `version`)
+  from a single JSON/YAML file; explicit CLI flags still win. The catalog
+  loader now also accepts the real-MCP-server snapshot shape
+  (`{"tools": [...]}`) used by the recipes. New Cursor recipe
+  (`docs/recipes/cursor.md`) plus `examples/recipes/gateway_config.yaml` and
+  `examples/recipes/cursor_mcp.json`. (Bridging a *live* upstream MCP server
+  over stdio remains follow-up on #346.)
+- **`rank_collected` is now part of the public routing API (#288).** The
+  score-sort / active-filter helper is re-exported from
+  `contextweaver.routing` so custom `Navigator` implementations can reuse it.
 - **End-to-end quality + cost benchmark vs a competent baseline (#345).** New
   `benchmarks/e2e_quality.py` runs realistic tool-using tasks three ways —
   naive concat, a hand-built competent baseline, and contextweaver — scoring
@@ -22,6 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Decomposed `ContextManager` toward the ≤300-line module guideline (#101).**
+  The core build pipeline moved to `context/build.py` (`run_build_pipeline`),
+  route-integrated build + history helpers to `context/route_build.py`, the
+  call-phase prompt orchestration to `context/call_prompt.py`, and `drilldown`
+  logic to `context/ingest.py`. `ContextManager` is now a thin orchestrator
+  (`manager.py` 1090 → ~880 lines; every extracted module ≤300). No public API
+  change — all methods are preserved as delegations and the full test suite
+  passes unmodified. (A literal ≤300 for `manager.py` is bounded by the public
+  method surface + Google docstrings, which the issue scopes as "as close as
+  practical" without dropping methods or introducing mixins.)
 - **Unified routing metrics into `contextweaver.eval.metrics` (#354).**
   `benchmarks/benchmark.py` and `contextweaver.eval.routing` previously
   defined `recall@k` / `reciprocal_rank` under the same names with different
