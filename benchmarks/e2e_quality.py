@@ -173,6 +173,12 @@ def stub_call_fn(prompt: str) -> str:
     real model sees), choosing the one whose ``id + description`` best matches
     the user request by token overlap.  Used for CI/testing and as the default
     so the harness runs anywhere; its numbers are illustrative, not published.
+
+    The offered-tool set is re-derived here from the prompt text on purpose:
+    the stub must see only what a real model would, never the explicit
+    ``offered_tool_ids`` the builders hand the scorer.  Scoring therefore stays
+    authoritative (it uses that explicit set); this prompt parsing only steers
+    the illustrative stub's pick.
     """
     query_match = _QUERY_RE.search(prompt)
     query = query_match.group(1) if query_match else ""

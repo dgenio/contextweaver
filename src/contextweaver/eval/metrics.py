@@ -55,6 +55,12 @@ def recall_at_k(predicted: Sequence[str], expected: Collection[str], k: int) -> 
 def precision_at_k(predicted: Sequence[str], expected: Collection[str], k: int) -> float:
     """Precision@k: fraction of the top-*k* predictions that are *expected*.
 
+    The denominator is always *k* (classic precision@k), so a router that
+    returns fewer than *k* candidates is scored against the full cutoff
+    rather than its actual output length. This matches the historical
+    ``benchmarks/benchmark.py`` definition, so the published scorecard is
+    unaffected by the #354 consolidation.
+
     Returns ``0.0`` when ``k <= 0``.
     """
     if k <= 0:
