@@ -130,6 +130,19 @@ def test_evaluate_routing_exact_metrics() -> None:
     assert report.avg_beam_steps == 3.0
 
 
+def test_evaluate_routing_multi_expected_is_fractional() -> None:
+    # Post-#354 the harness reports classic fractional recall@k, so a case
+    # with two expected ids and only one inside top-k contributes 0.5 — not
+    # the boolean 1.0 the old hit-rate definition would have recorded.
+    router = _FakeRouter({"q1": (["a", "b", "c", "d", "e"], [0.9, 0.8, 0.7, 0.6, 0.5], 1)})
+    ds = EvalDataset(cases=[EvalCase(query="q1", expected=["a", "z"])])
+    report = evaluate_routing(router, ds)  # type: ignore[arg-type]
+    assert report.queries_evaluated == 1
+    assert report.top_1_recall == 0.5
+    assert report.top_5_recall == 0.5  # "z" is unreachable, so capped at 0.5
+    assert report.mrr == 1.0  # "a" is at rank 1
+
+
 def test_evaluate_routing_skips_unreachable_expected() -> None:
     router = _FakeRouter({"q1": (["a", "b"], [0.5, 0.4], 1)})
     ds = EvalDataset(cases=[EvalCase(query="q1", expected=["not-in-catalog"])])

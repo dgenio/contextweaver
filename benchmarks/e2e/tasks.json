@@ -1,0 +1,8 @@
+[
+  {"query": "refund a completed payment for order 4471", "expected_tool": "billing.payments.refund", "answer_contains": "refund"},
+  {"query": "send an email message to a customer about their invoice", "expected_tool": "comms.email.send", "answer_contains": "email"},
+  {"query": "export the audit log entries for last week", "expected_tool": "admin.audit.export", "answer_contains": "audit"},
+  {"query": "create a new user account for a teammate", "expected_tool": "admin.users.create", "answer_contains": "user"},
+  {"query": "query metric time-series data for the dashboard", "expected_tool": "analytics.metrics.query", "answer_contains": "metric"},
+  {"query": "search invoices by customer name", "expected_tool": "billing.invoices.search", "answer_contains": "invoice"}
+]

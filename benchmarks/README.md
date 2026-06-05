@@ -151,6 +151,58 @@ Override the grid with `--backends tfidf,bm25` or `--sizes 100,500`.
 proxy is `items_included / event_count`. Disable with `--no-naive-delta` for
 strict back-compat output.
 
+## End-to-end quality + cost vs a competent baseline (issue #345)
+
+`benchmarks/e2e_quality.py` answers the objection the proxy-metric benchmarks
+above cannot: *"I already truncate history and shortlist tools by hand — what
+does contextweaver save me versus a competently-built agent, and does answer
+quality survive?"* It runs the same tool-using tasks (`e2e/tasks.json`) **three
+ways** and scores both quality and cost:
+
+| Strategy | Prompt construction |
+|----------|---------------------|
+| `naive` | every tool schema + full history |
+| `competent` | truncated history + keyword/namespace-shortlisted tools (hand-built baseline) |
+| `contextweaver` | Router-shortlisted tools + budgeted `ContextManager` build |
+
+Metrics per strategy: **tool-selection accuracy**, **hallucinated-tool rate**,
+**end-task answer accuracy**, **avg prompt tokens**, and **estimated input
+cost**. The headline this benchmark targets is *"equal-or-better answer quality
+at N% lower cost vs the competent baseline."*
+
+```bash
+make e2e-quality                                   # deterministic stub model
+python benchmarks/e2e_quality.py --output benchmarks/results/e2e_quality.json
+```
+
+**Model access (no LLM SDK dependency, same pattern as `smoke_eval.py` and the
+`LlmSummarizer` plugin):**
+
+- **Stub model (default).** A deterministic, credential-free responder that
+  selects from *only the tools present in the prompt*. It exercises the whole
+  harness so it runs in CI (`tests/test_e2e_quality.py`), but its numbers are
+  **illustrative mechanics only — not a publishable headline.**
+- **Real model (opt-in).** The published headline must come from a real model.
+  Wire your own `call_fn(prompt) -> str` and pin the model id + date in the
+  committed report:
+
+  ```python
+  from benchmarks.e2e_quality import run, render_scorecard
+
+  def call_fn(prompt: str) -> str:
+      ...  # call your LLM; instruct it to reply with {"tool": ..., "answer": ...}
+
+  report = run(call_fn=call_fn, model="<provider/model@YYYY-MM-DD>", price_per_mtok=3.0)
+  print(render_scorecard(report))
+  ```
+
+  Running `CW_E2E_LLM=1 python benchmarks/e2e_quality.py` without a wired
+  adapter skips cleanly rather than scoring the stub as if it were real.
+
+> **Status:** the harness, fixtures, and scoring are committed and tested. The
+> real-model scorecard + README hero headline are produced from a credentialed
+> run by a maintainer (it needs network + API keys, which CI deliberately lacks).
+
 ## CI integration
 
 The benchmark step runs with `continue-on-error: true` in `.github/workflows/ci.yml`.

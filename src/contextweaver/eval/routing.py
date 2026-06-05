@@ -4,8 +4,10 @@
 through a :class:`~contextweaver.routing.router.Router` and aggregates
 quality metrics into a :class:`RoutingEvalReport`:
 
-- **top-1 / top-3 / top-5 recall** — fraction of evaluated cases where at
-  least one expected tool id appears in the top-*k* candidates.
+- **top-1 / top-3 / top-5 recall** — mean classic recall@k across cases:
+  the fraction of each case's expected tool ids recovered within the
+  top-*k* candidates.  For the common single-expected-id case this equals
+  the share of cases with an expected id in the top-*k*.
 - **MRR** — mean reciprocal rank of the first expected id across cases.
 - **avg candidates** — mean number of candidates returned per query.
 - **avg confidence gap** — mean ``score[0] - score[1]`` (0.0 when fewer
@@ -13,9 +15,10 @@ quality metrics into a :class:`RoutingEvalReport`:
 - **avg beam steps** — mean number of beam-search expansion steps
   (captured via ``debug=True``), a proxy for routing work.
 
-Metrics mirror the definitions in ``benchmarks/benchmark.py`` so the
-library harness and the benchmark script stay comparable.  Routing is
-deterministic, so the report is reproducible for a given router/dataset.
+Recall and MRR come from :mod:`contextweaver.eval.metrics`, the single
+source of truth shared with ``benchmarks/benchmark.py`` (issue #354), so
+the library harness and the benchmark script can no longer drift.  Routing
+is deterministic, so the report is reproducible for a given router/dataset.
 """
 
 from __future__ import annotations
@@ -25,25 +28,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from contextweaver.eval.dataset import EvalDataset
+from contextweaver.eval.metrics import recall_at_k, reciprocal_rank
 from contextweaver.routing.router import Router
 
 __all__ = ["RoutingEvalReport", "evaluate_routing"]
 
 # Rank cutoffs reported by every routing evaluation, per issue #12.
 _RECALL_KS: tuple[int, ...] = (1, 3, 5)
-
-
-def _hit_at_k(predicted: list[str], expected: set[str], k: int) -> bool:
-    """Return ``True`` if any *expected* id is within the top-*k* predictions."""
-    return any(pid in expected for pid in predicted[:k])
-
-
-def _reciprocal_rank(predicted: list[str], expected: set[str]) -> float:
-    """Reciprocal rank of the first *expected* id in *predicted* (0.0 if none)."""
-    for rank, pid in enumerate(predicted, start=1):
-        if pid in expected:
-            return 1.0 / rank
-    return 0.0
 
 
 @dataclass
@@ -144,8 +135,8 @@ def evaluate_routing(
         predicted = result.candidate_ids
 
         for k in _RECALL_KS:
-            recalls[k].append(1.0 if _hit_at_k(predicted, expected, k) else 0.0)
-        rrs.append(_reciprocal_rank(predicted, expected))
+            recalls[k].append(recall_at_k(predicted, expected, k))
+        rrs.append(reciprocal_rank(predicted, expected))
         candidate_counts.append(len(predicted))
         gap = result.scores[0] - result.scores[1] if len(result.scores) >= 2 else 0.0
         confidence_gaps.append(gap)
