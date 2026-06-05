@@ -7,9 +7,15 @@ prompt section from a :class:`~contextweaver.envelope.HydrationResult`.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from contextweaver.envelope import HydrationResult
+from contextweaver.types import Phase
+
+if TYPE_CHECKING:
+    from contextweaver.context.manager import ContextManager
+    from contextweaver.envelope import ContextPack
+    from contextweaver.routing.catalog import Catalog
 
 
 def build_schema_header(
@@ -60,3 +66,37 @@ def build_schema_header(
         sections.append("Side effects: yes")
 
     return "\n".join(sections)
+
+
+def run_call_prompt_build(
+    manager: ContextManager,
+    tool_id: str,
+    query: str,
+    catalog: Catalog,
+    schema: dict[str, Any] | None = None,
+    examples: list[str] | None = None,
+    constraints: dict[str, Any] | None = None,
+    budget_tokens: int | None = None,
+) -> ContextPack:
+    """Hydrate *tool_id*, build its schema header, and run the call-phase build.
+
+    Extracted from :meth:`ContextManager.build_call_prompt` (issue #101). Not
+    public API — operates on a :class:`ContextManager`'s internals.
+
+    Raises:
+        ItemNotFoundError: If *tool_id* is not in *catalog*.
+    """
+    hydration = catalog.hydrate(tool_id)
+    header = build_schema_header(
+        hydration,
+        schema=schema,
+        examples=examples,
+        constraints=constraints,
+    )
+    pack, _explanation = manager._build(
+        phase=Phase.call,
+        query=query,
+        header=header,
+        budget_tokens=budget_tokens,
+    )
+    return pack

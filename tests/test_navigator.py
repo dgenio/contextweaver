@@ -152,3 +152,12 @@ def test_rank_collected_drops_inactive_entries() -> None:
     }
     ranked = rank_collected(collected, active)
     assert [iid for iid, _ in ranked] == ["a"]
+
+
+def test_rank_collected_is_exported_from_routing_package() -> None:
+    # Public API decision (issue #288): rank_collected is part of the
+    # routing package surface so custom Navigator implementations can reuse it.
+    import contextweaver.routing as routing
+
+    assert "rank_collected" in routing.__all__
+    assert routing.rank_collected is rank_collected

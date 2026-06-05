@@ -13,7 +13,15 @@ from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.store import StoreBundle
 from contextweaver.store.event_log import InMemoryEventLog
-from contextweaver.types import ContextItem, ContextPack, ItemKind, Phase, SelectableItem
+from contextweaver.types import (
+    ArtifactRef,
+    ContextItem,
+    ContextPack,
+    ItemKind,
+    Phase,
+    ResultEnvelope,
+    SelectableItem,
+)
 
 
 def _make_log(*texts: str) -> InMemoryEventLog:
@@ -164,6 +172,41 @@ def test_ingest_tool_result_sync() -> None:
         raw_output="result: 42",
     )
     assert env.status == "ok"
+
+
+def test_ingest_envelope_canonical_path() -> None:
+    # Canonical Frame-shaped seam (issue #352): an already-firewalled
+    # ResultEnvelope is appended verbatim, no re-firewalling of raw output.
+    mgr = ContextManager()
+    ref = ArtifactRef(
+        handle="artifact:frame-1",
+        media_type="text/plain",
+        size_bytes=2048,
+        label="upstream-firewalled log",
+        content_hash="abc123",
+    )
+    envelope = ResultEnvelope(
+        status="ok",
+        summary="2048-byte log summarised upstream",
+        facts=["errors: 0"],
+        artifacts=[ref],
+    )
+    item = mgr.ingest_envelope("tc-frame", envelope, tool_name="run_job")
+
+    assert item.kind == ItemKind.tool_result
+    assert item.id == "result:tc-frame"
+    assert item.parent_id == "tc-frame"
+    assert item.text == "2048-byte log summarised upstream"
+    assert item.artifact_ref is ref
+    assert item.metadata["ingest"] == "envelope"
+    assert mgr.event_log.count() == 1
+
+
+def test_ingest_envelope_without_artifacts() -> None:
+    mgr = ContextManager()
+    item = mgr.ingest_envelope_sync("tc-bare", ResultEnvelope(status="ok", summary="no artifact"))
+    assert item.artifact_ref is None
+    assert item.text == "no artifact"
 
 
 # ---------------------------------------------------------------------------

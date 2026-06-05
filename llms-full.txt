@@ -60,7 +60,7 @@ Already have a loop and not sure which piece you need? The two engines also work
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
 </p>
 
-**1150+ tests passing · minimal core dependencies · deterministic by default · Python ≥ 3.10**
+**1150+ tests passing · minimal core dependencies · deterministic by default · Python 3.10–3.13**
 
 #### More tools ≠ better answers
 
@@ -591,7 +591,7 @@ appropriate. See the detailed [stability and 1.0 readiness checklist](docs/stabi
 | Documented public APIs | Change deliberately, with changelog/migration notes when behavior changes. | Dataclasses, stores, context/routing APIs, and documented adapters. |
 | Experimental runtime surfaces | May change before 1.0. | MCP gateway/proxy commands, newer optional extras, and reference architecture variants. |
 | Internal modules | No compatibility promise. | Modules beginning with `_` and test helpers are implementation details. |
-| Python support | Python 3.10+. | Aligned with the package metadata and CI matrix. |
+| Python support | Python 3.10–3.13 (inclusive). | Every version is exercised as a gating CI matrix cell; dependencies use library-grade lower-bound-only constraints by default, with a few documented exceptions (a floor-deps CI job proves the floors). 3.14 is pending upstream adapter-ecosystem support. |
 
 > Adopting a library is a long-term commitment. The stability page makes the
 > Alpha/Beta/1.0 line explicit so teams can decide which surfaces are ready for
@@ -606,7 +606,7 @@ contracts for the Weaver Stack — see
 | Invariant | Status | Where enforced |
 |---|---|---|
 | **I-03** — Routing presents bounded choices, not full schema catalogs | ✅ Satisfied | `ChoiceCard` strips `args_schema`; routing returns ≤ `top_k` cards. See [`src/contextweaver/routing/cards.py`](src/contextweaver/routing/cards.py) and [`docs/gateway_spec.md`](docs/gateway_spec.md). |
-| **I-05** — contextweaver receives Frames, not raw output | ⚠️ Satisfied on the Frame adapter path | The canonical Frame-shaped ingestion lives on the spec adapter: tool outputs above `firewall_threshold` are stored out-of-band as `ArtifactRef`s and the LLM-facing `ResultEnvelope` maps to a spec `Frame` via [`adapters/weaver_contracts.py`](src/contextweaver/adapters/weaver_contracts.py). The legacy raw-output ingestion APIs (`ContextManager.ingest_tool_result(raw_output=...)`, `ingest_mcp_result(...)`) still exist for backwards compatibility; treat them as non-canonical for spec compliance. |
+| **I-05** — contextweaver receives Frames, not raw output | ⚠️ Canonical path shipped; cross-repo mirror pending | The canonical seam is `ContextManager.ingest_envelope()`: the execution boundary firewalls and hands over a `ResultEnvelope` (the native preimage of a spec `Frame`, mapped via [`adapters/weaver_contracts.py`](src/contextweaver/adapters/weaver_contracts.py)); contextweaver does budgeted selection without re-deriving firewalling. The raw-output APIs (`ContextManager.ingest_tool_result(raw_output=...)`, `ingest_mcp_result(...)`) remain for standalone use but are **non-canonical for spec compliance**. See the [firewall boundary doc](docs/context_firewall_boundary.md) for who firewalls what; the matching I-05 statements in weaver-spec and agent-kernel still need to be mirrored. |
 
 **Contract adapters** (`pip install 'contextweaver[weaver-spec]'`):
 
@@ -632,7 +632,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.12.0**.
+Current package version: **0.13.4**.
 
 Recent milestones:
 
@@ -664,7 +664,7 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.12.0](https://pypi.org/project/contextweaver/0.12.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.13.4](https://pypi.org/project/contextweaver/0.13.4/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |

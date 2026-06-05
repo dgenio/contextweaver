@@ -33,6 +33,36 @@ def test_tool_result_intercepted() -> None:
     assert processed.artifact_ref is not None
 
 
+def test_firewall_skips_envelope_ingested_items() -> None:
+    # Issue #352: items ingested via the canonical ingest_envelope seam are
+    # already firewalled upstream. The build-time firewall must not re-fire on
+    # them even when the upstream ArtifactRef carries no content_hash (the
+    # foreign-Frame case), or it would clobber the upstream handle.
+    from contextweaver.types import ArtifactRef
+
+    upstream_ref = ArtifactRef(
+        handle="upstream:frame-1",
+        media_type="application/octet-stream",
+        size_bytes=0,
+        label="upstream handle",
+    )
+    item = ContextItem(
+        id="result:tc1",
+        kind=ItemKind.tool_result,
+        text="upstream summary",
+        metadata={"ingest": "envelope"},
+        artifact_ref=upstream_ref,
+    )
+    store = InMemoryArtifactStore()
+    processed, env = apply_firewall(item, store)
+    assert processed is item
+    assert env is None
+    # No spurious re-firewall artifact created; upstream handle preserved.
+    assert len(store.list_refs()) == 0
+    assert processed.artifact_ref is upstream_ref
+    assert processed.text == "upstream summary"
+
+
 def test_firewall_extracts_facts() -> None:
     item = ContextItem(
         id="r2", kind=ItemKind.tool_result, text="status: ok\ncount: 5\n1. first\n2. second"

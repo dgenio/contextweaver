@@ -58,6 +58,12 @@ for the eight-stage build sequence the firewall sits inside, and
 [`docs/cookbook.md`](cookbook.md) §4 "Firewall + drilldown" for a
 runnable recipe.
 
+> **Two firewalls?** In a full Weaver Stack, agent-kernel firewalls at the
+> *execution* boundary and hands contextweaver a `Frame`; contextweaver then
+> firewalls the *context budget*. See
+> [Firewall Boundary (Frame seam)](context_firewall_boundary.md) for who
+> firewalls what and the canonical `ingest_envelope()` path.
+
 ## Drilling down to raw bytes
 
 `ArtifactRef` supports four built-in drilldown selectors so the LLM can

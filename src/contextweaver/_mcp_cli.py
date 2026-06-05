@@ -65,6 +65,112 @@ mcp_app = typer.Typer(
 )
 
 
+_CONFIG_KEYS: frozenset[str] = frozenset(
+    {"catalog", "mode", "top_k", "beam_width", "cache_stable", "name", "version"}
+)
+_TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
+_FALSE_STRINGS: frozenset[str] = frozenset({"false", "0", "no", "off"})
+
+
+def _coerce_config_bool(value: object) -> bool:
+    """Coerce a config value to ``bool``, accepting common string spellings.
+
+    Plain ``bool(value)`` is wrong for config files: ``bool("false")`` is
+    ``True``, so a quoted JSON/YAML ``"false"`` would silently enable the flag.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in _TRUE_STRINGS:
+            return True
+        if norm in _FALSE_STRINGS:
+            return False
+    raise typer.BadParameter(
+        f"cache_stable must be a boolean, got {value!r}", param_hint="--config"
+    )
+
+
+def _coerce_config_int(key: str, value: object) -> int:
+    """Coerce a config value to ``int`` (rejecting bools and non-numeric strings)."""
+    # bool is an int subclass; a YAML ``top_k: true`` is a mistake, not 1.
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise typer.BadParameter(f"{key} must be an integer, got {value!r}", param_hint="--config")
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise typer.BadParameter(
+            f"{key} must be an integer, got {value!r}", param_hint="--config"
+        ) from exc
+
+
+def _load_serve_config(config_path: Path) -> dict[str, Any]:
+    """Load a single ``mcp serve`` config file (one file, no Python authoring).
+
+    The config is a JSON/YAML mapping whose keys mirror the ``serve`` options:
+    ``catalog`` (path, required), ``mode`` (``gateway`` | ``proxy``),
+    ``top_k``, ``beam_width``, ``cache_stable``, ``name``, ``version``. Explicit
+    CLI flags still win over config values; the file supplies everything else so
+    a drop-in proxy can be launched with ``mcp serve --config gateway.yaml``.
+
+    Args:
+        config_path: Filesystem path to the config file (``.json``/``.yaml``/``.yml``).
+
+    Returns:
+        A validated dict of recognised config keys.
+
+    Raises:
+        typer.BadParameter: If the file is missing, unparseable, not a mapping,
+            carries unknown keys, or omits ``catalog``.
+    """
+    if not config_path.exists():
+        raise typer.BadParameter(f"config file not found: {config_path}", param_hint="--config")
+    suffix = config_path.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        parse: Any = yaml.safe_load
+    elif suffix == ".json":
+        parse = json.loads
+    else:
+        raise typer.BadParameter(
+            f"unsupported config format {suffix!r} for {config_path}; use .json, .yaml, or .yml",
+            param_hint="--config",
+        )
+    try:
+        data: Any = parse(config_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(
+            f"invalid config file {config_path}: {exc}", param_hint="--config"
+        ) from exc
+    if not isinstance(data, dict):
+        raise typer.BadParameter(
+            f"config file {config_path} must be a JSON/YAML mapping", param_hint="--config"
+        )
+    unknown = sorted(set(data) - _CONFIG_KEYS)
+    if unknown:
+        allowed = ", ".join(sorted(_CONFIG_KEYS))
+        raise typer.BadParameter(
+            f"unknown config key(s): {', '.join(unknown)}; allowed: {allowed}",
+            param_hint="--config",
+        )
+    if "catalog" not in data:
+        raise typer.BadParameter(
+            f"config file {config_path} must set 'catalog'", param_hint="--config"
+        )
+    # Normalise + validate option types so `serve` can consume them directly
+    # and `--config` parsing matches CLI flag semantics (e.g. a quoted
+    # "false" must not become True).
+    if "mode" in data and str(data["mode"]) not in ("gateway", "proxy"):
+        raise typer.BadParameter(
+            f"mode must be 'gateway' or 'proxy', got {data['mode']!r}", param_hint="--config"
+        )
+    for int_key in ("top_k", "beam_width"):
+        if int_key in data:
+            data[int_key] = _coerce_config_int(int_key, data[int_key])
+    if "cache_stable" in data:
+        data["cache_stable"] = _coerce_config_bool(data["cache_stable"])
+    return data
+
+
 def _load_tool_defs_from_catalog(catalog_path: Path) -> list[dict[str, Any]]:
     """Read a contextweaver catalog file and return MCP-shaped tool defs.
 
@@ -111,9 +217,14 @@ def _load_tool_defs_from_catalog(catalog_path: Path) -> list[dict[str, Any]]:
         raise typer.BadParameter(
             f"invalid catalog file {catalog_path}: {exc}", param_hint="--catalog"
         ) from exc
+    # Accept the real-MCP-server snapshot shape used by the recipes
+    # ({"_source": ..., "tools": [...]}) by unwrapping its ``tools`` list.
+    if isinstance(data, dict) and isinstance(data.get("tools"), list):
+        data = data["tools"]
     if not isinstance(data, list) or not data:
         raise typer.BadParameter(
-            f"catalog file {catalog_path} must be a non-empty sequence of tool entries",
+            f"catalog file {catalog_path} must be a non-empty sequence of tool entries "
+            "(or a snapshot object with a non-empty 'tools' list)",
             param_hint="--catalog",
         )
 
@@ -222,13 +333,25 @@ def _install_sigint_handler(loop: asyncio.AbstractEventLoop) -> None:
 
 @mcp_app.command("serve")
 def serve(
+    ctx: typer.Context,
     catalog: Annotated[
-        Path,
+        Path | None,
         typer.Option(
             "--catalog",
             help="Path to a JSON/YAML tool catalog (contextweaver native or MCP shape).",
         ),
-    ],
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            help=(
+                "Path to a single JSON/YAML config file supplying catalog + serve "
+                "options (top_k, beam_width, mode, ...). Explicit CLI flags win. "
+                "Enables a zero-Python drop-in launch: 'mcp serve --config gateway.yaml'."
+            ),
+        ),
+    ] = None,
     mode: Annotated[
         _ServeMode,
         typer.Option(
@@ -293,6 +416,37 @@ def serve(
         raise typer.BadParameter(
             "--gateway and --proxy are mutually exclusive", param_hint="--gateway"
         )
+
+    # Config file fills any option not passed explicitly on the command line.
+    if config is not None:
+        cfg = _load_serve_config(config)
+
+        def _from_cli(param: str) -> bool:
+            source = ctx.get_parameter_source(param)
+            return source is not None and source.name == "COMMANDLINE"
+
+        # cfg values are already type-normalised + validated by
+        # _load_serve_config, so consume them directly.
+        if catalog is None and not _from_cli("catalog"):
+            catalog = Path(str(cfg["catalog"]))
+        if not _from_cli("mode") and "mode" in cfg:
+            mode = _ServeMode(str(cfg["mode"]))
+        if not _from_cli("top_k") and "top_k" in cfg:
+            top_k = cfg["top_k"]
+        if not _from_cli("beam_width") and "beam_width" in cfg:
+            beam_width = cfg["beam_width"]
+        if not _from_cli("cache_stable") and "cache_stable" in cfg:
+            cache_stable = cfg["cache_stable"]
+        if not _from_cli("name") and "name" in cfg:
+            name = str(cfg["name"])
+        if not _from_cli("version") and "version" in cfg:
+            version = str(cfg["version"])
+
+    if catalog is None:
+        raise typer.BadParameter(
+            "provide a catalog via --catalog or a config file via --config",
+            param_hint="--catalog",
+        )
     resolved_mode = _ServeMode.gateway if gateway else _ServeMode.proxy if proxy else mode
 
     runtime = _build_runtime(
@@ -343,6 +497,7 @@ def serve(
 __all__ = [
     "mcp_app",
     "_load_tool_defs_from_catalog",
+    "_load_serve_config",
     "_build_runtime",
     "_ServeMode",
 ]

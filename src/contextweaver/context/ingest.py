@@ -34,6 +34,76 @@ def ingest_item(event_log: EventLog, item: ContextItem) -> None:
     logger.debug("ingest: item_id=%s, kind=%s", item.id, item.kind.value)
 
 
+def drilldown(
+    *,
+    artifact_store: ArtifactStore,
+    event_log: EventLog,
+    estimator: TokenEstimator,
+    handle: str,
+    selector: dict[str, Any],
+    inject: bool = False,
+    parent_id: str | None = None,
+) -> str:
+    """Fetch a slice of a stored artifact, optionally injecting it (issue #101).
+
+    Implements :meth:`ContextManager.drilldown`; when *inject* is ``True`` the
+    slice is appended to *event_log* as a ``tool_result`` for later builds.
+    """
+    result = artifact_store.drilldown(handle, selector)
+    if inject:
+        sel_type = selector.get("type", "unknown")
+        item_id = f"drilldown:{handle}:{sel_type}:{event_log.count()}"
+        event_log.append(
+            ContextItem(
+                id=item_id,
+                kind=ItemKind.tool_result,
+                text=result,
+                token_estimate=estimator.estimate(result),
+                metadata={"drilldown_handle": handle, "selector": selector},
+                parent_id=parent_id,
+            )
+        )
+    return result
+
+
+def ingest_envelope(
+    *,
+    event_log: EventLog,
+    estimator: TokenEstimator,
+    tool_call_id: str,
+    envelope: ResultEnvelope,
+    tool_name: str = "",
+) -> ContextItem:
+    """Ingest an already-firewalled :class:`ResultEnvelope` (canonical seam).
+
+    This is the canonical, Frame-shaped ingestion path (weaver-spec I-05): the
+    execution boundary firewalls raw output and hands contextweaver a
+    :class:`ResultEnvelope` (the native preimage of a weaver-spec ``Frame``).
+    contextweaver appends a summary-only :class:`ContextItem` carrying the
+    envelope's artifact handle and does **not** re-derive firewalling from raw
+    output. Contrast with :func:`ingest_tool_result` / :func:`ingest_mcp_result`,
+    which accept raw output and run the firewall themselves.
+    """
+    ref = envelope.artifacts[0] if envelope.artifacts else None
+    item = ContextItem(
+        id=f"result:{tool_call_id}",
+        kind=ItemKind.tool_result,
+        text=envelope.summary,
+        token_estimate=estimator.estimate(envelope.summary),
+        metadata={"tool_name": tool_name, "ingest": "envelope"},
+        parent_id=tool_call_id,
+        artifact_ref=ref,
+    )
+    event_log.append(item)
+    logger.debug(
+        "ingest_envelope: item_id=%s, has_artifact=%s, summary_len=%d",
+        item.id,
+        ref is not None,
+        len(envelope.summary),
+    )
+    return item
+
+
 def ingest_tool_result(
     *,
     event_log: EventLog,

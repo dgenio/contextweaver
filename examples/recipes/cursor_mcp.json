@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "contextweaver-gateway": {
+      "command": "contextweaver",
+      "args": [
+        "mcp",
+        "serve",
+        "--config",
+        "${workspaceFolder}/examples/recipes/gateway_config.yaml"
+      ]
+    }
+  }
+}
