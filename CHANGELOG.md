@@ -70,6 +70,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Routing history tool-id resolution narrows its exception handling.**
+  `route_build.resolve_tool_id_from_result` previously wrapped the parent
+  event-log lookup in a bare `except Exception`, silently swallowing any error
+  before falling back to `parent_id`. It now catches only `ItemNotFoundError`
+  (the documented `EventLog.get` contract), so unexpected store errors surface
+  instead of being hidden (PR #363 review).
 - **Provider message encoders no longer emit empty-content messages.**
   `to_anthropic_messages` and `to_gemini_contents` now raise a clear
   `CatalogError` (with the offending `msg_index`) when a turn would

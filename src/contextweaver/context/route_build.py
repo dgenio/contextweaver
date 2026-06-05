@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.types import ItemKind, Phase
 
 if TYPE_CHECKING:
@@ -123,6 +124,8 @@ def resolve_tool_id_from_result(manager: ContextManager, item: ContextItem) -> s
         parent_fn = parent_meta.get("function_name")
         if isinstance(parent_fn, str) and parent_fn:
             return parent_fn
-    except Exception:  # noqa: BLE001 — ItemNotFoundError or any store issue
+    except ItemNotFoundError:
+        # No parent item in the log (simple/synthetic logs) — fall back to
+        # ``parent_id`` as the tool id per the resolution order above.
         pass
     return parent_id
