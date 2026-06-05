@@ -241,7 +241,7 @@ def test_serve_cli_flag_overrides_config(tmp_path: Path) -> None:
 
 
 def test_serve_without_catalog_or_config_is_usage_error() -> None:
-    """Neither ``--catalog`` nor ``--config`` is a clean usage error."""
+    """Omitting both ``--catalog`` and ``--config`` is a clean usage error."""
     result = _run("mcp", "serve", "--dry-run")
     assert result.returncode != 0
     assert "catalog" in (result.stderr + result.stdout).lower()
@@ -270,6 +270,35 @@ def test_load_serve_config_valid_roundtrip(tmp_path: Path) -> None:
     assert loaded["catalog"] == "x.json"
     assert loaded["top_k"] == 9
     assert loaded["mode"] == "gateway"
+
+
+def test_load_serve_config_coerces_quoted_bool(tmp_path: Path) -> None:
+    # A quoted "false" must parse to False, not bool("false") == True.
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text('catalog: x.json\ncache_stable: "false"\n', encoding="utf-8")
+    loaded = _load_serve_config(cfg)
+    assert loaded["cache_stable"] is False
+
+    cfg.write_text('catalog: x.json\ncache_stable: "on"\n', encoding="utf-8")
+    assert _load_serve_config(cfg)["cache_stable"] is True
+
+
+def test_load_serve_config_rejects_bad_types(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("catalog: x.json\ntop_k: not-a-number\n", encoding="utf-8")
+    with pytest.raises(Exception) as exc_info:
+        _load_serve_config(cfg)
+    assert "top_k must be an integer" in str(exc_info.value)
+
+    cfg.write_text("catalog: x.json\nmode: bogus\n", encoding="utf-8")
+    with pytest.raises(Exception) as exc_info:
+        _load_serve_config(cfg)
+    assert "mode must be" in str(exc_info.value)
+
+    cfg.write_text("catalog: x.json\ncache_stable: maybe\n", encoding="utf-8")
+    with pytest.raises(Exception) as exc_info:
+        _load_serve_config(cfg)
+    assert "cache_stable must be a boolean" in str(exc_info.value)
 
 
 # ------------------------------------------------------------------

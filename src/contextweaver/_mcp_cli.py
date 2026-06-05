@@ -68,6 +68,40 @@ mcp_app = typer.Typer(
 _CONFIG_KEYS: frozenset[str] = frozenset(
     {"catalog", "mode", "top_k", "beam_width", "cache_stable", "name", "version"}
 )
+_TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
+_FALSE_STRINGS: frozenset[str] = frozenset({"false", "0", "no", "off"})
+
+
+def _coerce_config_bool(value: object) -> bool:
+    """Coerce a config value to ``bool``, accepting common string spellings.
+
+    Plain ``bool(value)`` is wrong for config files: ``bool("false")`` is
+    ``True``, so a quoted JSON/YAML ``"false"`` would silently enable the flag.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in _TRUE_STRINGS:
+            return True
+        if norm in _FALSE_STRINGS:
+            return False
+    raise typer.BadParameter(
+        f"cache_stable must be a boolean, got {value!r}", param_hint="--config"
+    )
+
+
+def _coerce_config_int(key: str, value: object) -> int:
+    """Coerce a config value to ``int`` (rejecting bools and non-numeric strings)."""
+    # bool is an int subclass; a YAML ``top_k: true`` is a mistake, not 1.
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise typer.BadParameter(f"{key} must be an integer, got {value!r}", param_hint="--config")
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise typer.BadParameter(
+            f"{key} must be an integer, got {value!r}", param_hint="--config"
+        ) from exc
 
 
 def _load_serve_config(config_path: Path) -> dict[str, Any]:
@@ -122,6 +156,18 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         raise typer.BadParameter(
             f"config file {config_path} must set 'catalog'", param_hint="--config"
         )
+    # Normalise + validate option types so `serve` can consume them directly
+    # and `--config` parsing matches CLI flag semantics (e.g. a quoted
+    # "false" must not become True).
+    if "mode" in data and str(data["mode"]) not in ("gateway", "proxy"):
+        raise typer.BadParameter(
+            f"mode must be 'gateway' or 'proxy', got {data['mode']!r}", param_hint="--config"
+        )
+    for int_key in ("top_k", "beam_width"):
+        if int_key in data:
+            data[int_key] = _coerce_config_int(int_key, data[int_key])
+    if "cache_stable" in data:
+        data["cache_stable"] = _coerce_config_bool(data["cache_stable"])
     return data
 
 
@@ -379,16 +425,18 @@ def serve(
             source = ctx.get_parameter_source(param)
             return source is not None and source.name == "COMMANDLINE"
 
+        # cfg values are already type-normalised + validated by
+        # _load_serve_config, so consume them directly.
         if catalog is None and not _from_cli("catalog"):
             catalog = Path(str(cfg["catalog"]))
         if not _from_cli("mode") and "mode" in cfg:
             mode = _ServeMode(str(cfg["mode"]))
         if not _from_cli("top_k") and "top_k" in cfg:
-            top_k = int(cfg["top_k"])
+            top_k = cfg["top_k"]
         if not _from_cli("beam_width") and "beam_width" in cfg:
-            beam_width = int(cfg["beam_width"])
+            beam_width = cfg["beam_width"]
         if not _from_cli("cache_stable") and "cache_stable" in cfg:
-            cache_stable = bool(cfg["cache_stable"])
+            cache_stable = cfg["cache_stable"]
         if not _from_cli("name") and "name" in cfg:
             name = str(cfg["name"])
         if not _from_cli("version") and "version" in cfg:

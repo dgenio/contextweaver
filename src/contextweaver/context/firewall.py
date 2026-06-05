@@ -67,6 +67,18 @@ def apply_firewall(
     if item.kind != ItemKind.tool_result:
         return item, None
 
+    # Issue #352 — canonical-seam idempotency.  Items ingested via
+    # ``ContextManager.ingest_envelope`` carry ``metadata["ingest"] ==
+    # "envelope"``: their raw output was already firewalled upstream (the
+    # execution boundary handed us a Frame/ResultEnvelope), ``text`` is the
+    # upstream summary, and ``artifact_ref`` points at the upstream handle.
+    # Re-firing here would store the *summary* as a new artifact and clobber
+    # that handle, so short-circuit unconditionally — even when the upstream
+    # ``ArtifactRef`` carries no ``content_hash`` (e.g. foreign Frames decoded
+    # via ``from_weaver_frame``).
+    if item.metadata.get("ingest") == "envelope":
+        return item, None
+
     # Issue #190 — content-addressed firewall idempotency.  If the item
     # already carries an ``artifact_ref`` with a populated
     # ``content_hash``, an earlier firewall pass has stored the raw
