@@ -31,8 +31,8 @@ from contextweaver.envelope import ContextPack
 from contextweaver.types import Phase
 
 if TYPE_CHECKING:
+    from contextweaver.context._manager_base import _ManagerState
     from contextweaver.context.explanation import ContextBuildExplanation
-    from contextweaver.context.manager import ContextManager
 
 logger = logging.getLogger("contextweaver.context")
 
@@ -42,7 +42,7 @@ _MAX_FACT_CHARS: int = 2000
 
 
 def run_build_pipeline(
-    manager: ContextManager,
+    manager: _ManagerState,
     *,
     phase: Phase = Phase.answer,
     query: str = "",
@@ -180,7 +180,7 @@ def run_build_pipeline(
     return pack, explanation
 
 
-def _assemble_header(manager: ContextManager, header: str, footer: str) -> tuple[str, int]:
+def _assemble_header(manager: _ManagerState, header: str, footer: str) -> tuple[str, int]:
     """Build the full prompt header (episodic + facts + caller header).
 
     Returns ``(full_header, header_footer_token_estimate)``.

@@ -15,7 +15,7 @@ from contextweaver.exceptions import ItemNotFoundError
 from contextweaver.types import ItemKind, Phase
 
 if TYPE_CHECKING:
-    from contextweaver.context.manager import ContextManager
+    from contextweaver.context._manager_base import _ManagerState
     from contextweaver.envelope import ChoiceCard, ContextPack
     from contextweaver.routing.history import RouteHistory
     from contextweaver.routing.router import Router, RouteResult
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 def build_route_prompt(
-    manager: ContextManager,
+    manager: _ManagerState,
     goal: str,
     query: str,
     router: Router,
@@ -71,7 +71,7 @@ def build_route_prompt(
     return pack, cards, route_result
 
 
-def build_route_history_from_log(manager: ContextManager) -> RouteHistory | None:
+def build_route_history_from_log(manager: _ManagerState) -> RouteHistory | None:
     """Construct a :class:`RouteHistory` from the event log (issue #27).
 
     Returns ``None`` when the log contains no ``tool_result`` entries (the very
@@ -104,7 +104,7 @@ def build_route_history_from_log(manager: ContextManager) -> RouteHistory | None
     )
 
 
-def resolve_tool_id_from_result(manager: ContextManager, item: ContextItem) -> str:
+def resolve_tool_id_from_result(manager: _ManagerState, item: ContextItem) -> str:
     """Derive the catalog tool id from a ``tool_result`` :class:`ContextItem`.
 
     Resolution order:

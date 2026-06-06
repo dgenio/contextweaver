@@ -36,6 +36,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | `store/json_file_artifacts.py` | `JsonFileArtifactStore` — filesystem `ArtifactStore` backend; `{handle}.data` + `{handle}.json` per artifact, re-instantiable against an existing directory (issue #42). |
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
+| `context/manager.py` | `ContextManager` — thin orchestrator (`__init__`, properties, `drilldown`, mixin composition). Public method stubs live in flat partial-class mixins; pipeline logic lives in the delegate modules below (issue #101). |
+| `context/_manager_base.py` | `_ManagerState` — private-attribute + `_build` contract the manager mixins inherit and the delegate pipeline modules type their `manager` parameter against (`ContextManager` inherits it via the mixins). Not public API (issue #101). |
+| `context/_manager_ingest.py` / `_manager_build.py` / `_manager_routing.py` | `_IngestMixin` / `_BuildMixin` / `_RoutingMixin` — partial-class mixins holding `ContextManager`'s ingestion, build, and route/call-prompt method surface as thin delegations; keep `manager.py` ≤300 lines (issue #101). Not public API. |
 | `context/ingest.py` | Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline). Includes `ingest_envelope` — the canonical Frame-shaped seam (weaver-spec I-05) that ingests an already-firewalled `ResultEnvelope` without re-deriving firewalling; raw-output `ingest_tool_result` / `ingest_mcp_result` are non-canonical for spec compliance (issue #352). |
 | `context/memory_types.py` | `MemoryEntry` dataclass + `PHASE_SCOPE_PREFERENCES` constants for phase-aware memory ingestion (issue #293). |
 | `context/memory_fixture.py` | `JsonFixtureMemorySource` — deterministic stdlib fixture adapter implementing the `MemorySource` Protocol from `protocols.py` (issue #293). |
@@ -234,6 +237,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 1. **Protocol-based store design** — the protocol layer exists for backend extensibility. Do not collapse protocols into concrete classes.
 2. **`dependency_closure` pipeline stage** — if a selected item has `parent_id`, the parent must be included. Removing it produces incoherent context (tool results without their tool calls).
 3. **`serde.py` + per-class `to_dict`/`from_dict`** — complementary, not redundant. `serde.py` provides shared primitives; per-class methods handle class-specific serialization. Do not consolidate.
+4. **`ContextManager` mixin composition** — its public method surface lives in flat partial-class mixins (`_IngestMixin` / `_BuildMixin` / `_RoutingMixin`) sharing the `_ManagerState` base. Do not "simplify" this into delegating composition (`manager.ingest.x()`): that would change the public method surface, which issue #101 forbids ("ContextManager still exposes all current methods"). Mixins were the deliberate trade-off to keep `manager.py` ≤300 lines without breaking the public API.
 
 See [docs/agent-context/invariants.md](docs/agent-context/invariants.md) for the full invariants list and rationale.
 
