@@ -237,6 +237,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 1. **Protocol-based store design** — the protocol layer exists for backend extensibility. Do not collapse protocols into concrete classes.
 2. **`dependency_closure` pipeline stage** — if a selected item has `parent_id`, the parent must be included. Removing it produces incoherent context (tool results without their tool calls).
 3. **`serde.py` + per-class `to_dict`/`from_dict`** — complementary, not redundant. `serde.py` provides shared primitives; per-class methods handle class-specific serialization. Do not consolidate.
+4. **`ContextManager` mixin composition** — its public method surface lives in flat partial-class mixins (`_IngestMixin` / `_BuildMixin` / `_RoutingMixin`) sharing the `_ManagerState` base. Do not "simplify" this into delegating composition (`manager.ingest.x()`): that would change the public method surface, which issue #101 forbids ("ContextManager still exposes all current methods"). Mixins were the deliberate trade-off to keep `manager.py` ≤300 lines without breaking the public API.
 
 See [docs/agent-context/invariants.md](docs/agent-context/invariants.md) for the full invariants list and rationale.
 
