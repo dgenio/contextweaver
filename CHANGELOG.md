@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the private-attribute contract. `manager.py` is now **239 lines** (only
   `__init__`, properties, `drilldown`, and mixin composition); every module is
   ≤300. The delegate pipeline functions are now typed against `_ManagerState`
-  (interface segregation; `ContextManager` is a structural subtype, so every
+  (interface segregation; `ContextManager` inherits it via the mixins, so every
   call site is unchanged). No public API change — all 21 methods stay on
   `ContextManager` and the full test suite passes unmodified.
 - **Unified routing metrics into `contextweaver.eval.metrics` (#354).**

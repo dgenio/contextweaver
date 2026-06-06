@@ -9,9 +9,9 @@
 they can reference manager internals without importing the concrete class, and
 the delegate pipeline modules (:mod:`~contextweaver.context.build`,
 :mod:`~contextweaver.context.route_build`, :mod:`~contextweaver.context.call_prompt`)
-type their ``manager`` parameter against it.  ``ContextManager`` is a structural
-subtype, so every existing call site still type-checks.  Not part of the public
-API.
+type their ``manager`` parameter against it.  ``ContextManager`` inherits it
+(via the mixins), so every existing call site still type-checks.  Not part of
+the public API.
 """
 
 from __future__ import annotations
