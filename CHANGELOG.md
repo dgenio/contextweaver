@@ -44,16 +44,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Decomposed `ContextManager` toward the ≤300-line module guideline (#101).**
-  The core build pipeline moved to `context/build.py` (`run_build_pipeline`),
-  route-integrated build + history helpers to `context/route_build.py`, the
-  call-phase prompt orchestration to `context/call_prompt.py`, and `drilldown`
-  logic to `context/ingest.py`. `ContextManager` is now a thin orchestrator
-  (`manager.py` 1090 → ~880 lines; every extracted module ≤300). No public API
-  change — all methods are preserved as delegations and the full test suite
-  passes unmodified. (A literal ≤300 for `manager.py` is bounded by the public
-  method surface + Google docstrings, which the issue scopes as "as close as
-  practical" without dropping methods or introducing mixins.)
+- **Decomposed `ContextManager` to meet the ≤300-line module guideline (#101).**
+  The pipeline *logic* already lived in `context/build.py`
+  (`run_build_pipeline`), `context/route_build.py`, `context/call_prompt.py`,
+  and `context/ingest.py`; what remained was the manager's own method surface
+  (`manager.py` was 878 lines of thin delegating stubs + docstrings). Those
+  stubs now live in flat, single-level *partial-class* mixins —
+  `_IngestMixin` (`context/_manager_ingest.py`), `_BuildMixin`
+  (`context/_manager_build.py`), `_RoutingMixin` (`context/_manager_routing.py`)
+  — sharing a `_ManagerState` base (`context/_manager_base.py`) that declares
+  the private-attribute contract. `manager.py` is now **239 lines** (only
+  `__init__`, properties, `drilldown`, and mixin composition); every module is
+  ≤300. The delegate pipeline functions are now typed against `_ManagerState`
+  (interface segregation; `ContextManager` is a structural subtype, so every
+  call site is unchanged). No public API change — all 21 methods stay on
+  `ContextManager` and the full test suite passes unmodified.
 - **Unified routing metrics into `contextweaver.eval.metrics` (#354).**
   `benchmarks/benchmark.py` and `contextweaver.eval.routing` previously
   defined `recall@k` / `reciprocal_rank` under the same names with different

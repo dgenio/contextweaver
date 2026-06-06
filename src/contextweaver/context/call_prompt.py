@@ -13,7 +13,7 @@ from contextweaver.envelope import HydrationResult
 from contextweaver.types import Phase
 
 if TYPE_CHECKING:
-    from contextweaver.context.manager import ContextManager
+    from contextweaver.context._manager_base import _ManagerState
     from contextweaver.envelope import ContextPack
     from contextweaver.routing.catalog import Catalog
 
@@ -69,7 +69,7 @@ def build_schema_header(
 
 
 def run_call_prompt_build(
-    manager: ContextManager,
+    manager: _ManagerState,
     tool_id: str,
     query: str,
     catalog: Catalog,
