@@ -40,7 +40,33 @@ _tiktoken_logger = _logging.getLogger("contextweaver.protocols")
 
 @runtime_checkable
 class TokenEstimator(Protocol):
-    """Estimate the number of tokens in a text string."""
+    """Estimate the number of tokens in a text string.
+
+    The Context Engine uses a TokenEstimator to compute token counts for
+    candidate items during the selection phase. Items without an explicit
+    ``token_estimate`` rely on the estimator to determine their size.
+
+    Two built-in implementations are provided:
+
+    * :class:`CharDivFourEstimator` — fast heuristic, no external deps
+    * :class:`TiktokenEstimator` — exact counts via OpenAI's tiktoken
+
+    Usage::
+
+        from contextweaver.protocols import CharDivFourEstimator, TiktokenEstimator
+
+        # Simple heuristic (default)
+        estimator = CharDivFourEstimator()
+        count = estimator.estimate("Hello, world!")  # Returns 3
+
+        # Exact tokenization
+        estimator = TiktokenEstimator(model="gpt-4")
+        count = estimator.estimate("Hello, world!")  # Returns 4
+
+    See Also:
+        :func:`~contextweaver.context.selection.select_and_pack` — uses the
+        estimator for items lacking a pre-computed token count.
+    """
 
     def estimate(self, text: str) -> int:
         """Return the estimated token count for *text*."""
@@ -48,7 +74,27 @@ class TokenEstimator(Protocol):
 
 
 class CharDivFourEstimator:
-    """Simple heuristic: token count ≈ len(text) // 4."""
+    """Simple heuristic: token count ≈ len(text) // 4.
+
+    This is the default estimator used by :class:`~contextweaver.context.manager.ContextManager`
+    when no explicit estimator is provided. It requires no external dependencies
+    and works offline.
+
+    The heuristic assumes an average token length of 4 characters, which is
+    roughly accurate for English text with tiktoken encodings (cl100k_base).
+    For non-English text or code, the estimate may be less accurate.
+
+    Example::
+
+        >>> estimator = CharDivFourEstimator()
+        >>> estimator.estimate("Hello, world!")
+        3
+        >>> estimator.estimate("x" * 100)
+        25
+
+    See Also:
+        :class:`TiktokenEstimator` — for exact token counts when tiktoken is available.
+    """
 
     def estimate(self, text: str) -> int:
         """Return ``len(text) // 4`` as a rough token estimate."""
@@ -58,17 +104,33 @@ class CharDivFourEstimator:
 class TiktokenEstimator:
     """Token estimator backed by OpenAI's ``tiktoken`` library.
 
-    *model* may be a model name (e.g. ``"gpt-4"``) or a raw encoding name
-    (e.g. ``"cl100k_base"``). Model names are resolved via
-    ``tiktoken.encoding_for_model``; if that fails the value is treated as
-    an encoding name.
+    Provides exact token counts using the same BPE encodings as OpenAI models.
+    Falls back to :class:`CharDivFourEstimator` if the encoding cannot be loaded
+    (e.g., in offline/air-gapped environments).
 
-    ``tiktoken`` is a core runtime dependency, so the import always succeeds.
-    However, tiktoken downloads BPE encoding files on first use; in offline /
-    air-gapped environments this download fails. When that happens the
-    estimator transparently falls back to :class:`CharDivFourEstimator` and
-    logs a warning so the operator can pre-cache encodings (set
-    ``TIKTOKEN_CACHE_DIR``) or use the heuristic estimator directly.
+    Args:
+        model: Model name (e.g., ``"gpt-4"``) or raw encoding name
+            (e.g., ``"cl100k_base"``). Model names are resolved via
+            ``tiktoken.encoding_for_model``; if that fails, the value is treated
+            as an encoding name.
+
+    Attributes:
+        _enc: The tiktoken Encoding instance (or None if fallback is active).
+        _fallback: CharDivFourEstimator instance used when tiktoken fails.
+
+    Example::
+
+        >>> estimator = TiktokenEstimator(model="gpt-4")
+        >>> estimator.estimate("Hello, world!")
+        4
+
+    Note:
+        tiktoken downloads BPE encoding files on first use. In offline environments,
+        set ``TIKTOKEN_CACHE_DIR`` to a pre-populated cache directory, or the
+        estimator will transparently fall back to CharDivFourEstimator.
+
+    See Also:
+        https://github.com/openai/tiktoken — tiktoken documentation
     """
 
     def __init__(self, model: str = "cl100k_base") -> None:
@@ -240,324 +302,4 @@ class MemorySource(Protocol):
                 selection toward entries whose ``scope`` matches the phase
                 (e.g. ``routing`` for :attr:`~contextweaver.types.Phase.route`,
                 ``domain`` / ``fact`` for
-                :attr:`~contextweaver.types.Phase.interpret`).
-            now: Optional UNIX timestamp used as the reference time for
-                ``expires_at`` filtering.  ``None`` means "use the current
-                wall clock"; tests should pin this for determinism.
-            max_entries: Optional upper bound on the number of entries
-                returned.  ``None`` means no cap (the caller is expected to
-                apply a token budget downstream).
-
-        Returns:
-            A list of :class:`MemoryEntry` objects sorted in deterministic
-            relevance order (best first; ties broken by ID).
-        """
-        ...
-
-
-# ---------------------------------------------------------------------------
-# Labeler
-# ---------------------------------------------------------------------------
-
-
-# FUTURE: LLM-backed labeler that calls an LLM for category assignment.
-
-
-@runtime_checkable
-class Labeler(Protocol):
-    """Assign a category label and confidence score to a SelectableItem."""
-
-    def label(self, item: SelectableItem) -> tuple[str, str]:
-        """Return ``(category, confidence)`` for *item*."""
-        ...
-
-
-# ---------------------------------------------------------------------------
-# Routing engines (Retriever / Reranker / ClusteringEngine)
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class Retriever(Protocol):
-    """Pluggable first-stage retriever.
-
-    A retriever scores a fixed corpus of documents against a query and
-    returns the indices of the top-k most relevant documents.  It is the
-    routing engine's plug-point for swapping TF-IDF, BM25, embedding-based
-    ANN, or hybrid backends.
-
-    Implementations must be deterministic in
-    :class:`~contextweaver.config.Mode.strict`: identical (corpus, query,
-    top_k) inputs must produce identical outputs.
-    """
-
-    def fit(self, corpus: list[str]) -> None:
-        """Index *corpus* once before any :meth:`search` or :meth:`score_one` call.
-
-        May be called repeatedly with new corpora; the latest call wins.
-        """
-        ...
-
-    def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
-        """Return up to *top_k* ``(corpus_index, score)`` pairs.
-
-        Higher scores rank first.  Implementations should break score
-        ties by ascending corpus index for determinism.
-        """
-        ...
-
-    def score_one(self, query: str, index: int) -> float:
-        """Return the score for the corpus document at *index* against *query*.
-
-        Used by callers (e.g. :class:`~contextweaver.routing.router.Router`
-        beam search) that must score arbitrary corpus indices outside the
-        top-k window.  Implementations must agree with :meth:`search`:
-        the score returned here must match the score that document would
-        have received under :meth:`search` for the same *query*.
-
-        Implementations should return ``0.0`` for out-of-range indices
-        or when the index has not been fit.
-        """
-        ...
-
-
-@runtime_checkable
-class Reranker(Protocol):
-    """Optional second-stage reranker.
-
-    A reranker takes the retriever's shortlist and re-orders it using a
-    more expensive scoring function (e.g. a cross-encoder, an LLM, or a
-    rule-based heuristic).  Returning the input unchanged is valid and
-    is the default behaviour of :class:`NoOpReranker`.
-    """
-
-    def rerank(
-        self,
-        query: str,
-        candidates: list[tuple[str, float]],
-    ) -> list[tuple[str, float]]:
-        """Re-score *candidates* and return them in new ranking order."""
-        ...
-
-
-@runtime_checkable
-class ClusteringEngine(Protocol):
-    """Pluggable clustering engine for :class:`TreeBuilder`.
-
-    A clustering engine groups items into roughly equal-sized clusters
-    based on a pairwise similarity / distance signal.  The default
-    implementation in ``TreeBuilder`` uses Jaccard farthest-first seeding;
-    swapping in :class:`Retriever`-derived embeddings is the canonical
-    use case for this protocol.
-    """
-
-    def cluster(
-        self,
-        items: list[SelectableItem],
-        *,
-        k: int,
-    ) -> dict[str, list[SelectableItem]]:
-        """Partition *items* into at most *k* clusters.
-
-        Returns a dict whose keys are cluster labels (e.g.
-        ``"cluster_000"``) and values are the items assigned to that
-        cluster.  Implementations may return fewer than *k* clusters
-        when the data is degenerate.
-        """
-        ...
-
-
-# ---------------------------------------------------------------------------
-# RoutingScoreProvider (issue #318)
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class RoutingScoreProvider(Protocol):
-    """Optional feedback-aware adjuster for routing scores (issue #318).
-
-    A score provider takes the navigator's ranked ``(item_id, score)`` pairs
-    and returns adjusted pairs — typically folding in historical execution
-    signals (success rate, latency, token cost, result quality) via
-    :class:`~contextweaver.routing.feedback.ExecutionFeedback`.  It is the
-    routing engine's opt-in seam for *learned* or *feedback-aware* ranking;
-    the default :class:`~contextweaver.routing.router.Router` applies no
-    provider and stays purely deterministic.
-
-    Implementations MUST be deterministic: identical ``(query, scored)``
-    inputs must yield identical outputs, and ties must break by ascending
-    ``item_id`` (re-sort by ``(-score, id)``), exactly like the rest of the
-    routing engine.  The bundled
-    :class:`~contextweaver.routing.feedback.DeterministicScoreProvider` is a
-    no-op reference implementation;
-    :class:`~contextweaver.routing.feedback.FeedbackAwareScoreProvider`
-    applies bounded feedback deltas.
-    """
-
-    def adjust(
-        self,
-        query: str,
-        scored: list[tuple[str, float]],
-    ) -> list[tuple[str, float]]:
-        """Return *scored* re-scored and re-ranked (ties broken by id)."""
-        ...
-
-
-# ---------------------------------------------------------------------------
-# Navigator (issue #56)
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class Navigator(Protocol):
-    """Pluggable graph-navigation stage of the routing pipeline.
-
-    A navigator walks a :class:`~contextweaver.routing.graph.ChoiceGraph`
-    and returns scored leaf items.  The bundled default
-    :class:`~contextweaver.routing.navigator.BeamSearchNavigator` performs
-    bounded beam search with a per-node :class:`Retriever` scorer; alternative
-    implementations may use exhaustive search, A*, learned policies, or skip
-    navigation entirely (single-level catalogs).
-
-    Implementations must be deterministic in
-    :class:`~contextweaver.profiles.Mode` ``strict``: identical inputs
-    must yield identical outputs.  Tie-break by ID, never by insertion order.
-    """
-
-    def navigate(
-        self,
-        query: str,
-        graph: ChoiceGraph,
-        active_items: dict[str, SelectableItem],
-        scorer: Retriever,
-        doc_id_to_idx: dict[str, int],
-        *,
-        all_item_ids: set[str] | None = None,
-        debug: bool = False,
-    ) -> NavigationResult:
-        """Walk *graph* and return scored ``(item_id, score, path)`` tuples.
-
-        Args:
-            query: The scoring query (already augmented by context hints).
-            graph: The choice graph to walk.
-            active_items: Post-filter catalog (``exclude_*`` / ``allowed_*``
-                applied upstream).  Only IDs in this dict are eligible for
-                collection.
-            scorer: The :class:`Retriever` used to score individual nodes.
-            doc_id_to_idx: Map of doc id → index in *scorer*'s fitted
-                corpus.  Nodes outside this map fall back to id-token
-                Jaccard inside the navigator (see ``BeamSearchNavigator``).
-            all_item_ids: Optional full pre-filter set of catalog item IDs.
-                Used to distinguish leaves (catalog items) from internal
-                graph nodes — preserves the issue #112 / #22 pre-filter
-                behaviour exactly.  ``None`` falls back to ``set(active_items)``.
-            debug: When ``True``, the returned
-                :class:`NavigationResult` populates ``steps`` with per-depth
-                beam expansions (for ``RouteTrace``).
-
-        Returns:
-            A :class:`NavigationResult` carrying the collected item map
-            (``id -> (score, path)``) plus optional debug trace steps.
-        """
-        ...
-
-
-@dataclass
-class NavigationResult:
-    """Output of a :class:`Navigator`.
-
-    Attributes:
-        collected: Map of ``item_id`` → ``(score, path)``.  Untrimmed —
-            ranking and ``top_k`` truncation happen in the pipeline.
-        steps: Per-depth beam-expansion records.  Empty unless the caller
-            passed ``debug=True``.
-    """
-
-    collected: dict[str, tuple[float, list[str]]] = field(default_factory=dict)
-    steps: list[Any] = field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# CardPacker (issue #56)
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class CardPacker(Protocol):
-    """Pluggable card-rendering stage of the routing pipeline.
-
-    A packer turns a ranked list of items into :class:`ChoiceCard` instances
-    within a token budget.  The bundled default
-    :class:`~contextweaver.routing.packer.DefaultCardPacker` wraps
-    :func:`contextweaver.routing.cards.make_choice_cards`.  Text rendering
-    is a separate concern handled by callers (e.g.,
-    :func:`~contextweaver.routing.cards.render_cards_text`).
-    """
-
-    def pack(
-        self,
-        items: list[SelectableItem],
-        scores: dict[str, float],
-        *,
-        budget_tokens: int | None = None,
-    ) -> list[ChoiceCard]:
-        """Render *items* as :class:`ChoiceCard` instances within budget.
-
-        Args:
-            items: Ranked items (best first).
-            scores: Map of ``item_id`` → score.  Used to populate
-                :attr:`ChoiceCard.score`.
-            budget_tokens: Optional soft budget.  Implementations may
-                truncate the list when the cumulative card token estimate
-                would exceed *budget_tokens*; ``None`` disables the cap.
-
-        Returns:
-            A list of :class:`ChoiceCard` in ranked order.
-        """
-        ...
-
-
-# ---------------------------------------------------------------------------
-# EmbeddingBackend (issue #8)
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class EmbeddingBackend(Protocol):
-    """Pluggable embedding backend for similarity-based routing.
-
-    Activated by passing an ``embedding_backend`` to
-    :class:`~contextweaver.routing.router.Router` (or by registering an
-    embedding-backed :class:`Retriever` in the
-    :class:`~contextweaver.routing.registry.EngineRegistry`).  The default
-    install ships TF-IDF + BM25 only and has no embedding dependency —
-    embedding backends arrive via the ``contextweaver[embeddings]`` extra.
-
-    Embedding backends may be non-deterministic across runtime/hardware
-    boundaries (e.g. GPU vs CPU sentence-transformers); callers that need
-    bit-exact reproducibility should pin the backend's model version and
-    embedding cache.  The routing engine's deterministic-by-default
-    guarantee applies only when an embedding backend is **not** supplied.
-    """
-
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        """Return a unit-norm-ish embedding for each text in *texts*.
-
-        Implementations should batch internally where possible.  Vectors
-        do not need to be exactly L2-normalised — :meth:`similarity` is
-        responsible for any normalisation it relies on.
-        """
-        ...
-
-    def similarity(
-        self,
-        query_vec: list[float],
-        corpus_vecs: list[list[float]],
-    ) -> list[float]:
-        """Return one similarity score per corpus vector.
-
-        Higher means more similar.  Cosine similarity is the canonical
-        choice; implementations may use dot product when vectors are
-        already L2-normalised.
-        """
-        ...
+                :attr:
