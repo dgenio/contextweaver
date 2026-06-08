@@ -161,7 +161,9 @@ make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
 make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
-make smoke-eval       # optional, non-gating smoke-evaluation over fixed fixtures (#331); deterministic, credential-free
+make gateway-scorecard-check  # verify gateway scorecard matches its committed JSON (gating CI; #391)
+make record-demos-check       # verify committed demo casts match current output (gating CI; #390)
+make smoke-eval       # non-gating CI smoke-evaluation over fixed fixtures (#331/#392); deterministic, credential-free
 make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
 make schemas         # regenerate schemas/ + docs/schemas/v0/ (issue #225)
@@ -171,7 +173,7 @@ make context-rot       # render the context-rot demo: benchmarks/results/context
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating in CI; exits non-zero on drift)
 make readme-version-check  # verify README version references match pyproject.toml (gating in CI; #347)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
-make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
+make llms-check  # verify llms.txt and llms-full.txt are up to date (gating in CI; #389)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter (CI gating, fetches schemas)
 ```
 

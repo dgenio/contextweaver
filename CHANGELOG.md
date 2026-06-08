@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CI now exercises every committed generated-artifact drift check
+  (#389–#393).** `llms.txt` / `llms-full.txt`, recorded demo casts, and the
+  gateway scorecard are gating checks on the Python 3.12 matrix cell; the
+  deterministic smoke evaluation also runs there as a non-gating signal.
+
 ## [0.14.0] – 2026-06-07
 
 ### Added

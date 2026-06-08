@@ -16,7 +16,7 @@ mkdocs/material can embed via ``asciinema-player`` (an optional ~30 KB
 JS asset).
 
 Determinism contract: ``--check`` exits non-zero if the rendered casts
-differ from the committed files. Wire this into CI to catch drift when
+differ from the committed files. CI runs this check to catch drift when
 a demo's stdout changes without the cast being regenerated.
 
 Usage::
