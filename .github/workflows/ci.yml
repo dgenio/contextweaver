@@ -63,6 +63,12 @@ jobs:
       - name: Demo
         run: make demo
 
+      - name: "Recorded demo drift check (gating, issue #390)"
+        if: ${{ matrix.python-version == '3.12' }}
+        # The casts are deterministic and interpreter-independent, so one
+        # matrix cell is sufficient to enforce the committed artifacts.
+        run: python scripts/record_demo.py --check
+
       - name: Scorecard drift check (gating)
         # Runs before the benchmark step so it validates the committed pair
         # (benchmarks/results/latest.json + benchmarks/scorecard.md). The
@@ -70,11 +76,23 @@ jobs:
         # numbers, which would otherwise make the check non-portable.
         run: python scripts/render_scorecard.py --check
 
+      - name: "Gateway scorecard drift check (gating, issue #391)"
+        if: ${{ matrix.python-version == '3.12' }}
+        # Mirrors the main scorecard gate for the committed gateway benchmark
+        # JSON/Markdown pair without repeating identical work in every cell.
+        run: python scripts/render_gateway_scorecard.py --check
+
       - name: README version drift check (gating, issue #347)
         # Fails when a tracked README version reference (the "Current package
         # version" line or the comparison-table self-reference) lags the
         # version in pyproject.toml. Stdlib-only; no install required.
         run: python scripts/check_readme_version.py
+
+      - name: "LLMs drift check (gating, issue #389)"
+        if: ${{ matrix.python-version == '3.12' }}
+        # llms.txt and llms-full.txt are deterministic generated docs; checking
+        # one matrix cell avoids four identical full-document comparisons.
+        run: python scripts/gen_llms.py --check
 
       - name: Context-rot SVG drift check (gating, issue #349)
         # Re-renders docs/assets/context_rot.svg from the committed
@@ -101,6 +119,13 @@ jobs:
               -o ".weaver-schemas/${s}.schema.json"
           done
           python scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas
+
+      - name: "Smoke evaluation (non-gating, issue #392)"
+        if: ${{ matrix.python-version == '3.12' }}
+        continue-on-error: true
+        # Deterministic and credential-free by default. Keep this informational:
+        # it exercises the evaluation path continuously but is not a release gate.
+        run: python benchmarks/smoke_eval.py
 
       - name: Benchmark (informational, non-gating)
         continue-on-error: true
