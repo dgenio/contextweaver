@@ -156,7 +156,7 @@ make test     # python -m pytest --cov=contextweaver --cov-report=term-missing -
 make example  # run all example scripts (includes architectures via the umbrella target)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + example + demo
+make ci       # fmt + lint + type + test + schemas-check + example + demo
 make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -256,7 +256,7 @@ See [docs/agent-context/invariants.md](docs/agent-context/invariants.md) for the
 ## Adding a Feature
 
 1. Identify the relevant module, modify it, add tests in `tests/test_<module>.py`.
-2. Run `make ci` to verify (all 6 targets must pass).
+2. Run `make ci` to verify (all declared targets must pass).
 3. Update `CHANGELOG.md` and add docstrings to new public APIs.
 4. Update agent-facing docs and examples if the pipeline or public API changed.
 5. **If the feature can move recall@k / drops / dedup / token counts**: follow

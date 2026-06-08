@@ -486,7 +486,7 @@ Run the full suite yourself:
 git clone https://github.com/dgenio/contextweaver.git
 cd contextweaver
 pip install -e ".[dev]"
-make ci  # fmt + lint + type + test + example + demo (all pass)
+make ci  # fmt + lint + type + test + schemas-check + example + demo (all pass)
 ```
 
 > Most agent libraries fail unpredictably when context exceeds token limits. contextweaver's
@@ -786,7 +786,7 @@ make type     # type-check (mypy)
 make test     # run tests (pytest)
 make example  # run all examples
 make demo     # run the built-in demo
-make ci       # all of the above
+make ci       # all validation targets, including schemas-check
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, and
@@ -2241,7 +2241,7 @@ make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + example + demo  (6 targets)
+make ci       # fmt + lint + type + test + schemas-check + example + demo
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -2268,7 +2268,7 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 > `make smoke-eval` (#392) also runs in CI but remains non-gating.
 > (`make schemas-check` also gates, but it runs *inside* `make ci`.)
 
-`make ci` runs all six core targets in sequence. Run the additional gating checks
+`make ci` runs all declared targets in sequence. Run the additional gating checks
 listed above before opening a PR when the affected artifacts or integrations change.
 
 ## Command-Selection Rules
@@ -2311,7 +2311,7 @@ Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks 
 2. Modify only the targeted module.
 3. Update `protocols.py` if adding a new protocol.
 4. Add tests in `tests/test_<module>.py`.
-5. Run `make ci` — all six targets must pass.
+5. Run `make ci` — all declared targets must pass.
 6. Update `CHANGELOG.md` under `## [Unreleased]`.
 7. Add Google-style docstrings to any new public APIs.
 8. Update examples/demos if the feature is user-facing.
@@ -2327,7 +2327,7 @@ Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks 
 
 A change is complete when **all** of the following are true:
 
-- [ ] `make ci` passes (all 6 targets)
+- [ ] `make ci` passes (all declared targets)
 - [ ] `CHANGELOG.md` updated
 - [ ] Google-style docstrings on all new public APIs
 - [ ] Type hints on all new public functions and methods
@@ -2470,7 +2470,8 @@ When a bad change is caught in review or causes a regression:
 
 ### 5. `make ci` composition drift
 
-**Mistake:** `AGENTS.md` described `make ci` as 4 targets when the Makefile runs 6.
+**Mistake:** `AGENTS.md` described `make ci` with a stale fixed target count and
+omitted a target that the Makefile runs.
 
 **Lesson:** Do not describe command composition from memory. Check the `Makefile` for ground truth.
 
@@ -2498,7 +2499,7 @@ maintainer review (when reviewing PRs). Items are grouped by category.
 
 ## Validation
 
-- [ ] `make ci` passes (all 6 targets: fmt, lint, type, test, example, demo)
+- [ ] `make ci` passes (fmt, lint, type, test, schemas-check, example, demo)
 - [ ] No new warnings introduced
 
 ## Hard Rules

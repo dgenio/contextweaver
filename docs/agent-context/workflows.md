@@ -10,7 +10,7 @@ make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + example + demo  (6 targets)
+make ci       # fmt + lint + type + test + schemas-check + example + demo
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -37,7 +37,7 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 > `make smoke-eval` (#392) also runs in CI but remains non-gating.
 > (`make schemas-check` also gates, but it runs *inside* `make ci`.)
 
-`make ci` runs all six core targets in sequence. Run the additional gating checks
+`make ci` runs all declared targets in sequence. Run the additional gating checks
 listed above before opening a PR when the affected artifacts or integrations change.
 
 ## Command-Selection Rules
@@ -80,7 +80,7 @@ Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks 
 2. Modify only the targeted module.
 3. Update `protocols.py` if adding a new protocol.
 4. Add tests in `tests/test_<module>.py`.
-5. Run `make ci` — all six targets must pass.
+5. Run `make ci` — all declared targets must pass.
 6. Update `CHANGELOG.md` under `## [Unreleased]`.
 7. Add Google-style docstrings to any new public APIs.
 8. Update examples/demos if the feature is user-facing.
@@ -96,7 +96,7 @@ Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks 
 
 A change is complete when **all** of the following are true:
 
-- [ ] `make ci` passes (all 6 targets)
+- [ ] `make ci` passes (all declared targets)
 - [ ] `CHANGELOG.md` updated
 - [ ] Google-style docstrings on all new public APIs
 - [ ] Type hints on all new public functions and methods
