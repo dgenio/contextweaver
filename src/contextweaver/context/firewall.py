@@ -157,7 +157,11 @@ def apply_firewall(
     # when an allow-list is supplied and the payload is JSON; it is always
     # model-free.  Otherwise summarise — LLM-backed only when the supplied
     # summariser declares itself so.
-    use_structured = keep is not None and _looks_like_json(item.text)
+    # ``bool(keep)`` (not ``keep is not None``) so an empty allow-list means
+    # "no structured projection requested" and falls through to summarisation,
+    # rather than constructing ``StructuredFirewall(keep=[])`` and having its
+    # ConfigError swallowed by the projection try/except below.
+    use_structured = bool(keep) and _looks_like_json(item.text)
     summarized_by_llm = (not use_structured) and _summarizer_is_llm(summarizer)
     if deterministic and summarized_by_llm:
         raise DeterminismError(

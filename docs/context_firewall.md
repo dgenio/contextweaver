@@ -99,8 +99,8 @@ It composes the firewall primitives:
   structured line-of-business data (billing, CRM, catalog lookups).
 - **Determinism guarantee** (issue #404). `deterministic=True` (the default
   for this facade) *fails closed*: if the chosen path would invoke an
-  LLM-backed summariser it raises
-  [`DeterminismError`](#) instead of silently passing data through a model.
+  LLM-backed summariser it raises `DeterminismError` instead of silently
+  passing data through a model.
   `FirewallStats.summarized_by_llm` / `strategy` record exactly what happened,
   so the guarantee is observable and citable in a compliance review.
 - **Built-in token counter** (issue #405). Savings are measured with

@@ -77,6 +77,17 @@ def test_apply_firewall_structured_strategy_via_keep() -> None:
     assert env.summary == '{"a": {"keep": 1}}'
 
 
+def test_apply_firewall_empty_keep_falls_through_to_summary() -> None:
+    # keep=[] must NOT select the structured strategy (which would raise inside
+    # the projection and get swallowed into a partial summary).
+    item = ContextItem(id="rk", kind=ItemKind.tool_result, text="status: ok\ncount: 5")
+    _, env = apply_firewall(item, InMemoryArtifactStore(), keep=[])
+    assert env is not None and env.firewall_stats is not None
+    assert env.firewall_stats.strategy == "summary"
+    assert env.status == "ok"
+    assert len(env.facts) >= 1
+
+
 def test_apply_firewall_deterministic_raises_on_llm() -> None:
     item = ContextItem(id="r3", kind=ItemKind.tool_result, text="some output")
     with pytest.raises(DeterminismError):

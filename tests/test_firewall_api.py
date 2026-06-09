@@ -126,6 +126,47 @@ def test_structured_strategy_requires_keep() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Review hardening (PR #420): unique handles, JSON-serialisability, empty keep
+# ---------------------------------------------------------------------------
+
+
+def test_same_length_payloads_get_distinct_handles_in_shared_store() -> None:
+    # Two different payloads of the *same* serialised length must not collide
+    # on the artifact handle when a store is reused across calls.
+    store = InMemoryArtifactStore()
+    a = {"k": "A" * 5000}
+    b = {"k": "B" * 5000}
+    out_a = compact_tool_result(a, threshold_chars=100, strategy="text", artifact_store=store)
+    out_b = compact_tool_result(b, threshold_chars=100, strategy="text", artifact_store=store)
+    assert out_a.artifact_ref != out_b.artifact_ref
+    assert "A" * 5000 in store.get(out_a.artifact_ref).decode("utf-8")
+    assert "B" * 5000 in store.get(out_b.artifact_ref).decode("utf-8")
+
+
+def test_handle_is_deterministic_for_identical_payloads() -> None:
+    payload = {"k": "Z" * 5000}
+    h1 = compact_tool_result(payload, threshold_chars=100, strategy="text").artifact_ref
+    h2 = compact_tool_result(payload, threshold_chars=100, strategy="text").artifact_ref
+    assert h1 == h2
+
+
+def test_non_json_serialisable_input_raises_config_error() -> None:
+    with pytest.raises(ConfigError):
+        compact_tool_result({"bad": {1, 2, 3}}, threshold_chars=0)
+
+
+def test_empty_keep_does_not_select_structured_or_swallow_error() -> None:
+    # An empty allow-list means "no structured projection" — the call must fall
+    # through to a clean summary (status ok, facts extracted), not a swallowed
+    # ConfigError that downgrades to a partial summary.
+    out = compact_tool_result(
+        {"status": "ok", "count": 5}, threshold_chars=0, strategy="auto", keep=[]
+    )
+    assert out.firewalled is True
+    assert out.stats.strategy == "summary"
+
+
+# ---------------------------------------------------------------------------
 # #404 — determinism guarantee
 # ---------------------------------------------------------------------------
 

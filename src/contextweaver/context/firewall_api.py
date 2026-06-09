@@ -37,6 +37,7 @@ Example::
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -94,10 +95,24 @@ class CompactResult:
 
 
 def _to_text(data: Any) -> tuple[str, str]:  # noqa: ANN401 — arbitrary JSON tool result
-    """Return ``(text, media_type)`` for *data* (deterministic JSON for non-str)."""
+    """Return ``(text, media_type)`` for *data* (deterministic JSON for non-str).
+
+    Raises:
+        ConfigError: If *data* is not JSON-serialisable.  We deliberately do
+            *not* fall back to ``json.dumps(default=str)`` — silently
+            stringifying arbitrary objects would break the determinism promise
+            (e.g. ``str(set)`` ordering) and could leak ``repr`` details such as
+            memory addresses into the prompt.
+    """
     if isinstance(data, str):
         return data, "text/plain"
-    return json.dumps(data, sort_keys=True, default=str), "application/json"
+    try:
+        return json.dumps(data, sort_keys=True), "application/json"
+    except TypeError as exc:
+        raise ConfigError(
+            "compact_tool_result requires JSON-serialisable data (dict / list / "
+            f"str); got a non-serialisable value: {exc}"
+        ) from exc
 
 
 def _sidecar(stats: FirewallStats) -> dict[str, Any]:
@@ -190,8 +205,12 @@ def compact_tool_result(
     # Over threshold (or forced) — offload via the shared firewall primitive.
     store = artifact_store if artifact_store is not None else InMemoryArtifactStore()
     keep_for_call = keep if strategy in ("auto", "structured") else None
+    # Content-derived id so the artifact handle (``artifact:{id}``) is unique
+    # per payload — two same-length payloads must not collide in a shared
+    # ArtifactStore.  A digest (not a UUID) keeps the id deterministic.
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
     item = ContextItem(
-        id=f"compact:{original_chars}",
+        id=f"compact:{digest}",
         kind=ItemKind.tool_result,
         text=text,
         metadata={"media_type": media_type},
