@@ -14,14 +14,18 @@ from contextweaver.summarize.extract import (
     extract_numbered_list,
 )
 from contextweaver.summarize.rules import RuleBasedSummarizer, RuleEngine, SummarizationRule
+from contextweaver.summarize.structured import StructuredFirewall, parse_path, project
 
 __all__ = [
     "RuleBasedSummarizer",
     "RuleEngine",
     "StructuredExtractor",
+    "StructuredFirewall",
     "SummarizationRule",
     "extract_bullet_list",
     "extract_facts",
     "extract_key_value_pairs",
     "extract_numbered_list",
+    "parse_path",
+    "project",
 ]

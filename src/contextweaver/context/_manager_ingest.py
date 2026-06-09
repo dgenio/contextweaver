@@ -20,6 +20,7 @@ from contextweaver.store.facts import Fact
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ResultEnvelope
+    from contextweaver.summarize.structured import StructuredFirewall
     from contextweaver.types import ContextItem
 
 
@@ -102,6 +103,8 @@ class _IngestMixin(_ManagerState):
         tool_name: str = "",
         media_type: str = "text/plain",
         firewall_threshold: int = 2000,
+        *,
+        firewall: StructuredFirewall | None = None,
     ) -> tuple[ContextItem, ResultEnvelope]:
         """Ingest a *raw* tool result, running the context firewall locally.
 
@@ -117,9 +120,8 @@ class _IngestMixin(_ManagerState):
 
         If the raw output exceeds *firewall_threshold* characters it is stored
         in the artifact store and the LLM sees only a summary.  Small outputs
-        are also stored in the artifact store (with ``artifact_ref`` set on the
-        returned item) to enable drilldown on all tool results regardless of
-        size.
+        are also stored (with ``artifact_ref`` set) so drilldown works on all
+        tool results regardless of size.
 
         Args:
             tool_call_id: ID of the originating tool call.
@@ -128,10 +130,13 @@ class _IngestMixin(_ManagerState):
             media_type: MIME type of the output.
             firewall_threshold: Character threshold above which the firewall
                 stores the raw output out-of-band.
+            firewall: Optional :class:`StructuredFirewall` for lossless JSON
+                projection over summarisation (#406); ``deterministic`` (#404)
+                applies automatically.
 
         Returns:
-            A ``(ContextItem, ResultEnvelope)`` tuple.  The item always has a
-            non-``None`` ``artifact_ref``.
+            A ``(ContextItem, ResultEnvelope)`` tuple; the item always has an
+            ``artifact_ref`` and the envelope carries ``firewall_stats``.
         """
         return _ingest.ingest_tool_result(
             event_log=self._event_log,
@@ -146,6 +151,8 @@ class _IngestMixin(_ManagerState):
             tool_name=tool_name,
             media_type=media_type,
             firewall_threshold=firewall_threshold,
+            deterministic=self._deterministic,
+            firewall=firewall,
         )
 
     def ingest_tool_result_sync(
@@ -155,10 +162,17 @@ class _IngestMixin(_ManagerState):
         tool_name: str = "",
         media_type: str = "text/plain",
         firewall_threshold: int = 2000,
+        *,
+        firewall: StructuredFirewall | None = None,
     ) -> tuple[ContextItem, ResultEnvelope]:
         """Synchronous alias for :meth:`ingest_tool_result`."""
         return self.ingest_tool_result(
-            tool_call_id, raw_output, tool_name, media_type, firewall_threshold
+            tool_call_id,
+            raw_output,
+            tool_name,
+            media_type,
+            firewall_threshold,
+            firewall=firewall,
         )
 
     def ingest_mcp_result(
@@ -167,6 +181,8 @@ class _IngestMixin(_ManagerState):
         mcp_result: dict[str, Any],
         tool_name: str,
         firewall_threshold: int = 2000,
+        *,
+        firewall: StructuredFirewall | None = None,
     ) -> tuple[ContextItem, ResultEnvelope]:
         """Ingest a raw MCP tool result with full artifact persistence.
 
@@ -180,12 +196,9 @@ class _IngestMixin(_ManagerState):
             happy-path for direct MCP integration where contextweaver owns the
             firewall.
 
-        It:
-
-        1. Parses the MCP result via :func:`mcp_result_to_envelope`.
-        2. Stores binary artifacts (images, resources) in the artifact store.
-        3. Applies the context firewall for large text outputs.
-        4. Appends the resulting :class:`ContextItem` to the event log.
+        It parses the MCP result via :func:`mcp_result_to_envelope`, stores
+        binary artifacts (images, resources), applies the context firewall for
+        large text outputs, and appends the resulting :class:`ContextItem`.
 
         Args:
             tool_call_id: ID of the originating tool call.
@@ -193,6 +206,9 @@ class _IngestMixin(_ManagerState):
             tool_name: Human-readable tool name.
             firewall_threshold: Character threshold above which text output
                 is stored out-of-band via the firewall.
+            firewall: Optional :class:`StructuredFirewall` for lossless JSON
+                projection over summarisation (#406); ``deterministic`` (#404)
+                applies automatically.
 
         Returns:
             A ``(ContextItem, ResultEnvelope)`` tuple with all artifacts
@@ -209,6 +225,8 @@ class _IngestMixin(_ManagerState):
             mcp_result=mcp_result,
             tool_name=tool_name,
             firewall_threshold=firewall_threshold,
+            deterministic=self._deterministic,
+            firewall=firewall,
         )
 
     def ingest_mcp_result_sync(
@@ -217,9 +235,13 @@ class _IngestMixin(_ManagerState):
         mcp_result: dict[str, Any],
         tool_name: str,
         firewall_threshold: int = 2000,
+        *,
+        firewall: StructuredFirewall | None = None,
     ) -> tuple[ContextItem, ResultEnvelope]:
         """Synchronous alias for :meth:`ingest_mcp_result`."""
-        return self.ingest_mcp_result(tool_call_id, mcp_result, tool_name, firewall_threshold)
+        return self.ingest_mcp_result(
+            tool_call_id, mcp_result, tool_name, firewall_threshold, firewall=firewall
+        )
 
     # ------------------------------------------------------------------
     # Fact / episodic memory writes

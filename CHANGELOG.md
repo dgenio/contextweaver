@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Single-call firewall facade — `compact_tool_result()` /
+  `firewalled_tool_result()` (#399).** Shrink one large tool result before it
+  enters the prompt without standing up a `ContextManager`. Returns a
+  `CompactResult` (`firewalled`, `payload`, `summary`, `facts`, `artifact_ref`,
+  `stats`). Exported from the top level.
+- **Structured (lossless) firewall mode (#406).** New `StructuredFirewall(keep=[...])`
+  plus `summarize.structured.project` / `parse_path`: keep an allow-list of
+  JSON paths inline, offload the rest to the artifact store (retrievable via
+  `drilldown`), no LLM. Selectable through `compact_tool_result(strategy=...)`
+  and `ContextManager.ingest_tool_result(..., firewall=StructuredFirewall(...))`.
+- **First-class firewall diagnostics — `FirewallStats` (#402).** Records
+  `triggered`, `strategy`, original/summary chars+tokens (`chars_saved` /
+  `tokens_saved`), `artifact_ref`, and `summarized_by_llm`. Surfaced on
+  `ResultEnvelope.firewall_stats`, and aggregated on `BuildStats.firewall_events`
+  / `BuildStats.firewall_summary()`.
+- **Determinism guarantee — `deterministic=True` (#404).** `ContextManager(deterministic=True)`
+  and `compact_tool_result(deterministic=...)` *fail closed* with the new
+  `DeterminismError` rather than passing data through an LLM-backed summariser;
+  `FirewallStats.strategy` / `summarized_by_llm` make the path auditable.
+- **Built-in token counter — `contextweaver.tokens` (#405).** Public
+  `count()` / `get_token_counter()` / `heuristic_counter()` (and `TokenCounter`
+  alias) so callers never wire `tiktoken` directly; firewall/`FirewallStats`
+  numbers use the same counter. New no-op `contextweaver[tokenizers]` extra
+  documents the contract (`tiktoken` is already core, with offline fallback).
+
 ### Changed
 
 - **CI now exercises every committed generated-artifact drift check

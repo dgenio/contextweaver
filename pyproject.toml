@@ -208,6 +208,14 @@ docs = [
 # Kept as a no-op for one cycle so existing requirements pins do not break;
 # scheduled for removal in v0.6.
 cli = []
+# Built-in token counting (issue #405).  ``tiktoken`` is already a *core*
+# dependency (see ``dependencies`` above), so ``contextweaver.tokens.count``
+# resolves an exact tokenizer out of the box and degrades to the character
+# heuristic when offline.  This extras group is intentionally empty — it exists
+# so callers can pin the tokenizer contract explicitly
+# (``pip install 'contextweaver[tokenizers]'``) without changing the install
+# surface, mirroring the no-op ``cli`` / ``sqlite`` groups.
+tokenizers = []
 # Fuzzy lexical retrieval backend (rapidfuzz) — supplements the default BM25
 # scorer for typo / abbreviation tolerance.
 retrieval = [

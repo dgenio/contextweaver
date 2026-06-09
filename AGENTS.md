@@ -30,12 +30,15 @@ It prepares context and routes tools but never calls models or executes tools.
 | `_version.py` | Single-source version derived from `importlib.metadata`; fallback `"0.0.0+local"` |
 | `_demos.py` | Demo logic for the CLI `demo` subcommand (exempt from `print()` rule) |
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` |
+| `tokens.py` | Built-in token counter (`count()`, `get_token_counter()`, `heuristic_counter()`, `TokenCounter` alias). Owns the `tiktoken` dependency so callers never wire it directly; firewall / `FirewallStats` numbers are computed through the same counter (issue #405). |
 | `store/` | In-memory data stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`, `StoreBundle` |
 | `store/_sqlite_base.py` | Shared SQLite connection + migration scaffolding (WAL, `foreign_keys=ON`, `_contextweaver_schema_version` table). Reused by every SQLite-backed store (issue #174). |
 | `store/sqlite_event_log.py` | `SqliteEventLog` — first persistent `EventLog` backend; single-process, sync, append-only, schema-versioned (issue #223). |
 | `store/json_file_artifacts.py` | `JsonFileArtifactStore` — filesystem `ArtifactStore` backend; `{handle}.data` + `{handle}.json` per artifact, re-instantiable against an existing directory (issue #42). |
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
+| `summarize/structured.py` | Lossless JSON field projection for the firewall: `parse_path` / `project` + `StructuredFirewall(keep=[...])`. Deterministic, no LLM — keeps an allow-list of JSON paths inline and offloads the rest (issue #406). |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
+| `context/firewall_api.py` | Single-call firewall facade: `compact_tool_result` / `firewalled_tool_result` → `CompactResult`. Composes structured/text strategies, schema-preserving pass-through (reserved `_cw` sidecar), the built-in token counter, and fail-closed `deterministic` mode (issues #399, #402, #403, #404, #405, #406). |
 | `context/manager.py` | `ContextManager` — thin orchestrator (`__init__`, properties, `drilldown`, mixin composition). Public method stubs live in flat partial-class mixins; pipeline logic lives in the delegate modules below (issue #101). |
 | `context/_manager_base.py` | `_ManagerState` — private-attribute + `_build` contract the manager mixins inherit and the delegate pipeline modules type their `manager` parameter against (`ContextManager` inherits it via the mixins). Not public API (issue #101). |
 | `context/_manager_ingest.py` / `_manager_build.py` / `_manager_routing.py` | `_IngestMixin` / `_BuildMixin` / `_RoutingMixin` — partial-class mixins holding `ContextManager`'s ingestion, build, and route/call-prompt method surface as thin delegations; keep `manager.py` ≤300 lines (issue #101). Not public API. |
@@ -124,7 +127,10 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ContextItem` | Event log entry with `parent_id` for dependency closure |
 | `ResultEnvelope` | Processed tool output: summary + facts + artifacts + views |
 | `ContextPack` | Rendered prompt + stats from a context build |
-| `BuildStats` | What was kept, dropped, and why — diagnostic output of every build |
+| `BuildStats` | What was kept, dropped, and why — diagnostic output of every build. Carries `firewall_events: list[FirewallStats]` + `firewall_summary()` (issue #402) |
+| `FirewallStats` | Per-firewall diagnostics: `triggered`, `strategy`, original/summary chars+tokens, `artifact_ref`, `summarized_by_llm` (issues #402 / #404) |
+| `CompactResult` | Output of the single-call `compact_tool_result` facade: `firewalled`, `payload`, `summary`, `facts`, `artifact_ref`, `stats` (issue #399) |
+| `StructuredFirewall` | Non-summarising firewall strategy — keep an allow-list of JSON paths inline, offload the rest (issue #406) |
 | `ChoiceCard` | LLM-friendly compact card (never includes full schemas) |
 | `RoutingDecision` | Routing output shaped for weaver-spec interop (id, choice_cards, timestamp, selection). `choice_cards` is a flat list of CW 1:1 cards; for schema-valid spec JSON, go through `adapters.weaver_contracts.to_weaver_routing_decision()`. Build with `RouteResult.to_routing_decision(...)`. |
 | `ChoiceGraph` | Bounded DAG for routing, serializable, validated on load |

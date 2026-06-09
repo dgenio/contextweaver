@@ -56,6 +56,9 @@ class _ManagerState:
     _metrics: MetricsCollector | None
     _profile: ProfileConfig | None
     _mode: Mode
+    #: When ``True`` the context firewall fails closed instead of invoking an
+    #: LLM-backed summariser (issue #404).
+    _deterministic: bool
 
     if TYPE_CHECKING:
         # Implemented by ``_BuildMixin``; declared here (type-only, no runtime
