@@ -125,6 +125,14 @@ def test_structured_strategy_requires_keep() -> None:
         compact_tool_result(_BIG, strategy="structured")
 
 
+def test_structured_strategy_on_non_json_raises_instead_of_downgrading() -> None:
+    # An explicit structured request on free-form text must fail loud rather
+    # than silently degrade to a text summary (projection needs JSON).
+    free_text = "lorem ipsum " * 500
+    with pytest.raises(ConfigError):
+        compact_tool_result(free_text, strategy="structured", keep=["a.b"])
+
+
 # ---------------------------------------------------------------------------
 # Review hardening (PR #420): unique handles, JSON-serialisability, empty keep
 # ---------------------------------------------------------------------------

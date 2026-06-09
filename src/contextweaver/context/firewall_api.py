@@ -166,7 +166,8 @@ def compact_tool_result(
         A :class:`CompactResult`.
 
     Raises:
-        ConfigError: If ``strategy="structured"`` without a non-empty *keep*.
+        ConfigError: If ``strategy="structured"`` without a non-empty *keep*,
+            or if ``strategy="structured"`` is given non-JSON data.
         DeterminismError: If ``deterministic=True`` and the text strategy would
             invoke an LLM-backed summariser.
     """
@@ -174,6 +175,20 @@ def compact_tool_result(
         raise ConfigError("strategy='structured' requires a non-empty `keep` allow-list")
 
     text, media_type = _to_text(data)
+    if strategy == "structured":
+        # Fail loud rather than silently downgrade to a text summary: structured
+        # projection needs a JSON payload (the firewall's ``use_structured`` path
+        # requires ``_looks_like_json`` + ``json.loads``).  ``"auto"`` may fall
+        # back to text on non-JSON, but an *explicit* ``"structured"`` request
+        # must not quietly become a summary.
+        try:
+            json.loads(text)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise ConfigError(
+                "strategy='structured' requires JSON-parseable data (dict, list, "
+                "or a JSON string); the given payload is not valid JSON. Use "
+                "strategy='auto' or 'text' for free-form text."
+            ) from exc
     original_chars = len(text)
     original_tokens = count_tokens(text, model=token_model)
 

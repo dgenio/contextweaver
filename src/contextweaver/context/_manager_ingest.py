@@ -132,7 +132,9 @@ class _IngestMixin(_ManagerState):
                 stores the raw output out-of-band.
             firewall: Optional :class:`StructuredFirewall` for lossless JSON
                 projection over summarisation (#406); ``deterministic`` (#404)
-                applies automatically.
+                applies automatically.  Only takes effect when the payload
+                exceeds *firewall_threshold*; smaller payloads pass through
+                inline unprojected (there is nothing to offload below it).
 
         Returns:
             A ``(ContextItem, ResultEnvelope)`` tuple; the item always has an
@@ -208,7 +210,9 @@ class _IngestMixin(_ManagerState):
                 is stored out-of-band via the firewall.
             firewall: Optional :class:`StructuredFirewall` for lossless JSON
                 projection over summarisation (#406); ``deterministic`` (#404)
-                applies automatically.
+                applies automatically.  Only takes effect when the payload
+                exceeds *firewall_threshold*; smaller payloads pass through
+                inline unprojected (there is nothing to offload below it).
 
         Returns:
             A ``(ContextItem, ResultEnvelope)`` tuple with all artifacts

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JSON paths inline, offload the rest to the artifact store (retrievable via
   `drilldown`), no LLM. Selectable through `compact_tool_result(strategy=...)`
   and `ContextManager.ingest_tool_result(..., firewall=StructuredFirewall(...))`.
+  An explicit `strategy="structured"` now raises `ConfigError` on non-JSON
+  input instead of silently downgrading to a text summary; `ingest_tool_result`
+  applies `firewall=` only above `firewall_threshold`.
 - **First-class firewall diagnostics — `FirewallStats` (#402).** Records
   `triggered`, `strategy`, original/summary chars+tokens (`chars_saved` /
   `tokens_saved`), `artifact_ref`, and `summarized_by_llm`. Surfaced on
