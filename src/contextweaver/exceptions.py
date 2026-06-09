@@ -47,6 +47,16 @@ class ConfigError(ContextWeaverError):
     """Raised when a configuration value or preset name is invalid."""
 
 
+class DeterminismError(ContextWeaverError):
+    """Raised when a ``deterministic=True`` firewall path would invoke an LLM.
+
+    The context firewall's ``deterministic`` mode (issue #404) *fails closed*:
+    rather than silently summarising data through a model, it raises this error
+    so regulated/financial/legal callers can guarantee — and prove — that no
+    user or account data was passed through a summarisation model.
+    """
+
+
 class PathInvalidError(CatalogError):
     """Raised when a ``tool_browse`` path violates the §3.2 grammar."""
 

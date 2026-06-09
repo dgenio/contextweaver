@@ -27,6 +27,51 @@
       ],
       "type": "object"
     },
+    "FirewallStats": {
+      "additionalProperties": false,
+      "description": "First-class diagnostics for a single context-firewall decision (issue #402).",
+      "properties": {
+        "artifact_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "original_chars": {
+          "type": "integer"
+        },
+        "original_tokens": {
+          "type": "integer"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "summarized_by_llm": {
+          "type": "boolean"
+        },
+        "summary_chars": {
+          "type": "integer"
+        },
+        "summary_tokens": {
+          "type": "integer"
+        },
+        "threshold_chars": {
+          "type": "integer"
+        },
+        "triggered": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "strategy",
+        "triggered"
+      ],
+      "type": "object"
+    },
     "ViewSpec": {
       "additionalProperties": false,
       "description": "Specifies a named view (a filtered/projected representation) of an artifact.",
@@ -75,6 +120,16 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "firewall_stats": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FirewallStats"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "provenance": {
       "additionalProperties": {},

@@ -100,6 +100,7 @@ def run_build_pipeline(
         manager._hook,
         summarizer=manager._summarizer,
         extractor=manager._extractor,
+        deterministic=manager._deterministic,
     )
 
     # 5. Score
@@ -136,6 +137,11 @@ def run_build_pipeline(
     stats.dedup_removed = dedup_removed
     stats.dependency_closures = closures
     stats.header_footer_tokens = hf_tokens
+    # Surface per-item firewall diagnostics (issue #402): one FirewallStats per
+    # offloaded tool result.  Read ``stats.firewall_summary()`` for the roll-up.
+    stats.firewall_events = [
+        env.firewall_stats for env in envelopes if env.firewall_stats is not None
+    ]
     if sensitivity_drops > 0:
         # Account for items dropped by sensitivity filtering in both the
         # total candidate count and the drop breakdown so that

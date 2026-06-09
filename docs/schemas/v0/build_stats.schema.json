@@ -1,4 +1,51 @@
 {
+  "$defs": {
+    "FirewallStats": {
+      "additionalProperties": false,
+      "description": "First-class diagnostics for a single context-firewall decision (issue #402).",
+      "properties": {
+        "artifact_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "original_chars": {
+          "type": "integer"
+        },
+        "original_tokens": {
+          "type": "integer"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "summarized_by_llm": {
+          "type": "boolean"
+        },
+        "summary_chars": {
+          "type": "integer"
+        },
+        "summary_tokens": {
+          "type": "integer"
+        },
+        "threshold_chars": {
+          "type": "integer"
+        },
+        "triggered": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "strategy",
+        "triggered"
+      ],
+      "type": "object"
+    }
+  },
   "$id": "https://dgenio.github.io/contextweaver/schemas/v0/build_stats.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
@@ -18,6 +65,12 @@
         "type": "integer"
       },
       "type": "object"
+    },
+    "firewall_events": {
+      "items": {
+        "$ref": "#/$defs/FirewallStats"
+      },
+      "type": "array"
     },
     "header_footer_tokens": {
       "type": "integer"

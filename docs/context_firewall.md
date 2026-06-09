@@ -64,6 +64,73 @@ runnable recipe.
 > [Firewall Boundary (Frame seam)](context_firewall_boundary.md) for who
 > firewalls what and the canonical `ingest_envelope()` path.
 
+## Single-call firewall (`compact_tool_result`)
+
+When you just have **one** large tool result and want to shrink it before it
+enters the prompt — without standing up a `ContextManager` or a synthetic
+turn — use the single-call facade (issue #399):
+
+```python
+from contextweaver import compact_tool_result
+
+out = compact_tool_result(
+    {"invoices": [...]},
+    threshold_chars=2000,
+    keep=["invoices[].invoiceNumber", "invoices[].amount", "invoices[].status"],
+)
+out.firewalled          # True
+out.payload             # projected subset + {"_cw": {...}} sidecar
+out.stats.tokens_saved  # how much stayed out of the prompt
+```
+
+It composes the firewall primitives:
+
+- **Schema-preserving pass-through** (issue #403). When the payload is at or
+  below `threshold_chars`, the caller's shape is returned **unchanged** —
+  same keys, same nesting — with firewall metadata attached only on a
+  reserved, namespaced `_cw` sidecar key (dicts) and never an in-place rewrite.
+  Lists and strings are returned byte-identical. Downstream code that reads
+  `result.response.x` keeps working whether or not the firewall fired.
+- **Structured (lossless) mode** (issue #406). Pass a `keep` JSON-path
+  allow-list (or `strategy="structured"`) and the firewall keeps only the
+  allow-listed paths inline, offloads the full payload to the artifact store,
+  and leaves the dropped fields retrievable via `drilldown`. This is
+  deterministic and performs **no LLM call** — the right primitive for
+  structured line-of-business data (billing, CRM, catalog lookups).
+- **Determinism guarantee** (issue #404). `deterministic=True` (the default
+  for this facade) *fails closed*: if the chosen path would invoke an
+  LLM-backed summariser it raises `DeterminismError` instead of silently
+  passing data through a model.
+  `FirewallStats.summarized_by_llm` / `strategy` record exactly what happened,
+  so the guarantee is observable and citable in a compliance review.
+- **Built-in token counter** (issue #405). Savings are measured with
+  `contextweaver.tokens.count` — the same counter the firewall uses
+  internally — so reported numbers match what callers measure. `tiktoken` is
+  a core dependency and degrades to a character heuristic offline.
+
+### Firewall diagnostics (`FirewallStats`)
+
+Every firewall decision now records a `FirewallStats` (issue #402) answering
+the two questions an integrator cares about — *was the firewall triggered?*
+and *how much was saved?*:
+
+```python
+mgr = ContextManager()
+mgr.ingest_sync(ContextItem(id="result:tc1", kind=ItemKind.tool_result, text=big))
+pack = mgr.build_sync(phase=Phase.interpret, query="...")
+
+fs = pack.stats.firewall_summary()   # roll-up across the build
+fs.triggered, fs.strategy            # True, "summary"
+fs.chars_saved, fs.tokens_saved      # how much stayed out of the prompt
+pack.stats.firewall_events           # per-item FirewallStats
+```
+
+`ResultEnvelope.firewall_stats` carries the same per-result diagnostics on the
+ingest path. Pass `ContextManager(deterministic=True)` to extend the
+fail-closed guarantee to the whole build pipeline, and
+`ingest_tool_result(..., firewall=StructuredFirewall(keep=[...]))` to select
+structured projection at ingest time.
+
 ## Drilling down to raw bytes
 
 `ArtifactRef` supports four built-in drilldown selectors so the LLM can
