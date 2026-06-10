@@ -6,6 +6,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
+[![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-F9AB00?logo=googlecolab&logoColor=white)](https://colab.research.google.com/github/dgenio/contextweaver/blob/main/notebooks/context_rot_live.ipynb)
 
 > **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
 > front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
@@ -55,6 +56,12 @@ Already have a loop and not sure which piece you need? The two engines also work
 </p>
 
 [📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [📉 Context rot demo](docs/context_rot.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
+
+### 📓 Notebook Gallery
+
+| Notebook | Description | Open in Colab |
+|----------|-------------|---------------|
+| [context_rot_live](notebooks/context_rot_live.ipynb) | Reproduce the context-rot benchmark curve locally — no API keys, fully deterministic | [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/dgenio/contextweaver/blob/main/notebooks/context_rot_live.ipynb) |
 
 ---
 
