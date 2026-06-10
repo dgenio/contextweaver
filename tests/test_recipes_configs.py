@@ -42,8 +42,27 @@ def _assert_uvx_gateway(server: object) -> list[object]:
     args = server["args"]
     assert isinstance(args, list)
     assert args[: len(_UVX_PREFIX)] == _UVX_PREFIX
-    assert "examples/recipes/serve_gateway.py" not in " ".join(str(arg) for arg in args)
+    legacy_args = [
+        arg
+        for arg in args
+        if str(arg).replace("\\", "/").rsplit("/", maxsplit=1)[-1] == "serve_gateway.py"
+    ]
+    assert not legacy_args, f"Recipe config must not use the legacy launcher: {legacy_args}"
     return args
+
+
+@pytest.mark.parametrize(
+    "legacy_arg",
+    [
+        "/opt/contextweaver/examples/recipes/serve_gateway.py",
+        r"C:\contextweaver\examples\recipes\serve_gateway.py",
+    ],
+)
+def test_uvx_gateway_rejects_absolute_legacy_launcher_paths(legacy_arg: str) -> None:
+    """The legacy-launcher invariant handles POSIX and Windows absolute paths."""
+    server = {"command": "uvx", "args": [*_UVX_PREFIX, legacy_arg]}
+    with pytest.raises(AssertionError, match="legacy launcher"):
+        _assert_uvx_gateway(server)
 
 
 def test_claude_desktop_config_invokes_installed_cli() -> None:

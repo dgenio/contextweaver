@@ -61,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Desktop, Claude Code, GitHub Copilot, and Cursor configs launch
   `uvx contextweaver mcp serve`; docs no longer describe the dedicated CLI as
   future work. `examples/recipes/serve_gateway.py` remains a labelled
-  legacy/custom-runtime example.
+  legacy/custom-runtime example, while config tests reject references to that
+  launcher across relative, absolute, POSIX, and Windows path forms.
 
 ## [0.14.0] – 2026-06-07
 
