@@ -1,62 +1,100 @@
-# Recipes
+# MCP Client Recipes
 
-> Step-by-step guides for putting contextweaver in front of specific MCP
-> clients and real-world MCP servers. Each recipe walks from
-> `pip install contextweaver` to a working integration end-to-end.
+These recipes put the installed `contextweaver mcp serve` command in front of
+an MCP client. The default examples use `uvx`, so the client receives an
+isolated current release without requiring a persistent Python environment.
 
-contextweaver's gateway runtime is a regular MCP server, so any MCP client
-can point at it. The recipes here cover the most common clients people ask
-about:
-
-| Client | Recipe | Config file |
+| Client | Recipe | Shipped config |
 |---|---|---|
-| Claude Desktop | [Claude Desktop](claude_desktop.md) | [`examples/recipes/claude_desktop_config.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_desktop_config.json) |
-| GitHub Copilot (VS Code) | [GitHub Copilot](github_copilot.md) | [`examples/recipes/copilot_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/copilot_mcp.json) |
-| Cursor | [Cursor](cursor.md) | [`examples/recipes/cursor_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/cursor_mcp.json) + [`gateway_config.yaml`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/gateway_config.yaml) |
+| Claude Desktop | [Claude Desktop](claude_desktop.md) | [`claude_desktop_config.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_desktop_config.json) |
+| Claude Code | [Claude Code](claude_code.md) | [`claude_code_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_code_mcp.json) |
+| GitHub Copilot in VS Code | [GitHub Copilot](github_copilot.md) | [`copilot_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/copilot_mcp.json) |
+| Cursor | [Cursor](cursor.md) | [`cursor_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/cursor_mcp.json) |
 
-> **Zero-Python launch.** `contextweaver mcp serve --config gateway.yaml`
-> starts the gateway from a single config file (catalog + `top_k` + mode +
-> …) with no Python authoring — explicit CLI flags still win. See the
-> [Cursor recipe](cursor.md) for the config-file walkthrough.
+## Choose an invocation
 
-Both recipes share the same launcher:
-[`examples/recipes/serve_gateway.py`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/serve_gateway.py).
-The launcher takes either `--stub` (built-in 2-tool catalog for sanity
-checks) or `--catalog PATH` (a real-MCP-server snapshot from
-[`examples/architectures/mcp_context_gateway/real_catalogs/`](https://github.com/dgenio/contextweaver/tree/main/examples/architectures/mcp_context_gateway/real_catalogs)).
-When the
-[`contextweaver mcp serve`](https://github.com/dgenio/contextweaver/issues/246)
-CLI lands, the recipes' launcher line will drop in for the dedicated CLI
-with no other changes.
+Zero-install trial:
 
-## What "in front of" means
-
-```text
-┌────────────────┐    bounded ChoiceCard list    ┌──────────────────┐
-│ Claude Desktop │ ─────────────────────────────▶│ contextweaver    │
-│ / VS Code      │                               │  gateway (stdio) │
-└────────────────┘ ◀────────────────────────────│                  │
-                       firewalled tool result   └────────┬─────────┘
-                                                         │ raw tools/list
-                                                         ▼
-                                              ┌───────────────────┐
-                                              │ Upstream MCP      │
-                                              │  server(s)        │
-                                              └───────────────────┘
+```bash
+uvx contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
 ```
 
-The MCP client sees one virtual MCP server that exposes a bounded list of
-`ChoiceCards` instead of the upstream's full tool catalogue, and receives
-a firewalled summary (plus an artifact handle) instead of the raw tool
-output. The upstream servers are unchanged — you do not have to fork or
-patch them.
+Persistent installation:
 
-## See also
+```bash
+pip install contextweaver
+contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+```
 
-- [MCP Integration](../integration_mcp.md) — the underlying adapter
-  surface (`mcp_tool_to_selectable`, `mcp_result_to_envelope`,
-  `ProxyRuntime`, `McpGatewayServer`).
-- [`docs/gateway_spec.md`](../gateway_spec.md) — the normative
-  meta-tool grammar (`tool_browse`, `tool_execute`, `tool_view`).
-- [Architectures > MCP Context Gateway](../architectures/mcp_context_gateway.md)
-  — the worked reference architecture both recipes are derived from.
+Isolated pipx run:
+
+```bash
+pipx run contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+```
+
+The first `uvx` or `pipx run` invocation resolves an environment and may take
+longer. Pin the package in managed environments:
+
+```bash
+uvx contextweaver@0.14.0 mcp serve --config /path/to/gateway.yaml
+pipx run --spec contextweaver==0.14.0 contextweaver mcp serve \
+  --config /path/to/gateway.yaml
+```
+
+## Shared gateway config
+
+The shipped [`gateway_config.yaml`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/gateway_config.yaml)
+loads the committed 11-tool filesystem snapshot:
+
+```yaml
+catalog: examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json
+mode: gateway
+top_k: 10
+beam_width: 3
+cache_stable: false
+name: contextweaver
+```
+
+Relative catalog paths are resolved from the server process's working
+directory. Use an absolute catalog path in user/global client configs when
+that working directory is not stable.
+
+## What the client sees
+
+```text
+MCP client
+    |
+    +-- tool_browse  -> bounded ChoiceCards
+    +-- tool_execute -> hydrated, validated selected call
+    +-- tool_view    -> selected artifact slice
+```
+
+The client sees three meta-tools instead of every full upstream schema. Large
+results become summaries plus artifact handles.
+
+## Current runtime boundary
+
+The packaged CLI loads a static JSON/YAML catalog and uses a deterministic
+stub upstream handler. It is suitable for client wiring, tool shortlisting,
+argument validation, and firewall-shape checks. Live upstream execution
+requires a Python composition using `McpClientUpstream` or
+`MultiplexUpstream`; see
+[MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+
+[`examples/recipes/serve_gateway.py`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/serve_gateway.py)
+remains a legacy/development example for custom `ProxyRuntime` wiring. It is
+no longer the default client entry point.
+
+## Large catalogs
+
+For 300+ tools, capture/import the upstream `tools/list`, normalize weak names
+and descriptions, and test representative `tool_browse` queries before
+deployment. The static snapshot workflow and real catalog fixtures are in the
+[MCP Context Gateway architecture](../architectures/mcp_context_gateway.md).
+
+## Next reading
+
+- [Daily Driver Guide](../daily_driver.md)
+- [MCP Gateway Security Model](../security_model.md)
+- [MCP Integration](../integration_mcp.md)
+- [Troubleshooting](../troubleshooting.md)

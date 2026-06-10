@@ -1,6 +1,5 @@
 {
-  "$schema": "https://aka.ms/vscode-mcp-schema",
-  "servers": {
+  "mcpServers": {
     "contextweaver-gateway": {
       "type": "stdio",
       "command": "uvx",
@@ -9,7 +8,7 @@
         "mcp",
         "serve",
         "--config",
-        "${workspaceFolder}/examples/recipes/gateway_config.yaml"
+        "${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"
       ]
     }
   }

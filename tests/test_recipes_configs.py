@@ -1,11 +1,10 @@
-"""Tests for the recipe config files shipped under ``examples/recipes/`` (#278, #279).
+"""Tests for the MCP client configs shipped under ``examples/recipes/``.
 
 These files are *examples* — they are not executed at runtime by the
-library — but the recipes (`docs/recipes/claude_desktop.md`,
-`docs/recipes/github_copilot.md`) embed them verbatim. A regression in
-either file would surface as a copy-paste failure for downstream users
-hours after the bad commit lands. These tests pin the structural
-invariants so that does not happen.
+library — but the client recipes embed them verbatim. A regression would
+surface as a copy-paste failure for downstream users hours after the bad
+commit lands. These tests pin the structural invariants so that does not
+happen.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _RECIPES_DIR = _REPO_ROOT / "examples" / "recipes"
-_LAUNCHER_PATH = "examples/recipes/serve_gateway.py"
+_UVX_PREFIX = ["contextweaver", "mcp", "serve"]
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -36,18 +35,25 @@ def test_claude_desktop_config_is_valid_json() -> None:
     assert "contextweaver-gateway" in servers
 
 
-def test_claude_desktop_config_references_launcher() -> None:
-    """The Claude Desktop config invokes the recipe launcher with --catalog."""
-    payload = _load_json(_RECIPES_DIR / "claude_desktop_config.json")
-    server = payload["mcpServers"]["contextweaver-gateway"]  # type: ignore[index]
+def _assert_uvx_gateway(server: object) -> list[object]:
+    """Assert *server* launches the installed CLI through uvx."""
     assert isinstance(server, dict)
-    assert server["command"] == "python"
+    assert server["command"] == "uvx"
     args = server["args"]
     assert isinstance(args, list)
-    assert any(_LAUNCHER_PATH in str(arg) for arg in args), (
-        "Claude Desktop config must reference examples/recipes/serve_gateway.py"
-    )
-    assert "--catalog" in args, "Claude Desktop config must pass --catalog"
+    assert args[: len(_UVX_PREFIX)] == _UVX_PREFIX
+    assert "examples/recipes/serve_gateway.py" not in " ".join(str(arg) for arg in args)
+    return args
+
+
+def test_claude_desktop_config_invokes_installed_cli() -> None:
+    """The Claude Desktop config invokes the packaged CLI with absolute paths."""
+    payload = _load_json(_RECIPES_DIR / "claude_desktop_config.json")
+    server = payload["mcpServers"]["contextweaver-gateway"]  # type: ignore[index]
+    args = _assert_uvx_gateway(server)
+    assert "--config" in args
+    assert "--catalog" in args
+    assert any("/ABSOLUTE/PATH/TO/contextweaver/" in str(arg) for arg in args)
 
 
 def test_copilot_mcp_config_is_valid_json() -> None:
@@ -67,20 +73,41 @@ def test_copilot_mcp_config_uses_workspace_variable() -> None:
     """The Copilot config uses ${workspaceFolder} so the file is portable across clones."""
     payload = _load_json(_RECIPES_DIR / "copilot_mcp.json")
     server = payload["servers"]["contextweaver-gateway"]  # type: ignore[index]
-    args = server["args"]  # type: ignore[index]
-    assert isinstance(args, list)
+    args = _assert_uvx_gateway(server)
     assert any("${workspaceFolder}" in str(arg) for arg in args), (
         "VS Code config must use ${workspaceFolder} for portability across clones"
     )
-    assert any(_LAUNCHER_PATH in str(arg) for arg in args)
+    assert "--config" in args
+
+
+def test_claude_code_config_uses_project_root_expansion() -> None:
+    """Claude Code resolves the shared config from its documented project root."""
+    payload = _load_json(_RECIPES_DIR / "claude_code_mcp.json")
+    server = payload["mcpServers"]["contextweaver-gateway"]  # type: ignore[index]
+    args = _assert_uvx_gateway(server)
+    assert server["type"] == "stdio"  # type: ignore[index]
+    assert any("${CLAUDE_PROJECT_DIR:-.}" in str(arg) for arg in args)
+
+
+def test_cursor_config_invokes_installed_cli() -> None:
+    """Cursor launches the same packaged CLI and config as the other clients."""
+    payload = _load_json(_RECIPES_DIR / "cursor_mcp.json")
+    server = payload["mcpServers"]["contextweaver-gateway"]  # type: ignore[index]
+    args = _assert_uvx_gateway(server)
+    assert any("${workspaceFolder}" in str(arg) for arg in args)
 
 
 @pytest.mark.parametrize(
     "filename",
-    ["claude_desktop_config.json", "copilot_mcp.json"],
+    [
+        "claude_code_mcp.json",
+        "claude_desktop_config.json",
+        "copilot_mcp.json",
+        "cursor_mcp.json",
+    ],
 )
 def test_recipe_configs_exist(filename: str) -> None:
-    """Both recipe config files must ship in the repo (docs link to them)."""
+    """Every documented client config must ship in the repository."""
     assert (_RECIPES_DIR / filename).is_file(), (
         f"Recipe config {filename} is missing; the recipes docs link to it directly"
     )

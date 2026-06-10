@@ -18,6 +18,9 @@ custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
 blew up my prompt."*
 
 ```bash
+uvx contextweaver demo --scenario killer  # zero-install trial
+
+# Or install it:
 pip install contextweaver
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
 ```
@@ -27,6 +30,8 @@ contextweaver demo --scenario killer   # 60-second taste — no API key, no netw
 [MCP Context Gateway architecture](docs/architectures/mcp_context_gateway.md).
 Already have a loop and not sure which piece you need? The two engines also work
 [routing-only or firewall-only](docs/which_pattern.md).
+For day-to-day operating guidance, see the [Daily Driver guide](docs/daily_driver.md);
+for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md).
 
 <p align="center">
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
@@ -270,6 +275,14 @@ is the smallest scenario where contextweaver clearly pays for itself.
 
 ### Install
 
+Try the CLI without installing it:
+
+```bash
+uvx contextweaver demo --scenario killer
+```
+
+Or install it persistently:
+
 ```bash
 pip install contextweaver
 ```
@@ -398,7 +411,7 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 
 | Framework | Guide | Use Case |
 |---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security note](docs/integration_mcp.md#security-considerations) |
+| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
 | FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
 | LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
@@ -694,7 +707,7 @@ contextweaver replay --session session.json --phase answer
 | `architectures/eval_artifact_profile/` | Agent-safe context shaping for offline-evaluation reports — never surfaces `V_hat` without support diagnostics ([guide](docs/architectures/eval_artifact_profile.md)) |
 | `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
 | `architectures/mcp_context_gateway/main_real.py` | Same flow, run against verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (`server-time`, `server-filesystem`, `server-everything`) committed under `real_catalogs/` |
-| `recipes/serve_gateway.py` | Minimal stdio launcher used by the [Claude Desktop](docs/recipes/claude_desktop.md) and [GitHub Copilot](docs/recipes/github_copilot.md) recipes |
+| `recipes/` | Installed-CLI configs for [Claude Desktop](docs/recipes/claude_desktop.md), [Claude Code](docs/recipes/claude_code.md), [GitHub Copilot](docs/recipes/github_copilot.md), and [Cursor](docs/recipes/cursor.md); `serve_gateway.py` remains a legacy/custom-wiring example |
 | `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
 ```bash

@@ -1,6 +1,10 @@
 # contextweaver gateway — single-file config for `mcp serve --config`.
 #
-# Launch a zero-Python drop-in MCP gateway in front of an upstream catalog:
+# Launch a zero-install MCP gateway in front of an upstream catalog:
+#
+#     uvx contextweaver mcp serve --config examples/recipes/gateway_config.yaml
+#
+# Or, after `pip install contextweaver`:
 #
 #     contextweaver mcp serve --config examples/recipes/gateway_config.yaml
 #

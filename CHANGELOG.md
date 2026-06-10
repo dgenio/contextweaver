@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Daily Driver guide for MCP gateway operators (#394).** New
+  `docs/daily_driver.md` explains when to use or bypass contextweaver,
+  copy-paste operating instructions for common MCP clients, and a practical
+  debug loop using route explanations, `BuildStats`, artifact views, and OTel.
+- **MCP gateway security and data-flow model (#396).** New
+  `docs/security_model.md` distinguishes prompt exposure from raw artifact
+  storage, documents trust and egress boundaries, and records the current
+  `tool_view` / artifact-lifecycle limits tracked by #375.
+- **Verified Claude Code MCP recipe (#429).** Adds project/local registration
+  commands, a committed `.mcp.json` example, operating instructions, and
+  troubleshooting verified against Claude Code 2.1.165.
+- **Zero-install CLI smoke coverage (#437).** Linux and macOS CI now build the
+  wheel and run its `contextweaver` entry point through isolated `uvx` and
+  `pipx` environments.
+
+### Changed
+
+- **MCP client recipes now use the installed CLI (#371, #437).** Claude
+  Desktop, Claude Code, GitHub Copilot, and Cursor configs launch
+  `uvx contextweaver mcp serve`; docs no longer describe the dedicated CLI as
+  future work. `examples/recipes/serve_gateway.py` remains a labelled
+  legacy/custom-runtime example.
+
 ## [0.14.0] – 2026-06-07
 
 ### Added
