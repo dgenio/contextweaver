@@ -24,6 +24,61 @@ If a problem is framework-specific, check the integration guides in `docs/`:
 
 ## 2. Common Issues & Solutions
 
+### Issue 0: `ModuleNotFoundError` or `contextweaver: command not found`
+
+**Symptom:**
+```text
+ModuleNotFoundError: No module named 'contextweaver'
+```
+
+or:
+
+```text
+contextweaver: command not found
+```
+
+**Cause:** The package was installed into a different Python environment than
+the one running your script, the virtual environment is not activated, or the
+console script directory is not on `PATH`.
+
+**Solution — confirm the active interpreter:**
+```bash
+which python
+python --version
+python -m pip show contextweaver
+```
+
+On Windows PowerShell, use:
+
+```powershell
+Get-Command python
+python -m pip show contextweaver
+```
+
+If `pip show` cannot find the package, install it with the same interpreter you
+will use to run your script:
+
+```bash
+python -m pip install contextweaver
+python -c "import contextweaver; print(contextweaver.__version__)"
+```
+
+If the import succeeds but the `contextweaver` command is missing, check that
+your environment's scripts directory is on `PATH`:
+
+```bash
+python -m pip show -f contextweaver
+```
+
+For source checkouts, activate the virtual environment and reinstall in editable
+mode from the repository root:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+---
+
 ### Issue 1: Token Budget Too Tight
 
 **Symptom:**
