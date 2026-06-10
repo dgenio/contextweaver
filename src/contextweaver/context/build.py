@@ -58,6 +58,50 @@ def run_build_pipeline(
 
     See :meth:`ContextManager.build` for parameter semantics. Returns a
     ``(pack, explanation)`` tuple; *explanation* is ``None`` unless *explain*.
+
+    Args:
+        manager: The ContextManager's internal state (stores, config, hooks).
+        phase: The execution phase determining which candidates are eligible.
+        query: The user/agent query string for relevance scoring.
+        query_tags: Optional tags extracted from the query.
+        header: Caller-provided header text (prepended to the prompt).
+        footer: Caller-provided footer text (appended to the prompt).
+        budget_tokens: **Per-phase token budget override.**
+
+            When provided, this value replaces the phase-specific budget from
+            ``manager._budget`` for the current build only. The override applies
+            to the phase specified by the *phase* argument:
+
+            * ``Phase.route`` → overrides ``budget.route``
+            * ``Phase.call`` → overrides ``budget.call``
+            * ``Phase.interpret`` → overrides ``budget.interpret``
+            * ``Phase.answer`` → overrides ``budget.answer``
+
+            This is useful for ad-hoc builds where the default budget is too
+            restrictive or too generous. The override does not persist across
+            builds; subsequent calls use the manager's configured budget unless
+            overridden again.
+
+            Example::
+
+                # Use a larger budget for this specific answer build
+                pack, _ = manager.build(
+                    phase=Phase.answer,
+                    query="Summarize this long document",
+                    budget_tokens=8000,  # Override default 4096
+                )
+
+        hints: Optional hints for the router/scorer.
+        extra: Reserved for future use.
+        explain: If True, return a detailed explanation of the build process.
+
+    Returns:
+        A tuple of (:class:`~contextweaver.envelope.ContextPack`,
+        :class:`~contextweaver.context.explanation.ContextBuildExplanation` | None).
+
+    See Also:
+        :meth:`contextweaver.context.manager.ContextManager.build` — public API.
+        :class:`contextweaver.config.ContextBudget` — per-phase budget configuration.
     """
     _ = extra  # reserved
     _tags = sorted(set(list(query_tags or []) + list(hints or [])))
