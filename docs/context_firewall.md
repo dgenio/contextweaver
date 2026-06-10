@@ -6,6 +6,11 @@ addressable from later turns. Raw bytes go to the artifact store; the
 LLM sees a compact summary, a typed handle, and any extracted structured
 fields.
 
+The firewall reduces prompt exposure; it does not erase or authorize access
+to the stored bytes. Read the
+[MCP Gateway Security Model](security_model.md) before deploying it with
+sensitive upstreams.
+
 ```
                         ┌─────────────────────────────┐
    Raw tool output ────>│       Context Firewall      │──> Summary + handle to LLM
@@ -164,6 +169,8 @@ and `JsonFileArtifactStore` (enforced by a shared
 
 - [`Concepts`](concepts.md) — `ArtifactRef`, `ContextItem`, sensitivity
   levels.
+- [MCP Gateway Security Model](security_model.md) — storage, view, egress,
+  and authorization boundaries.
 - [`Architecture`](architecture.md) — full pipeline placement.
 - [`Cookbook`](cookbook.md) §4 — drilldown patterns.
 - API: `contextweaver.context.firewall`, `contextweaver.config.FirewallConfig`.

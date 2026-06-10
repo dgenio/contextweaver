@@ -115,10 +115,10 @@ narrative.
 - The intent map is held explicit so the routing outcome is testable
   without involving an LLM.
 
-## Follow-ups
+## CLI and live-upstream boundary
 
-Tracked under issues [#243](https://github.com/dgenio/contextweaver/issues/243)
-and [#246](https://github.com/dgenio/contextweaver/issues/246) — when the
-`contextweaver mcp serve` CLI lands, this example gains a *"Run against a
-live MCP server"* appendix using the same `ingest_mcp_result` /
-`Router.route` calls shown here.
+The installed `contextweaver mcp serve` CLI now launches the same
+static-catalog gateway shape with no Python authoring. Its packaged upstream is
+the deterministic stub handler. To run against a live MCP server, compose
+`McpClientUpstream` or `MultiplexUpstream` as described in
+[MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers).

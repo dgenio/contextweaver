@@ -507,13 +507,16 @@ class ProxyRuntime:
             content_bytes = full_text.encode("utf-8")
             text_hash = hashlib.sha256(content_bytes).hexdigest()[:16]
             text_handle = f"text:{tool_id}:{text_hash}"
-            if not artifact_store.exists(text_handle):
-                artifact_store.put(
+            if artifact_store.exists(text_handle):
+                text_ref = artifact_store.ref(text_handle)
+            else:
+                text_ref = artifact_store.put(
                     handle=text_handle,
                     content=content_bytes,
                     media_type="text/plain",
                     label=f"text result from {tool_id}",
                 )
+            envelope.artifacts.append(text_ref)
         envelope.provenance.setdefault("tool_id", tool_id)
         if self._cache_stable:
             self._browsed_tool_ids.add(tool_id)

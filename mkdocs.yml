@@ -62,6 +62,7 @@ plugins:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Daily Driver: daily_driver.md
   - Showcase: showcase.md
   - 60-second demo: killer_demo.md
   - Where it fits: comparison.md
@@ -87,9 +88,11 @@ nav:
   - Recipes:
       - Overview: recipes/index.md
       - Claude Desktop: recipes/claude_desktop.md
+      - Claude Code: recipes/claude_code.md
       - GitHub Copilot: recipes/github_copilot.md
       - Cursor: recipes/cursor.md
   - Gateway Spec: gateway_spec.md
+  - Security Model: security_model.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md
       - MCP Integration: integration_mcp.md

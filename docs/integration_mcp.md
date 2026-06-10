@@ -254,6 +254,10 @@ client.messages.create(
 
 ## Security Considerations
 
+For the full gateway data flow, artifact-store boundary, egress model, and
+deployment checklist, read the
+[MCP Gateway Security Model](security_model.md).
+
 ### MCP annotations are untrusted hints
 
 MCP tool annotations — `readOnlyHint`, `destructiveHint`, `costHint` — are
@@ -383,6 +387,10 @@ delivered as `isError=true` `CallToolResult` payloads.
   contextweaver gateway in front of Claude Desktop's MCP client.
 - [Recipes > GitHub Copilot](recipes/github_copilot.md) — put a
   contextweaver gateway in front of VS Code Copilot Chat (agent mode).
+- [Recipes > Claude Code](recipes/claude_code.md) — project-scoped gateway
+  registration for Claude Code.
+- [MCP Gateway Security Model](security_model.md) — data flow, trust
+  boundaries, artifact exposure, and hardening.
 - [`examples/architectures/mcp_context_gateway/main_real.py`](../examples/architectures/mcp_context_gateway/main_real.py)
   — the reference architecture run against verbatim `tools/list`
   snapshots of MIT-licensed reference MCP servers.

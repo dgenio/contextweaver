@@ -1,8 +1,8 @@
-"""Minimal stdio launcher: contextweaver gateway in front of an MCP catalog.
+"""Legacy development launcher for custom gateway runtime wiring.
 
-Used by the Claude Desktop (#278) and GitHub Copilot (#279) recipes. Until
-``contextweaver mcp serve`` (issue #246) lands, this script is the
-copy-pasteable single-command launcher both client configs point at.
+The client recipes now use the installed ``contextweaver mcp serve`` command.
+This script remains useful when an integration needs to construct or replace
+the ``ProxyRuntime`` directly.
 
 Usage::
 
@@ -99,9 +99,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="serve_gateway",
         description=(
-            "Run a contextweaver MCP gateway over stdio. Used by the "
-            "Claude Desktop / GitHub Copilot recipes until "
-            "`contextweaver mcp serve` (issue #246) lands."
+            "Run the legacy development gateway over stdio. Client recipes "
+            "should prefer the installed `contextweaver mcp serve` command."
         ),
     )
     src = p.add_mutually_exclusive_group(required=True)

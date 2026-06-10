@@ -223,14 +223,12 @@ async def test_view_drilldown_returns_slice() -> None:
     tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
     envelope = await runtime.execute(tool_id, {"title": "x"})
     assert isinstance(envelope, ResultEnvelope)
-    # The runtime persists either a structured artifact or a text:
-    # artifact under a deterministic handle when the response has no
-    # binaries.  Pick whichever exists.
-    handles = list(runtime.context_manager.artifact_store.list_refs())
-    assert handles, "execute must store the upstream response somewhere"
-    handle = handles[0].handle
-    sliced = runtime.view(handle, {"type": "head", "n_chars": 8})
-    assert isinstance(sliced, str)
+    assert len(envelope.artifacts) == 1
+    handle = envelope.artifacts[0].handle
+    assert handle.startswith(f"text:{tool_id}:")
+    assert runtime.context_manager.artifact_store.exists(handle)
+    sliced = runtime.view(handle, {"type": "head", "chars": 8})
+    assert sliced == "line one"
 
 
 def test_view_unknown_handle_returns_view_failed() -> None:

@@ -112,6 +112,7 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
     ``top_k``, ``beam_width``, ``cache_stable``, ``name``, ``version``. Explicit
     CLI flags still win over config values; the file supplies everything else so
     a drop-in proxy can be launched with ``mcp serve --config gateway.yaml``.
+    Relative catalog paths are resolved from the config file's directory.
 
     Args:
         config_path: Filesystem path to the config file (``.json``/``.yaml``/``.yml``).
@@ -156,6 +157,10 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         raise typer.BadParameter(
             f"config file {config_path} must set 'catalog'", param_hint="--config"
         )
+    catalog_path = Path(str(data["catalog"])).expanduser()
+    if not catalog_path.is_absolute():
+        catalog_path = config_path.parent / catalog_path
+    data["catalog"] = str(catalog_path.resolve())
     # Normalise + validate option types so `serve` can consume them directly
     # and `--config` parsing matches CLI flag semantics (e.g. a quoted
     # "false" must not become True).

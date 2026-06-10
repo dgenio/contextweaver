@@ -3,8 +3,15 @@
 This guide gets you to a working context build, a firewall-protected tool result,
 and a routed tool shortlist in under 10 minutes.
 
-> **In a hurry?** After `pip install contextweaver`, the built-in demo
-> walks you through the same ideas in one command:
+> **In a hurry?** Run the built-in demo in an isolated environment with no
+> persistent install:
+>
+> ```bash
+> uvx contextweaver demo --scenario killer
+> ```
+>
+> After `pip install contextweaver`, the installed CLI exposes the same
+> scenarios:
 >
 > ```bash
 > contextweaver demo                                  # friendly walkthrough
@@ -118,6 +125,16 @@ If you see an error like `running scripts is disabled on this system`, either:
 
 ## 2. Install (30 seconds)
 
+For a zero-install trial:
+
+```bash
+uvx contextweaver demo --scenario killer
+```
+
+`uvx` creates an isolated temporary environment. Its first run may be slower
+while dependencies resolve. Pin a release with
+`uvx contextweaver@0.14.0 demo --scenario killer`.
+
 Install from PyPI:
 
 ```bash
@@ -129,6 +146,9 @@ If you are working from a repository checkout instead, install the package in ed
 ```bash
 pip install -e ".[dev]"
 ```
+
+`pipx run contextweaver demo --scenario killer` is the equivalent isolated
+path for pipx users.
 
 If your network blocks `openaipublic.blob.core.windows.net`, the demo or
 token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.
