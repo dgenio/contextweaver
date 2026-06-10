@@ -226,6 +226,24 @@ def test_serve_config_file_drives_dry_run(tmp_path: Path) -> None:
     assert "tools=60" in combined
 
 
+def test_serve_config_resolves_catalog_relative_to_config_file(tmp_path: Path) -> None:
+    """A config remains portable when the server starts from another directory."""
+    config_dir = tmp_path / "gateway"
+    config_dir.mkdir()
+    catalog = config_dir / "catalog.json"
+    catalog.write_text(
+        '[{"name": "demo", "description": "Demo tool", "inputSchema": {"type": "object"}}]',
+        encoding="utf-8",
+    )
+    config = config_dir / "gateway.yaml"
+    config.write_text("catalog: catalog.json\n", encoding="utf-8")
+
+    result = _run("mcp", "serve", "--config", str(config), "--dry-run")
+
+    assert result.returncode == 0, result.stderr
+    assert "tools=1" in (result.stderr + result.stdout)
+
+
 def test_serve_cli_flag_overrides_config(tmp_path: Path) -> None:
     """Explicit CLI flags win over config-file values."""
     config = tmp_path / "gateway.yaml"
@@ -267,7 +285,7 @@ def test_load_serve_config_valid_roundtrip(tmp_path: Path) -> None:
     cfg = tmp_path / "c.json"
     cfg.write_text('{"catalog": "x.json", "top_k": 9, "mode": "gateway"}', encoding="utf-8")
     loaded = _load_serve_config(cfg)
-    assert loaded["catalog"] == "x.json"
+    assert loaded["catalog"] == str((tmp_path / "x.json").resolve())
     assert loaded["top_k"] == 9
     assert loaded["mode"] == "gateway"
 

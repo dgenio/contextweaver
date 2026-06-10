@@ -47,7 +47,7 @@ The shipped [`gateway_config.yaml`](https://github.com/dgenio/contextweaver/blob
 loads the committed 11-tool filesystem snapshot:
 
 ```yaml
-catalog: examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json
+catalog: ../architectures/mcp_context_gateway/real_catalogs/filesystem.json
 mode: gateway
 top_k: 10
 beam_width: 3
@@ -55,9 +55,9 @@ cache_stable: false
 name: contextweaver
 ```
 
-Relative catalog paths are resolved from the server process's working
-directory. Use an absolute catalog path in user/global client configs when
-that working directory is not stable.
+Relative catalog paths are resolved from the gateway config file's directory.
+This keeps project-scoped client configs portable even when the client starts
+the server from a different working directory.
 
 ## What the client sees
 

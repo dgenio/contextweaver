@@ -16,9 +16,9 @@
 # Every key is optional except `catalog`. Defaults match the CLI defaults.
 
 # Tool catalog to front. Either a contextweaver-native catalog or a raw MCP
-# `tools/list` snapshot (.json / .yaml / .yml). The path is resolved relative
-# to your current working directory.
-catalog: examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json
+# `tools/list` snapshot (.json / .yaml / .yml). Relative paths are resolved
+# from this config file's directory.
+catalog: ../architectures/mcp_context_gateway/real_catalogs/filesystem.json
 
 # Server mode: `gateway` (3 meta-tools: browse / execute / view) or
 # `proxy` (stripped tool list, transparent passthrough).

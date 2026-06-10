@@ -370,7 +370,8 @@ one from [#34][i34]):
 - `tool_execute(tool_id, args)` — looks up the upstream schema internally
   (no agent-visible hydrate step), validates `args`, calls upstream,
   pipes the response through the context firewall, and returns a
-  `ResultEnvelope`.
+  `ResultEnvelope`. Any content persisted for later drilldown MUST appear in
+  that envelope's `artifacts` list so the client can address it.
 - `tool_view(handle, selector)` — drilldown into artifacts produced by a
   previous `tool_execute`. Specified in [#34][i34]; this document
   enumerates it only to fix the meta-tool surface count at three.
