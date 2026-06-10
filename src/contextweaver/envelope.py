@@ -21,6 +21,102 @@ from contextweaver.types import ArtifactRef, Phase, SelectableItem, ViewSpec
 #: backwards-incompatible field changes.
 BUILD_STATS_REPORT_VERSION: int = 1
 
+#: Canonical firewall strategy labels recorded on :class:`FirewallStats`
+#: (issues #402 / #404 / #406).
+#:
+#: - ``"noop"`` — firewall not applicable (e.g. non-``tool_result`` item).
+#: - ``"passthrough"`` — under threshold; caller payload returned shape-unchanged
+#:   (issue #403).
+#: - ``"summary"`` — deterministic, rule-based text summary (no LLM).
+#: - ``"structured"`` — lossless JSON field projection (issue #406; no LLM).
+#: - ``"llm_summary"`` — model-assisted summary (issue #384; LLM touched the data).
+FIREWALL_STRATEGIES: tuple[str, ...] = (
+    "noop",
+    "passthrough",
+    "summary",
+    "structured",
+    "llm_summary",
+)
+
+
+@dataclass
+class FirewallStats:
+    """First-class diagnostics for a single context-firewall decision (issue #402).
+
+    Answers the two questions an integrator cares about that the aggregate
+    :class:`BuildStats` counters cannot: **was the firewall triggered at all?**
+    and **if so, how much was saved?** — in both characters and tokens.
+
+    The ``strategy`` and ``summarized_by_llm`` fields double as the
+    determinism provenance signal (issue #404): a value of ``"structured"`` /
+    ``"summary"`` with ``summarized_by_llm=False`` is a model-free,
+    byte-deterministic path suitable for citing in a compliance review;
+    ``"llm_summary"`` means a model produced the inline representation.
+
+    Attributes:
+        triggered: ``True`` when the firewall offloaded the payload out-of-band
+            (``strategy`` in ``{"summary", "structured", "llm_summary"}``);
+            ``False`` for ``"noop"`` / ``"passthrough"``.
+        strategy: One of :data:`FIREWALL_STRATEGIES`.
+        threshold_chars: The character threshold the payload was compared
+            against.  ``0`` when not applicable.
+        original_chars / original_tokens: Size of the raw payload.
+        summary_chars / summary_tokens: Size of the inline representation that
+            reached the prompt.
+        artifact_ref: Handle of the offloaded raw payload, or ``None`` when the
+            payload was passed through / not stored.
+        summarized_by_llm: ``True`` only when an LLM produced the summary.
+    """
+
+    triggered: bool
+    strategy: str
+    threshold_chars: int = 0
+    original_chars: int = 0
+    original_tokens: int = 0
+    summary_chars: int = 0
+    summary_tokens: int = 0
+    artifact_ref: str | None = None
+    summarized_by_llm: bool = False
+
+    @property
+    def chars_saved(self) -> int:
+        """Characters kept out of the prompt (``original - summary``, ≥ 0)."""
+        return max(self.original_chars - self.summary_chars, 0)
+
+    @property
+    def tokens_saved(self) -> int:
+        """Tokens kept out of the prompt (``original - summary``, ≥ 0)."""
+        return max(self.original_tokens - self.summary_tokens, 0)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "triggered": self.triggered,
+            "strategy": self.strategy,
+            "threshold_chars": self.threshold_chars,
+            "original_chars": self.original_chars,
+            "original_tokens": self.original_tokens,
+            "summary_chars": self.summary_chars,
+            "summary_tokens": self.summary_tokens,
+            "artifact_ref": self.artifact_ref,
+            "summarized_by_llm": self.summarized_by_llm,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FirewallStats:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(
+            triggered=bool(data.get("triggered", False)),
+            strategy=str(data.get("strategy", "noop")),
+            threshold_chars=int(data.get("threshold_chars", 0)),
+            original_chars=int(data.get("original_chars", 0)),
+            original_tokens=int(data.get("original_tokens", 0)),
+            summary_chars=int(data.get("summary_chars", 0)),
+            summary_tokens=int(data.get("summary_tokens", 0)),
+            artifact_ref=data.get("artifact_ref"),
+            summarized_by_llm=bool(data.get("summarized_by_llm", False)),
+        )
+
 
 @dataclass
 class ResultEnvelope:
@@ -36,10 +132,11 @@ class ResultEnvelope:
     artifacts: list[ArtifactRef] = field(default_factory=list)
     views: list[ViewSpec] = field(default_factory=list)
     provenance: dict[str, Any] = field(default_factory=dict)
+    firewall_stats: FirewallStats | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
-        return {
+        out: dict[str, Any] = {
             "status": self.status,
             "summary": self.summary,
             "facts": list(self.facts),
@@ -47,10 +144,14 @@ class ResultEnvelope:
             "views": [v.to_dict() for v in self.views],
             "provenance": dict(self.provenance),
         }
+        if self.firewall_stats is not None:
+            out["firewall_stats"] = self.firewall_stats.to_dict()
+        return out
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ResultEnvelope:
         """Deserialise from a JSON-compatible dict."""
+        fw_raw = data.get("firewall_stats")
         return cls(
             status=data["status"],
             summary=data["summary"],
@@ -58,6 +159,7 @@ class ResultEnvelope:
             artifacts=[ArtifactRef.from_dict(a) for a in data.get("artifacts", [])],
             views=[ViewSpec.from_dict(v) for v in data.get("views", [])],
             provenance=dict(data.get("provenance", {})),
+            firewall_stats=FirewallStats.from_dict(fw_raw) if fw_raw else None,
         )
 
 
@@ -73,6 +175,10 @@ class BuildStats:
     dedup_removed: int = 0
     dependency_closures: int = 0
     header_footer_tokens: int = 0
+    #: One :class:`FirewallStats` per item the firewall offloaded during the
+    #: build (issue #402).  Empty when nothing was firewalled.  Always-on and
+    #: cheap — populated from the build's :class:`ResultEnvelope` list.
+    firewall_events: list[FirewallStats] = field(default_factory=list)
 
     @property
     def prompt_tokens(self) -> int:
@@ -86,6 +192,39 @@ class BuildStats:
         """
         return sum(self.tokens_per_section.values()) + self.header_footer_tokens
 
+    def firewall_summary(self) -> FirewallStats:
+        """Aggregate every :attr:`firewall_events` entry into one :class:`FirewallStats`.
+
+        Returns a single roll-up answering "did the firewall fire, and how much
+        did it save across this build?" (issue #402):
+
+        - ``triggered`` — ``True`` if any event fired.
+        - ``original_*`` / ``summary_*`` — summed across events.
+        - ``strategy`` — the common strategy, or ``"mixed"`` when events used
+          more than one; ``"noop"`` when there were none.
+        - ``summarized_by_llm`` — ``True`` if any event used an LLM.
+        - ``artifact_ref`` — the first event's handle (``None`` when none).
+
+        For per-item attribution, read :attr:`firewall_events` directly.
+        """
+        events = self.firewall_events
+        if not events:
+            return FirewallStats(triggered=False, strategy="noop")
+        strategies = {e.strategy for e in events}
+        strategy = next(iter(strategies)) if len(strategies) == 1 else "mixed"
+        first_ref = next((e.artifact_ref for e in events if e.artifact_ref), None)
+        return FirewallStats(
+            triggered=any(e.triggered for e in events),
+            strategy=strategy,
+            threshold_chars=max((e.threshold_chars for e in events), default=0),
+            original_chars=sum(e.original_chars for e in events),
+            original_tokens=sum(e.original_tokens for e in events),
+            summary_chars=sum(e.summary_chars for e in events),
+            summary_tokens=sum(e.summary_tokens for e in events),
+            artifact_ref=first_ref,
+            summarized_by_llm=any(e.summarized_by_llm for e in events),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
         return {
@@ -97,6 +236,7 @@ class BuildStats:
             "dedup_removed": self.dedup_removed,
             "dependency_closures": self.dependency_closures,
             "header_footer_tokens": self.header_footer_tokens,
+            "firewall_events": [e.to_dict() for e in self.firewall_events],
         }
 
     @classmethod
@@ -111,6 +251,7 @@ class BuildStats:
             dedup_removed=int(data.get("dedup_removed", 0)),
             dependency_closures=int(data.get("dependency_closures", 0)),
             header_footer_tokens=int(data.get("header_footer_tokens", 0)),
+            firewall_events=[FirewallStats.from_dict(e) for e in data.get("firewall_events", [])],
         )
 
     def report(

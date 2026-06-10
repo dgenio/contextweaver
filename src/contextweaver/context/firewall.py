@@ -9,13 +9,17 @@ containing a human-readable summary, extracted facts, and an
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from typing import Literal
 
 from contextweaver.context.views import ViewRegistry, generate_views
-from contextweaver.envelope import ResultEnvelope
+from contextweaver.envelope import FirewallStats, ResultEnvelope
+from contextweaver.exceptions import DeterminismError
 from contextweaver.protocols import ArtifactStore, EventHook, Extractor, NoOpHook, Summarizer
 from contextweaver.summarize.extract import extract_facts
+from contextweaver.summarize.structured import StructuredFirewall
+from contextweaver.tokens import count as count_tokens
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind
 
 logger = logging.getLogger("contextweaver.context")
@@ -29,6 +33,23 @@ def _default_summary(raw: str, max_chars: int = 500) -> str:
     return first_para
 
 
+def _looks_like_json(text: str) -> bool:
+    """Return ``True`` when *text* plausibly starts a JSON object/array."""
+    stripped = text.lstrip()
+    return stripped.startswith(("{", "["))
+
+
+def _summarizer_is_llm(summarizer: Summarizer | None) -> bool:
+    """Return ``True`` when *summarizer* declares itself LLM-backed (issue #404).
+
+    Convention: LLM-backed summarisers (e.g.
+    :class:`~contextweaver.extras.llm_summarizer.LlmSummarizer`) set the
+    class attribute ``is_llm = True``.  Deterministic rule-based summarisers do
+    not, so the firewall can decide whether a path is model-free.
+    """
+    return summarizer is not None and bool(getattr(summarizer, "is_llm", False))
+
+
 def apply_firewall(
     item: ContextItem,
     artifact_store: ArtifactStore,
@@ -36,6 +57,10 @@ def apply_firewall(
     view_registry: ViewRegistry | None = None,
     summarizer: Summarizer | None = None,
     extractor: Extractor | None = None,
+    *,
+    deterministic: bool = False,
+    keep: list[str] | None = None,
+    threshold_chars: int = 0,
 ) -> tuple[ContextItem, ResultEnvelope | None]:
     """Intercept a ``tool_result`` item and store its content out-of-band.
 
@@ -53,14 +78,32 @@ def apply_firewall(
         extractor: Optional :class:`~contextweaver.protocols.Extractor`
             implementation.  When provided it replaces the built-in
             :func:`~contextweaver.summarize.extract.extract_facts` call.
+        deterministic: When ``True`` (issue #404) the firewall *fails closed* —
+            if the chosen path would invoke an LLM-backed *summarizer* it raises
+            :class:`~contextweaver.exceptions.DeterminismError` instead of
+            calling the model.  Structured projection and the rule-based
+            summary are always model-free and unaffected.
+        keep: Optional JSON path allow-list (issue #406).  When supplied and the
+            payload parses as JSON, the firewall uses lossless field projection
+            (``strategy="structured"``) instead of text summarisation; the full
+            payload is still offloaded so dropped fields stay retrievable via
+            ``drilldown``.
+        threshold_chars: The character threshold the caller compared against,
+            recorded on :class:`~contextweaver.envelope.FirewallStats` for
+            diagnostics.  Does not gate execution (the caller already decided to
+            fire); ``0`` means "not recorded".
 
     Returns:
         A 2-tuple ``(processed_item, envelope_or_none)``.  When the firewall
         fires, *processed_item* has its ``text`` replaced with the summary and
         ``artifact_ref`` populated; *envelope_or_none* is a
-        :class:`~contextweaver.types.ResultEnvelope`.  When no interception
-        occurs, the original *item* is returned with ``None`` as the second
-        element.
+        :class:`~contextweaver.types.ResultEnvelope` carrying a populated
+        :attr:`~contextweaver.envelope.ResultEnvelope.firewall_stats`.  When no
+        interception occurs, the original *item* is returned with ``None``.
+
+    Raises:
+        DeterminismError: If *deterministic* is ``True`` and the path would
+            invoke an LLM-backed summariser.
     """
     _hook = hook or NoOpHook()
 
@@ -110,26 +153,72 @@ def apply_firewall(
         content_hash=content_hash,
     )
 
-    status: Literal["ok", "partial", "error"] = "ok"
-    try:
-        if summarizer is not None:
-            summary = summarizer.summarize(item.text, dict(item.metadata))
-        else:
-            summary = _default_summary(item.text)
-    except Exception:  # noqa: BLE001
-        summary = "(summary unavailable)"
-        status = "error"
+    # Choose a strategy.  Structured projection (issue #406) takes precedence
+    # when an allow-list is supplied and the payload is JSON; it is always
+    # model-free.  Otherwise summarise — LLM-backed only when the supplied
+    # summariser declares itself so.
+    # ``bool(keep)`` (not ``keep is not None``) so an empty allow-list means
+    # "no structured projection requested" and falls through to summarisation,
+    # rather than constructing ``StructuredFirewall(keep=[])`` and having its
+    # ConfigError swallowed by the projection try/except below.
+    use_structured = bool(keep) and _looks_like_json(item.text)
+    summarized_by_llm = (not use_structured) and _summarizer_is_llm(summarizer)
+    if deterministic and summarized_by_llm:
+        raise DeterminismError(
+            f"deterministic=True but an LLM-backed summarizer would process item "
+            f"{item.id!r}; refusing to pass data through a model. Supply a "
+            f"structured `keep` allow-list or a rule-based summarizer instead."
+        )
 
-    try:
-        if extractor is not None:
-            facts = extractor.extract(item.text, dict(item.metadata))
-        else:
-            facts = extract_facts(item.text, item.metadata)
-    except Exception:  # noqa: BLE001
-        facts = []
-        status = "error" if status == "error" else "partial"
+    status: Literal["ok", "partial", "error"] = "ok"
+    facts: list[str]
+    strategy: str
+
+    if use_structured:
+        strategy = "structured"
+        try:
+            projected, facts = StructuredFirewall(keep=list(keep or [])).compact(
+                json.loads(item.text)
+            )
+            summary = json.dumps(projected, sort_keys=True)
+        except Exception:  # noqa: BLE001 - malformed projection degrades safely
+            strategy = "summary"
+            summary = _default_summary(item.text)
+            facts = []
+            status = "partial"
+    else:
+        strategy = "llm_summary" if summarized_by_llm else "summary"
+        try:
+            if summarizer is not None:
+                summary = summarizer.summarize(item.text, dict(item.metadata))
+            else:
+                summary = _default_summary(item.text)
+        except Exception:  # noqa: BLE001
+            summary = "(summary unavailable)"
+            status = "error"
+
+        try:
+            if extractor is not None:
+                facts = extractor.extract(item.text, dict(item.metadata))
+            else:
+                facts = extract_facts(item.text, item.metadata)
+        except Exception:  # noqa: BLE001
+            facts = []
+            status = "error" if status == "error" else "partial"
 
     views = generate_views(ref, raw_bytes, registry=view_registry)
+
+    firewall_stats = FirewallStats(
+        triggered=True,
+        strategy=strategy,
+        threshold_chars=threshold_chars,
+        original_chars=len(item.text),
+        original_tokens=count_tokens(item.text),
+        summary_chars=len(summary),
+        summary_tokens=count_tokens(summary),
+        artifact_ref=ref.handle,
+        summarized_by_llm=summarized_by_llm,
+    )
 
     envelope = ResultEnvelope(
         status=status,
@@ -138,6 +227,7 @@ def apply_firewall(
         artifacts=[ref],
         views=views,
         provenance={"source_item_id": item.id},
+        firewall_stats=firewall_stats,
     )
 
     processed = ContextItem(
@@ -151,7 +241,12 @@ def apply_firewall(
     )
 
     _hook.on_firewall_triggered(item, "tool_result intercepted")
-    logger.debug("firewall: intercepted item_id=%s, summary_len=%d", item.id, len(summary))
+    logger.debug(
+        "firewall: intercepted item_id=%s, strategy=%s, summary_len=%d",
+        item.id,
+        strategy,
+        len(summary),
+    )
     return processed, envelope
 
 
@@ -162,6 +257,8 @@ def apply_firewall_to_batch(
     view_registry: ViewRegistry | None = None,
     summarizer: Summarizer | None = None,
     extractor: Extractor | None = None,
+    *,
+    deterministic: bool = False,
 ) -> tuple[list[ContextItem], list[ResultEnvelope]]:
     """Apply the firewall to a list of items.
 
@@ -174,6 +271,9 @@ def apply_firewall_to_batch(
             passed through to each :func:`apply_firewall` call.
         extractor: Optional :class:`~contextweaver.protocols.Extractor`
             passed through to each :func:`apply_firewall` call.
+        deterministic: Forwarded to each :func:`apply_firewall` call (issue
+            #404).  When ``True`` the build fails closed rather than passing any
+            item through an LLM-backed summariser.
 
     Returns:
         A 2-tuple of ``(processed_items, envelopes)``.
@@ -181,7 +281,15 @@ def apply_firewall_to_batch(
     processed = []
     envelopes = []
     for item in items:
-        p, env = apply_firewall(item, artifact_store, hook, view_registry, summarizer, extractor)
+        p, env = apply_firewall(
+            item,
+            artifact_store,
+            hook,
+            view_registry,
+            summarizer,
+            extractor,
+            deterministic=deterministic,
+        )
         processed.append(p)
         if env is not None:
             envelopes.append(env)

@@ -65,7 +65,8 @@ When a bad change is caught in review or causes a regression:
 
 ### 5. `make ci` composition drift
 
-**Mistake:** `AGENTS.md` described `make ci` as 4 targets when the Makefile runs 6.
+**Mistake:** `AGENTS.md` described `make ci` with a stale fixed target count and
+omitted a target that the Makefile runs.
 
 **Lesson:** Do not describe command composition from memory. Check the `Makefile` for ground truth.
 

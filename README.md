@@ -471,7 +471,7 @@ Run the full suite yourself:
 git clone https://github.com/dgenio/contextweaver.git
 cd contextweaver
 pip install -e ".[dev]"
-make ci  # fmt + lint + type + test + example + demo (all pass)
+make ci  # fmt + lint + type + test + schemas-check + example + demo (all pass)
 ```
 
 > Most agent libraries fail unpredictably when context exceeds token limits. contextweaver's
@@ -771,7 +771,7 @@ make type     # type-check (mypy)
 make test     # run tests (pytest)
 make example  # run all examples
 make demo     # run the built-in demo
-make ci       # all of the above
+make ci       # all validation targets, including schemas-check
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, and

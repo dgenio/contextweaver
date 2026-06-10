@@ -54,6 +54,7 @@
       "dependency_closures": 0,
       "dropped_count": 0,
       "dropped_reasons": {},
+      "firewall_events": [],
       "header_footer_tokens": 81,
       "included_count": 1,
       "tokens_per_section": {

@@ -20,7 +20,7 @@ Quick start::
 
 from __future__ import annotations
 
-from contextweaver import config, envelope, exceptions, profiles, protocols, types
+from contextweaver import config, envelope, exceptions, profiles, protocols, tokens, types
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
@@ -28,6 +28,11 @@ from contextweaver.context.explanation import (
     EXPLANATION_VERSION,
     CandidateExplanation,
     ContextBuildExplanation,
+)
+from contextweaver.context.firewall_api import (
+    CompactResult,
+    compact_tool_result,
+    firewalled_tool_result,
 )
 from contextweaver.context.handoff import (
     HANDOFF_CATEGORIES,
@@ -51,6 +56,7 @@ from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
     ContextPack,
+    FirewallStats,
     HydrationResult,
     ResultEnvelope,
     RoutingDecision,
@@ -61,6 +67,7 @@ from contextweaver.exceptions import (
     CatalogError,
     ConfigError,
     ContextWeaverError,
+    DeterminismError,
     DuplicateItemError,
     GraphBuildError,
     ItemNotFoundError,
@@ -133,6 +140,7 @@ from contextweaver.store import (
 )
 from contextweaver.summarize.extract import StructuredExtractor
 from contextweaver.summarize.rules import RuleBasedSummarizer
+from contextweaver.summarize.structured import StructuredFirewall, project
 from contextweaver.types import (
     ArtifactRef,
     ContextItem,
@@ -151,6 +159,7 @@ __all__ = [
     "exceptions",
     "profiles",
     "protocols",
+    "tokens",
     "types",
     # utilities
     "BM25Scorer",
@@ -163,6 +172,7 @@ __all__ = [
     "ChoiceCard",
     "ContextItem",
     "ContextPack",
+    "FirewallStats",
     "HydrationResult",
     "ItemKind",
     "Phase",
@@ -202,6 +212,7 @@ __all__ = [
     "CatalogError",
     "ConfigError",
     "ContextWeaverError",
+    "DeterminismError",
     "DuplicateItemError",
     "GraphBuildError",
     "ItemNotFoundError",
@@ -218,9 +229,12 @@ __all__ = [
     "StoreBundle",
     # context engine
     "CandidateExplanation",
+    "CompactResult",
     "ContextBuildExplanation",
     "ContextManager",
     "EXPLANATION_VERSION",
+    "compact_tool_result",
+    "firewalled_tool_result",
     "HANDOFF_CATEGORIES",
     "HANDOFF_PACK_VERSION",
     "HandoffEntry",
@@ -277,4 +291,6 @@ __all__ = [
     # summarize
     "RuleBasedSummarizer",
     "StructuredExtractor",
+    "StructuredFirewall",
+    "project",
 ]

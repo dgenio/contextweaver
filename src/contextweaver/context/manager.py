@@ -87,6 +87,13 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
             :class:`~contextweaver.routing.router.Router` and
             :class:`~contextweaver.routing.tree.TreeBuilder` directly via
             their ``routing_config`` parameters.
+        deterministic: Keyword-only.  When ``True`` (issue #404) the context
+            firewall *fails closed*: any build or ingest that would pass data
+            through an LLM-backed summariser raises
+            :class:`~contextweaver.exceptions.DeterminismError` instead.  The
+            default rule-based and structured firewall paths are unaffected.
+            Suitable for regulated/financial workloads that must guarantee no
+            model touched the data.
     """
 
     def __init__(
@@ -104,6 +111,7 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         *,
         metrics: MetricsCollector | None = None,
         profile: ProfileConfig | None = None,
+        deterministic: bool = False,
     ) -> None:
         _stores = stores or StoreBundle()
         self._event_log: EventLog = event_log or _stores.event_log or InMemoryEventLog()
@@ -128,6 +136,7 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         self._metrics: MetricsCollector | None = metrics
         self._profile: ProfileConfig | None = profile
         self._mode: Mode = profile.mode if profile is not None else Mode.strict
+        self._deterministic: bool = deterministic
 
     # ------------------------------------------------------------------
     # Properties
@@ -182,6 +191,11 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
     def budget(self) -> ContextBudget:
         """The active per-phase :class:`~contextweaver.config.ContextBudget`."""
         return self._budget
+
+    @property
+    def deterministic(self) -> bool:
+        """Whether the firewall fails closed on LLM summarisation (issue #404)."""
+        return self._deterministic
 
     # ------------------------------------------------------------------
     # Drilldown

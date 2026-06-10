@@ -64,7 +64,8 @@ benchmark output.
    _Success: non-latency keys in `latest.json` are byte-identical to the
    committed file._
 
-7. **Run `make ci`.** All six targets (`fmt lint type test example demo`)
+7. **Run `make ci`.** All declared targets
+   (`fmt lint type test schemas-check example demo`)
    plus the `scorecard-check` CI step must pass.
    _Success: `make ci` exits 0; `python scripts/render_scorecard.py
    --check` exits 0._

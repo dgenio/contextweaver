@@ -10,7 +10,7 @@ make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + example + demo  (6 targets)
+make ci       # fmt + lint + type + test + schemas-check + example + demo
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -22,17 +22,23 @@ make context-rot       # render context-rot demo JSON + docs/assets/context_rot.
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating CI step; exits non-zero on drift)
 make readme-version-check  # verify README version references match pyproject.toml (gating CI step; #347)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
-make llms-check  # verify llms.txt and llms-full.txt are up to date (exits non-zero on drift)
+make llms-check  # verify llms.txt and llms-full.txt are up to date (gating CI step; exits non-zero on drift)
+make gateway-scorecard-check  # verify gateway scorecard Markdown matches its committed JSON (gating CI step)
+make record-demos-check  # verify committed asciinema casts match demo output (gating CI step)
+make smoke-eval  # deterministic, credential-free smoke evaluation (non-gating CI step)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
 
 > Gating CI steps beyond `make ci`: `make scorecard-check`,
 > `make readme-version-check` (#347), `make context-rot-check` (#349),
-> and `make weaver-conformance`. (`make schemas-check` also gates, but it
-> runs *inside* `make ci`.)
+> `make llms-check` (#389), `make record-demos-check` (#390),
+> `make gateway-scorecard-check` (#391), and `make weaver-conformance`.
+> `make smoke-eval` (#392) also runs in CI but remains non-gating.
+> (`make schemas-check` also gates, but it runs *inside* `make ci`.)
 
-`make ci` runs all six targets in sequence. It is the single validation gate.
+`make ci` runs all declared targets in sequence. Run the additional gating checks
+listed above before opening a PR when the affected artifacts or integrations change.
 
 ## Command-Selection Rules
 
@@ -45,10 +51,13 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 | Run all tests | `make test` |
 | Verify examples work | `make example` |
 | Interactive demo | `make demo` |
+| Verify recorded demo casts | `make record-demos-check` |
 | Build docs site | `make docs` |
 | Live docs preview | `make docs-serve` |
 | Run benchmark harness | `make benchmark` (non-gating; writes `benchmarks/results/latest.json`) |
 | Run full per-backend × per-size matrix | `make benchmark-matrix` (#208 + #209) |
+| Verify gateway benchmark scorecard | `make gateway-scorecard-check` |
+| Run deterministic smoke evaluation | `make smoke-eval` (non-gating) |
 | Run scoring-weight sweep | `make sweep-scoring` (#214; writes `benchmarks/sweep_scoring.md`) |
 | Add an eval for a feature | follow [`.github/prompts/add-eval.prompt.md`](../../.github/prompts/add-eval.prompt.md) (#216) |
 | Regenerate llms.txt / llms-full.txt | `make llms` (after editing canonical docs) |
@@ -71,7 +80,7 @@ Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks 
 2. Modify only the targeted module.
 3. Update `protocols.py` if adding a new protocol.
 4. Add tests in `tests/test_<module>.py`.
-5. Run `make ci` — all six targets must pass.
+5. Run `make ci` — all declared targets must pass.
 6. Update `CHANGELOG.md` under `## [Unreleased]`.
 7. Add Google-style docstrings to any new public APIs.
 8. Update examples/demos if the feature is user-facing.
@@ -87,7 +96,7 @@ Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks 
 
 A change is complete when **all** of the following are true:
 
-- [ ] `make ci` passes (all 6 targets)
+- [ ] `make ci` passes (all declared targets)
 - [ ] `CHANGELOG.md` updated
 - [ ] Google-style docstrings on all new public APIs
 - [ ] Type hints on all new public functions and methods

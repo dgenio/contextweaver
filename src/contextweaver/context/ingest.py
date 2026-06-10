@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from contextweaver.context.firewall import apply_firewall
 from contextweaver.context.views import ViewRegistry, generate_views
-from contextweaver.envelope import ResultEnvelope
+from contextweaver.envelope import FirewallStats, ResultEnvelope
 from contextweaver.protocols import (
     ArtifactStore,
     EventHook,
@@ -23,6 +23,8 @@ from contextweaver.protocols import (
     Summarizer,
     TokenEstimator,
 )
+from contextweaver.summarize.structured import StructuredFirewall
+from contextweaver.tokens import count as count_tokens
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,8 @@ def ingest_tool_result(
     tool_name: str = "",
     media_type: str = "text/plain",
     firewall_threshold: int = 2000,
+    deterministic: bool = False,
+    firewall: StructuredFirewall | None = None,
 ) -> tuple[ContextItem, ResultEnvelope]:
     """Ingest a raw tool result via :meth:`ContextManager.ingest_tool_result` logic."""
     item = ContextItem(
@@ -137,6 +141,9 @@ def ingest_tool_result(
             view_registry=view_registry,
             summarizer=summarizer,
             extractor=extractor,
+            deterministic=deterministic,
+            keep=firewall.keep if firewall is not None else None,
+            threshold_chars=firewall_threshold,
         )
         if envelope is None:
             # Shouldn't happen for tool_result items, but be safe
@@ -172,6 +179,7 @@ def ingest_tool_result(
         label=f"raw tool result for {item.id}",
     )
     views = generate_views(ref, raw_bytes, registry=view_registry)
+    _tokens = count_tokens(raw_output)
     envelope = ResultEnvelope(
         status=status,
         summary=raw_output,
@@ -179,6 +187,16 @@ def ingest_tool_result(
         artifacts=[ref],
         views=views,
         provenance={"source_item_id": item.id, "tool_name": tool_name},
+        firewall_stats=FirewallStats(
+            triggered=False,
+            strategy="passthrough",
+            threshold_chars=firewall_threshold,
+            original_chars=len(raw_output),
+            original_tokens=_tokens,
+            summary_chars=len(raw_output),
+            summary_tokens=_tokens,
+            artifact_ref=ref.handle,
+        ),
     )
     item = ContextItem(
         id=item.id,
@@ -210,6 +228,8 @@ def ingest_mcp_result(
     mcp_result: dict[str, Any],
     tool_name: str,
     firewall_threshold: int = 2000,
+    deterministic: bool = False,
+    firewall: StructuredFirewall | None = None,
 ) -> tuple[ContextItem, ResultEnvelope]:
     """Ingest an MCP result via :meth:`ContextManager.ingest_mcp_result` logic."""
     from contextweaver.adapters.mcp import mcp_result_to_envelope
@@ -247,6 +267,9 @@ def ingest_mcp_result(
             view_registry=None,
             summarizer=summarizer,
             extractor=extractor,
+            deterministic=deterministic,
+            keep=firewall.keep if firewall is not None else None,
+            threshold_chars=firewall_threshold,
         )
         if fw_envelope is not None:
             # Merge: keep MCP artifacts, use firewall summary/facts, preserve views
@@ -257,6 +280,7 @@ def ingest_mcp_result(
                 artifacts=list(envelope.artifacts) + list(fw_envelope.artifacts),
                 provenance=envelope.provenance,
                 views=list(envelope.views) + list(fw_envelope.views),
+                firewall_stats=fw_envelope.firewall_stats,
             )
         item = processed
 

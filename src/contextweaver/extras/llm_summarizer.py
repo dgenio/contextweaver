@@ -90,6 +90,11 @@ class LlmSummarizer:
             :class:`~contextweaver.summarize.rules.RuleBasedSummarizer`.
     """
 
+    #: Marks this summariser as LLM-backed so the context firewall's
+    #: ``deterministic=True`` mode (issue #404) can fail closed rather than
+    #: silently passing data through a model.
+    is_llm: bool = True
+
     def __init__(
         self,
         call_fn: Callable[[str], str],
@@ -130,6 +135,10 @@ class LlmExtractor:
             ``call_fn`` raises or yields no facts.  Defaults to a
             :class:`~contextweaver.summarize.extract.StructuredExtractor`.
     """
+
+    #: Marks this extractor as LLM-backed (issue #404), mirroring
+    #: :attr:`LlmSummarizer.is_llm` for callers that introspect provenance.
+    is_llm: bool = True
 
     def __init__(
         self,

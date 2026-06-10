@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Single-call firewall facade — `compact_tool_result()` /
+  `firewalled_tool_result()` (#399).** Shrink one large tool result before it
+  enters the prompt without standing up a `ContextManager`. Returns a
+  `CompactResult` (`firewalled`, `payload`, `summary`, `facts`, `artifact_ref`,
+  `stats`). Exported from the top level.
+- **Structured (lossless) firewall mode (#406).** New `StructuredFirewall(keep=[...])`
+  plus `summarize.structured.project` / `parse_path`: keep an allow-list of
+  JSON paths inline, offload the rest to the artifact store (retrievable via
+  `drilldown`), no LLM. Selectable through `compact_tool_result(strategy=...)`
+  and `ContextManager.ingest_tool_result(..., firewall=StructuredFirewall(...))`.
+  An explicit `strategy="structured"` now raises `ConfigError` on non-JSON
+  input instead of silently downgrading to a text summary; `ingest_tool_result`
+  applies `firewall=` only above `firewall_threshold`.
+- **First-class firewall diagnostics — `FirewallStats` (#402).** Records
+  `triggered`, `strategy`, original/summary chars+tokens (`chars_saved` /
+  `tokens_saved`), `artifact_ref`, and `summarized_by_llm`. Surfaced on
+  `ResultEnvelope.firewall_stats`, and aggregated on `BuildStats.firewall_events`
+  / `BuildStats.firewall_summary()`.
+- **Determinism guarantee — `deterministic=True` (#404).** `ContextManager(deterministic=True)`
+  and `compact_tool_result(deterministic=...)` *fail closed* with the new
+  `DeterminismError` rather than passing data through an LLM-backed summariser;
+  `FirewallStats.strategy` / `summarized_by_llm` make the path auditable.
+- **Built-in token counter — `contextweaver.tokens` (#405).** Public
+  `count()` / `get_token_counter()` / `heuristic_counter()` (and `TokenCounter`
+  alias) so callers never wire `tiktoken` directly; firewall/`FirewallStats`
+  numbers use the same counter. New no-op `contextweaver[tokenizers]` extra
+  documents the contract (`tiktoken` is already core, with offline fallback).
 - **Daily Driver guide for MCP gateway operators (#394).** New
   `docs/daily_driver.md` explains when to use or bypass contextweaver,
   copy-paste operating instructions for common MCP clients, and a practical
@@ -26,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CI now exercises every committed generated-artifact drift check
+  (#389–#393).** `llms.txt` / `llms-full.txt`, recorded demo casts, and the
+  gateway scorecard are gating checks on the Python 3.12 matrix cell; the
+  deterministic smoke evaluation also runs there as a non-gating signal.
 - **MCP client recipes now use the installed CLI (#371, #437).** Claude
   Desktop, Claude Code, GitHub Copilot, and Cursor configs launch
   `uvx contextweaver mcp serve`; docs no longer describe the dedicated CLI as

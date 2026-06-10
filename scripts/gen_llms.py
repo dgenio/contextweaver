@@ -4,7 +4,7 @@
 Run via `make llms`. Both output files are deterministic and should
 match the committed copies byte-for-byte after each documentation
 change. Intended for CI to run with `--check` to fail builds when
-drift is introduced; CI integration is deferred to a follow-up.
+drift is introduced.
 
 Layout of each output:
 

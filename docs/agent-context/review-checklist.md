@@ -5,7 +5,7 @@ maintainer review (when reviewing PRs). Items are grouped by category.
 
 ## Validation
 
-- [ ] `make ci` passes (all 6 targets: fmt, lint, type, test, example, demo)
+- [ ] `make ci` passes (fmt, lint, type, test, schemas-check, example, demo)
 - [ ] No new warnings introduced
 
 ## Hard Rules
