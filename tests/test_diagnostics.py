@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from pytest import MonkeyPatch
+
+import contextweaver.adapters.gateway_diagnostics as gateway_diagnostics
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.adapters.mcp_gateway import make_gateway_meta_tools
@@ -20,7 +23,7 @@ from contextweaver.diagnostics import (
     render_diagnostic_report,
     summarize_diagnostics,
 )
-from contextweaver.envelope import ResultEnvelope
+from contextweaver.envelope import ChoiceCard, ResultEnvelope
 from contextweaver.tokens import count
 
 
@@ -108,6 +111,38 @@ def test_catalog_summary_matches_exposed_meta_tool_schemas() -> None:
         for tool in make_proxy_meta_tools(runtime)
     )
     assert proxy["exposed_schema_tokens"] == proxy_expected
+
+
+def test_gateway_telemetry_skips_catalog_summary_when_disabled(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    telemetry = gateway_diagnostics.GatewayTelemetry()
+
+    def fail(*args: object, **kwargs: object) -> dict[str, object]:
+        raise AssertionError("catalog summary should be skipped when diagnostics are disabled")
+
+    monkeypatch.setattr(gateway_diagnostics, "catalog_diagnostic_summary", fail)
+
+    telemetry.catalog_registered([], {}, mode="gateway")
+
+
+def test_gateway_telemetry_skips_browse_token_work_when_disabled(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    telemetry = gateway_diagnostics.GatewayTelemetry()
+
+    def fail(*args: object, **kwargs: object) -> int:
+        raise AssertionError("token counting should be skipped when diagnostics are disabled")
+
+    monkeypatch.setattr(gateway_diagnostics, "count", fail)
+
+    telemetry.browse_completed(
+        [ChoiceCard(id="github.create_issue", name="create_issue", description="Create")],
+        duration_ms=1.0,
+        query_chars=5,
+        path_depth=0,
+        raw_defs={"github.create_issue": {"inputSchema": {"type": "object"}}},
+    )
 
 
 async def test_proxy_runtime_emits_sanitized_operation_events() -> None:

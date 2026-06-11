@@ -170,8 +170,10 @@ class DroppedItem:
 
     Attributes:
         item_id: The excluded :class:`~contextweaver.types.ContextItem` id.
-        reason: The pipeline stage reason: ``"sensitivity"``, ``"dedup"``,
-            ``"kind_limit"``, or ``"budget"``.
+        reason: The recorded exclusion reason. Common values include
+            ``"sensitivity"``, ``"dedup"``, ``"kind_limit"``, and
+            ``"budget"``, but callers may also persist policy- or
+            integration-specific reasons such as ``"policy"``.
     """
 
     item_id: str

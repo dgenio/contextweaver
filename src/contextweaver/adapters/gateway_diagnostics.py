@@ -30,6 +30,11 @@ class GatewayTelemetry:
         self._sink = sink or NoOpDiagnosticSink()
         self.session_id = session_id or uuid4().hex
 
+    @property
+    def enabled(self) -> bool:
+        """Whether diagnostics emission is active for this session."""
+        return not isinstance(self._sink, NoOpDiagnosticSink)
+
     def emit(
         self,
         event: str,
@@ -64,6 +69,8 @@ class GatewayTelemetry:
         mode: str,
     ) -> None:
         """Record catalog size and static schema exposure."""
+        if not self.enabled:
+            return
         self.emit(
             "catalog.loaded",
             attributes=catalog_diagnostic_summary(items, raw_defs, mode=mode),
@@ -79,6 +86,8 @@ class GatewayTelemetry:
         raw_defs: dict[str, dict[str, Any]],
     ) -> None:
         """Record one browse result without recording query or path text."""
+        if not self.enabled:
+            return
         if isinstance(result, GatewayError):
             self.emit(
                 "browse.failed",
@@ -128,6 +137,8 @@ class GatewayTelemetry:
         namespace: str | None,
     ) -> None:
         """Record schema hydration."""
+        if not self.enabled:
+            return
         if isinstance(result, GatewayError):
             self.emit(
                 "hydrate.failed",
@@ -160,6 +171,8 @@ class GatewayTelemetry:
         arg_keys: list[str],
     ) -> None:
         """Record a failed execution."""
+        if not self.enabled:
+            return
         self.emit(
             "execute.failed",
             success=False,
@@ -197,6 +210,8 @@ class GatewayTelemetry:
             summary_tokens=compact_tokens,
             artifact_ref=artifact_ref if triggered else None,
         )
+        if not self.enabled:
+            return
         self.emit(
             "execute.completed",
             success=envelope.status != "error",
@@ -230,6 +245,8 @@ class GatewayTelemetry:
         duration_ms: float,
     ) -> None:
         """Record artifact drill-down usage without recording returned content."""
+        if not self.enabled:
+            return
         if isinstance(result, GatewayError):
             self.emit(
                 "view.failed",
