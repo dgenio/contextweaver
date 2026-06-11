@@ -268,6 +268,12 @@ def test_load_catalog_dicts_ignore_mode_skips_validation(
     assert not any("ghost" in r.message for r in caplog.records)
 
 
+def test_load_catalog_dicts_rejects_unknown_on_invalid_policy() -> None:
+    data = [{"id": "a", "kind": "tool", "name": "a", "description": "d"}]
+    with pytest.raises(CatalogError, match="invalid on_invalid policy"):
+        load_catalog_dicts(data, on_invalid="wirn")  # type: ignore[arg-type]
+
+
 def test_load_catalog_dicts_invalid_item_names_id() -> None:
     data = [{"id": "good", "kind": "tool", "name": "good", "description": "d"}, {"id": "oops"}]
     with pytest.raises(CatalogError, match="'oops'"):

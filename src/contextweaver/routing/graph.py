@@ -216,7 +216,8 @@ class ChoiceGraph:
                     if in_degree[dst] == 0:
                         heapq.heappush(heap, dst)
         if len(order) != len(self._nodes):
-            remaining = [n for n in self.nodes() if n not in set(order)]
+            ordered = set(order)
+            remaining = [n for n in self.nodes() if n not in ordered]
             cycle = self._find_cycle_within(remaining)
             if cycle:
                 raise GraphBuildError(

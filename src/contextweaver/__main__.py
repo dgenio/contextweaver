@@ -696,12 +696,19 @@ def _load_lint_items(path: Path) -> list[SelectableItem]:
         CatalogError: If the file cannot be parsed or no tool entries are found.
     """
     suffix = path.suffix.lower()
+    text = path.read_text(encoding="utf-8")  # OSError handled by the caller
     if suffix in (".yaml", ".yml"):
         import yaml  # core dep — see pyproject.toml
 
-        raw: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
+        try:
+            raw: Any = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise CatalogError(f"invalid YAML: {exc}") from exc
     elif suffix == ".json":
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise CatalogError(f"invalid JSON: {exc}") from exc
     else:
         raise CatalogError(f"unsupported catalog format {suffix!r}; use .json, .yaml, or .yml")
 

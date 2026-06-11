@@ -33,6 +33,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("contextweaver.routing")
 
+#: Cap on how many pruned IDs the per-step beam DEBUG log lists; the rest are
+#: summarised by a ``truncated`` count to keep log lines bounded on large
+#: catalogs (issue #524).
+_PRUNED_ID_LOG_LIMIT = 10
+
 
 class BeamSearchNavigator:
     """Default :class:`~contextweaver.protocols.Navigator` implementation.
@@ -240,13 +245,16 @@ class BeamSearchNavigator:
             kept_beam = next_beam[: self._beam_width]
             if logger.isEnabledFor(logging.DEBUG):
                 pruned = next_beam[self._beam_width :]
+                preview = [path[-1] for _, path in pruned[:_PRUNED_ID_LOG_LIMIT]]
                 logger.debug(
-                    "navigator.beam: depth=%d, expanded=%d, kept=%d, pruned=%d, pruned_ids=%s",
+                    "navigator.beam: depth=%d, expanded=%d, kept=%d, pruned=%d, "
+                    "pruned_ids=%s, truncated=%d",
                     depth,
                     len(next_beam),
                     len(kept_beam),
                     len(pruned),
-                    [path[-1] for _, path in pruned],
+                    preview,
+                    len(pruned) - len(preview),
                 )
             beam = kept_beam
 

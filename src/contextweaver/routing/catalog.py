@@ -134,8 +134,14 @@ def _apply_reference_policy(items: list[SelectableItem], on_invalid: OnInvalid) 
 
     ``"warn"`` logs one WARNING per finding and returns; ``"raise"`` raises
     :class:`~contextweaver.exceptions.CatalogValidationError` carrying the
-    report; ``"ignore"`` skips validation entirely.
+    report; ``"ignore"`` skips validation entirely.  An unsupported policy
+    raises :class:`~contextweaver.exceptions.CatalogError` so typos fail loudly
+    rather than silently degrading to ``"warn"``.
     """
+    if on_invalid not in ("warn", "raise", "ignore"):
+        raise CatalogError(
+            f"invalid on_invalid policy {on_invalid!r}; expected 'warn', 'raise', or 'ignore'"
+        )
     if on_invalid == "ignore":
         return
     report = validate_references(items)

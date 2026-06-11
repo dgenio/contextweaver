@@ -670,6 +670,14 @@ def test_catalog_lint_load_error_exits_three(tmp_path: Path) -> None:
     assert "Error" in result.stderr
 
 
+def test_catalog_lint_malformed_yaml_exits_three(tmp_path: Path) -> None:
+    path = tmp_path / "bad.yaml"
+    path.write_text("id: [unclosed\n", encoding="utf-8")
+    result = _run("catalog", "lint", str(path))
+    assert result.returncode == 3
+    assert "Error" in result.stderr
+
+
 def test_catalog_lint_committed_sample_is_clean() -> None:
     """The committed sample catalog must lint clean (issue #538 acceptance)."""
     sample = Path("examples/sample_catalog.json")
