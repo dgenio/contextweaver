@@ -21,8 +21,30 @@ from contextweaver.store.facts import Fact
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ResultEnvelope
+    from contextweaver.protocols import FactStore
     from contextweaver.summarize.structured import StructuredFirewall
     from contextweaver.types import ContextItem
+
+
+def _next_fact_seq(fact_store: FactStore) -> int:
+    """Return the next monotonic ``add_fact`` ID suffix for *fact_store* (issue #462).
+
+    Scans existing fact IDs **once** for the trailing ``:{int}`` suffix minted by
+    :meth:`_IngestMixin.add_fact` and returns ``max + 1`` (``0`` for a fresh or
+    empty store).  This seeds the per-manager counter past any IDs already in a
+    pre-populated or persistent store (e.g. the ``extras/memory`` backends) so a
+    counter that would otherwise restart at ``0`` across process restarts does
+    not collide with existing facts.  IDs that do not end in an integer (custom
+    ``FactStore.put`` callers) are ignored.
+    """
+    highest = -1
+    for fact in fact_store.all():
+        suffix = fact.fact_id.rsplit(":", 1)[-1]
+        try:
+            highest = max(highest, int(suffix))
+        except ValueError:
+            continue
+    return highest + 1
 
 
 class _IngestMixin(_ManagerState):
@@ -262,18 +284,26 @@ class _IngestMixin(_ManagerState):
         unrelated fact (issue #462).  IDs stay deterministic for a fixed call
         sequence, and no full-store scan happens per call.
 
+        On the first call the counter is seeded once past any existing
+        ``add_fact``-minted IDs (see :func:`_next_fact_seq`) so a pre-populated
+        or persistent store (e.g. the ``extras/memory`` backends) does not
+        collide with a counter restarting at ``0`` across process restarts.
+
         Args:
             key: Fact key.
             value: Fact value.
             metadata: Optional metadata dict.
 
         Raises:
-            DuplicateItemError: If the generated ID already exists.  With the
-                monotonic counter this should never fire for facts added via
-                this method; it guards against a pre-populated store colliding
-                with the counter, surfacing the clash loudly instead of relying
-                on the store's insert-or-replace semantics.
+            DuplicateItemError: If the generated ID already exists.  After
+                seeding this is unreachable for single-threaded use; it remains
+                a defensive backstop against a concurrent writer minting the
+                same ID, surfacing the clash loudly instead of relying on the
+                store's insert-or-replace semantics.
         """
+        if not self._fact_seq_seeded:
+            self._fact_seq = _next_fact_seq(self._fact_store)
+            self._fact_seq_seeded = True
         fact_id = f"fact:{key}:{self._fact_seq}"
         try:
             self._fact_store.get(fact_id)

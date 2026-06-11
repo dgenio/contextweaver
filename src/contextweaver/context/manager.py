@@ -141,7 +141,11 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         self._profile: ProfileConfig | None = profile
         self._mode: Mode = profile.mode if profile is not None else Mode.strict
         self._deterministic: bool = deterministic
+        # Seeded lazily on first add_fact from existing IDs (issue #462), so a
+        # pre-populated/persistent fact store does not collide with a counter
+        # restarting at 0 across process restarts.
         self._fact_seq: int = 0
+        self._fact_seq_seeded: bool = False
 
     # ------------------------------------------------------------------
     # Properties

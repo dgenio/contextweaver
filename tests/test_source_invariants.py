@@ -20,8 +20,13 @@ import contextweaver
 #: Root of the installed package source tree.
 _SRC = Path(contextweaver.__file__).resolve().parent
 
-#: CLI entry points are print-heavy and explicitly exempt from the
-#: custom-exception rule (see AGENTS.md "Hard Rules").
+#: CLI entry points. Issue #463's acceptance criterion scopes the
+#: custom-exception rule to ``src/contextweaver/`` *outside* ``__main__.py`` /
+#: ``_demos.py``; both still raise bare builtins for argument/JSON parsing
+#: errors that surface directly to the CLI user. (This mirrors the print()
+#: Hard Rule, which likewise exempts these two CLI modules.) Broadening the
+#: rule to the CLI — and reconciling the unqualified wording in
+#: ``docs/agent-context/invariants.md`` — is left as separate follow-up.
 _EXEMPT_FILES = {"__main__.py", "_demos.py"}
 
 _BARE_RAISE = re.compile(r"\braise\s+(?:ValueError|RuntimeError)\s*\(")

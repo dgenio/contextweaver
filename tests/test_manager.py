@@ -323,11 +323,35 @@ def test_add_fact_ids_are_deterministic() -> None:
     assert runs[0] == ["fact:x:0", "fact:y:1"]
 
 
-def test_add_fact_collision_guard_raises() -> None:
-    """A pre-populated store colliding with the counter raises loudly (#462)."""
+def test_add_fact_seeds_counter_from_prepopulated_store() -> None:
+    """A pre-populated/persistent store (restart) seeds the counter past existing IDs (#462).
+
+    Regression for the case where a manager is built over a fact store that
+    already holds ``add_fact``-minted IDs: the counter must seed past them
+    instead of restarting at 0 and clobbering ``fact:{key}:0``.
+    """
     mgr = ContextManager()
-    # Seed the store directly with the ID the monotonic counter will mint first.
-    mgr.fact_store.put(Fact(fact_id="fact:k:0", key="k", value="seed"))
+    # Simulate a persistent store reloaded with prior facts across a restart.
+    mgr.fact_store.put(Fact(fact_id="fact:k:0", key="k", value="old"))
+    mgr.fact_store.put(Fact(fact_id="fact:k:1", key="k", value="older"))
+    mgr.add_fact("k", "new")  # seeds to 2 → fact:k:2, no collision/overwrite
+    values = {f.value for f in mgr.fact_store.get_by_key("k")}
+    assert values == {"old", "older", "new"}
+    assert len(mgr.fact_store.all()) == 3
+
+
+def test_add_fact_collision_guard_is_defensive_backstop() -> None:
+    """If the counter desyncs from the store, add_fact raises rather than overwriting (#462).
+
+    Seeding makes a single-threaded collision unreachable, so this drives the
+    guard directly by forcing a stale counter (e.g. a concurrent writer minted
+    the same ID after this manager seeded).
+    """
+    mgr = ContextManager()
+    mgr.fact_store.put(Fact(fact_id="fact:k:0", key="k", value="other"))
+    # Force a stale, already-seeded counter pointing at an existing ID.
+    mgr._fact_seq = 0
+    mgr._fact_seq_seeded = True
     with pytest.raises(DuplicateItemError, match="already exists"):
         mgr.add_fact("k", "new")
 
