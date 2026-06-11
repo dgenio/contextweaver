@@ -86,7 +86,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | `adapters/mcp_upstream.py` | Concrete `UpstreamCall` adapters (`StubUpstream`, `McpClientUpstream`, `MultiplexUpstream`) |
 | `adapters/mcp_gateway_server.py` | Bind `mcp_gateway` onto `mcp.server.Server` over stdio (issue #28) |
 | `adapters/mcp_proxy_server.py` | Bind `mcp_proxy` onto `mcp.server.Server` over stdio (issue #13) |
-| `adapters/gateway_error.py` | Structured `GatewayError` (codes + §3.4 wire shape) |
+| `adapters/gateway_error.py` | Structured `GatewayError` (codes + §3.4 wire shape) + `retryable` hint. Upstream-error taxonomy: `classify_upstream_exception` maps timeouts/connection/auth/permission/rate failures to `UPSTREAM_TIMEOUT`/`UPSTREAM_UNAVAILABLE`/`AUTH_FAILED`/`PERMISSION_DENIED`/`RATE_LIMITED` (fallback `UPSTREAM_ERROR`); `redact_upstream_detail` strips control chars + caps length on model-visible detail (issue #485). |
+| `adapters/gateway_validation.py` | Untrusted-schema hardening for the gateway ingest path (issues #464/#484): `SchemaLimits`/`SchemaFinding`/`SkippedTool`/`CatalogRefreshReport`, `check_schema_health` (meta-validation + iterative size/depth/property bounds), `build_validator` (cached per `tool_id`). Pure, deterministic; iterative traversal avoids stack exhaustion on hostile schemas. |
+| `adapters/gateway_args.py` | Opt-in deterministic tool-call argument repair (issue #488): `normalize_args` (stringified-object parse + schema-demanded `str→int/number/boolean/null` coercion) + `Repair`. Gated behind `ProxyRuntime(tolerant_args=True)`; never renames keys, drops keys, or fuzzy-matches. |
 | `adapters/openai_messages.py` | OpenAI Chat Completions `messages` ↔ `ContextItem` round-trip (`from_/to_openai_messages`, issue #219) |
 | `adapters/anthropic_messages.py` | Anthropic Messages API `messages` ↔ `ContextItem` round-trip (`from_/to_anthropic_messages`, issue #222) |
 | `adapters/gemini_contents.py` | Google Gemini `contents[]` ↔ `ContextItem` round-trip (`from_/to_gemini_contents`, issue #222) |
@@ -148,10 +150,10 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `MaskRedactionHook` | Built-in redaction hook for sensitivity enforcement |
 | `HydrationResult` | Result of hydrating a tool call with context |
 | `ViewRegistry` | Maps content-type patterns to view generators for progressive disclosure |
-| `ProxyRuntime` | Shared core for MCP proxy (#13) and gateway (#28) modes — owns upstream catalog, per-session `ContextManager`, browse / execute / view dispatch; persisted text results are returned as envelope artifact refs for `tool_view` |
+| `ProxyRuntime` | Shared core for MCP proxy (#13) and gateway (#28) modes — owns upstream catalog, per-session `ContextManager`, browse / execute / view dispatch; persisted text results are returned as envelope artifact refs for `tool_view`. Hardens the untrusted-input boundary (issues #464/#484/#485/#488): `on_invalid` (skip/raise) + `schema_limits` + `last_refresh_report` at ingest, cached per-`tool_id` validators, classified+redacted upstream errors, and opt-in `tolerant_args`. |
 | `ExposureMode` | `TRANSPARENT` (#13) vs `GATEWAY` (#28) for `ProxyRuntime` |
 | `UpstreamCall` | Transport-agnostic Protocol over upstream MCP fan-out (used by `ProxyRuntime`) |
-| `GatewayError` | Structured error payload (§3.4) returned from every gateway/proxy meta-tool |
+| `GatewayError` | Structured error payload (§3.4) returned from every gateway/proxy meta-tool. Carries a `retryable` hint and a classified upstream-error taxonomy (issue #485) plus the `SCHEMA_INVALID` ingest code (issue #484) |
 | `ToolIdParts` | Destructured canonical `tool_id` (namespace / name / version / hash8) |
 
 **Vocabulary notes:**

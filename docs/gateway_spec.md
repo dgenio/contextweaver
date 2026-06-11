@@ -293,15 +293,35 @@ the gateway):
 
 ```json
 {
-  "error": "PATH_INVALID" | "PATH_NOT_FOUND" | "ARGS_INVALID",
-  "message": "<human-readable>",
+  "error": "PATH_INVALID" | "PATH_NOT_FOUND" | "ARGS_INVALID" | "SCHEMA_INVALID"
+         | "UPSTREAM_ERROR" | "UPSTREAM_TIMEOUT" | "UPSTREAM_UNAVAILABLE"
+         | "AUTH_FAILED" | "PERMISSION_DENIED" | "RATE_LIMITED"
+         | "HYDRATE_FAILED" | "VIEW_FAILED",
+  "message": "<human-readable, redacted>",
   "path": "<offending path or empty>",
+  "retryable": false,
   "details": { /* optional, implementation-defined */ }
 }
 ```
 
 `PATH_INVALID` covers malformed paths (§3.2 violations); `PATH_NOT_FOUND`
 covers well-formed paths that do not exist in the current `ChoiceGraph`.
+
+**Upstream-error taxonomy (issue #485).** Failures from the wrapped MCP
+server are classified so agents can branch without string-matching:
+`UPSTREAM_TIMEOUT` and `UPSTREAM_UNAVAILABLE` (transient transport
+failures), `AUTH_FAILED` / `PERMISSION_DENIED` (credential/authorization
+problems), `RATE_LIMITED` (throttling), with `UPSTREAM_ERROR` as the
+conservative fallback for everything else. The `retryable` boolean is a hint
+that the same call may succeed on retry (set for timeouts, unavailability,
+and rate limits). `SCHEMA_INVALID` flags an *upstream tool schema* that
+failed ingest-time validation (§4.4), as opposed to `ARGS_INVALID` which
+flags caller-supplied arguments.
+
+**Detail redaction.** Upstream exception text can carry hostnames, paths, or
+tokens. The `message` field is collapsed to a single control-character-free
+line and length-capped before it reaches model-visible context; operators
+retain the full, unredacted detail via server-side logging / event hooks.
 
 ## 4. Schema-exposure strategy
 
@@ -391,6 +411,36 @@ semantics are implementation-defined per backend but MUST honour the
 `args` against the hydrated schema before invoking upstream. Validation
 errors return `{"error": "ARGS_INVALID", ...}` per §3.4 and MUST NOT
 reach the upstream server.
+
+**Schema trust and complexity (issue #484).** Upstream `inputSchema` /
+`outputSchema` are themselves untrusted. At catalog ingest the runtime runs
+JSON-Schema meta-validation (`check_schema`) and bounds schema complexity —
+serialized size, nesting depth, and total property count, all configurable
+via `SchemaLimits` with generous defaults. Findings are recorded on
+`ProxyRuntime.last_refresh_report`; in the default lenient mode the tool is
+still registered (flag-and-continue), while `on_invalid="raise"` rejects the
+catalog. Compiled validators are cached per `tool_id` so repeated
+`tool_execute` calls do not recompile. A schema that fails meta-validation
+surfaces as `SCHEMA_INVALID` (not `ARGS_INVALID`) at execute time.
+
+**Tolerant argument normalization (issue #488, opt-in).** With
+`ProxyRuntime(tolerant_args=True)`, a deterministic, rule-based repair pass
+runs *before* strict validation. The fixed rule set is:
+
+| Rule | Condition | Action |
+|---|---|---|
+| `parse_stringified_object` | `args` is a string that parses as a JSON object | parse it (after stripping a leading BOM + surrounding whitespace) |
+| `str_to_integer` | field schema type is `integer` and value is an exact integer literal | coerce to `int` |
+| `str_to_number` | field schema type is `number` and value is a finite numeric literal | coerce to `float` |
+| `str_to_boolean` | field schema type is `boolean` and value is exactly `"true"`/`"false"` | coerce to `bool` |
+| `str_to_null` | field schema type is `null` (and not also `string`) and value is `"null"` | coerce to `None` |
+
+No key renaming, no fuzzy matching, no dropping of unknown keys; a coercion
+is applied only when the target schema type demands it (so a `string`-typed
+field is never coerced). Anything not repaired still fails `ARGS_INVALID`.
+Off by default, behaviour is byte-identical to strict validation. Every
+applied repair is recorded under the result envelope's
+`provenance["arg_repairs"]` so the normalization is auditable.
 
 ## 5. Cache-stable tool browsing (`cache_stable=True`)
 
