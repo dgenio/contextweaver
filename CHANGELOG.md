@@ -9,6 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Store-protocol conformance kit (#520).** New framework-agnostic
+  `contextweaver.store.testing` module — `check_event_log_conformance`,
+  `check_artifact_store_conformance`, `check_episodic_store_conformance`,
+  `check_fact_store_conformance` — each takes a factory for an empty backend
+  and asserts the round-trip, ordering, and not-found contract the Context
+  Engine relies on. It imports no test framework, so it ships in the core
+  wheel and runs under pytest, `unittest`, or a plain script. The bundled
+  in-memory, JSON-file, and SQLite backends are all run through it.
+- **`JsonFileArtifactStore` durability hardening (#497).** Writes are now
+  **atomic** (temp file + `os.replace`), so a crash mid-write never leaves a
+  truncated artifact; `list_refs()` reads an in-memory handle→ref index built
+  once on construction instead of rescanning the directory on every call; and
+  optional `max_bytes` / `max_artifacts` constructor limits bound disk growth,
+  raising the new `ArtifactStoreQuotaError` when a write would breach them.
+- **`ArtifactStoreQuotaError`** exception (subclass of `ContextWeaverError`),
+  exported from the package root.
+- **Documented store thread-safety contract (#458)** in
+  `docs/agent-context/architecture.md`, with concurrency tests covering atomic
+  overwrites, concurrent distinct-handle reads/writes, and concurrent gateway
+  `tool_view` drilldown.
+
+### Changed
+
+- **Artifact stores now persist a `content_hash` (#466).** Both
+  `InMemoryArtifactStore.put` and `JsonFileArtifactStore.put` compute and store
+  the sha256 of the content on the returned `ArtifactRef`. This makes the
+  firewall's re-processing idempotency short-circuit (#190) survive a process
+  restart when the ref is reloaded from disk. The firewall no longer recomputes
+  the hash separately.
+- **`JsonFileArtifactStore` percent-encodes handles into filenames (#466).**
+  Handles containing characters that are legal in a handle but hostile in a
+  filename — notably `:` (the firewall's `artifact:result:…` shape, which
+  opens an NTFS alternate data stream on Windows) — are now stored portably.
+  On-disk filenames change accordingly (`handle.data` → `enc(handle).data`).
+- **`InMemoryArtifactStore.to_dict`/`from_dict` round-trip is now lossless
+  (#466).** Raw bytes are serialised (base64) alongside the metadata index, so
+  a restored store resolves `get()`/`drilldown()` instead of returning refs
+  whose handles dereference to nothing — this is what lets a `StoreBundle`
+  carry firewalled artifacts across a restart.
+- **The gateway no longer assumes a concrete artifact-store backend (#472).**
+  `drilldown` is part of the `ArtifactStore` protocol, so `ProxyRuntime.view`
+  (`tool_view`) dropped its `cast`/`type: ignore` to `InMemoryArtifactStore`
+  and works against any conformant store (e.g. `JsonFileArtifactStore`).
+
 - **Opt-in deterministic secret-redaction pass (#428).** A new pure
   `contextweaver.secrets` module (`scrub_secrets()`, `contains_secret()`,
   `SecretPattern`) detects well-known secret shapes (cloud access keys, provider
