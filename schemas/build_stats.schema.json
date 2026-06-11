@@ -101,6 +101,9 @@
     "included_count": {
       "type": "integer"
     },
+    "token_estimator": {
+      "type": "string"
+    },
     "tokens_per_section": {
       "additionalProperties": {
         "type": "integer"

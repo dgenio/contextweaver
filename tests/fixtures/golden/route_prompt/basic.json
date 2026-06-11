@@ -58,6 +58,7 @@
       "firewall_events": [],
       "header_footer_tokens": 81,
       "included_count": 1,
+      "token_estimator": "heuristic/v2",
       "tokens_per_section": {
         "user_turn": 10
       },

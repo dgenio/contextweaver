@@ -28,6 +28,7 @@ from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.envelope import BuildStats, ContextPack, DroppedItem
+from contextweaver.tokens import estimator_name
 from contextweaver.types import Phase
 
 if TYPE_CHECKING:
@@ -86,7 +87,9 @@ def run_build_pipeline(
     pre_sensitivity = list(candidates)
     if explain:
         pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in pre_sensitivity}
-    candidates, sensitivity_drops = apply_sensitivity_filter(candidates, manager._policy)
+    candidates, sensitivity_drops = apply_sensitivity_filter(
+        candidates, manager._policy, manager._estimator
+    )
     post_sensitivity_ids = {item.id for item in candidates}
     sensitivity_dropped_items = [
         item for item in pre_sensitivity if item.id not in post_sensitivity_ids
@@ -165,6 +168,7 @@ def run_build_pipeline(
         dedup_removed=dedup_removed,
         dependency_closures=closures,
         header_footer_tokens=hf_tokens,
+        token_estimator=estimator_name(manager._estimator),
     )
     # Surface per-item firewall diagnostics (issue #402): one FirewallStats per
     # offloaded tool result.  Read ``stats.firewall_summary()`` for the roll-up.

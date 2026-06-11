@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from contextweaver.routing.cards import make_choice_cards
+from contextweaver.routing.cards import count_tokens, make_choice_cards
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
@@ -22,15 +22,18 @@ if TYPE_CHECKING:
 
 
 def _estimate_card_tokens(card: ChoiceCard) -> int:
-    """Cheap character-/4 token estimate matching the rest of the engine.
+    """Cheap token estimate for a card, via the shared token counter.
 
     The :class:`~contextweaver.routing.cards` renderer already pins each
     card to a target-token budget per §2.4; the packer only needs a coarse
-    upper bound for the cumulative-budget cap.
+    upper bound for the cumulative-budget cap. Routing the estimate through
+    :func:`contextweaver.routing.cards.count_tokens` (and thus
+    :mod:`contextweaver.tokens`) keeps it on the single source of truth
+    rather than a stray ``// 4`` literal (issue #493).
     """
     parts = [card.id, card.namespace or "", card.name, card.kind, card.description]
     parts.extend(card.tags)
-    return sum(len(p) for p in parts) // 4
+    return count_tokens(" ".join(p for p in parts if p))
 
 
 class DefaultCardPacker:

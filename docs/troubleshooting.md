@@ -316,9 +316,14 @@ print(allowed)  # e.g. [user_turn, plan_state, policy]
 The total estimated tokens in `pack.stats` are much lower or higher than the
 token count reported by LlamaIndex, LangChain, or another framework.
 
-**Cause:** contextweaver uses a `CharDivFour` estimator by default (1 token ≈
-4 characters). External frameworks often use `tiktoken` or a model-specific
-tokeniser.
+**Cause:** contextweaver uses a dependency-free, script-aware heuristic
+(`HeuristicEstimator`, reported as `heuristic/v2`) by default. For Latin text it
+matches `len // 4` (1 token ≈ 4 characters); for dense scripts (CJK, Kana,
+Hangul, emoji) it counts ≈1 token/character so offline budgets are not
+under-counted ~4×. External frameworks often use `tiktoken` or a model-specific
+tokeniser, so small differences are expected. The estimator a build used is
+recorded on `pack.stats.token_estimator`, and measured accuracy bands per
+corpus shape are in [`token_calibration.md`](token_calibration.md).
 
 **Solution — compute totals from `pack.stats` and, if needed, use `TiktokenEstimator`:**
 ```python
@@ -329,23 +334,35 @@ total_estimated_tokens = (
     sum(pack.stats.tokens_per_section.values())
     + pack.stats.header_footer_tokens
 )
+print(pack.stats.token_estimator)  # which counter produced the numbers
 
 # Plug in the built-in tiktoken-backed estimator (requires `tiktoken` package)
-mgr = ContextManager(token_estimator=TiktokenEstimator(model="gpt-4"))
+mgr = ContextManager(estimator=TiktokenEstimator(model="gpt-4"))
+```
+
+For non-OpenAI targets, register an accurate counter once and select it by
+name (issue #493); the choice is recorded on `BuildStats.token_estimator`:
+```python
+from contextweaver import tokens
+
+tokens.register_estimator("anthropic", my_anthropic_counter)
+mgr = ContextManager(estimator=tokens.get_token_counter("anthropic"))
 ```
 
 #### Offline / Air-gapped Tiktoken Warning
 
 **Symptom:**
 ```text
-tiktoken cl100k_base encoding unavailable (...); falling back to chars/4 token estimate
+tiktoken encoding 'cl100k_base' unavailable (...); falling back to HeuristicEstimator
 ```
 
 **Cause:** `tiktoken` is installed, but it downloads encoding data on first use.
 Sandboxes, corporate networks, and CI containers that block
 `openaipublic.blob.core.windows.net` cannot fetch `cl100k_base` on demand.
-contextweaver then falls back to `CharDivFourEstimator`, which preserves
-deterministic budget enforcement but is less exact than the real encoding.
+contextweaver then falls back to the script-aware `HeuristicEstimator`, which
+preserves deterministic budget enforcement and keeps CJK/emoji content within
+roughly ±30% of `tiktoken` (see [`token_calibration.md`](token_calibration.md)),
+though it is still less exact than the real encoding for Latin prose.
 
 **Solution — pre-warm a cache on a connected machine, then copy it:**
 
@@ -365,9 +382,10 @@ Copy that cache directory into the offline environment and set
 `TIKTOKEN_CACHE_DIR` to the copied path before running contextweaver.
 
 If exact `tiktoken` parity is not required, no action is needed. The committed
-scorecard's headline context metrics intentionally use `CharDivFourEstimator`
-for network-independent reproducibility; the separate token-estimator parity
-section reports or skips `cl100k_base` drift depending on cache availability.
+scorecard's headline context metrics intentionally use a dependency-free
+heuristic for network-independent reproducibility; the separate token-estimator
+parity section reports or skips `cl100k_base` drift depending on cache
+availability.
 
 **CI regression check:** after serialising a session with `contextweaver ingest`,
 pin a ceiling with `budget-check` so prompt-size regressions fail before they

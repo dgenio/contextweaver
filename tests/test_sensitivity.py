@@ -179,7 +179,45 @@ def test_mask_hook_updates_token_estimate() -> None:
     hook = MaskRedactionHook()
     item = _item("x", Sensitivity.restricted, "very long text " * 100)
     redacted = hook.redact(item)
+    # Default counter is the script-aware heuristic; for the ASCII placeholder
+    # it equals len // 4, so the estimate is unchanged from prior behaviour.
     assert redacted.token_estimate == len("[REDACTED: restricted]") // 4
+
+
+def test_mask_hook_honours_configured_estimator() -> None:
+    """The redaction placeholder estimate comes from the configured counter (#530)."""
+
+    class _Const:
+        name = "const-7"
+
+        def estimate(self, text: str) -> int:
+            return 7
+
+    hook = MaskRedactionHook(estimator=_Const())
+    redacted = hook.redact(_item("x", Sensitivity.restricted, "secret"))
+    assert redacted.text == "[REDACTED: restricted]"
+    assert redacted.token_estimate == 7
+
+
+def test_redaction_path_uses_manager_estimator() -> None:
+    """A custom estimator passed to the manager is honoured on redaction paths (#530)."""
+
+    class _Const:
+        name = "const-99"
+
+        def estimate(self, text: str) -> int:
+            return 99
+
+    policy = ContextPolicy(sensitivity_floor=Sensitivity.confidential, sensitivity_action="redact")
+    filtered, dropped = apply_sensitivity_filter(
+        [_item("a", Sensitivity.restricted, "top secret payload")],
+        policy,
+        estimator=_Const(),
+    )
+    assert dropped == 0
+    assert len(filtered) == 1
+    assert filtered[0].text == "[REDACTED: restricted]"
+    assert filtered[0].token_estimate == 99
 
 
 # ------------------------------------------------------------------

@@ -234,7 +234,7 @@ def apply_firewall(
         id=item.id,
         kind=item.kind,
         text=summary,
-        token_estimate=len(summary) // 4,
+        token_estimate=count_tokens(summary),
         metadata=dict(item.metadata),
         parent_id=item.parent_id,
         artifact_ref=ref,

@@ -30,55 +30,13 @@ Public API:
 
 from __future__ import annotations
 
-import logging
 import re
-from typing import Any
 
-import tiktoken
-
+from contextweaver import tokens
 from contextweaver.envelope import ChoiceCard
 from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.types import SelectableItem
-
-_logger = logging.getLogger("contextweaver.routing.cards")
-
-# Lazy ``cl100k_base`` encoder for §2.3 token accounting.  Loaded on
-# first use because :func:`tiktoken.get_encoding` downloads the BPE file
-# from a network URL on the first call in environments without a
-# pre-warmed cache.  In offline / air-gapped environments the load
-# fails; we fall back to a deterministic chars-per-token estimate
-# (``len(text) // 4``) that matches the existing
-# :class:`~contextweaver.protocols.TiktokenEstimator` fallback and keeps
-# the §2.3 bounds enforced — at the cost of approximate-rather-than-exact
-# token counts.
-_ENCODER: Any | None = None
-_ENCODER_FAILED: bool = False
-
-
-def _get_encoder() -> Any | None:  # noqa: ANN401 — tiktoken Encoding is not typed
-    """Return the cached cl100k_base encoder, or ``None`` if offline.
-
-    Logs a single warning on first failure, mirroring
-    :class:`~contextweaver.protocols.TiktokenEstimator`'s offline behaviour.
-    """
-    global _ENCODER, _ENCODER_FAILED
-    if _ENCODER is not None:
-        return _ENCODER
-    if _ENCODER_FAILED:
-        return None
-    try:
-        _ENCODER = tiktoken.get_encoding("cl100k_base")
-        return _ENCODER
-    except Exception as exc:  # pragma: no cover - exercised in offline tests
-        _ENCODER_FAILED = True
-        _logger.warning(
-            "tiktoken cl100k_base encoding unavailable (%s); falling back to "
-            "chars/4 token estimate for §2.3 budget enforcement.",
-            exc,
-        )
-        return None
-
 
 # §2.3 default token budgets.
 DEFAULT_CARD_TARGET_TOKENS = 60
@@ -95,17 +53,18 @@ _ELLIPSIS = "…"
 def count_tokens(text: str) -> int:
     """Return the ``cl100k_base`` token count of *text*.
 
-    Falls back to ``len(text) // 4`` if the encoding is unavailable (e.g.
-    offline environment without a pre-warmed tiktoken cache).  The
-    fallback is deterministic so the §2.3 bounds remain meaningful even
-    in air-gapped CI.
+    Delegates to :func:`contextweaver.tokens.count` so card budgeting shares
+    the library's single token-counting source of truth (issue #493) instead
+    of maintaining a second encoder + fallback. Exact when the tiktoken
+    encoding is available; the script-aware heuristic otherwise, which keeps
+    the §2.3 bounds meaningful (and CJK-accurate) even in air-gapped CI.
+
+    Non-empty text always returns at least ``1`` so a short tag or name is
+    never counted as zero tokens.
     """
     if not text:
         return 0
-    enc = _get_encoder()
-    if enc is not None:
-        return len(enc.encode(text))
-    return len(text) // 4 or 1
+    return tokens.count(text) or 1
 
 
 def truncate_description_to_tokens(text: str, max_tokens: int) -> str:

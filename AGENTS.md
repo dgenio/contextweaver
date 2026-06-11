@@ -25,14 +25,14 @@ It prepares context and routes tools but never calls models or executes tools.
 | `inspection.py` | Pure JSON/Markdown report construction for offline context, routing, and artifact inspection without raw payload content (issue #398). |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
-| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`) |
+| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`). Bundled estimators: `HeuristicEstimator` (default, script-aware, dependency-free — counts CJK/Kana/Hangul/emoji ≈1 token/char, issue #525), `CharDivFourEstimator` (raw `len // 4` primitive), `TiktokenEstimator` (exact, falls back to `HeuristicEstimator` offline). Each carries a stable `name` for `BuildStats.token_estimator`. |
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
 | `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
 | `_version.py` | Single-source version derived from `importlib.metadata`; fallback `"0.0.0+local"` |
 | `_demos.py` | Demo logic for the CLI `demo` subcommand (exempt from `print()` rule) |
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` |
-| `tokens.py` | Built-in token counter (`count()`, `get_token_counter()`, `heuristic_counter()`, `TokenCounter` alias). Owns the `tiktoken` dependency so callers never wire it directly; firewall / `FirewallStats` numbers are computed through the same counter (issue #405). |
+| `tokens.py` | Built-in token counter (`count()`, `get_token_counter()`, `heuristic_counter()`, `TokenCounter` alias) plus the provider-estimator registry (`register_estimator()`, `registered_estimators()`, `estimator_name()`, issue #493). The **single source of truth** for token counts — firewall, sensitivity-redaction placeholders, card budgeting (`routing/cards.count_tokens`), and `FirewallStats`/`BuildStats` numbers all route through it (issues #405/#493/#530); no stray `len // 4` literals elsewhere. Owns the `tiktoken` dependency; offline it falls back to the script-aware `HeuristicEstimator`. |
 | `store/` | In-memory data stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`, `StoreBundle` |
 | `store/_sqlite_base.py` | Shared SQLite connection + migration scaffolding (WAL, `foreign_keys=ON`, `_contextweaver_schema_version` table). Reused by every SQLite-backed store (issue #174). |
 | `store/sqlite_event_log.py` | `SqliteEventLog` — first persistent `EventLog` backend; single-process, sync, append-only, schema-versioned (issue #223). |
@@ -130,7 +130,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ContextItem` | Event log entry with `parent_id` for dependency closure |
 | `ResultEnvelope` | Processed tool output: summary + facts + artifacts + views |
 | `ContextPack` | Rendered prompt + stats from a context build |
-| `BuildStats` | What was kept, dropped, and why. `total_candidates` is pre-sensitivity; `dropped_items` attributes every exclusion; completed builds satisfy included + dropped = total. Carries `firewall_events` + `firewall_summary()` (issues #402/#414/#459). |
+| `BuildStats` | What was kept, dropped, and why. `total_candidates` is pre-sensitivity; `dropped_items` attributes every exclusion; completed builds satisfy included + dropped = total. Carries `firewall_events` + `firewall_summary()` (issues #402/#414/#459) and `token_estimator` — the estimator-path identifier that produced the build's token numbers (issue #493). |
 | `FirewallStats` | Per-firewall diagnostics: `triggered`, `strategy`, original/summary chars+tokens, `artifact_ref`, `summarized_by_llm` (issues #402 / #404) |
 | `CompactResult` | Output of the single-call `compact_tool_result` facade: `firewalled`, `payload`, `summary`, `facts`, `artifact_ref`, `stats` (issue #399) |
 | `StructuredFirewall` | Non-summarising firewall strategy — keep an allow-list of JSON paths inline, offload the rest (issue #406) |

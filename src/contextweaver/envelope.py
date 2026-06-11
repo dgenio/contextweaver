@@ -201,6 +201,11 @@ class BuildStats:
     completed build satisfies ``included_count + dropped_count ==
     total_candidates``. ``dropped_items`` carries the matching lightweight
     per-item attribution without requiring ``explain=True``.
+
+    ``token_estimator`` records *which* counter produced the build's token
+    numbers (e.g. ``"tiktoken/cl100k_base"``, ``"heuristic/v2"``, or a
+    registered provider name), so a budget overshoot can be attributed to an
+    estimator path (issue #493). Empty when not stamped by the pipeline.
     """
 
     tokens_per_section: dict[str, int] = field(default_factory=dict)
@@ -212,6 +217,7 @@ class BuildStats:
     dedup_removed: int = 0
     dependency_closures: int = 0
     header_footer_tokens: int = 0
+    token_estimator: str = ""
     #: One :class:`FirewallStats` per item the firewall offloaded during the
     #: build (issue #402).  Empty when nothing was firewalled.  Always-on and
     #: cheap — populated from the build's :class:`ResultEnvelope` list.
@@ -274,6 +280,7 @@ class BuildStats:
             "dedup_removed": self.dedup_removed,
             "dependency_closures": self.dependency_closures,
             "header_footer_tokens": self.header_footer_tokens,
+            "token_estimator": self.token_estimator,
             "firewall_events": [e.to_dict() for e in self.firewall_events],
         }
 
@@ -290,6 +297,7 @@ class BuildStats:
             dedup_removed=int(data.get("dedup_removed", 0)),
             dependency_closures=int(data.get("dependency_closures", 0)),
             header_footer_tokens=int(data.get("header_footer_tokens", 0)),
+            token_estimator=str(data.get("token_estimator", "")),
             firewall_events=[FirewallStats.from_dict(e) for e in data.get("firewall_events", [])],
         )
 
