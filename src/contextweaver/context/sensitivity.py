@@ -19,8 +19,8 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
-from contextweaver.config import ContextPolicy
-from contextweaver.exceptions import ConfigError, PolicyViolationError
+from contextweaver.config import SENSITIVITY_ACTIONS, ContextPolicy
+from contextweaver.exceptions import ConfigError, ItemNotFoundError
 from contextweaver.protocols import RedactionHook, TokenEstimator
 from contextweaver.tokens import heuristic_counter
 from contextweaver.types import ContextItem, Sensitivity
@@ -34,9 +34,6 @@ _SENSITIVITY_ORDER: dict[Sensitivity, int] = {
     Sensitivity.confidential: 2,
     Sensitivity.restricted: 3,
 }
-
-# Valid values for ContextPolicy.sensitivity_action.
-_VALID_ACTIONS: set[str] = {"drop", "redact"}
 
 # Hook registry (name → instance).  Built-in hooks are registered at
 # module load time; users can add their own via :func:`register_redaction_hook`.
@@ -55,12 +52,31 @@ def register_redaction_hook(name: str, hook: RedactionHook) -> None:
         hook: An object implementing the :class:`RedactionHook` protocol.
 
     Raises:
-        PolicyViolationError: If *name* is already registered.
+        ConfigError: If *name* is already registered.  A duplicate registration
+            is a configuration mistake, not a policy violation (issue #463);
+            use :func:`unregister_redaction_hook` first to replace a hook.
     """
     if name in _HOOK_REGISTRY:
         msg = f"Redaction hook {name!r} is already registered"
-        raise PolicyViolationError(msg)
+        raise ConfigError(msg)
     _HOOK_REGISTRY[name] = hook
+
+
+def unregister_redaction_hook(name: str) -> None:
+    """Remove a previously registered :class:`RedactionHook` (issue #463).
+
+    Provided for test hygiene and long-lived processes that need to replace a
+    hook: ``unregister_redaction_hook(name)`` then re-:func:`register_redaction_hook`.
+
+    Args:
+        name: The hook name to remove.
+
+    Raises:
+        ItemNotFoundError: If no hook is registered under *name*.
+    """
+    if name not in _HOOK_REGISTRY:
+        raise ItemNotFoundError(f"Redaction hook {name!r} is not registered")
+    del _HOOK_REGISTRY[name]
 
 
 class MaskRedactionHook:
@@ -167,8 +183,8 @@ def apply_sensitivity_filter(
     floor_level = _SENSITIVITY_ORDER[policy.sensitivity_floor]
     action = policy.sensitivity_action
 
-    if action not in _VALID_ACTIONS:
-        msg = f"Unknown sensitivity_action {action!r}. Valid: {sorted(_VALID_ACTIONS)}"
+    if action not in SENSITIVITY_ACTIONS:
+        msg = f"Unknown sensitivity_action {action!r}. Valid: {sorted(SENSITIVITY_ACTIONS)}"
         raise ConfigError(msg)
 
     # Resolve redaction hooks once (only needed in redact mode).

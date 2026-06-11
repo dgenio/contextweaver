@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from contextweaver.exceptions import ValidationError
 from contextweaver.types import ArtifactRef, Phase, SelectableItem, ViewSpec
 
 #: Schema version for :meth:`BuildStats.report_dict` payloads.  Version 2
@@ -602,9 +603,10 @@ class ChoiceCard:
       each ≤ :data:`CHOICE_CARD_TAG_MAX_LEN` (24) characters.
     - ``kind`` ∈ :data:`CHOICE_CARD_KINDS`.
 
-    Violations raise :class:`ValueError` at construction time so the
-    invariants hold for every code path (including
-    :meth:`ChoiceCard.from_dict`).
+    Violations raise :class:`~contextweaver.exceptions.ValidationError` at
+    construction time so the invariants hold for every code path (including
+    :meth:`ChoiceCard.from_dict`).  ``ValidationError`` derives from the
+    builtin ``ValueError``, so ``except ValueError`` call sites still catch it.
     """
 
     id: str
@@ -621,23 +623,23 @@ class ChoiceCard:
     def __post_init__(self) -> None:
         """Enforce the gateway-spec §2 size bounds (issue #225)."""
         if self.kind not in CHOICE_CARD_KINDS:
-            raise ValueError(
+            raise ValidationError(
                 f"ChoiceCard.kind must be one of {CHOICE_CARD_KINDS}, "
                 f"got {self.kind!r}; see docs/gateway_spec.md §2"
             )
         if len(self.name) > CHOICE_CARD_NAME_MAX_LEN:
-            raise ValueError(
+            raise ValidationError(
                 f"ChoiceCard.name exceeds {CHOICE_CARD_NAME_MAX_LEN} chars "
                 f"({len(self.name)}); see docs/gateway_spec.md §2"
             )
         if len(self.tags) > CHOICE_CARD_TAGS_MAX_COUNT:
-            raise ValueError(
+            raise ValidationError(
                 f"ChoiceCard.tags exceeds {CHOICE_CARD_TAGS_MAX_COUNT} entries "
                 f"({len(self.tags)}); see docs/gateway_spec.md §2"
             )
         for tag in self.tags:
             if len(tag) > CHOICE_CARD_TAG_MAX_LEN:
-                raise ValueError(
+                raise ValidationError(
                     f"ChoiceCard.tags entry {tag!r} exceeds "
                     f"{CHOICE_CARD_TAG_MAX_LEN} chars; see docs/gateway_spec.md §2"
                 )
@@ -796,6 +798,16 @@ class RoutingDecision:
         payloads validated against the spec's ``date-time`` format parse on
         Python 3.10 (the stdlib ``datetime.fromisoformat`` only learned to
         accept ``Z`` in 3.11).  Naive timestamps are assumed to be UTC.
+
+        ``timestamp`` is required (it is a non-optional field).  A missing or
+        unparseable value raises :class:`~contextweaver.exceptions.ValidationError`
+        rather than fabricating ``datetime.now()`` — the data layer must
+        round-trip losslessly and stay deterministic, so it never invents a
+        value a malformed payload did not carry (issue #463).
+
+        Raises:
+            ValidationError: If ``timestamp`` is absent or not a ``datetime`` /
+                parseable ISO 8601 string.
         """
         raw_ts = data.get("timestamp")
         ts: datetime
@@ -803,9 +815,17 @@ class RoutingDecision:
             ts = raw_ts
         elif isinstance(raw_ts, str):
             normalised = raw_ts[:-1] + "+00:00" if raw_ts.endswith("Z") else raw_ts
-            ts = datetime.fromisoformat(normalised)
+            try:
+                ts = datetime.fromisoformat(normalised)
+            except ValueError as exc:
+                raise ValidationError(
+                    f"RoutingDecision.timestamp is not a valid ISO 8601 string: {raw_ts!r}"
+                ) from exc
         else:
-            ts = datetime.now(timezone.utc)
+            raise ValidationError(
+                "RoutingDecision.from_dict requires a 'timestamp' (datetime or ISO "
+                f"8601 string); got {raw_ts!r}"
+            )
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
         return cls(

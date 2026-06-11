@@ -217,7 +217,15 @@ class FactStore(Protocol):
     """
 
     def put(self, fact: Fact) -> None:
-        """Insert or replace the fact identified by ``fact.fact_id``."""
+        """Insert or replace the fact identified by ``fact.fact_id``.
+
+        These are **upsert** semantics: writing a ``fact_id`` that already
+        exists silently replaces the prior fact.  Callers that want
+        collision-proof IDs (no accidental overwrite) should mint IDs via
+        :meth:`~contextweaver.context.manager.ContextManager.add_fact`, which
+        uses a monotonic counter (issue #462), and reserve direct ``put`` for
+        intentional upsert.
+        """
         ...
 
     def get(self, fact_id: str) -> Fact:

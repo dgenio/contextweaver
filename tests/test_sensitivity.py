@@ -12,8 +12,9 @@ from contextweaver.context.sensitivity import (
     MaskRedactionHook,
     apply_sensitivity_filter,
     register_redaction_hook,
+    unregister_redaction_hook,
 )
-from contextweaver.exceptions import ConfigError, PolicyViolationError
+from contextweaver.exceptions import ConfigError, ItemNotFoundError
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
 
@@ -251,11 +252,19 @@ def test_unknown_hook_name_raises() -> None:
         apply_sensitivity_filter([item], policy)
 
 
-def test_unknown_sensitivity_action_raises() -> None:
-    policy = ContextPolicy(
-        sensitivity_floor=Sensitivity.confidential,
-        sensitivity_action="dorp",
-    )
+def test_unknown_sensitivity_action_raises_at_construction() -> None:
+    """An invalid action is rejected when the policy is built (issue #463)."""
+    with pytest.raises(ConfigError, match="sensitivity_action must be one of"):
+        ContextPolicy(
+            sensitivity_floor=Sensitivity.confidential,
+            sensitivity_action="dorp",  # type: ignore[arg-type]
+        )
+
+
+def test_sensitivity_filter_guards_post_construction_mutation() -> None:
+    """The runtime filter still rejects an action mutated after construction."""
+    policy = ContextPolicy(sensitivity_floor=Sensitivity.confidential)
+    policy.sensitivity_action = "dorp"  # type: ignore[assignment]
     item = _item("x", Sensitivity.confidential)
     with pytest.raises(ConfigError, match="Unknown sensitivity_action"):
         apply_sensitivity_filter([item], policy)
@@ -375,6 +384,21 @@ def test_register_custom_hook_and_use_in_redact_mode() -> None:
 
 
 def test_register_duplicate_hook_raises() -> None:
-    """Registering a hook with an existing name raises PolicyViolationError."""
-    with pytest.raises(PolicyViolationError, match="already registered"):
+    """Registering a hook with an existing name raises ConfigError (issue #463)."""
+    with pytest.raises(ConfigError, match="already registered"):
         register_redaction_hook("mask", MaskRedactionHook())
+
+
+def test_unregister_redaction_hook_roundtrip() -> None:
+    """A hook can be unregistered and re-registered (test hygiene, issue #463)."""
+    register_redaction_hook("temp_hook", MaskRedactionHook())
+    unregister_redaction_hook("temp_hook")
+    # Re-registering under the same name now succeeds (no lingering entry).
+    register_redaction_hook("temp_hook", MaskRedactionHook())
+    unregister_redaction_hook("temp_hook")
+
+
+def test_unregister_unknown_hook_raises() -> None:
+    """Unregistering a name that was never registered raises ItemNotFoundError."""
+    with pytest.raises(ItemNotFoundError, match="not registered"):
+        unregister_redaction_hook("never_registered_hook")

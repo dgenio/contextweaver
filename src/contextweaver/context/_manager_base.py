@@ -59,6 +59,14 @@ class _ManagerState:
     #: When ``True`` the context firewall fails closed instead of invoking an
     #: LLM-backed summariser (issue #404).
     _deterministic: bool
+    #: Monotonic counter backing collision-proof fact IDs (issue #462).  Only
+    #: ever increases, so a delete followed by a new ``add_fact`` can never
+    #: re-mint an existing fact's ID and silently overwrite it.  Seeded lazily
+    #: on the first ``add_fact`` past any IDs already in the (possibly
+    #: persistent/pre-populated) fact store.
+    _fact_seq: int
+    #: Whether ``_fact_seq`` has been seeded from the fact store yet (issue #462).
+    _fact_seq_seeded: bool
 
     if TYPE_CHECKING:
         # Implemented by ``_BuildMixin``; declared here (type-only, no runtime

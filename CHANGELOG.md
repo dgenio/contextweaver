@@ -53,9 +53,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference catalog, so an MCP client or automated scanner (e.g. Glama) can
   build, start, and introspect the gateway with no extra configuration. The
   image build validates the catalog with `--dry-run`.
+- **`unregister_redaction_hook(name)` (#463).** Companion to
+  `register_redaction_hook` for test hygiene and long-lived processes that need
+  to replace a hook; raises `ItemNotFoundError` for an unknown name.
+- **`ValidationError` exception (#463).** New
+  `contextweaver.exceptions.ValidationError`, raised by the pure-data layer
+  (`ChoiceCard` construction, `RoutingDecision.from_dict`). It derives from both
+  `ContextWeaverError` and the builtin `ValueError`, so the custom hierarchy is
+  catchable while existing `except ValueError` call sites keep working.
+- **`compact_tool_result(..., overwrite_sidecar=True)` (#467).** Opt-in escape
+  hatch to replace an existing reserved `_cw` sidecar when round-tripping prior
+  contextweaver output back through the facade (default refuses — see below).
 
 ### Changed
 
+- **Custom view generators now fire on every ingestion/build path (#460).** A
+  generator registered on `ContextManager.view_registry` previously only ran on
+  `ingest_tool_result`; it now also runs on the build-time firewall batch and
+  `ingest_mcp_result`. Users with custom generators will start seeing them fire
+  on the previously-unwired paths (the intended behavior); default-registry
+  output is unchanged.
+- **Collision-proof fact IDs (#462).** `ContextManager.add_fact` now mints IDs
+  from a monotonic per-manager counter (`fact:{key}:{seq}`) instead of the
+  store's current size. A delete followed by a new `add_fact` can no longer
+  re-mint an existing fact's ID and silently overwrite it; IDs stay
+  deterministic for a fixed call sequence, and the call no longer scans the
+  full store. A pre-populated store that collides with the counter now raises
+  `DuplicateItemError` loudly rather than overwriting.
+- **Construction-time validation in core data types (#463).**
+  `ContextPolicy.sensitivity_action` is now typed `Literal["drop", "redact"]`
+  and validated in `__post_init__` (raises `ConfigError` immediately instead of
+  at the first build). `ChoiceCard` bounds violations now raise `ValidationError`
+  (still a `ValueError` subclass). `register_redaction_hook` raises `ConfigError`
+  (was `PolicyViolationError`) on a duplicate name — a configuration mistake, not
+  a policy violation.
 - **Actionable graph-validation diagnostics (#523).** `GraphBuildError` now
   carries structured `cycle` / `edge` / `missing_root` attributes and names the
   specifics in its message: cycle failures report the full path
@@ -71,6 +102,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--version` now defaults to the contextweaver package version (was `None`)
   when neither the flag nor the config file sets it, and the resolved version
   is shown in the serve lifecycle line.
+
+### Fixed
+
+- **`compact_tool_result` honours the reserved `_cw` namespace (#467).** A
+  payload that already carries the reserved `_cw` sidecar key now raises
+  `ConfigError` instead of being silently clobbered (matching the
+  `metadata['_contextweaver']` reserved-namespace rule). Pass
+  `overwrite_sidecar=True` to opt into replacing it.
+- **`RoutingDecision.from_dict` no longer fabricates timestamps (#463).** A
+  missing or unparseable `timestamp` now raises `ValidationError` instead of
+  substituting `datetime.now()`, keeping the pure-data layer deterministic and
+  its round-trips lossless.
+- **Removed load-bearing `assert`s from library code (#467).** Correctness
+  checks in `firewall_api.py`, `build.py`, and `_manager_build.py` are now
+  explicit raises (`ContextWeaverError`-family) so they are not silently
+  stripped under `python -O`. Type-narrowing asserts are retained where
+  annotated. Two new guard tests (`tests/test_source_invariants.py`) enforce
+  this and the custom-exception rule going forward.
 
 ## [0.14.1] - 2026-06-11
 

@@ -15,6 +15,7 @@ from contextweaver.envelope import (
     ResultEnvelope,
     RoutingDecision,
 )
+from contextweaver.exceptions import ValidationError
 from contextweaver.types import ArtifactRef, Phase, ViewSpec
 
 # ---------------------------------------------------------------------------
@@ -331,6 +332,23 @@ def test_choice_card_from_dict_rejects_unknown_kind() -> None:
         ChoiceCard.from_dict({"id": "c1", "name": "n", "description": "d", "kind": "bogus"})
 
 
+def test_choice_card_raises_validation_error_family() -> None:
+    """ChoiceCard validation raises ValidationError — a ContextWeaverError *and* a
+    ValueError, so the custom hierarchy is catchable while `except ValueError`
+    still works (issue #463)."""
+    from contextweaver.exceptions import ContextWeaverError
+
+    with pytest.raises(ValidationError):
+        ChoiceCard(id="c1", name="x" * 100, description="d")
+    # Dual inheritance: also catchable as the builtin ValueError.
+    try:
+        ChoiceCard(id="c1", name="n", description="d", tags=["x" * 50])
+    except ValueError as exc:
+        assert isinstance(exc, ContextWeaverError)
+    else:  # pragma: no cover - the construction above must raise
+        raise AssertionError("expected ValidationError")
+
+
 def test_choice_card_accepts_all_documented_kinds() -> None:
     """Every value of the `Literal[...]` enum constructs successfully."""
     for kind in ("tool", "agent", "skill", "internal"):
@@ -424,8 +442,21 @@ def test_routing_decision_from_dict_naive_timestamp_assumed_utc() -> None:
     assert rd.timestamp.tzinfo.utcoffset(rd.timestamp) == timezone.utc.utcoffset(rd.timestamp)
 
 
-def test_routing_decision_from_partial_dict() -> None:
-    rd = RoutingDecision.from_dict({"id": "rd-1"})
+def test_routing_decision_from_dict_missing_timestamp_raises() -> None:
+    """A missing timestamp raises instead of fabricating datetime.now() (#463)."""
+    with pytest.raises(ValidationError, match="requires a 'timestamp'"):
+        RoutingDecision.from_dict({"id": "rd-1"})
+
+
+def test_routing_decision_from_dict_bad_timestamp_raises() -> None:
+    """An unparseable ISO 8601 timestamp raises (#463)."""
+    with pytest.raises(ValidationError, match="not a valid ISO 8601"):
+        RoutingDecision.from_dict({"id": "rd-1", "timestamp": "not-a-date"})
+
+
+def test_routing_decision_from_dict_minimal_with_timestamp() -> None:
+    """Other fields still default when only id + timestamp are supplied."""
+    rd = RoutingDecision.from_dict({"id": "rd-1", "timestamp": "2026-05-14T00:00:00Z"})
     assert rd.id == "rd-1"
     assert rd.choice_cards == []
     assert rd.timestamp.tzinfo is not None

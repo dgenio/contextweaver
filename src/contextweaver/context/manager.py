@@ -141,6 +141,11 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         self._profile: ProfileConfig | None = profile
         self._mode: Mode = profile.mode if profile is not None else Mode.strict
         self._deterministic: bool = deterministic
+        # Seeded lazily on first add_fact from existing IDs (issue #462), so a
+        # pre-populated/persistent fact store does not collide with a counter
+        # restarting at 0 across process restarts.
+        self._fact_seq: int = 0
+        self._fact_seq_seeded: bool = False
 
     # ------------------------------------------------------------------
     # Properties
@@ -168,7 +173,12 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
 
     @property
     def view_registry(self) -> ViewRegistry:
-        """The view registry for auto-generating drilldown views."""
+        """The view registry for auto-generating drilldown views.
+
+        Custom generators registered here apply to **all** ingestion and build
+        paths — :meth:`ingest_tool_result`, :meth:`ingest_mcp_result`, and the
+        build-time firewall batch (issue #460).
+        """
         return self._view_registry
 
     @property
