@@ -38,19 +38,34 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from time import perf_counter
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 import jsonschema
 import jsonschema.exceptions
+import jsonschema.protocols
 
+from contextweaver.adapters.gateway_args import Repair, normalize_args
 from contextweaver.adapters.gateway_diagnostics import GatewayTelemetry
-from contextweaver.adapters.gateway_error import GatewayError
+from contextweaver.adapters.gateway_error import (
+    GatewayError,
+    classify_upstream_exception,
+    redact_upstream_detail,
+)
+from contextweaver.adapters.gateway_validation import (
+    DEFAULT_SCHEMA_LIMITS,
+    CatalogRefreshReport,
+    SchemaLimits,
+    SkippedTool,
+    build_validator,
+    check_schema_health,
+)
 from contextweaver.adapters.mcp import mcp_result_to_envelope, mcp_tool_to_selectable
 from contextweaver.context.manager import ContextManager
 from contextweaver.diagnostics import DiagnosticSink
 from contextweaver.envelope import ChoiceCard, HydrationResult, ResultEnvelope
 from contextweaver.exceptions import (
     ArtifactNotFoundError,
+    CatalogError,
     ContextWeaverError,
     ItemNotFoundError,
     PathInvalidError,
@@ -155,6 +170,17 @@ class ProxyRuntime:
             hydrate, execute, and artifact-view events.
         session_id: Optional stable identifier attached to diagnostic events.
             A random identifier is generated when omitted.
+        on_invalid: How to handle malformed upstream tool definitions and
+            schemas at catalog ingest (issues #464 / #484).  ``"skip"`` (default)
+            drops the offending tool and records it on
+            :attr:`last_refresh_report`; ``"raise"`` re-raises so development
+            catalogs fail loudly.
+        schema_limits: Complexity bounds applied to untrusted tool schemas at
+            ingest (issue #484).  Defaults to ``DEFAULT_SCHEMA_LIMITS``.
+        tolerant_args: When ``True``, run a deterministic, opt-in argument
+            repair pass (issue #488) before strict validation in
+            :meth:`execute`.  Off by default — behaviour is then byte-identical
+            to strict validation.
     """
 
     def __init__(
@@ -170,6 +196,9 @@ class ProxyRuntime:
         diagnostic_sink: DiagnosticSink | None = None,
         session_id: str | None = None,
         redact_secrets: bool = False,
+        on_invalid: Literal["skip", "raise"] = "skip",
+        schema_limits: SchemaLimits | None = None,
+        tolerant_args: bool = False,
     ) -> None:
         self._upstream = upstream
         self._mode = mode
@@ -210,6 +239,16 @@ class ProxyRuntime:
         self._upstream_names = _UpstreamNameIndex()
         self._raw_tool_defs: dict[str, dict[str, Any]] = {}
         self._telemetry = GatewayTelemetry(diagnostic_sink, session_id=session_id)
+        #: Ingest-time hardening configuration (issues #464 / #484 / #488).
+        self._on_invalid = on_invalid
+        self._schema_limits = schema_limits or DEFAULT_SCHEMA_LIMITS
+        self._tolerant_args = tolerant_args
+        #: Compiled ``jsonschema`` validators keyed by ``tool_id`` so the hot
+        #: ``execute`` path validates without recompiling (issue #484). Cleared
+        #: on every catalog refresh.
+        self._validator_cache: dict[str, jsonschema.protocols.Validator] = {}
+        #: Outcome of the most recent catalog refresh (issues #464 / #484).
+        self._last_refresh_report = CatalogRefreshReport()
 
     # ------------------------------------------------------------------
     # Properties
@@ -271,14 +310,19 @@ class ProxyRuntime:
         return self._register_tool_defs(tool_defs)
 
     def _register_tool_defs(self, tool_defs: list[dict[str, Any]]) -> int:
-        # Invalidate cache-stable state: tool definitions may have changed.
+        # Invalidate cache-stable state and compiled validators: tool
+        # definitions (and therefore schemas) may have changed.
         self._cached_cards.clear()
         self._browsed_tool_ids.clear()
+        self._validator_cache.clear()
+        report = CatalogRefreshReport()
         items: list[SelectableItem] = []
         upstream_index: dict[str, str] = {}
         raw_defs: dict[str, dict[str, Any]] = {}
-        for tool_def in tool_defs:
-            item = mcp_tool_to_selectable(tool_def)
+        for index, tool_def in enumerate(tool_defs):
+            item = self._convert_tool_def(index, tool_def, report)
+            if item is None:
+                continue
             items.append(item)
             upstream_index[item.id] = str(tool_def["name"])
             raw_defs[item.id] = dict(tool_def)
@@ -298,9 +342,83 @@ class ProxyRuntime:
         else:
             self._graph = None
             self._router = None
+        report.registered = len(items)
+        self._last_refresh_report = report
         self._telemetry.catalog_registered(items, raw_defs, mode=self._mode.value)
-        logger.debug("proxy_runtime: registered %d tools", len(items))
+        logger.debug(
+            "proxy_runtime: registered %d tools (%d skipped, %d schema findings)",
+            len(items),
+            len(report.skipped),
+            len(report.schema_findings),
+        )
         return len(items)
+
+    def _convert_tool_def(
+        self,
+        index: int,
+        tool_def: object,
+        report: CatalogRefreshReport,
+    ) -> SelectableItem | None:
+        """Convert one upstream tool def defensively (issues #464 / #484).
+
+        Returns the :class:`SelectableItem`, or ``None`` when the definition is
+        malformed and ``on_invalid="skip"`` (the skip is recorded on *report*).
+        Raises in ``on_invalid="raise"`` mode.
+        """
+        name_repr = ""
+        try:
+            if not isinstance(tool_def, dict):
+                raise CatalogError(f"tool definition is not a dict: {type(tool_def).__name__}")
+            raw_name = tool_def.get("name")
+            name_repr = str(raw_name) if isinstance(raw_name, str) else ""
+            if not isinstance(raw_name, str) or not raw_name.strip():
+                raise CatalogError("tool definition has no non-empty string 'name'")
+            item = mcp_tool_to_selectable(tool_def)
+        except (CatalogError, KeyError, TypeError, ValueError) as exc:
+            if self._on_invalid == "raise":
+                raise
+            report.skipped.append(
+                SkippedTool(index=index, name=name_repr, reason=redact_upstream_detail(str(exc)))
+            )
+            logger.warning(
+                "proxy_runtime: skipping malformed tool def at index %d (%s): %s",
+                index,
+                name_repr or "<no name>",
+                exc,
+            )
+            return None
+
+        findings = check_schema_health(item.id, item.args_schema, limits=self._schema_limits)
+        if item.output_schema:
+            findings += check_schema_health(item.id, item.output_schema, limits=self._schema_limits)
+        if findings:
+            if self._on_invalid == "raise":
+                first = findings[0]
+                raise CatalogError(
+                    f"tool {item.id} has an invalid schema ({first.kind}): {first.detail}"
+                )
+            report.schema_findings.extend(findings)
+            for finding in findings:
+                logger.warning(
+                    "proxy_runtime: schema finding for %s: %s (%s)",
+                    finding.tool_id,
+                    finding.kind,
+                    finding.detail,
+                )
+            # Lenient mode flags and continues: the tool is still registered so
+            # one bad schema does not erase a usable catalog (#484).
+        return item
+
+    @property
+    def last_refresh_report(self) -> CatalogRefreshReport:
+        """Outcome of the most recent catalog refresh (issues #464 / #484).
+
+        Records every malformed tool definition skipped and every schema-health
+        finding raised during the last :meth:`refresh_catalog` /
+        :meth:`register_tool_defs_sync` call, so operators can audit catalog
+        quality without parsing log lines.
+        """
+        return self._last_refresh_report
 
     def list_tool_ids(self) -> list[str]:
         """Return the canonical ``tool_id`` for every registered tool."""
@@ -547,30 +665,37 @@ class ProxyRuntime:
                 arg_keys=arg_keys,
             )
             return error
-        validation_error = _validate_args(args, hydrated.args_schema)
+        schema = hydrated.args_schema
+        repairs: list[Repair] = []
+        if self._tolerant_args and schema:
+            args, repairs = normalize_args(args, schema)
+            arg_keys = sorted(args) if isinstance(args, dict) else arg_keys
+        validation_error = self._validate_args(tool_id, args, schema)
         if validation_error is not None:
-            error = GatewayError(
-                code="ARGS_INVALID",
-                message=validation_error.message,
-                path=tool_id,
-                details={"path": list(validation_error.path)},
-            )
             self._telemetry.execute_failed(
                 tool_id,
-                error,
+                validation_error,
                 duration_ms=(perf_counter() - started) * 1000,
                 namespace=namespace,
                 arg_keys=arg_keys,
             )
-            return error
+            return validation_error
         upstream_name = self._upstream_names.by_tool_id.get(tool_id, hydrated.item.name)
         try:
             raw = await self._upstream.call_tool(upstream_name, args)
         except Exception as exc:  # noqa: BLE001
+            code, retryable = classify_upstream_exception(exc)
+            # Full, unredacted detail goes to the operator-side log only; the
+            # model-visible message is classified, length-capped, and stripped
+            # of control characters (issue #485).
+            logger.warning(
+                "proxy_runtime: upstream call for %s failed [%s]: %r", tool_id, code, exc
+            )
             error = GatewayError(
-                code="UPSTREAM_ERROR",
-                message=f"upstream call failed: {exc}",
+                code=code,
+                message=f"upstream call failed: {redact_upstream_detail(str(exc))}",
                 path=tool_id,
+                retryable=retryable,
             )
             self._telemetry.execute_failed(
                 tool_id,
@@ -604,6 +729,10 @@ class ProxyRuntime:
                 )
             envelope.artifacts.append(text_ref)
         envelope.provenance.setdefault("tool_id", tool_id)
+        if repairs:
+            # Surface every applied normalization so the behaviour is auditable
+            # in the result metadata and downstream traces (issue #488).
+            envelope.provenance["arg_repairs"] = [repair.to_dict() for repair in repairs]
         if self._cache_stable:
             self._browsed_tool_ids.add(tool_id)
         self._telemetry.execute_completed(
@@ -674,16 +803,39 @@ class ProxyRuntime:
             )
         return out
 
+    def _validate_args(
+        self,
+        tool_id: str,
+        args: object,
+        schema: dict[str, Any],
+    ) -> GatewayError | None:
+        """Validate *args* against *tool_id*'s schema; ``None`` on success.
 
-def _validate_args(
-    args: dict[str, Any],
-    schema: dict[str, Any],
-) -> jsonschema.exceptions.ValidationError | None:
-    """Validate *args* against *schema*; return ``None`` on success."""
-    if not schema:
+        Compiles the schema's validator once and caches it by ``tool_id`` so the
+        hot execute path skips recompilation (issue #484).  An upstream schema
+        that fails meta-validation maps to ``SCHEMA_INVALID`` (#484); an
+        argument that fails the schema maps to ``ARGS_INVALID`` (§4.4).
+        """
+        if not schema:
+            return None
+        validator = self._validator_cache.get(tool_id)
+        if validator is None:
+            try:
+                validator = build_validator(schema)
+            except jsonschema.exceptions.SchemaError as exc:
+                return GatewayError(
+                    code="SCHEMA_INVALID",
+                    message=redact_upstream_detail(str(exc)),
+                    path=tool_id,
+                )
+            self._validator_cache[tool_id] = validator
+        try:
+            validator.validate(args)
+        except jsonschema.exceptions.ValidationError as exc:
+            return GatewayError(
+                code="ARGS_INVALID",
+                message=exc.message,
+                path=tool_id,
+                details={"path": list(exc.path)},
+            )
         return None
-    try:
-        jsonschema.validate(instance=args, schema=schema)
-        return None
-    except jsonschema.exceptions.ValidationError as exc:
-        return exc

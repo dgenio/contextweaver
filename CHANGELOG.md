@@ -28,6 +28,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raise a label, never lower it. Every raise records
   `metadata["sensitivity_raised_by"]` (the classifier's type name) so the
   decision is auditable.
+- **Gateway untrusted-input hardening (#464, #484, #485, #488).** The
+  proxy/gateway ingest, validation, and dispatch boundary now defends against
+  malformed or hostile upstream input:
+  - **Defensive tool-def registration (#464).** A malformed upstream tool
+    definition (non-dict, or missing a non-empty string `name`) no longer
+    aborts catalog refresh; the offending tool is skipped and recorded on the
+    new `ProxyRuntime.last_refresh_report` (`CatalogRefreshReport`). A new
+    `on_invalid="raise"` mode fails loudly for development catalogs.
+  - **Untrusted-schema validation + validator caching (#484).** Upstream
+    `inputSchema`/`outputSchema` are meta-validated (`check_schema`) and bounded
+    for serialized size, nesting depth, and property count (configurable via
+    `SchemaLimits`) at ingest, surfacing `SchemaFinding`s on the refresh report.
+    Compiled `jsonschema` validators are cached per `tool_id`, removing
+    per-call recompilation from the hot `tool_execute` path. A malformed schema
+    surfaces as the new `SCHEMA_INVALID` error code.
+  - **Structured upstream-error taxonomy (#485).** `GatewayError` gains a
+    `retryable` hint and the codes `UPSTREAM_TIMEOUT`, `UPSTREAM_UNAVAILABLE`,
+    `AUTH_FAILED`, `PERMISSION_DENIED`, and `RATE_LIMITED`
+    (`classify_upstream_exception`), with `UPSTREAM_ERROR` kept as the fallback.
+    Model-visible upstream detail is now control-character-stripped and
+    length-capped (`redact_upstream_detail`); operators keep full detail via
+    logging.
+  - **Opt-in tolerant argument normalization (#488).**
+    `ProxyRuntime(tolerant_args=True)` runs a deterministic, rule-based repair
+    pass (`normalize_args`) before strict validation — stringified JSON objects
+    and string→`int`/`number`/`boolean`/`null` coercions, only when the schema
+    type demands it. Off by default (byte-identical behaviour); every repair is
+    recorded under the result envelope's `provenance["arg_repairs"]`.
 
 ### Changed
 
