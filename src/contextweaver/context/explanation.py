@@ -64,9 +64,10 @@ class CandidateExplanation:
             (``None`` for candidates dropped before scoring).
         included: ``True`` when the candidate landed in the final pack.
         drop_reason: Empty when ``included`` is ``True``. Otherwise the
-            recorded exclusion reason, typically ``"sensitivity"``,
-            ``"dedup"``, ``"kind_limit"``, or ``"budget"``. Older payloads
-            can also surface the legacy fallback ``"selection"``.
+            recorded exclusion reason. Common values include
+            ``"sensitivity"``, ``"dedup"``, ``"kind_limit"``, and
+            ``"budget"``; older payloads can also surface the
+            legacy-only fallback ``"selection"``.
         dependency_closure: ``True`` when the candidate was pulled in
             by the dependency-closure stage rather than the phase
             filter — i.e. it scored lower than the cutoff but the
