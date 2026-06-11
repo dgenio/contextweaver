@@ -249,12 +249,20 @@ def _classify_items(
     keeping the no-op case allocation-free.  The pipeline takes the maximum of
     the classifier's result and the item's current label as a safety net so a
     misbehaving classifier can never weaken enforcement.
+
+    Every raise records ``metadata["sensitivity_raised_by"]`` (the classifier's
+    type name) so the decision is auditable (issue #542 acceptance criterion):
+    enforcement can later show *why* an item carried a higher label than the
+    caller supplied.
     """
+    raised_by = type(classifier).__name__
     out: list[ContextItem] = []
     for item in items:
         level = classifier.classify(item)
         if _SENSITIVITY_ORDER[level] > _SENSITIVITY_ORDER[item.sensitivity]:
-            out.append(replace(item, sensitivity=level))
+            metadata = dict(item.metadata)
+            metadata["sensitivity_raised_by"] = raised_by
+            out.append(replace(item, sensitivity=level, metadata=metadata))
         else:
             out.append(item)
     return out

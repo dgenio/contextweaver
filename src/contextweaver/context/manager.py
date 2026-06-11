@@ -261,6 +261,10 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         Raises:
             ArtifactNotFoundError: If *handle* is not in the store.
             ContextWeaverError: If the selector type is unknown.
+            PolicyViolationError: If the artifact's source item meets the
+                sensitivity floor (or was redacted) and
+                :attr:`~contextweaver.config.ContextPolicy.allow_redacted_drilldown`
+                is ``False`` (issue #451).
         """
         return _ingest.drilldown(
             artifact_store=self._artifact_store,
@@ -270,6 +274,7 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
             selector=selector,
             inject=inject,
             parent_id=parent_id,
+            policy=self._policy,
         )
 
     def drilldown_sync(

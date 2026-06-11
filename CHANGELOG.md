@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   credentials/PII) no longer defaults silently to `public`. Wired via
   `ContextManager(sensitivity_classifier=...)`; runs at the start of the
   sensitivity stage and over fact/episode header content. A classifier may only
-  raise a label, never lower it.
+  raise a label, never lower it. Every raise records
+  `metadata["sensitivity_raised_by"]` (the classifier's type name) so the
+  decision is auditable.
 
 ### Changed
 
@@ -40,7 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Redaction is effective end-to-end (#451).** A redacted item now drops its
   `artifact_ref` and is stamped `metadata["redacted"]=True`, so the rendered
   prompt no longer advertises an artifact handle that `drilldown` could
-  dereference back to the original, pre-redaction bytes.
+  dereference back to the original, pre-redaction bytes. `drilldown` is now also
+  policy-aware: a drilldown whose source item meets the sensitivity floor (or was
+  redacted) raises `PolicyViolationError` unless the new
+  `ContextPolicy.allow_redacted_drilldown=True` opt-out (default `False`, closed)
+  is set, and an injected drilldown slice inherits its source item's sensitivity
+  instead of defaulting to `public` — so filtered content cannot be laundered back
+  in via the drilldown path.
 - **`deterministic=True` now also gates LLM-backed extractors (#461).** The
   firewall's fail-closed determinism guarantee previously covered only the
   summarizer; an LLM-backed `Extractor` (e.g. `LlmExtractor`) would still run.

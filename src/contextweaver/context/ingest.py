@@ -12,10 +12,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+from contextweaver.config import ContextPolicy
 from contextweaver.context.firewall import _extractor_is_llm, apply_firewall
+from contextweaver.context.sensitivity import _SENSITIVITY_ORDER
 from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import FirewallStats, ResultEnvelope
-from contextweaver.exceptions import DeterminismError
+from contextweaver.exceptions import DeterminismError, PolicyViolationError
 from contextweaver.protocols import (
     ArtifactStore,
     EventHook,
@@ -27,7 +29,7 @@ from contextweaver.protocols import (
 from contextweaver.secrets import scrub_secrets, scrub_secrets_in_list
 from contextweaver.summarize.structured import StructuredFirewall
 from contextweaver.tokens import count as count_tokens
-from contextweaver.types import ArtifactRef, ContextItem, ItemKind
+from contextweaver.types import ArtifactRef, ContextItem, ItemKind, Sensitivity
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,21 @@ def ingest_item(event_log: EventLog, item: ContextItem) -> None:
     """Append *item* to *event_log* and emit a debug log line."""
     event_log.append(item)
     logger.debug("ingest: item_id=%s, kind=%s", item.id, item.kind.value)
+
+
+def _find_source_item(event_log: EventLog, handle: str) -> ContextItem | None:
+    """Return the event-log item that owns artifact *handle*, or ``None`` (issue #451).
+
+    Used to recover the sensitivity of the item a drilldown handle came from so
+    redaction/drop cannot be bypassed by re-fetching the raw bytes, and so an
+    injected slice inherits the source's label instead of defaulting to
+    ``public``.  The lookup is a deterministic linear scan; the first owner wins.
+    """
+    for item in event_log.all():
+        ref = item.artifact_ref
+        if ref is not None and ref.handle == handle:
+            return item
+    return None
 
 
 def drilldown(
@@ -47,12 +64,39 @@ def drilldown(
     selector: dict[str, Any],
     inject: bool = False,
     parent_id: str | None = None,
+    policy: ContextPolicy | None = None,
 ) -> str:
     """Fetch a slice of a stored artifact, optionally injecting it (issue #101).
 
     Implements :meth:`ContextManager.drilldown`; when *inject* is ``True`` the
     slice is appended to *event_log* as a ``tool_result`` for later builds.
+
+    Redaction is enforced end-to-end (issue #451): when *policy* is supplied and
+    the artifact's source item meets the sensitivity floor (or was already
+    redacted), the drilldown is denied with
+    :class:`~contextweaver.exceptions.PolicyViolationError` unless
+    :attr:`~contextweaver.config.ContextPolicy.allow_redacted_drilldown` is set.
+    This closes the bypass where the raw, pre-redaction bytes could be re-fetched
+    and re-injected.  An injected slice inherits the source item's sensitivity so
+    it cannot launder content back in as ``public``; an unknown handle (no
+    matching source) is treated as ``public`` and is never over-blocked.
     """
+    source = _find_source_item(event_log, handle)
+    source_sensitivity = source.sensitivity if source is not None else Sensitivity.public
+
+    if policy is not None and source is not None and not policy.allow_redacted_drilldown:
+        meets_floor = (
+            _SENSITIVITY_ORDER[source_sensitivity] >= _SENSITIVITY_ORDER[policy.sensitivity_floor]
+        )
+        if meets_floor or source.metadata.get("redacted"):
+            raise PolicyViolationError(
+                f"drilldown on {handle!r} is denied: its source item is "
+                f"{source_sensitivity.value} (>= floor "
+                f"{policy.sensitivity_floor.value}) or redacted. Set "
+                f"ContextPolicy.allow_redacted_drilldown=True to permit recovering "
+                f"filtered content."
+            )
+
     result = artifact_store.drilldown(handle, selector)
     if inject:
         sel_type = selector.get("type", "unknown")
@@ -65,6 +109,7 @@ def drilldown(
                 token_estimate=estimator.estimate(result),
                 metadata={"drilldown_handle": handle, "selector": selector},
                 parent_id=parent_id,
+                sensitivity=source_sensitivity,
             )
         )
     return result

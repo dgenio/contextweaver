@@ -504,3 +504,36 @@ def test_cache_stable_browse_propagates_gateway_errors() -> None:
     err = runtime.browse()
     assert isinstance(err, GatewayError)
     assert err.code == "ARGS_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# Secret-scrub coverage warning (issue #428 / #451 audit follow-up)
+# ---------------------------------------------------------------------------
+
+
+def test_proxy_warns_when_supplied_manager_does_not_scrub(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A supplied manager without redact_secrets yields partial scrub — warn."""
+    import logging
+
+    from contextweaver.context.manager import ContextManager
+
+    mgr = ContextManager()  # redact_secrets defaults to False
+    with caplog.at_level(logging.WARNING, logger="contextweaver.adapters.proxy_runtime"):
+        ProxyRuntime(StubUpstream(_tool_defs()), context_manager=mgr, redact_secrets=True)
+    assert any("firewall summaries will not" in r.message for r in caplog.records)
+
+
+def test_proxy_no_warn_when_supplied_manager_scrubs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A manager built with redact_secrets=True gives full coverage — no warning."""
+    import logging
+
+    from contextweaver.context.manager import ContextManager
+
+    mgr = ContextManager(redact_secrets=True)
+    with caplog.at_level(logging.WARNING, logger="contextweaver.adapters.proxy_runtime"):
+        ProxyRuntime(StubUpstream(_tool_defs()), context_manager=mgr, redact_secrets=True)
+    assert not any("firewall summaries will not" in r.message for r in caplog.records)

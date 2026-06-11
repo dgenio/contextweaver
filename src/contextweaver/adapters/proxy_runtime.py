@@ -175,7 +175,19 @@ class ProxyRuntime:
         self._mode = mode
         # Issue #428 — when secret redaction is requested and no manager is
         # supplied, the default manager inherits it so the gateway's firewalled
-        # tool results are scrubbed alongside its ChoiceCards.
+        # tool results are scrubbed alongside its ChoiceCards.  A *caller-supplied*
+        # manager is never mutated; if it was not itself built with
+        # ``redact_secrets=True`` the gateway still scrubs ChoiceCards but the
+        # firewall summaries are not scrubbed — warn so the partial coverage is
+        # explicit rather than silent.
+        if context_manager is not None and redact_secrets and not context_manager._redact_secrets:
+            logger.warning(
+                "ProxyRuntime(redact_secrets=True) with a caller-supplied "
+                "context_manager that has redact_secrets=False: ChoiceCard text "
+                "will be scrubbed but firewall summaries will not. Construct the "
+                "manager with ContextManager(redact_secrets=True) for end-to-end "
+                "scrubbing."
+            )
         self._context_manager = context_manager or ContextManager(redact_secrets=redact_secrets)
         self._tree_builder = tree_builder or TreeBuilder()
         self._beam_width = beam_width

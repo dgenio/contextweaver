@@ -9,7 +9,12 @@ import pytest
 from contextweaver.config import ContextBudget, ContextPolicy
 from contextweaver.context.classify import HeuristicSensitivityClassifier
 from contextweaver.context.manager import ContextManager
-from contextweaver.exceptions import ContextWeaverError, DuplicateItemError, ItemNotFoundError
+from contextweaver.exceptions import (
+    ContextWeaverError,
+    DuplicateItemError,
+    ItemNotFoundError,
+    PolicyViolationError,
+)
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
@@ -1124,6 +1129,109 @@ def test_drilldown_unknown_selector_raises() -> None:
     handle = env.artifacts[0].handle
     with pytest.raises(ContextWeaverError, match="Unknown drilldown"):
         mgr.drilldown(handle, {"type": "unknown_type"})
+
+
+# ---------------------------------------------------------------------------
+# Drilldown redaction enforcement (issue #451)
+# ---------------------------------------------------------------------------
+
+
+def _seed_sensitive_artifact(
+    mgr: ContextManager, handle: str, content: str, sensitivity: Sensitivity
+) -> None:
+    """Store *content* under *handle* with a source event-log item at *sensitivity*."""
+    ref = mgr.artifact_store.put(handle, content.encode("utf-8"), media_type="text/plain")
+    mgr.event_log.append(
+        ContextItem(
+            id=f"src:{handle}",
+            kind=ItemKind.tool_result,
+            text="summary",
+            artifact_ref=ref,
+            sensitivity=sensitivity,
+        )
+    )
+
+
+def test_drilldown_denied_for_confidential_source_by_default() -> None:
+    """drilldown() on a source item that meets the floor is denied (closed default)."""
+    mgr = ContextManager()
+    _seed_sensitive_artifact(
+        mgr, "artifact:secret-1", "TOP SECRET payload", Sensitivity.confidential
+    )
+    with pytest.raises(PolicyViolationError, match="denied"):
+        mgr.drilldown("artifact:secret-1", {"type": "head", "chars": 10})
+
+
+def test_drilldown_allowed_for_public_source() -> None:
+    """A non-sensitive source is never over-blocked."""
+    mgr = ContextManager()
+    _seed_sensitive_artifact(mgr, "artifact:ok-1", "plain text", Sensitivity.public)
+    assert mgr.drilldown("artifact:ok-1", {"type": "head", "chars": 5}) == "plain"
+
+
+def test_drilldown_allowed_for_confidential_source_with_optout() -> None:
+    """The documented opt-out re-enables recovery of filtered content."""
+    mgr = ContextManager(policy=ContextPolicy(allow_redacted_drilldown=True))
+    _seed_sensitive_artifact(mgr, "artifact:secret-2", "TOP SECRET", Sensitivity.confidential)
+    assert mgr.drilldown("artifact:secret-2", {"type": "head", "chars": 3}) == "TOP"
+
+
+def test_drilldown_inject_inherits_source_sensitivity() -> None:
+    """An injected slice inherits the source label, not the default public."""
+    mgr = ContextManager(policy=ContextPolicy(allow_redacted_drilldown=True))
+    _seed_sensitive_artifact(mgr, "artifact:secret-3", "alpha\nbeta\ngamma", Sensitivity.restricted)
+    count = mgr.event_log.count()
+    mgr.drilldown("artifact:secret-3", {"type": "lines", "start": 0, "end": 1}, inject=True)
+    injected = mgr.event_log.get(f"drilldown:artifact:secret-3:lines:{count}")
+    assert injected.sensitivity == Sensitivity.restricted
+
+
+def test_drilldown_unknown_handle_not_over_blocked() -> None:
+    """A handle with no matching source item is treated as public (injects as public)."""
+    mgr = ContextManager()
+    ref = mgr.artifact_store.put("artifact:orphan", b"orphan body", media_type="text/plain")
+    assert ref.handle == "artifact:orphan"
+    count = mgr.event_log.count()
+    mgr.drilldown("artifact:orphan", {"type": "head", "chars": 6}, inject=True)
+    injected = mgr.event_log.get(f"drilldown:artifact:orphan:head:{count}")
+    assert injected.sensitivity == Sensitivity.public
+
+
+# ---------------------------------------------------------------------------
+# Classifier audit metadata (issue #542)
+# ---------------------------------------------------------------------------
+
+
+class _AlwaysInternal:
+    """Test classifier that always votes ``internal``."""
+
+    def classify(self, item: ContextItem) -> Sensitivity:
+        _ = item
+        return Sensitivity.internal
+
+
+def test_classify_items_records_audit_metadata() -> None:
+    """A raised label records metadata["sensitivity_raised_by"] (issue #542 AC)."""
+    from contextweaver.context.build import _classify_items
+
+    items = [
+        ContextItem(id="a", kind=ItemKind.tool_result, text="x", sensitivity=Sensitivity.public)
+    ]
+    out = _classify_items(items, _AlwaysInternal())
+    assert out[0].sensitivity == Sensitivity.internal
+    assert out[0].metadata["sensitivity_raised_by"] == "_AlwaysInternal"
+
+
+def test_classify_items_no_metadata_when_label_not_raised() -> None:
+    """No audit metadata is written when the classifier does not raise the label."""
+    from contextweaver.context.build import _classify_items
+
+    items = [
+        ContextItem(id="a", kind=ItemKind.tool_result, text="x", sensitivity=Sensitivity.restricted)
+    ]
+    out = _classify_items(items, _AlwaysInternal())
+    assert out[0].sensitivity == Sensitivity.restricted
+    assert "sensitivity_raised_by" not in out[0].metadata
 
 
 # ---------------------------------------------------------------------------
