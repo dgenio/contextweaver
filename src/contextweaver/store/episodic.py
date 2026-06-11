@@ -13,6 +13,7 @@ from typing import Any
 
 from contextweaver._utils import TfIdfScorer, jaccard, tokenize
 from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.types import Sensitivity
 
 logger = logging.getLogger("contextweaver.store")
 
@@ -21,12 +22,20 @@ logger = logging.getLogger("contextweaver.store")
 
 @dataclass
 class Episode:
-    """A single episodic memory entry."""
+    """A single episodic memory entry.
+
+    ``sensitivity`` (issue #450) lets episode summaries be routed through the
+    same sensitivity floor and phase-policy enforcement as pipeline items when
+    they are injected into the prompt header; it defaults to
+    :attr:`~contextweaver.types.Sensitivity.public` so existing episodes
+    round-trip unchanged.
+    """
 
     episode_id: str
     summary: str
     tags: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    sensitivity: Sensitivity = Sensitivity.public
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -35,6 +44,7 @@ class Episode:
             "summary": self.summary,
             "tags": list(self.tags),
             "metadata": dict(self.metadata),
+            "sensitivity": self.sensitivity.value,
         }
 
     @classmethod
@@ -45,6 +55,7 @@ class Episode:
             summary=data["summary"],
             tags=list(data.get("tags", [])),
             metadata=dict(data.get("metadata", {})),
+            sensitivity=Sensitivity(data.get("sensitivity", Sensitivity.public.value)),
         )
 
 

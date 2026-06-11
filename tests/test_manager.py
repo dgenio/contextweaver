@@ -7,6 +7,7 @@ import json
 import pytest
 
 from contextweaver.config import ContextBudget, ContextPolicy
+from contextweaver.context.classify import HeuristicSensitivityClassifier
 from contextweaver.context.manager import ContextManager
 from contextweaver.exceptions import ContextWeaverError, DuplicateItemError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
@@ -1232,3 +1233,92 @@ def test_profile_with_seeded_mode() -> None:
     profile = ProfileConfig(mode=Mode.seeded, seed=42)
     mgr = ContextManager(profile=profile)
     assert mgr.mode == Mode.seeded
+
+
+# ------------------------------------------------------------------
+# Header memory routed through sensitivity + phase policy (issue #450)
+# ------------------------------------------------------------------
+
+
+def test_header_facts_dropped_by_sensitivity_floor() -> None:
+    mgr = ContextManager()  # default floor confidential, action drop
+    mgr.add_fact("public_key", "public_value")
+    mgr.add_fact("secret_key", "secret_value", sensitivity=Sensitivity.restricted)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "public_value" in prompt
+    assert "secret_value" not in prompt
+
+
+def test_header_facts_redacted_when_action_redact() -> None:
+    policy = ContextPolicy(sensitivity_floor=Sensitivity.confidential, sensitivity_action="redact")
+    mgr = ContextManager(policy=policy)
+    mgr.add_fact("secret_key", "secret_value", sensitivity=Sensitivity.confidential)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "secret_value" not in prompt
+    assert "[REDACTED: confidential]" in prompt
+
+
+def test_header_facts_excluded_in_phase_without_memory_fact() -> None:
+    """A phase that excludes memory_fact must not receive fact text via the
+    header side-channel (issue #450)."""
+    mgr = ContextManager()
+    mgr.add_fact("k", "v")
+    assert "[FACTS]" in mgr.build_sync(phase=Phase.answer).prompt  # answer allows memory_fact
+    assert "[FACTS]" not in mgr.build_sync(phase=Phase.call).prompt  # call does not
+
+
+def test_header_episode_dropped_by_sensitivity() -> None:
+    mgr = ContextManager()
+    mgr.add_episode("e1", "benign summary")
+    mgr.add_episode("e2", "leaked secret summary", sensitivity=Sensitivity.restricted)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "benign summary" in prompt
+    assert "leaked secret summary" not in prompt
+
+
+# ------------------------------------------------------------------
+# Ingestion sensitivity classification (issue #542)
+# ------------------------------------------------------------------
+
+
+def _secret_log() -> InMemoryEventLog:
+    log = InMemoryEventLog()
+    log.append(
+        ContextItem(id="t1", kind=ItemKind.tool_result, text="leak key=AKIAIOSFODNN7EXAMPLE")
+    )
+    return log
+
+
+def test_unlabeled_secret_item_survives_without_classifier() -> None:
+    prompt = ContextManager(event_log=_secret_log()).build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" in prompt
+
+
+def test_classifier_raises_and_drops_unlabeled_secret_item() -> None:
+    mgr = ContextManager(
+        event_log=_secret_log(), sensitivity_classifier=HeuristicSensitivityClassifier()
+    )
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" not in prompt
+
+
+def test_classifier_applies_to_header_facts() -> None:
+    mgr = ContextManager(sensitivity_classifier=HeuristicSensitivityClassifier())
+    mgr.add_fact("creds", "key=AKIAIOSFODNN7EXAMPLE")
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" not in prompt
+
+
+# ------------------------------------------------------------------
+# Manager-level firewall secret scrubbing (issue #428)
+# ------------------------------------------------------------------
+
+
+def test_manager_redact_secrets_scrubs_built_prompt() -> None:
+    log = InMemoryEventLog()
+    log.append(
+        ContextItem(id="t1", kind=ItemKind.tool_result, text="config key=AKIAIOSFODNN7EXAMPLE")
+    )
+    mgr = ContextManager(event_log=log, redact_secrets=True)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" not in prompt

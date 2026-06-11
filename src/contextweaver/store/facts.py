@@ -11,19 +11,28 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contextweaver.exceptions import ItemNotFoundError
+from contextweaver.types import Sensitivity
 
 logger = logging.getLogger("contextweaver.store")
 
 
 @dataclass
 class Fact:
-    """A single memory fact."""
+    """A single memory fact.
+
+    ``sensitivity`` (issue #450) lets fact content be routed through the same
+    sensitivity floor and phase-policy enforcement as pipeline items when it is
+    injected into the prompt header; it defaults to
+    :attr:`~contextweaver.types.Sensitivity.public` so existing facts round-trip
+    unchanged.
+    """
 
     fact_id: str
     key: str
     value: str
     tags: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    sensitivity: Sensitivity = Sensitivity.public
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -33,6 +42,7 @@ class Fact:
             "value": self.value,
             "tags": list(self.tags),
             "metadata": dict(self.metadata),
+            "sensitivity": self.sensitivity.value,
         }
 
     @classmethod
@@ -44,6 +54,7 @@ class Fact:
             value=data["value"],
             tags=list(data.get("tags", [])),
             metadata=dict(data.get("metadata", {})),
+            sensitivity=Sensitivity(data.get("sensitivity", Sensitivity.public.value)),
         )
 
 

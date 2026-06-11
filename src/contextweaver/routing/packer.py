@@ -12,7 +12,7 @@ A *budget_tokens* hint controls the cumulative number of cards returned
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.tokens import heuristic_counter
@@ -73,7 +73,10 @@ class DefaultCardPacker:
         budget_tokens: int | None = None,
     ) -> list[ChoiceCard]:
         """Render *items* as :class:`ChoiceCard` and apply *budget_tokens* soft cap."""
-        kwargs: dict[str, int] = {"max_cards": self._max_cards}
+        # ``Any`` (not ``int``): ``make_choice_cards`` mixes int tuning knobs with
+        # the bool ``redact_secrets`` flag, so a narrower value type would make the
+        # ``**kwargs`` unpack ill-typed.
+        kwargs: dict[str, Any] = {"max_cards": self._max_cards}
         if self._target_tokens_per_card is not None:
             kwargs["target_tokens_per_card"] = self._target_tokens_per_card
         if self._hard_cap_tokens_per_card is not None:

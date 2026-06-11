@@ -12,9 +12,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
-from contextweaver.context.firewall import apply_firewall
+from contextweaver.context.firewall import _extractor_is_llm, apply_firewall
 from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import FirewallStats, ResultEnvelope
+from contextweaver.exceptions import DeterminismError
 from contextweaver.protocols import (
     ArtifactStore,
     EventHook,
@@ -23,6 +24,7 @@ from contextweaver.protocols import (
     Summarizer,
     TokenEstimator,
 )
+from contextweaver.secrets import scrub_secrets, scrub_secrets_in_list
 from contextweaver.summarize.structured import StructuredFirewall
 from contextweaver.tokens import count as count_tokens
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind
@@ -121,6 +123,7 @@ def ingest_tool_result(
     media_type: str = "text/plain",
     firewall_threshold: int = 2000,
     deterministic: bool = False,
+    redact_secrets: bool = False,
     firewall: StructuredFirewall | None = None,
 ) -> tuple[ContextItem, ResultEnvelope]:
     """Ingest a raw tool result via :meth:`ContextManager.ingest_tool_result` logic."""
@@ -144,6 +147,7 @@ def ingest_tool_result(
             deterministic=deterministic,
             keep=firewall.keep if firewall is not None else None,
             threshold_chars=firewall_threshold,
+            redact_secrets=redact_secrets,
         )
         if envelope is None:
             # Shouldn't happen for tool_result items, but be safe
@@ -159,6 +163,16 @@ def ingest_tool_result(
     # Small output: extract facts and store in artifact store to enable drilldown
     from contextweaver.summarize.extract import extract_facts
 
+    # Issue #461 — the deterministic guarantee must hold on the small-output
+    # path too: an LLM-backed extractor would otherwise route this result
+    # through a model even though no firewall summarisation fires here.
+    if deterministic and _extractor_is_llm(extractor):
+        raise DeterminismError(
+            f"deterministic=True but an LLM-backed extractor would process item "
+            f"{item.id!r}; refusing to pass data through a model. Supply a "
+            f"rule-based extractor instead."
+        )
+
     status: Literal["ok", "partial"] = "ok"
     try:
         facts = (
@@ -169,6 +183,15 @@ def ingest_tool_result(
     except Exception:  # noqa: BLE001
         facts = []
         status = "partial"
+    # Issue #428 — for a sub-threshold result the raw text *is* the prompt-bound
+    # surface (the firewall does not fire), so scrub the summary, facts, and the
+    # item text itself.  The out-of-band raw artifact below is left intact.
+    summary_text = raw_output
+    item_text = item.text
+    if redact_secrets:
+        summary_text = scrub_secrets(summary_text)
+        facts = scrub_secrets_in_list(facts)
+        item_text = scrub_secrets(item_text)
     # For small outputs, store in artifact store to enable drilldown
     raw_bytes = raw_output.encode("utf-8")
     handle = f"artifact:{item.id}"
@@ -179,10 +202,10 @@ def ingest_tool_result(
         label=f"raw tool result for {item.id}",
     )
     views = generate_views(ref, raw_bytes, registry=view_registry)
-    _tokens = count_tokens(raw_output)
+    _tokens = count_tokens(summary_text)
     envelope = ResultEnvelope(
         status=status,
-        summary=raw_output,
+        summary=summary_text,
         facts=facts,
         artifacts=[ref],
         views=views,
@@ -193,7 +216,7 @@ def ingest_tool_result(
             threshold_chars=firewall_threshold,
             original_chars=len(raw_output),
             original_tokens=_tokens,
-            summary_chars=len(raw_output),
+            summary_chars=len(summary_text),
             summary_tokens=_tokens,
             artifact_ref=ref.handle,
         ),
@@ -201,8 +224,8 @@ def ingest_tool_result(
     item = ContextItem(
         id=item.id,
         kind=item.kind,
-        text=item.text,
-        token_estimate=item.token_estimate,
+        text=item_text,
+        token_estimate=estimator.estimate(item_text) if redact_secrets else item.token_estimate,
         metadata=dict(item.metadata),
         parent_id=item.parent_id,
         artifact_ref=ref,
@@ -229,6 +252,7 @@ def ingest_mcp_result(
     tool_name: str,
     firewall_threshold: int = 2000,
     deterministic: bool = False,
+    redact_secrets: bool = False,
     firewall: StructuredFirewall | None = None,
     view_registry: ViewRegistry | None = None,
 ) -> tuple[ContextItem, ResultEnvelope]:
@@ -276,6 +300,7 @@ def ingest_mcp_result(
             deterministic=deterministic,
             keep=firewall.keep if firewall is not None else None,
             threshold_chars=firewall_threshold,
+            redact_secrets=redact_secrets,
         )
         if fw_envelope is not None:
             # Merge: keep MCP artifacts, use firewall summary/facts, preserve views

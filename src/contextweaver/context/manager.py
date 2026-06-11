@@ -42,6 +42,7 @@ from contextweaver.protocols import (
     FactStore,
     HeuristicEstimator,
     NoOpHook,
+    SensitivityClassifier,
     Summarizer,
     TokenEstimator,
 )
@@ -98,6 +99,18 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
             default rule-based and structured firewall paths are unaffected.
             Suitable for regulated/financial workloads that must guarantee no
             model touched the data.
+        sensitivity_classifier: Keyword-only.  Optional
+            :class:`~contextweaver.protocols.SensitivityClassifier` (issue #542)
+            applied at the start of the sensitivity stage and to fact/episode
+            header content.  It may only *raise* an item's label, never lower it,
+            so unlabelled content (e.g. tool results carrying credentials) is
+            enforced instead of silently defaulting to ``public``.  ``None``
+            (default) disables classification.  See
+            :class:`~contextweaver.context.classify.HeuristicSensitivityClassifier`.
+        redact_secrets: Keyword-only.  When ``True`` (issue #428) the firewall
+            runs a deterministic secret-scrubbing pass over summaries and
+            extracted facts before they reach the prompt.  Off by default;
+            tightens the sensitivity model without weakening any default.
     """
 
     def __init__(
@@ -116,6 +129,8 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         metrics: MetricsCollector | None = None,
         profile: ProfileConfig | None = None,
         deterministic: bool = False,
+        sensitivity_classifier: SensitivityClassifier | None = None,
+        redact_secrets: bool = False,
     ) -> None:
         _stores = stores or StoreBundle()
         self._event_log: EventLog = event_log or _stores.event_log or InMemoryEventLog()
@@ -141,6 +156,8 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         self._profile: ProfileConfig | None = profile
         self._mode: Mode = profile.mode if profile is not None else Mode.strict
         self._deterministic: bool = deterministic
+        self._sensitivity_classifier: SensitivityClassifier | None = sensitivity_classifier
+        self._redact_secrets: bool = redact_secrets
         # Seeded lazily on first add_fact from existing IDs (issue #462), so a
         # pre-populated/persistent fact store does not collide with a counter
         # restarting at 0 across process restarts.

@@ -25,10 +25,11 @@ It prepares context and routes tools but never calls models or executes tools.
 | `inspection.py` | Pure JSON/Markdown report construction for offline context, routing, and artifact inspection without raw payload content (issue #398). |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
-| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`). Bundled estimators: `HeuristicEstimator` (default, script-aware, dependency-free — counts CJK/Kana/Hangul/emoji ≈1 token/char, issue #525), `CharDivFourEstimator` (raw `len // 4` primitive), `TiktokenEstimator` (exact, falls back to `HeuristicEstimator` offline). Each carries a stable `name` for `BuildStats.token_estimator`. |
+| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `SensitivityClassifier` (ingestion-time labelling, issue #542), `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`). Bundled estimators: `HeuristicEstimator` (default, script-aware, dependency-free — counts CJK/Kana/Hangul/emoji ≈1 token/char, issue #525), `CharDivFourEstimator` (raw `len // 4` primitive), `TiktokenEstimator` (exact, falls back to `HeuristicEstimator` offline). Each carries a stable `name` for `BuildStats.token_estimator`. |
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
 | `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
+| `secrets.py` | Pure, deterministic secret detection/scrubbing primitives: `scrub_secrets()`, `scrub_secrets_in_list()`, `contains_secret()`, `SecretPattern` (issue #428). Shared by the firewall secret-scrub, the `SecretRedactor` hook, the sensitivity classifier, and ChoiceCard scrubbing. No I/O; never weakens a surface (only removes characters). |
 | `_version.py` | Single-source version derived from `importlib.metadata`; fallback `"0.0.0+local"` |
 | `_demos.py` | Demo logic for the CLI `demo` subcommand (exempt from `print()` rule) |
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` |
@@ -51,6 +52,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `context/handoff_types.py` | `HandoffEntry` + `SessionHandoffPack` dataclasses and canonical handoff category constants (issue #294). |
 | `context/handoff.py` | `build_session_handoff_pack` / `render_handoff_pack` — deterministic, budget-aware, sensitivity- and firewall-respecting session continuity snapshot (issue #294). |
 | `context/explanation.py` | `ContextBuildExplanation` + `CandidateExplanation` opt-in debug surface returned by `ContextManager.build(..., explain=True)` (issue #291). Sister to `routing/explanation.py` on the routing side. |
+| `context/classify.py` | Opt-in deterministic ingestion-time sensitivity classification (issue #542): `HeuristicSensitivityClassifier` (implements the `SensitivityClassifier` protocol) + `detect_sensitivity()`. Runs at the start of the pipeline's sensitivity stage and over fact/episode header content; may only **raise** a label, never lower it. Reuses `secrets.contains_secret` plus PII markers. |
+| `context/secret_redaction.py` | Opt-in `SecretRedactor` `RedactionHook` (issue #428): substring-scrubs secret shapes from an item's text via `secrets.scrub_secrets`. Registered under the name `"secret"` for `ContextPolicy.redaction_hooks`; complements (does not replace) `MaskRedactionHook`. |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
 | `routing/filters.py` | Pre-scoring helpers: `filter_items()`, `augment_query()`, `suggest_clarifying_question()` (issues #14, #22, #112, #116) |
 | `routing/manifest.py` | `GraphManifest` + `compute_catalog_hash()` for graph metadata and cache invalidation (issue #48, #15) |
@@ -242,7 +245,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 
 **`routing/`** — Sync-only. Pure computation (DAG traversal, beam search). Do not make async.
 
-**Sensitivity (`context/sensitivity.py`)** — Security-grade code. Extra review scrutiny required. Never weaken defaults. Treat changes like security-sensitive code.
+**Sensitivity (`context/sensitivity.py`)** — Security-grade code. Extra review scrutiny required. Never weaken defaults. Treat changes like security-sensitive code. Redaction is effective end-to-end: `MaskRedactionHook` drops the item's `artifact_ref` and stamps `metadata["redacted"]=True` so the rendered prompt never advertises a handle that `drilldown` could dereference back to the original (issue #451). Enforcement is also applied on the prompt **header** (facts + episode summaries are routed through the floor and the `memory_fact` phase policy, issue #450) and an opt-in `SensitivityClassifier` may raise labels before enforcement (issue #542).
 
 ## Things That Must Not Be "Simplified"
 

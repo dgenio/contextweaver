@@ -169,14 +169,21 @@ class ProxyRuntime:
         cache_stable: bool = False,
         diagnostic_sink: DiagnosticSink | None = None,
         session_id: str | None = None,
+        redact_secrets: bool = False,
     ) -> None:
         self._upstream = upstream
         self._mode = mode
-        self._context_manager = context_manager or ContextManager()
+        # Issue #428 — when secret redaction is requested and no manager is
+        # supplied, the default manager inherits it so the gateway's firewalled
+        # tool results are scrubbed alongside its ChoiceCards.
+        self._context_manager = context_manager or ContextManager(redact_secrets=redact_secrets)
         self._tree_builder = tree_builder or TreeBuilder()
         self._beam_width = beam_width
         self._top_k = top_k
         self._cache_stable = cache_stable
+        #: When ``True`` the gateway scrubs secret shapes from ChoiceCard text
+        #: (name/description/tags) before they reach the prompt (issue #428).
+        self._redact_secrets = redact_secrets
         self._browsed_tool_ids: set[str] = set()
         # First-sighting frozen card content keyed by ``tool_id``. Used by
         # ``_maybe_cache_stable`` so the byte-stable prefix really is
@@ -348,6 +355,7 @@ class ProxyRuntime:
             result.candidate_items,
             max_cards=effective_top_k,
             scores=scores,
+            redact_secrets=self._redact_secrets,
         )
         return self._maybe_cache_stable(bound_browse_response(cards))
 
@@ -371,7 +379,9 @@ class ProxyRuntime:
         cards: list[ChoiceCard] = []
         for child_id in child_ids:
             try:
-                cards.append(item_to_card(self._catalog.get(child_id)))
+                cards.append(
+                    item_to_card(self._catalog.get(child_id), redact_secrets=self._redact_secrets)
+                )
             except ItemNotFoundError:
                 # Navigation node, not a leaf — synthesise a cluster card.
                 node = self._graph.get_node(child_id)
@@ -642,7 +652,7 @@ class ProxyRuntime:
         """
         out: list[dict[str, Any]] = []
         for item in self._catalog.all():
-            card = item_to_card(item)
+            card = item_to_card(item, redact_secrets=self._redact_secrets)
             out.append(
                 {
                     "name": item.id,

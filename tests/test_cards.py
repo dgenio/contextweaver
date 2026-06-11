@@ -305,3 +305,37 @@ def test_choice_card_score_none_omitted_from_dict() -> None:
     card = ChoiceCard(id="t1", name="t1", description="d", score=None)
     d = card.to_dict()
     assert "score" not in d
+
+
+# ------------------------------------------------------------------
+# Opt-in secret scrubbing of card text (issue #428)
+# ------------------------------------------------------------------
+
+
+def test_item_to_card_redacts_secret_in_description() -> None:
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    item = _item("t1", description=f"Use token {secret} to authenticate")
+    card = item_to_card(item, redact_secrets=True)
+    assert secret not in card.description
+
+
+def test_item_to_card_redact_off_by_default() -> None:
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    item = _item("t1", description=f"Use token {secret}")
+    card = item_to_card(item)
+    assert secret in card.description
+
+
+def test_make_choice_cards_threads_redaction() -> None:
+    secret = "ghp_" + "a" * 36
+    items = [_item("t1", description=f"key {secret}")]
+    cards = make_choice_cards(items, redact_secrets=True)
+    assert secret not in cards[0].description
+
+
+def test_cards_for_route_threads_redaction() -> None:
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    catalog = Catalog()
+    catalog.register(_item("t1", description=f"key {secret}"))
+    cards = cards_for_route(["t1"], catalog, redact_secrets=True)
+    assert cards and secret not in cards[0].description
