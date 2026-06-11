@@ -20,9 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`JsonFileArtifactStore` durability hardening (#497).** Writes are now
   **atomic** (temp file + `os.replace`), so a crash mid-write never leaves a
   truncated artifact; `list_refs()` reads an in-memory handle→ref index built
-  once on construction instead of rescanning the directory on every call; and
-  optional `max_bytes` / `max_artifacts` constructor limits bound disk growth,
-  raising the new `ArtifactStoreQuotaError` when a write would breach them.
+  once on construction instead of rescanning the directory on every call (only
+  self-consistent metadata+data pairs are indexed, so the index never lists a
+  handle `get()` cannot serve); and optional `max_bytes` / `max_artifacts`
+  constructor limits bound disk growth, raising the new `ArtifactStoreQuotaError`
+  when a write would breach them. `put` / `delete` / `list_refs` are serialised
+  by an internal lock, making a single instance safe to share across threads in
+  one process.
 - **`ArtifactStoreQuotaError`** exception (subclass of `ContextWeaverError`),
   exported from the package root.
 - **Documented store thread-safety contract (#458)** in

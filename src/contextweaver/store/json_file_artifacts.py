@@ -7,32 +7,25 @@ paired with a ``{handle}.json`` file (the :class:`~contextweaver.types.ArtifactR
 metadata, JSON-encoded).
 
 Useful when artifacts are large (full API responses, images) and the agent
-wants directly-inspectable files for debugging, backup, or external
-tooling.  Trade-off vs. the SQLite event log: one file per artifact is
-heavier than a single database, but the contents are human-grep-friendly.
+wants directly-inspectable, human-grep-friendly files.
 
-Durability and limits (issue #497):
+Durability and limits (issue #497): writes are **atomic** (temp file +
+:func:`os.replace`, so a crash never leaves a truncated file); an in-memory
+handle -> :class:`ArtifactRef` index is built once on construction and
+maintained on ``put`` / ``delete``, so :meth:`list_refs` never rescans the
+directory; and optional ``max_bytes`` / ``max_artifacts`` quotas raise
+:class:`~contextweaver.exceptions.ArtifactStoreQuotaError`.
 
-- **Atomic writes.**  Each ``.data`` / ``.json`` file is written to a temp
-  file in the same directory and then :func:`os.replace`-d into place, so a
-  crash mid-write never leaves a half-written or truncated file.
-- **In-memory index.**  An in-memory handle -> :class:`ArtifactRef` index is
-  built once on instantiation (one directory scan) and maintained on every
-  ``put`` / ``delete``.  :meth:`list_refs` reads the index, so it no longer
-  rescans the directory on every call.
-- **Size quotas.**  Optional ``max_bytes`` / ``max_artifacts`` bound disk
-  growth; a write that would breach either raises
-  :class:`~contextweaver.exceptions.ArtifactStoreQuotaError`.
-
-Concurrency (issue #458): single process only — no advisory write locking,
-and one instance's in-memory index does not observe another's writes.
+Concurrency (issue #458): single process only. Within one process ``put`` /
+``delete`` / :meth:`list_refs` are serialised by an internal lock, so a shared
+instance is thread-safe; there is no cross-process advisory locking.
 
 Handle safety (issue #466): handles are validated (path separators, ``..``
-traversal, and null bytes are rejected) and then **percent-encoded** into
-filenames, so a handle containing a character that is legal in a handle but
-hostile in a filename — most importantly ``:`` (which opens an NTFS alternate
-data stream on Windows; the firewall emits ``artifact:result:call_1``) — is
-stored safely and portably.  See :mod:`contextweaver.store._json_file_io`.
+traversal, and null bytes rejected) and then **percent-encoded** into
+filenames, so a handle legal as a handle but hostile as a filename — chiefly
+``:`` (which opens an NTFS alternate data stream on Windows; the firewall emits
+``artifact:result:call_1``) — is stored portably. See
+:mod:`contextweaver.store._json_file_io`.
 """
 
 from __future__ import annotations
@@ -40,6 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +41,7 @@ from contextweaver.exceptions import ArtifactNotFoundError, ArtifactStoreQuotaEr
 from contextweaver.store._json_file_io import DATA_SUFFIX as _DATA_SUFFIX
 from contextweaver.store._json_file_io import META_SUFFIX as _META_SUFFIX
 from contextweaver.store._json_file_io import atomic_write as _atomic_write
+from contextweaver.store._json_file_io import consistent_data_size as _consistent_data_size
 from contextweaver.store._json_file_io import encode_handle as _encode_handle
 from contextweaver.store._json_file_io import validate_handle as _validate_handle
 from contextweaver.store.artifacts import _apply_selector
@@ -91,6 +86,9 @@ class JsonFileArtifactStore:
         self._max_artifacts = max_artifacts
         self._index: dict[str, ArtifactRef] = {}
         self._total_bytes = 0
+        # Serialises put/delete/list_refs so a single-process gateway can share
+        # one instance across threads without racing the index/byte counter.
+        self._lock = threading.RLock()
         self._load_index()
         logger.debug(
             "json_file_artifacts.init: base_dir=%s, artifacts=%d, bytes=%d",
@@ -111,9 +109,13 @@ class JsonFileArtifactStore:
     def _load_index(self) -> None:
         """Populate the in-memory index from the metadata files on disk.
 
-        Runs once at construction.  Entries whose JSON does not decode into an
-        :class:`ArtifactRef` are skipped (logged at ``DEBUG``), matching the
-        historical tolerance of :meth:`list_refs`.
+        Runs once at construction.  An entry is indexed only when it is both
+        decodable *and* self-consistent — a valid handle, a metadata filename
+        that matches ``enc(handle).json``, and a present ``.data`` file (see
+        :func:`~contextweaver.store._json_file_io.consistent_data_size`).
+        Orphan or mismatched metadata is skipped (logged at ``DEBUG``) so the
+        index never advertises a handle :meth:`get` cannot serve and the quota
+        byte counter reflects bytes actually on disk (#497 review).
         """
         for meta in self._base_dir.glob(f"*{_META_SUFFIX}"):
             try:
@@ -122,8 +124,12 @@ class JsonFileArtifactStore:
             except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
                 logger.debug("json_file_artifacts.load_index: skip %s (%s)", meta.name, exc)
                 continue
+            size = _consistent_data_size(self._base_dir, meta.name, ref)
+            if size is None:
+                logger.debug("json_file_artifacts.load_index: skip inconsistent %s", meta.name)
+                continue
             self._index[ref.handle] = ref
-            self._total_bytes += ref.size_bytes
+            self._total_bytes += size
 
     # ------------------------------------------------------------------
     # Path helpers
@@ -189,7 +195,6 @@ class JsonFileArtifactStore:
                 or ``max_artifacts``.
         """
         _validate_handle(handle)
-        self._check_quota(handle, len(content))
         ref = ArtifactRef(
             handle=handle,
             media_type=media_type,
@@ -197,17 +202,19 @@ class JsonFileArtifactStore:
             label=label,
             content_hash=hashlib.sha256(content).hexdigest(),
         )
-        # Data first, then metadata: a crash between the two leaves an orphan
-        # ``.data`` file that no index entry references (harmless), never a
-        # metadata file advertising bytes that are not there.
-        _atomic_write(self._data_path(handle), content)
-        _atomic_write(
-            self._meta_path(handle),
-            json.dumps(ref.to_dict(), sort_keys=True).encode("utf-8"),
-        )
-        previous = self._index.get(handle)
-        self._total_bytes += len(content) - (previous.size_bytes if previous else 0)
-        self._index[handle] = ref
+        with self._lock:
+            self._check_quota(handle, len(content))
+            # Data first, then metadata: a crash between the two leaves an
+            # orphan ``.data`` file that no index entry references (harmless),
+            # never a metadata file advertising bytes that are not there.
+            _atomic_write(self._data_path(handle), content)
+            _atomic_write(
+                self._meta_path(handle),
+                json.dumps(ref.to_dict(), sort_keys=True).encode("utf-8"),
+            )
+            previous = self._index.get(handle)
+            self._total_bytes += len(content) - (previous.size_bytes if previous else 0)
+            self._index[handle] = ref
         logger.debug("json_file_artifacts.put: handle=%s, size=%d", handle, len(content))
         return ref
 
@@ -241,7 +248,8 @@ class JsonFileArtifactStore:
 
         Reads the in-memory index rather than rescanning the directory (#497).
         """
-        return [self._index[k] for k in sorted(self._index)]
+        with self._lock:
+            return [self._index[k] for k in sorted(self._index)]
 
     def delete(self, handle: str) -> None:
         """Remove the artifact identified by *handle*.
@@ -255,13 +263,14 @@ class JsonFileArtifactStore:
         """
         meta = self._meta_path(handle)
         data = self._data_path(handle)
-        if handle not in self._index and not meta.is_file() and not data.is_file():
-            raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
-        meta.unlink(missing_ok=True)
-        data.unlink(missing_ok=True)
-        previous = self._index.pop(handle, None)
-        if previous is not None:
-            self._total_bytes -= previous.size_bytes
+        with self._lock:
+            if handle not in self._index and not meta.is_file() and not data.is_file():
+                raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
+            meta.unlink(missing_ok=True)
+            data.unlink(missing_ok=True)
+            previous = self._index.pop(handle, None)
+            if previous is not None:
+                self._total_bytes -= previous.size_bytes
 
     def exists(self, handle: str) -> bool:
         """Return ``True`` if *handle* is in the store."""

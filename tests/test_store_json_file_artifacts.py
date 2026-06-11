@@ -338,13 +338,48 @@ def test_list_refs_does_not_rescan_directory(tmp_path: Path) -> None:
     """
     store = JsonFileArtifactStore(tmp_path)
     store.put("h1", b"a")
+    # Drop a *complete* artifact pair (metadata + data) so it models the real
+    # on-disk invariant the loader requires; a metadata-only file would be
+    # skipped as inconsistent.
     (tmp_path / "sneaky.json").write_text(
         json.dumps({"handle": "sneaky", "media_type": "text/plain", "size_bytes": 1}),
         encoding="utf-8",
     )
+    (tmp_path / "sneaky.data").write_bytes(b"x")
     assert [r.handle for r in store.list_refs()] == ["h1"]
     # A fresh instance scans the directory once and picks it up.
     assert {r.handle for r in JsonFileArtifactStore(tmp_path).list_refs()} == {"h1", "sneaky"}
+
+
+def test_reinstantiate_skips_orphan_and_mismatched_metadata(tmp_path: Path) -> None:
+    """_load_index only indexes self-consistent file pairs (#497 review).
+
+    Orphan metadata (no ``.data``) and metadata whose filename does not match
+    ``enc(handle)`` are skipped, so the rebuilt index never advertises a handle
+    ``get()`` cannot serve and the quota byte counter is not inflated.
+    """
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("real", b"12345")  # 5 bytes
+    # Orphan metadata: a .json with no sibling .data file.
+    (tmp_path / "orphan.json").write_text(
+        json.dumps({"handle": "orphan", "media_type": "text/plain", "size_bytes": 999}),
+        encoding="utf-8",
+    )
+    # Filename/handle mismatch: file is wrongname.json but claims handle "elsewhere".
+    (tmp_path / "wrongname.json").write_text(
+        json.dumps({"handle": "elsewhere", "media_type": "text/plain", "size_bytes": 4}),
+        encoding="utf-8",
+    )
+    (tmp_path / "wrongname.data").write_bytes(b"data")
+
+    reopened = JsonFileArtifactStore(tmp_path, max_bytes=10)
+    assert [r.handle for r in reopened.list_refs()] == ["real"]
+    assert reopened.exists("orphan") is False
+    assert reopened.exists("elsewhere") is False
+    # Byte counter reflects only the 5 real bytes, so a 5-byte write still fits
+    # under the 10-byte quota (the skipped 999/4 byte claims did not inflate it).
+    reopened.put("more", b"67890")
+    assert reopened.get("more") == b"67890"
 
 
 def test_delete_updates_index(tmp_path: Path) -> None:

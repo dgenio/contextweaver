@@ -66,11 +66,13 @@ backend documents its own. The bundled backends:
 
 - **`InMemory*` stores** are *not* thread-safe. They are for single-threaded
   use and tests; guard them with your own lock for concurrent access.
-- **`JsonFileArtifactStore`** is single-process and not safe for concurrent
-  *writes* (its in-memory index and byte counter are unsynchronised), but each
-  individual file write is **atomic** (temp file + `os.replace`), so a reader
-  never observes a torn or truncated artifact and a crash mid-write leaves the
-  previous version intact. Concurrent reads of distinct handles are safe.
+- **`JsonFileArtifactStore`** is single-process. Within one process it is
+  thread-safe: `put` / `delete` / `list_refs` on a shared instance are
+  serialised by an internal lock, and each individual file write is **atomic**
+  (temp file + `os.replace`), so a reader never observes a torn or truncated
+  artifact and a crash mid-write leaves the previous version intact. There is
+  no cross-process advisory locking, so two processes writing the same
+  `base_dir` are still unsupported.
 - **`SqliteEventLog`** opens its connection in WAL mode for single-process use;
   it is not shared across threads.
 

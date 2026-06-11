@@ -10,9 +10,13 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from contextweaver.exceptions import ContextWeaverError
+
+if TYPE_CHECKING:
+    from contextweaver.types import ArtifactRef
 
 META_SUFFIX = ".json"
 DATA_SUFFIX = ".data"
@@ -43,6 +47,32 @@ def encode_handle(handle: str) -> str:
     handles never share a file.
     """
     return quote(handle, safe="")
+
+
+def consistent_data_size(base_dir: Path, meta_name: str, ref: ArtifactRef) -> int | None:
+    """Return the on-disk data size for *ref* if its file pair is self-consistent.
+
+    Used by ``JsonFileArtifactStore`` when rebuilding its in-memory index from
+    disk (issue #497 review): only index a metadata file that genuinely
+    corresponds to a retrievable artifact, so ``ref()`` / ``list_refs()`` never
+    advertise a handle ``get()`` cannot serve and the quota byte counter is not
+    inflated by orphan or mismatched metadata.
+
+    A pair is consistent when the handle is valid, the metadata filename is
+    exactly ``encode_handle(handle).json``, and the sibling ``.data`` file
+    exists.  Returns that ``.data`` file's actual byte size, or ``None`` when
+    any check fails (the caller skips the entry).
+    """
+    try:
+        validate_handle(ref.handle)
+    except ContextWeaverError:
+        return None
+    if meta_name != f"{encode_handle(ref.handle)}{META_SUFFIX}":
+        return None
+    data_path = base_dir / f"{encode_handle(ref.handle)}{DATA_SUFFIX}"
+    if not data_path.is_file():
+        return None
+    return data_path.stat().st_size
 
 
 def atomic_write(path: Path, data: bytes) -> None:

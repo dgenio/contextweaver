@@ -1,11 +1,13 @@
 """Concurrency tests for the store layer (issue #458).
 
 These exercise the *documented* guarantees from the thread-safety contract in
-``docs/agent-context/architecture.md``: ``JsonFileArtifactStore`` file writes
-are atomic (a reader never sees a torn artifact), and concurrent reads of
-distinct handles are safe. The gateway's read-only ``tool_view`` inherits the
-store contract. Every test is bounded by iteration count (never wall-clock), so
-they are deterministic and non-flaky.
+``docs/agent-context/architecture.md``: within one process, ``put`` / ``delete``
+/ ``list_refs`` on a single ``JsonFileArtifactStore`` instance are serialised by
+an internal lock (so concurrent threads sharing it are safe), file writes are
+atomic (a reader never sees a torn artifact), and concurrent reads of distinct
+handles are safe. The gateway's read-only ``tool_view`` inherits the store
+contract. Every test is bounded by iteration count (never wall-clock), so they
+are deterministic and non-flaky.
 """
 
 from __future__ import annotations
