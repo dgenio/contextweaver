@@ -19,6 +19,7 @@ fall back to id-token Jaccard so internal graph nodes (which carry only a
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from contextweaver._utils import jaccard, tokenize
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
     from contextweaver.protocols import Retriever
     from contextweaver.routing.graph import ChoiceGraph
     from contextweaver.types import SelectableItem
+
+logger = logging.getLogger("contextweaver.routing")
 
 
 class BeamSearchNavigator:
@@ -234,7 +237,18 @@ class BeamSearchNavigator:
                     )
 
             next_beam.sort(key=lambda x: (-x[0], x[1][-1]))
-            beam = next_beam[: self._beam_width]
+            kept_beam = next_beam[: self._beam_width]
+            if logger.isEnabledFor(logging.DEBUG):
+                pruned = next_beam[self._beam_width :]
+                logger.debug(
+                    "navigator.beam: depth=%d, expanded=%d, kept=%d, pruned=%d, pruned_ids=%s",
+                    depth,
+                    len(next_beam),
+                    len(kept_beam),
+                    len(pruned),
+                    [path[-1] for _, path in pruned],
+                )
+            beam = kept_beam
 
         # Collect any remaining beam items.
         for score, path in beam:

@@ -16,6 +16,7 @@ The builder guarantees that every node in the resulting graph has at most
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import defaultdict
 
@@ -27,6 +28,8 @@ from contextweaver.routing.labeler import KeywordLabeler
 from contextweaver.routing.manifest import GraphManifest
 from contextweaver.routing.registry import EngineRegistry, default_registry
 from contextweaver.types import SelectableItem
+
+logger = logging.getLogger("contextweaver.routing")
 
 
 class TreeBuilder:
@@ -193,11 +196,34 @@ class TreeBuilder:
             return
 
         # Try strategies in priority order
+        strategy = "namespace"
         groups = self._try_namespace_grouping(items)
         if groups is None:
+            strategy = "clustering"
             groups = self._try_clustering(items)
         if groups is None:
+            strategy = "alphabetical"
             groups = self._alphabetical_fallback(items)
+
+        # The primary strategy is namespace grouping; clustering and the
+        # alphabetical split are fallbacks that frequently surprise users,
+        # so surface those at INFO while the chosen strategy stays at DEBUG.
+        logger.debug(
+            "tree_builder.subtree: parent=%s, depth=%d, items=%d, strategy=%s, groups=%d",
+            parent_id,
+            depth,
+            len(items),
+            strategy,
+            len(groups),
+        )
+        if strategy != "namespace":
+            logger.info(
+                "tree_builder.subtree: parent=%s used fallback strategy=%s (items=%d, groups=%d)",
+                parent_id,
+                strategy,
+                len(items),
+                len(groups),
+            )
 
         # If strategy produced more groups than max_children, merge
         # adjacent groups (sorted by key) until within bounds.

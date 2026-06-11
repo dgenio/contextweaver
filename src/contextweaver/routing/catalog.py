@@ -13,13 +13,142 @@ Convenience loaders:
 from __future__ import annotations
 
 import json
+import logging
 import random
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from contextweaver.envelope import HydrationResult
-from contextweaver.exceptions import CatalogError, ItemNotFoundError
+from contextweaver.exceptions import CatalogError, CatalogValidationError, ItemNotFoundError
 from contextweaver.types import SelectableItem
+
+logger = logging.getLogger("contextweaver.routing")
+
+#: Policy for how loaders react to broken cross-item references (issue #519).
+OnInvalid = Literal["warn", "raise", "ignore"]
+
+
+@dataclass(frozen=True)
+class ReferenceFinding:
+    """A single broken cross-item reference found during validation (issue #519).
+
+    Attributes:
+        item_id: ID of the item carrying the dangling reference.
+        field: The referencing field — ``"depends_on"`` (references another
+            item ID) or ``"requires"`` (references a capability that some
+            item must ``provides``).
+        missing: The unresolved target — an item ID for ``depends_on`` or a
+            capability string for ``requires``.
+    """
+
+    item_id: str
+    field: Literal["depends_on", "requires"]
+    missing: str
+
+    def message(self) -> str:
+        """Return a human-readable one-line description of the finding."""
+        if self.field == "depends_on":
+            return f"Item {self.item_id!r} depends_on unknown tool id {self.missing!r}"
+        return (
+            f"Item {self.item_id!r} requires capability {self.missing!r} not provided by any item"
+        )
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialise to a JSON-compatible dict."""
+        return {"item_id": self.item_id, "field": self.field, "missing": self.missing}
+
+
+@dataclass
+class CatalogValidationReport:
+    """Typed result of cross-item referential validation (issue #519).
+
+    Reports dangling ``depends_on`` (item-ID) references and unsatisfied
+    ``requires`` (capability) references in deterministic, sorted order.
+    An empty :attr:`findings` list means every reference closes within the
+    catalog.
+
+    Attributes:
+        items_processed: Total items inspected.
+        findings: Sorted list of :class:`ReferenceFinding` entries.
+    """
+
+    items_processed: int = 0
+    findings: list[ReferenceFinding] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        """``True`` when no broken references were found."""
+        return not self.findings
+
+    def messages(self) -> list[str]:
+        """Return one human-readable warning string per finding (sorted)."""
+        return [f.message() for f in self.findings]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "items_processed": self.items_processed,
+            "findings": [f.to_dict() for f in self.findings],
+        }
+
+
+def validate_references(items: list[SelectableItem]) -> CatalogValidationReport:
+    """Validate cross-item references across *items* (issue #519).
+
+    Two reference kinds are checked, deterministically and without mutating
+    or dropping any item:
+
+    * ``depends_on`` — every referenced ID must exist as an item ID.
+    * ``requires`` — every required capability must be declared in some
+      item's ``provides`` list.
+
+    Args:
+        items: The catalog items to validate.
+
+    Returns:
+        A :class:`CatalogValidationReport` whose ``findings`` are sorted by
+        ``(item_id, field, missing)`` for reproducible output.
+    """
+    known_ids = {item.id for item in items}
+    provided: set[str] = set()
+    for item in items:
+        if item.provides:
+            provided.update(item.provides)
+
+    findings: list[ReferenceFinding] = []
+    for item in items:
+        for dep in item.depends_on or ():
+            if dep not in known_ids:
+                findings.append(ReferenceFinding(item.id, "depends_on", dep))
+        for cap in item.requires or ():
+            if cap not in provided:
+                findings.append(ReferenceFinding(item.id, "requires", cap))
+
+    findings.sort(key=lambda f: (f.item_id, f.field, f.missing))
+    return CatalogValidationReport(items_processed=len(items), findings=findings)
+
+
+def _apply_reference_policy(items: list[SelectableItem], on_invalid: OnInvalid) -> None:
+    """Run referential validation and react per *on_invalid* (issue #519).
+
+    ``"warn"`` logs one WARNING per finding and returns; ``"raise"`` raises
+    :class:`~contextweaver.exceptions.CatalogValidationError` carrying the
+    report; ``"ignore"`` skips validation entirely.
+    """
+    if on_invalid == "ignore":
+        return
+    report = validate_references(items)
+    if report.ok:
+        return
+    if on_invalid == "raise":
+        raise CatalogValidationError(
+            f"Catalog has {len(report.findings)} broken reference(s): "
+            f"{'; '.join(report.messages())}",
+            report=report,
+        )
+    for finding in report.findings:
+        logger.warning("load_catalog: %s", finding.message())
 
 
 class Catalog:
@@ -119,6 +248,21 @@ class Catalog:
                     warnings.append(f"Item {item_id!r} depends_on unknown tool id {dep!r}")
         return warnings
 
+    def validate_references(self) -> CatalogValidationReport:
+        """Return a typed report of broken cross-item references (issue #519).
+
+        Unlike :meth:`validate_dependencies` (which returns only ``depends_on``
+        warning strings for backward compatibility), this validates both
+        ``depends_on`` (item IDs) and ``requires`` (capabilities satisfied by
+        some item's ``provides``) and returns a structured
+        :class:`CatalogValidationReport` suitable for the ``catalog lint`` CLI.
+
+        Returns:
+            A :class:`CatalogValidationReport`; ``report.ok`` is ``True`` when
+            every reference resolves within the catalog.
+        """
+        return validate_references(self.all())
+
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
         return {"items": [item.to_dict() for item in self.all()]}
@@ -164,7 +308,7 @@ class Catalog:
 # ---------------------------------------------------------------------------
 
 
-def load_catalog_json(path: str | Path) -> list[SelectableItem]:
+def load_catalog_json(path: str | Path, *, on_invalid: OnInvalid = "warn") -> list[SelectableItem]:
     """Load :class:`SelectableItem` objects from a JSON file.
 
     The file must contain a JSON array of item dicts, each with at least
@@ -172,6 +316,11 @@ def load_catalog_json(path: str | Path) -> list[SelectableItem]:
 
     Args:
         path: Filesystem path to a JSON file.
+        on_invalid: How to react to broken cross-item references (issue
+            #519): ``"warn"`` (default) logs each dangling reference and
+            returns; ``"raise"`` raises
+            :class:`~contextweaver.exceptions.CatalogValidationError` with the
+            report attached; ``"ignore"`` skips referential validation.
 
     Returns:
         A list of :class:`SelectableItem` objects.
@@ -179,6 +328,8 @@ def load_catalog_json(path: str | Path) -> list[SelectableItem]:
     Raises:
         CatalogError: If the file cannot be read or parsed, or if any item
             dict is missing required fields.
+        CatalogValidationError: If *on_invalid* is ``"raise"`` and the catalog
+            contains a broken cross-item reference.
     """
     try:
         text = Path(path).read_text(encoding="utf-8")
@@ -190,10 +341,10 @@ def load_catalog_json(path: str | Path) -> list[SelectableItem]:
         raise CatalogError(f"Invalid JSON in catalog file: {exc}") from exc
     if not isinstance(data, list):
         raise CatalogError("Catalog JSON must be an array of item dicts.")
-    return load_catalog_dicts(data)
+    return load_catalog_dicts(data, on_invalid=on_invalid)
 
 
-def load_catalog_yaml(path: str | Path) -> list[SelectableItem]:
+def load_catalog_yaml(path: str | Path, *, on_invalid: OnInvalid = "warn") -> list[SelectableItem]:
     """Load :class:`SelectableItem` objects from a YAML file.
 
     The file must contain a YAML sequence of item mappings, each with at
@@ -203,6 +354,7 @@ def load_catalog_yaml(path: str | Path) -> list[SelectableItem]:
 
     Args:
         path: Filesystem path to a YAML file.
+        on_invalid: Reference-validation policy; see :func:`load_catalog_json`.
 
     Returns:
         A list of :class:`SelectableItem` objects.
@@ -210,6 +362,8 @@ def load_catalog_yaml(path: str | Path) -> list[SelectableItem]:
     Raises:
         CatalogError: If the file cannot be read or parsed, or if any item
             mapping is missing required fields.
+        CatalogValidationError: If *on_invalid* is ``"raise"`` and the catalog
+            contains a broken cross-item reference.
     """
     import yaml  # core dep — see pyproject.toml
 
@@ -223,10 +377,10 @@ def load_catalog_yaml(path: str | Path) -> list[SelectableItem]:
         raise CatalogError(f"Invalid YAML in catalog file: {exc}") from exc
     if not isinstance(data, list):
         raise CatalogError("Catalog YAML must be a sequence of item mappings.")
-    return load_catalog_dicts(data)
+    return load_catalog_dicts(data, on_invalid=on_invalid)
 
 
-def load_catalog(path: str | Path) -> list[SelectableItem]:
+def load_catalog(path: str | Path, *, on_invalid: OnInvalid = "warn") -> list[SelectableItem]:
     """Load a catalog file, auto-detecting format from the file extension.
 
     ``.yaml`` / ``.yml`` extensions dispatch to :func:`load_catalog_yaml`;
@@ -234,31 +388,39 @@ def load_catalog(path: str | Path) -> list[SelectableItem]:
 
     Args:
         path: Filesystem path to a catalog file.
+        on_invalid: Reference-validation policy; see :func:`load_catalog_json`.
 
     Returns:
         A list of :class:`SelectableItem` objects.
     """
     suffix = Path(path).suffix.lower()
     if suffix in (".yaml", ".yml"):
-        return load_catalog_yaml(path)
-    return load_catalog_json(path)
+        return load_catalog_yaml(path, on_invalid=on_invalid)
+    return load_catalog_json(path, on_invalid=on_invalid)
 
 
-def load_catalog_dicts(data: list[dict[str, Any]]) -> list[SelectableItem]:
+def load_catalog_dicts(
+    data: list[dict[str, Any]], *, on_invalid: OnInvalid = "warn"
+) -> list[SelectableItem]:
     """Convert a list of raw dicts into :class:`SelectableItem` objects.
 
     Each dict must have at least ``id``, ``kind``, ``name``, and
-    ``description`` keys.
+    ``description`` keys.  After successful deserialization, cross-item
+    references are validated according to *on_invalid* (issue #519).
 
     Args:
         data: A list of JSON-compatible dicts.
+        on_invalid: Reference-validation policy; see :func:`load_catalog_json`.
 
     Returns:
         A list of :class:`SelectableItem` objects.
 
     Raises:
         CatalogError: If any dict is missing required fields or has invalid
-            values.
+            values.  Per-item failures name the offending item by ``id`` (or
+            index when the id is absent) to locate the bug in large catalogs.
+        CatalogValidationError: If *on_invalid* is ``"raise"`` and the catalog
+            contains a broken cross-item reference.
     """
     required = {"id", "kind", "name", "description"}
     items: list[SelectableItem] = []
@@ -267,12 +429,23 @@ def load_catalog_dicts(data: list[dict[str, Any]]) -> list[SelectableItem]:
             raise CatalogError(f"Item at index {i} is not a dict.")
         missing = required - set(raw)
         if missing:
-            raise CatalogError(f"Item at index {i} missing required fields: {sorted(missing)}")
+            where = _item_location(raw, i)
+            raise CatalogError(f"Item {where} missing required fields: {sorted(missing)}")
         try:
             items.append(SelectableItem.from_dict(raw))
         except (KeyError, TypeError, ValueError) as exc:
-            raise CatalogError(f"Item at index {i} has invalid data: {exc}") from exc
+            where = _item_location(raw, i)
+            raise CatalogError(f"Item {where} has invalid data: {exc}") from exc
+    _apply_reference_policy(items, on_invalid)
     return items
+
+
+def _item_location(raw: dict[str, Any], index: int) -> str:
+    """Return an ``id=...`` (or ``at index N``) locator for error messages."""
+    item_id = raw.get("id")
+    if isinstance(item_id, str) and item_id:
+        return f"{item_id!r} (index {index})"
+    return f"at index {index}"
 
 
 # ---------------------------------------------------------------------------

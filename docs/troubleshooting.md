@@ -127,6 +127,29 @@ for step in result.debug_trace:
 # Shows each beam expansion, node scores, and why items were (de-)prioritised
 ```
 
+**Solution C′ — read the routing debug logs (issue #524):**
+
+`logging.DEBUG` on the `contextweaver.routing` logger traces the three decision
+points that most often explain a surprising route, without changing any code:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("contextweaver.routing").setLevel(logging.DEBUG)
+router.route("send an email", context_hints=["billing"])
+```
+
+- `augment_query: ... original=... augmented=...` — the scoring query after
+  context hints were appended.
+- `tree_builder.subtree: ... strategy=namespace|clustering|alphabetical` — which
+  grouping strategy built each subtree. A clustering/alphabetical **fallback**
+  is also logged at INFO, because a fallback (rather than namespace grouping)
+  frequently explains odd groupings.
+- `navigator.beam: depth=... kept=... pruned=... pruned_ids=[...]` — per level,
+  how many candidates the beam kept vs. pruned. If your expected tool appears
+  in `pruned_ids`, widen `beam_width`. Log messages are diagnostics, not API.
+
 **Solution D — render an explanation of the decision surface (`RouteResult.explanation()`):**
 
 `RouteResult.explanation()` (issue #226) produces a paste-friendly Markdown
@@ -431,6 +454,31 @@ graph = TreeBuilder(max_children=20).build(catalog.all())
 # If you're building the graph manually, edges that form cycles raise
 # GraphBuildError immediately — re-check your parent/child assignments.
 ```
+
+**Reading the diagnostics (issue #523):** `GraphBuildError` names the specific
+offenders and exposes them as structured attributes (stable contract; the
+message text is not). Catch the error and branch on the attribute instead of
+parsing the string:
+
+```python
+from contextweaver.exceptions import GraphBuildError
+
+try:
+    graph = ChoiceGraph.from_dict(payload)
+    graph._validate()  # load_graph() does this for you
+except GraphBuildError as exc:
+    if exc.cycle:          # e.g. ["a", "b", "c", "a"]
+        print("Cycle:", " -> ".join(exc.cycle))
+    elif exc.edge:         # e.g. ("group1", "phantom")
+        print("Dangling edge:", exc.edge)
+    elif exc.missing_root: # e.g. "ghost"
+        print("Missing root:", exc.missing_root)
+```
+
+A dangling `depends_on`/`requires` reference in a *catalog* (rather than a
+graph edge) surfaces earlier — run `contextweaver catalog lint <file>` or load
+with `on_invalid="raise"` to catch it before graph building (see
+[Tool Router](tool_router.md)).
 
 ---
 

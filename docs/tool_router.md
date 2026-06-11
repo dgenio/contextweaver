@@ -86,6 +86,36 @@ The router is deterministic by default — same catalog + query → byte-identic
 so the cards can be reused as a stable `cache_control` prefix in
 Anthropic / OpenAI / Google prompt-caching deployments.
 
+## Lint before you deploy
+
+Catalog metadata quality drives routing quality: items with empty descriptions,
+duplicate names, or dangling `depends_on` / `requires` references route badly.
+Run the linter as an authoring-time / CI gate (issue #538):
+
+```bash
+contextweaver catalog lint examples/sample_catalog.json        # human-readable
+contextweaver catalog lint catalog.yaml --json                 # machine-readable
+```
+
+It accepts the native JSON/YAML catalog, a raw MCP `tools/list` array, and the
+`{"tools": [...]}` snapshot shape, runs the `CatalogNormalizer` plus cross-item
+reference validation, and exits `0` (clean) / `1` (findings) / `3` (load error)
+— so it slots straight into a pre-commit hook or CI step. Input files are never
+modified.
+
+The same referential check runs on load (issue #519). The `load_catalog*`
+loaders take an `on_invalid` policy:
+
+```python
+from contextweaver.routing.catalog import load_catalog
+
+# "warn" (default): log each dangling reference, return items anyway.
+items = load_catalog("catalog.yaml")
+
+# "raise": fail loudly — the CatalogValidationError carries the full report.
+items = load_catalog("catalog.yaml", on_invalid="raise")
+```
+
 ## Reference
 
 - [`Concepts`](concepts.md) — `SelectableItem`, `ChoiceCard`, `ChoiceGraph`.

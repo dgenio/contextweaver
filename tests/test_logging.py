@@ -151,6 +151,54 @@ def test_ingest_tool_result_emits_debug(caplog: pytest.LogCaptureFixture) -> Non
 # ------------------------------------------------------------------
 
 
+def test_augment_query_logs_original_and_augmented(caplog: pytest.LogCaptureFixture) -> None:
+    """augment_query must DEBUG-log both the original and augmented query (issue #524)."""
+    from contextweaver.routing.filters import augment_query
+
+    with caplog.at_level(logging.DEBUG, logger="contextweaver.routing"):
+        result = augment_query("find invoices", ["billing context"])
+
+    assert result == "find invoices billing context"
+    messages = [r.message for r in caplog.records]
+    assert any("augment_query" in m and "find invoices" in m for m in messages)
+
+
+def test_tree_builder_logs_fallback_strategy_at_info(caplog: pytest.LogCaptureFixture) -> None:
+    """A non-namespace grouping strategy must be surfaced at INFO (issue #524)."""
+    # No namespaces + more items than max_children forces the namespace
+    # strategy to bail and a fallback (clustering/alphabetical) to run.
+    items = [
+        SelectableItem(id=f"t{i}", kind="tool", name=f"tool {i}", description=f"does thing {i}")
+        for i in range(8)
+    ]
+    with caplog.at_level(logging.INFO, logger="contextweaver.routing"):
+        TreeBuilder(max_children=3).build(items)
+
+    info = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert any("fallback strategy" in r.message for r in info)
+
+
+def test_navigator_logs_beam_pruning_at_debug(caplog: pytest.LogCaptureFixture) -> None:
+    """Beam search must DEBUG-log per-step pruning counts (issue #524)."""
+    items = [
+        SelectableItem(
+            id=f"ns{i % 3}.tool{i}",
+            kind="tool",
+            name=f"tool {i}",
+            description=f"capability number {i}",
+            namespace=f"ns{i % 3}",
+        )
+        for i in range(12)
+    ]
+    graph = TreeBuilder(max_children=3).build(items)
+    router = Router(graph, items=items, beam_width=1)
+
+    with caplog.at_level(logging.DEBUG, logger="contextweaver.routing"):
+        router.route("tool 5")
+
+    assert any("navigator.beam" in r.message for r in caplog.records)
+
+
 def test_route_emits_info(caplog: pytest.LogCaptureFixture) -> None:
     """A route query must emit an INFO-level summary."""
     items = [

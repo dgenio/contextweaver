@@ -9,14 +9,17 @@ from pathlib import Path
 import pytest
 
 from contextweaver.envelope import HydrationResult
-from contextweaver.exceptions import CatalogError, ItemNotFoundError
+from contextweaver.exceptions import CatalogError, CatalogValidationError, ItemNotFoundError
 from contextweaver.routing.catalog import (
     Catalog,
+    CatalogValidationReport,
+    ReferenceFinding,
     generate_sample_catalog,
     load_catalog,
     load_catalog_dicts,
     load_catalog_json,
     load_catalog_yaml,
+    validate_references,
 )
 from contextweaver.types import SelectableItem
 
@@ -139,6 +142,142 @@ def test_roundtrip() -> None:
     catalog.register(_item("t1", tags=["a"]))
     restored = Catalog.from_dict(catalog.to_dict())
     assert restored.get("t1").tags == ["a"]
+
+
+# ------------------------------------------------------------------
+# validate_references / load on_invalid policy (issue #519)
+# ------------------------------------------------------------------
+
+
+def _dep_item(iid: str, depends_on: list[str]) -> SelectableItem:
+    return SelectableItem(
+        id=iid, kind="tool", name=iid, description=f"desc {iid}", depends_on=depends_on
+    )
+
+
+def test_validate_references_clean_catalog_is_ok() -> None:
+    items = [_item("auth"), _dep_item("send_email", ["auth"])]
+    report = validate_references(items)
+    assert isinstance(report, CatalogValidationReport)
+    assert report.ok
+    assert report.findings == []
+    assert report.items_processed == 2
+
+
+def test_validate_references_reports_missing_depends_on() -> None:
+    items = [_dep_item("send_email", ["does_not_exist"])]
+    report = validate_references(items)
+    assert not report.ok
+    assert report.findings == [ReferenceFinding("send_email", "depends_on", "does_not_exist")]
+    assert "does_not_exist" in report.messages()[0]
+
+
+def test_validate_references_reports_unsatisfied_requires() -> None:
+    needs = SelectableItem(
+        id="reporter", kind="tool", name="reporter", description="d", requires=["pdf"]
+    )
+    report = validate_references([needs])
+    assert report.findings == [ReferenceFinding("reporter", "requires", "pdf")]
+
+
+def test_validate_references_requires_satisfied_by_provides() -> None:
+    provider = SelectableItem(
+        id="renderer", kind="tool", name="renderer", description="d", provides=["pdf"]
+    )
+    needs = SelectableItem(
+        id="reporter", kind="tool", name="reporter", description="d", requires=["pdf"]
+    )
+    assert validate_references([provider, needs]).ok
+
+
+def test_validate_references_findings_are_sorted_deterministically() -> None:
+    items = [
+        _dep_item("zeta", ["missing_b", "missing_a"]),
+        _dep_item("alpha", ["missing_c"]),
+    ]
+    report = validate_references(items)
+    assert [(f.item_id, f.missing) for f in report.findings] == [
+        ("alpha", "missing_c"),
+        ("zeta", "missing_a"),
+        ("zeta", "missing_b"),
+    ]
+    assert report.to_dict()["findings"][0] == {
+        "item_id": "alpha",
+        "field": "depends_on",
+        "missing": "missing_c",
+    }
+
+
+def test_catalog_validate_references_method() -> None:
+    catalog = Catalog()
+    catalog.register(_dep_item("send_email", ["does_not_exist"]))
+    report = catalog.validate_references()
+    assert not report.ok
+    assert report.findings[0].missing == "does_not_exist"
+
+
+def test_load_catalog_dicts_warn_is_default_and_returns_items(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    data = [
+        {"id": "a", "kind": "tool", "name": "a", "description": "d"},
+        {
+            "id": "b",
+            "kind": "tool",
+            "name": "b",
+            "description": "d",
+            "depends_on": ["ghost"],
+        },
+    ]
+    with caplog.at_level("WARNING", logger="contextweaver.routing"):
+        items = load_catalog_dicts(data)
+    assert len(items) == 2  # warn never drops items
+    assert any("ghost" in r.message for r in caplog.records)
+
+
+def test_load_catalog_dicts_raise_mode_attaches_report() -> None:
+    data = [
+        {
+            "id": "b",
+            "kind": "tool",
+            "name": "b",
+            "description": "d",
+            "depends_on": ["ghost"],
+        },
+    ]
+    with pytest.raises(CatalogValidationError) as excinfo:
+        load_catalog_dicts(data, on_invalid="raise")
+    assert excinfo.value.report.findings[0].missing == "ghost"
+
+
+def test_load_catalog_dicts_ignore_mode_skips_validation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    data = [
+        {
+            "id": "b",
+            "kind": "tool",
+            "name": "b",
+            "description": "d",
+            "depends_on": ["ghost"],
+        },
+    ]
+    with caplog.at_level("WARNING", logger="contextweaver.routing"):
+        items = load_catalog_dicts(data, on_invalid="ignore")
+    assert len(items) == 1
+    assert not any("ghost" in r.message for r in caplog.records)
+
+
+def test_load_catalog_dicts_invalid_item_names_id() -> None:
+    data = [{"id": "good", "kind": "tool", "name": "good", "description": "d"}, {"id": "oops"}]
+    with pytest.raises(CatalogError, match="'oops'"):
+        load_catalog_dicts(data)
+
+
+def test_load_catalog_dicts_invalid_item_without_id_uses_index() -> None:
+    data = [{"kind": "tool", "name": "x", "description": "d"}]
+    with pytest.raises(CatalogError, match="at index 0"):
+        load_catalog_dicts(data)
 
 
 # ------------------------------------------------------------------

@@ -575,3 +575,105 @@ def test_budget_check_ratchet_uses_default_baseline_path(tmp_path: Path) -> None
 
     assert result.returncode == 0
     assert (tmp_path / ".budget-baseline.json").exists()
+
+
+# ------------------------------------------------------------------
+# catalog lint (issue #538)
+# ------------------------------------------------------------------
+
+_CLEAN_CATALOG = [
+    {
+        "id": "billing.invoices.create",
+        "kind": "tool",
+        "name": "create_invoice",
+        "description": "Create an invoice",
+        "tags": ["billing", "create"],
+        "namespace": "billing",
+    },
+    {
+        "id": "billing.invoices.get",
+        "kind": "tool",
+        "name": "get_invoice",
+        "description": "Get an invoice",
+        "tags": ["billing", "read"],
+        "namespace": "billing",
+    },
+]
+
+
+def test_catalog_lint_clean_exits_zero(tmp_path: Path) -> None:
+    path = tmp_path / "clean.json"
+    path.write_text(json.dumps(_CLEAN_CATALOG), encoding="utf-8")
+    result = _run("catalog", "lint", str(path))
+    assert result.returncode == 0
+    assert "OK" in result.stdout
+
+
+def test_catalog_lint_findings_exit_one(tmp_path: Path) -> None:
+    dirty = [
+        {
+            "id": "a",
+            "kind": "tool",
+            "name": "a",
+            "description": "   ",
+            "tags": ["X", "x"],
+            "namespace": "ns",
+            "depends_on": ["ghost"],
+        }
+    ]
+    path = tmp_path / "dirty.json"
+    path.write_text(json.dumps(dirty), encoding="utf-8")
+    result = _run("catalog", "lint", str(path))
+    assert result.returncode == 1
+    assert "FAIL" in result.stdout
+
+
+def test_catalog_lint_json_output(tmp_path: Path) -> None:
+    dirty = [
+        {
+            "id": "a",
+            "kind": "tool",
+            "name": "a",
+            "description": "d",
+            "depends_on": ["ghost"],
+        }
+    ]
+    path = tmp_path / "dirty.json"
+    path.write_text(json.dumps(dirty), encoding="utf-8")
+    result = _run("catalog", "lint", str(path), "--json")
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["references"]["findings"][0]["missing"] == "ghost"
+
+
+def test_catalog_lint_clean_json_ok_true(tmp_path: Path) -> None:
+    path = tmp_path / "clean.json"
+    path.write_text(json.dumps(_CLEAN_CATALOG), encoding="utf-8")
+    result = _run("catalog", "lint", str(path), "--json")
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["ok"] is True
+
+
+def test_catalog_lint_accepts_mcp_snapshot(tmp_path: Path) -> None:
+    snapshot = {"tools": [{"name": "github.search", "description": "Search repos"}]}
+    path = tmp_path / "snapshot.json"
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+    result = _run("catalog", "lint", str(path), "--json")
+    assert result.returncode in (0, 1)
+    assert "ok" in json.loads(result.stdout)
+
+
+def test_catalog_lint_load_error_exits_three(tmp_path: Path) -> None:
+    result = _run("catalog", "lint", str(tmp_path / "missing.json"))
+    assert result.returncode == 3
+    assert "Error" in result.stderr
+
+
+def test_catalog_lint_committed_sample_is_clean() -> None:
+    """The committed sample catalog must lint clean (issue #538 acceptance)."""
+    sample = Path("examples/sample_catalog.json")
+    if not sample.exists():
+        return
+    result = _run("catalog", "lint", str(sample))
+    assert result.returncode == 0, result.stdout + result.stderr

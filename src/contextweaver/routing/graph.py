@@ -19,6 +19,16 @@ from contextweaver.routing.graph_node import ChoiceNode
 from contextweaver.routing.manifest import GraphManifest
 
 # ---------------------------------------------------------------------------
+# Diagnostics helpers (issue #523)
+# ---------------------------------------------------------------------------
+
+
+def _format_cycle(cycle: list[str]) -> str:
+    """Render a cycle node list as ``a -> b -> c -> a``."""
+    return " -> ".join(cycle)
+
+
+# ---------------------------------------------------------------------------
 # ChoiceGraph
 # ---------------------------------------------------------------------------
 
@@ -136,7 +146,11 @@ class ChoiceGraph:
         self._edges[src].add(dst)
         if self._creates_cycle(src, dst):
             self._edges[src].discard(dst)
-            raise GraphBuildError(f"Adding edge {src!r} -> {dst!r} would create a cycle.")
+            cycle = self._cycle_through(src, dst)
+            raise GraphBuildError(
+                f"Adding edge {src!r} -> {dst!r} would create a cycle: {_format_cycle(cycle)}",
+                cycle=cycle,
+            )
         # Update parent's children list
         node = self._nodes[src]
         if dst not in node.children:
@@ -202,7 +216,16 @@ class ChoiceGraph:
                     if in_degree[dst] == 0:
                         heapq.heappush(heap, dst)
         if len(order) != len(self._nodes):
-            raise GraphBuildError("Cycle detected during topological sort.")
+            remaining = [n for n in self.nodes() if n not in set(order)]
+            cycle = self._find_cycle_within(remaining)
+            if cycle:
+                raise GraphBuildError(
+                    f"Cycle detected during topological sort: {_format_cycle(cycle)}",
+                    cycle=cycle,
+                )
+            raise GraphBuildError(
+                f"Cycle detected during topological sort involving nodes: {remaining}"
+            )
         return order
 
     # ------------------------------------------------------------------
@@ -290,6 +313,82 @@ class ChoiceGraph:
             stack.extend(self._edges.get(node, set()))
         return False
 
+    def _shortest_path(self, start: str, target: str) -> list[str] | None:
+        """Return the deterministic shortest path ``[start, ..., target]`` or ``None``.
+
+        Breadth-first over sorted successors so the *same* path is reported
+        for the same graph on every run (issue #523).
+        """
+        prev: dict[str, str | None] = {start: None}
+        queue: deque[str] = deque([start])
+        while queue:
+            node = queue.popleft()
+            for nxt in sorted(self._edges.get(node, set())):
+                if nxt in prev:
+                    continue
+                prev[nxt] = node
+                if nxt == target:
+                    path = [target]
+                    while prev[path[-1]] is not None:
+                        path.append(prev[path[-1]])  # type: ignore[arg-type]
+                    path.reverse()
+                    return path
+                queue.append(nxt)
+        return None
+
+    def _cycle_through(self, src: str, dst: str) -> list[str]:
+        """Return the cycle ``[src, dst, ..., src]`` closed by adding ``src -> dst``.
+
+        Assumes the edge has already been determined to close a cycle (i.e.
+        ``dst`` reaches ``src``, or ``src == dst``).
+        """
+        if src == dst:
+            return [src, src]
+        path = self._shortest_path(dst, src)
+        if path is None:  # pragma: no cover - guarded by _creates_cycle
+            return [src, dst]
+        return [src, *path]
+
+    def _find_cycle_within(self, candidates: list[str]) -> list[str]:
+        """Return one cycle among *candidates* as ``[a, b, ..., a]`` (deterministic).
+
+        Iterative DFS over the subgraph induced by *candidates*, tracking the
+        current gray path so a back edge can be reconstructed into a cycle.
+        Returns ``[]`` when no cycle is found within the subset.
+        """
+        node_set = set(candidates)
+        # 0 = unvisited, 1 = on current path (gray), 2 = done (black)
+        color: dict[str, int] = dict.fromkeys(node_set, 0)
+
+        def _neighbors(node: str) -> list[str]:
+            return sorted(n for n in self._edges.get(node, set()) if n in node_set)
+
+        for start in sorted(node_set):
+            if color[start] != 0:
+                continue
+            color[start] = 1
+            on_path: list[str] = [start]
+            stack: list[tuple[str, list[str]]] = [(start, _neighbors(start))]
+            while stack:
+                node, neighbors = stack[-1]
+                advanced = False
+                while neighbors:
+                    nxt = neighbors.pop(0)
+                    if color[nxt] == 1:
+                        idx = on_path.index(nxt)
+                        return [*on_path[idx:], nxt]
+                    if color[nxt] == 0:
+                        color[nxt] = 1
+                        on_path.append(nxt)
+                        stack.append((nxt, _neighbors(nxt)))
+                        advanced = True
+                        break
+                if not advanced:
+                    color[node] = 2
+                    on_path.pop()
+                    stack.pop()
+        return []
+
     # ------------------------------------------------------------------
     # Serialisation
     # ------------------------------------------------------------------
@@ -337,7 +436,11 @@ class ChoiceGraph:
                 graph._edges.setdefault(src, set()).add(dst)
                 if graph._creates_cycle(src, dst):
                     graph._edges[src].discard(dst)
-                    raise GraphBuildError(f"Cycle detected loading edge {src!r} -> {dst!r}.")
+                    cycle = graph._cycle_through(src, dst)
+                    raise GraphBuildError(
+                        f"Cycle detected loading edge {src!r} -> {dst!r}: {_format_cycle(cycle)}",
+                        cycle=cycle,
+                    )
 
         # Rebuild children / child_types from _edges so they are
         # always consistent, regardless of what the serialised node
@@ -369,14 +472,22 @@ class ChoiceGraph:
         """
         # 1. Root must exist
         if self._root_id not in self._nodes:
-            raise GraphBuildError(f"Root node {self._root_id!r} not found in graph.")
+            known = self.nodes()
+            hint = f" Known nodes include: {known[:5]}." if known else " Graph has no nodes."
+            raise GraphBuildError(
+                f"Root node {self._root_id!r} not found in graph.{hint}",
+                missing_root=self._root_id,
+            )
 
         # 2. All child refs must resolve
         all_known = set(self._nodes) | self._items
-        for src, dsts in self._edges.items():
-            for dst in dsts:
+        for src in sorted(self._edges):
+            for dst in sorted(self._edges[src]):
                 if dst not in all_known:
-                    raise GraphBuildError(f"Child ref {dst!r} from {src!r} not found in graph.")
+                    raise GraphBuildError(
+                        f"Child ref {dst!r} from {src!r} not found in graph.",
+                        edge=(src, dst),
+                    )
 
         # 3. No cycles
         self.topological_order()

@@ -18,7 +18,12 @@ from contextweaver.routing.cards import (
     render_cards_text,
     truncate_description_to_tokens,
 )
-from contextweaver.routing.catalog import Catalog
+from contextweaver.routing.catalog import (
+    Catalog,
+    CatalogValidationReport,
+    ReferenceFinding,
+    validate_references,
+)
 from contextweaver.routing.feedback import (
     DeterministicScoreProvider,
     ExecutionFeedback,
@@ -35,6 +40,7 @@ from contextweaver.routing.hydration import (
 )
 from contextweaver.routing.labeler import KeywordLabeler
 from contextweaver.routing.navigator import rank_collected
+from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
 from contextweaver.routing.path import parse_path, resolve_path
 from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tool_id import (
@@ -48,6 +54,8 @@ from contextweaver.routing.tree import TreeBuilder
 
 __all__ = [
     "Catalog",
+    "CatalogNormalizer",
+    "CatalogValidationReport",
     "ChoiceGraph",
     "ChoiceNode",
     "DEFAULT_CARD_HARD_CAP_TOKENS",
@@ -56,6 +64,8 @@ __all__ = [
     "ExecutionFeedback",
     "FeedbackAwareScoreProvider",
     "KeywordLabeler",
+    "NormalizationReport",
+    "ReferenceFinding",
     "RouteResult",
     "Router",
     "SchemaSource",
@@ -82,4 +92,5 @@ __all__ = [
     "resolve_path",
     "save_graph",
     "truncate_description_to_tokens",
+    "validate_references",
 ]
