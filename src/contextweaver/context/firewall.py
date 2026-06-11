@@ -20,9 +20,18 @@ from contextweaver.protocols import ArtifactStore, EventHook, Extractor, NoOpHoo
 from contextweaver.summarize.extract import extract_facts
 from contextweaver.summarize.structured import StructuredFirewall
 from contextweaver.tokens import count as count_tokens
+from contextweaver.tokens import heuristic_counter
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind
 
 logger = logging.getLogger("contextweaver.context")
+
+# Deterministic, env-independent counter for the firewalled item's budget
+# estimate.  The savings metrics on ``FirewallStats`` use the exact (tiktoken)
+# ``count_tokens`` above, but the item's ``token_estimate`` feeds budget
+# selection and the deterministic demo/scorecard artifacts, so it must not vary
+# with tiktoken-cache availability — the script-aware heuristic matches
+# ``len // 4`` for ASCII and stays reproducible offline (issues #530/#525).
+_HEURISTIC = heuristic_counter()
 
 
 def _default_summary(raw: str, max_chars: int = 500) -> str:
@@ -234,7 +243,7 @@ def apply_firewall(
         id=item.id,
         kind=item.kind,
         text=summary,
-        token_estimate=count_tokens(summary),
+        token_estimate=_HEURISTIC.estimate(summary),
         metadata=dict(item.metadata),
         parent_id=item.parent_id,
         artifact_ref=ref,
