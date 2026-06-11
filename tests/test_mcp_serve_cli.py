@@ -117,6 +117,26 @@ def test_serve_dry_run_with_packaged_gateway_catalog() -> None:
     assert "dry-run" in combined
 
 
+def test_serve_dry_run_advertises_installed_package_version() -> None:
+    """``serve`` advertises the installed contextweaver version by default."""
+    import contextweaver
+
+    catalog = gateway_catalog_path()
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--dry-run")
+    assert result.returncode == 0
+    combined = result.stderr + result.stdout
+    assert f"version={contextweaver.__version__}" in combined
+
+
+def test_serve_dry_run_explicit_version_overrides_default() -> None:
+    """An explicit ``--version`` wins over the package-version default."""
+    catalog = gateway_catalog_path()
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--version", "9.9.9-test", "--dry-run")
+    assert result.returncode == 0
+    combined = result.stderr + result.stdout
+    assert "version=9.9.9-test" in combined
+
+
 def test_serve_dry_run_proxy_mode_with_packaged_catalog() -> None:
     """Proxy mode also validates the catalog and exits 0."""
     catalog = gateway_catalog_path()

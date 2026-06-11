@@ -1,0 +1,52 @@
+# Keep the Docker build context small and reproducible. The image only needs
+# pyproject.toml, README.md, LICENSE, and src/ to build + run the gateway.
+
+# Version control & CI
+.git/
+.github/
+.gitignore
+
+# Multiple full repo clones — must never enter the build context
+.claude/
+
+# Editors / IDEs
+.vscode/
+.idea/
+
+# Build / packaging artifacts
+build/
+dist/
+site/
+*.egg-info/
+src/*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python caches & coverage
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Not needed to build or run the gateway
+tests/
+docs/
+benchmarks/
+examples/
+notebooks/
+drafts/
+scripts/
+schemas/
+llms.txt
+llms-full.txt
+
+# The image builds these itself
+Dockerfile
+.dockerignore
