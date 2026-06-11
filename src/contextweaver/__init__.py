@@ -20,7 +20,17 @@ Quick start::
 
 from __future__ import annotations
 
-from contextweaver import config, envelope, exceptions, profiles, protocols, tokens, types
+from contextweaver import (
+    config,
+    diagnostics,
+    envelope,
+    exceptions,
+    inspection,
+    profiles,
+    protocols,
+    tokens,
+    types,
+)
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
@@ -52,10 +62,21 @@ from contextweaver.context.memory_source import (
 )
 from contextweaver.context.sensitivity import MaskRedactionHook, register_redaction_hook
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
+from contextweaver.diagnostics import (
+    DiagnosticEvent,
+    DiagnosticSink,
+    InMemoryDiagnosticSink,
+    JsonlDiagnosticSink,
+    NoOpDiagnosticSink,
+    load_diagnostic_events,
+    render_diagnostic_report,
+    summarize_diagnostics,
+)
 from contextweaver.envelope import (
     BuildStats,
     ChoiceCard,
     ContextPack,
+    DroppedItem,
     FirewallStats,
     HydrationResult,
     ResultEnvelope,
@@ -75,6 +96,7 @@ from contextweaver.exceptions import (
     RouteError,
     StoreClosedError,
 )
+from contextweaver.inspection import build_inspection_report, render_inspection_report
 from contextweaver.metrics import MetricsCollector, MetricsHook
 from contextweaver.profiles import Mode, ProfileConfig, RoutingConfig
 from contextweaver.protocols import (
@@ -155,8 +177,10 @@ from contextweaver.types import (
 __all__ = [
     # sub-modules
     "config",
+    "diagnostics",
     "envelope",
     "exceptions",
+    "inspection",
     "profiles",
     "protocols",
     "tokens",
@@ -172,6 +196,7 @@ __all__ = [
     "ChoiceCard",
     "ContextItem",
     "ContextPack",
+    "DroppedItem",
     "FirewallStats",
     "HydrationResult",
     "ItemKind",
@@ -182,6 +207,7 @@ __all__ = [
     "Sensitivity",
     "ToolCard",
     "ViewSpec",
+    "DiagnosticEvent",
     # config
     "ContextBudget",
     "ContextPolicy",
@@ -206,6 +232,7 @@ __all__ = [
     "RoutingScoreProvider",
     "Summarizer",
     "TokenEstimator",
+    "DiagnosticSink",
     # exceptions
     "ArtifactNotFoundError",
     "BudgetExceededError",
@@ -219,6 +246,15 @@ __all__ = [
     "PolicyViolationError",
     "RouteError",
     "StoreClosedError",
+    # diagnostics
+    "InMemoryDiagnosticSink",
+    "JsonlDiagnosticSink",
+    "NoOpDiagnosticSink",
+    "load_diagnostic_events",
+    "render_diagnostic_report",
+    "summarize_diagnostics",
+    "build_inspection_report",
+    "render_inspection_report",
     # stores
     "InMemoryArtifactStore",
     "InMemoryEpisodicStore",

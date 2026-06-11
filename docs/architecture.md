@@ -49,6 +49,8 @@ term itself, see Atlan's
 |---|---|
 | `types.py` | Core dataclasses and enums (`SelectableItem`, `ContextItem`, `Phase`, `ItemKind`) |
 | `envelope.py` | Result types (`ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`) |
+| `diagnostics.py` | Versioned gateway event schema, JSONL/in-memory sinks, aggregate reports |
+| `inspection.py` | Payload-safe offline context/routing/artifact reports |
 | `config.py` | Configuration dataclasses (`ContextBudget`, `ContextPolicy`, `ScoringConfig`) |
 | `protocols.py` | Protocol interfaces (`TokenEstimator`, `EventHook`, `Summarizer`, …) |
 | `exceptions.py` | Custom exception hierarchy |
@@ -59,7 +61,7 @@ term itself, see Atlan's
 | `context/` | Full context compilation pipeline |
 | `routing/` | Catalog, DAG builder, beam-search router, card renderer |
 | `adapters/` | MCP, FastMCP, and A2A protocol adapters |
-| `__main__.py` | CLI entry point (7 subcommands) |
+| `__main__.py` | CLI entry point (`inspect` includes context/routing/artifact diagnostics) |
 
 ## Context Engine pipeline
 
@@ -83,6 +85,12 @@ the event log. The pipeline has eight stages:
    into the token budget for the current phase.
 8. **render_context** — assemble the final prompt string, grouped by
    section (facts, history, tool results), with `BuildStats` metadata.
+
+The pipeline owns `BuildStats` construction after selection. Candidate totals
+are captured before sensitivity filtering, while sensitivity, deduplication,
+kind-limit, and budget exclusions are attributed per item. This preserves the
+invariant `included_count + dropped_count == total_candidates` and keeps
+lifecycle hooks aligned with the returned statistics.
 
 ## Routing Engine pipeline
 

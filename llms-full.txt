@@ -714,6 +714,10 @@ contextweaver route --graph g.json --catalog c.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
+contextweaver inspect --session session.json --format markdown
+contextweaver mcp inspect --catalog c.json --format json
+contextweaver mcp serve --catalog c.json --diagnostics gateway.jsonl --quiet
+contextweaver mcp stats --events gateway.jsonl
 ```
 
 ## Examples
@@ -761,7 +765,9 @@ Provide a custom `Summarizer` to control how the summary is generated.
 
 **Q: How do I debug what was kept or dropped?**
 Inspect `pack.stats` (a `BuildStats` object) after every `build_sync()` / `build()` call:
-`included_count`, `dropped_count`, `dropped_reasons`, `dedup_removed`.
+`included_count`, `dropped_count`, `dropped_reasons`, `dropped_items`,
+`dedup_removed`. Completed builds satisfy
+`included_count + dropped_count == total_candidates`.
 
 **Q: Does this work with [framework X]?**
 Yes, contextweaver is framework-agnostic — it compiles context; you send `pack.prompt`
@@ -895,6 +901,8 @@ term itself, see Atlan's
 |---|---|
 | `types.py` | Core dataclasses and enums (`SelectableItem`, `ContextItem`, `Phase`, `ItemKind`) |
 | `envelope.py` | Result types (`ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`) |
+| `diagnostics.py` | Versioned gateway event schema, JSONL/in-memory sinks, aggregate reports |
+| `inspection.py` | Payload-safe offline context/routing/artifact reports |
 | `config.py` | Configuration dataclasses (`ContextBudget`, `ContextPolicy`, `ScoringConfig`) |
 | `protocols.py` | Protocol interfaces (`TokenEstimator`, `EventHook`, `Summarizer`, …) |
 | `exceptions.py` | Custom exception hierarchy |
@@ -905,7 +913,7 @@ term itself, see Atlan's
 | `context/` | Full context compilation pipeline |
 | `routing/` | Catalog, DAG builder, beam-search router, card renderer |
 | `adapters/` | MCP, FastMCP, and A2A protocol adapters |
-| `__main__.py` | CLI entry point (7 subcommands) |
+| `__main__.py` | CLI entry point (`inspect` includes context/routing/artifact diagnostics) |
 
 ## Context Engine pipeline
 
@@ -929,6 +937,12 @@ the event log. The pipeline has eight stages:
    into the token budget for the current phase.
 8. **render_context** — assemble the final prompt string, grouped by
    section (facts, history, tool results), with `BuildStats` metadata.
+
+The pipeline owns `BuildStats` construction after selection. Candidate totals
+are captured before sensitivity filtering, while sensitivity, deduplication,
+kind-limit, and budget exclusions are attributed per item. This preserves the
+invariant `included_count + dropped_count == total_candidates` and keeps
+lifecycle hooks aligned with the returned statistics.
 
 ## Routing Engine pipeline
 
@@ -1078,8 +1092,12 @@ what happened:
 - How many candidates were generated.
 - How many were included, dropped, or deduplicated.
 - Token usage per section.
-- Which items were dropped and why.
+- Which items were dropped and why (`dropped_items` carries item ID + reason).
 - Dependency closures applied.
+
+`total_candidates` is measured after dependency closure and before sensitivity
+filtering. Every later exclusion is counted, so completed builds satisfy
+`included_count + dropped_count == total_candidates`.
 
 ## Choice Graph
 
@@ -1611,6 +1629,26 @@ pip install contextweaver
 contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
 ```
 
+Enable local, payload-safe diagnostics in a directory that already exists:
+
+```bash
+contextweaver mcp serve \
+  --config /path/to/gateway.yaml \
+  --diagnostics /path/to/logs/contextweaver.jsonl \
+  --quiet
+```
+
+Inspect the static catalog before launch and aggregate the event stream later:
+
+```bash
+contextweaver mcp inspect --catalog /path/to/catalog.yaml
+contextweaver mcp stats --events /path/to/logs/contextweaver.jsonl
+```
+
+The packaged CLI still represents one configured static catalog source. Its
+catalog report groups tools by namespace; it does not claim live health for
+multiple upstream MCP processes.
+
 `pipx run contextweaver ...` is another isolated option. The first `uvx` or
 `pipx run` launch resolves a temporary environment and is slower than later
 runs. Pin a deployment when reproducibility matters:
@@ -1689,7 +1727,9 @@ When a route or prompt looks wrong, inspect these in order:
    score gaps, filters, and ambiguity. Use `debug=True` when you need the
    expansion trace.
 3. **Build statistics.** Check `included_count`, `dropped_count`,
-   `dropped_reasons`, `dedup_removed`, and token usage in `BuildStats`.
+   `dropped_reasons`, per-item `dropped_items`, `dedup_removed`, and token
+   usage in `BuildStats`. For an ingested session, run
+   `contextweaver inspect --session session.json`.
 4. **Artifact reference.** Confirm the handle exists before calling
    `tool_view`, then request a bounded `head`, `lines`, `rows`, or `json_keys`
    selector.
@@ -1697,8 +1737,11 @@ When a route or prompt looks wrong, inspect these in order:
    inspect phase budgets, the firewall threshold, sensitivity policy, and
    scoring/retrieval backend. These are Python runtime settings, not fields in
    the current `mcp serve` YAML.
-6. **Telemetry.** When the `[otel]` extra is enabled, inspect the context-build,
-   firewall, and routing spans. Raw prompt content remains off by default.
+6. **Telemetry.** Use `mcp serve --diagnostics FILE` for local JSONL counts,
+   savings, failures, artifact-view usage, and latency. The built-in stream
+   records IDs, sizes, argument key names, and error codes, but not queries,
+   argument values, result text, prompt text, or artifact bytes. When the
+   `[otel]` extra is enabled, inspect context-build, firewall, and routing spans.
 
 Do not respond to a poor route by immediately increasing every budget or
 returning whole artifacts. Better descriptions, a sharper browse query, and a
@@ -1775,6 +1818,8 @@ filesystem or caller-supplied stores.
 - Routing queries, candidate identifiers, scores, and build statistics.
 - OpenTelemetry attributes and metrics when the optional integration is
   enabled.
+- Local gateway JSONL diagnostics when `mcp serve --diagnostics FILE` is
+  enabled.
 
 MCP annotations such as `readOnlyHint` are untrusted metadata. They may improve
 presentation or routing, but must not grant permission or bypass approval.
@@ -1798,6 +1843,12 @@ The default OpenTelemetry emission excludes raw queries, full tool
 descriptions, schemas, and prompt content. Enabling
 `otel_emit_experimental=True` can add sensitive content and should be limited
 to a trusted, access-controlled backend.
+
+The built-in gateway JSONL stream excludes query text, argument values, result
+text, prompt text, and artifact bytes. It does include canonical tool and
+artifact handles, namespaces, argument key names, sizes, timings, and error
+codes. Treat those identifiers as operationally sensitive and restrict file
+permissions and retention accordingly.
 
 ## Trust boundaries
 
@@ -1880,6 +1931,9 @@ contextweaver does not:
   artifact stores.
 - Leave experimental OTel content emission disabled unless the exporter is
   trusted for the data class involved.
+- Store gateway JSONL diagnostics in an access-controlled path and define a
+  retention policy; use `--quiet` only to suppress lifecycle stderr, not as a
+  substitute for diagnostics access control.
 - Review tool descriptions and results as untrusted input; do not rely on
   `readOnlyHint`, `destructiveHint`, or similar annotations as policy.
 - Pin the contextweaver version in managed deployments and review release notes

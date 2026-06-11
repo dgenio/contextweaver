@@ -20,7 +20,9 @@ It prepares context and routes tools but never calls models or executes tools.
 | Path | Responsibility |
 |---|---|
 | `types.py` | Core dataclasses and enums: `SelectableItem`, `ContextItem`, `Phase`, `ItemKind`, `Sensitivity` |
-| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
+| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `DroppedItem`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
+| `diagnostics.py` | Versioned, payload-safe gateway events and sinks (`DiagnosticEvent`, `DiagnosticSink`, JSONL/in-memory sinks) plus deterministic aggregate reports (issues #370/#378). |
+| `inspection.py` | Pure JSON/Markdown report construction for offline context, routing, and artifact inspection without raw payload content (issue #398). |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
 | `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`) |
@@ -74,6 +76,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `adapters/smolagents.py` | Hugging Face smolagents `Tool` ↔ `SelectableItem` and `MultiStepAgent.memory.steps` → `ContextItem`s (`smolagents_tool_to_selectable`, `smolagents_tools_to_catalog`, `load_smolagents_catalog`, `from_smolagents_agent`, issue #274) |
 | `adapters/agno.py` | Agno (formerly Phidata) `Function` / `Toolkit` ↔ `SelectableItem` and `AgentSession` → `ContextItem`s (`agno_tool_to_selectable`, `agno_tools_to_catalog`, `load_agno_catalog`, `from_agno_session`, issue #275) |
 | `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
+| `adapters/gateway_diagnostics.py` / `gateway_catalog_diagnostics.py` | Sanitized `ProxyRuntime` instrumentation plus exact gateway/proxy static-schema exposure calculations: catalog, browse/hydrate/execute/view events, savings, artifact-view usage, and latency (issues #370/#378). |
 | `adapters/mcp_gateway.py` | Two-tool gateway dispatch (`tool_browse` + `tool_execute` + `tool_view`, issues #28 / #34) |
 | `adapters/mcp_proxy.py` | Transparent proxy dispatch (stripped `tools/list` + `tool_hydrate` + `tool_execute`, issue #13) |
 | `adapters/mcp_upstream.py` | Concrete `UpstreamCall` adapters (`StubUpstream`, `McpClientUpstream`, `MultiplexUpstream`) |
@@ -92,8 +95,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `extras/memory/langmem.py` | `LangMemEpisodicStore` + `LangMemFactStore` — wrap any LangGraph `BaseStore` scoped by a `namespace` tuple; canonical ID is the store key, value is the dataclass `to_dict()` payload (direct, lossless KV). `search` delegates to `BaseStore.search`. Gated behind the `[langmem]` extra (issue #195). |
 | `eval/` | Evaluation harness (issue #12): `EvalCase` / `EvalDataset` (gold datasets), `evaluate_routing` → `RoutingEvalReport` (top-k recall, MRR, confidence gap, beam steps), `evaluate_context` → `ContextEvalReport` (budget utilisation + token savings vs naive concat). Pure-stdlib, deterministic; backs the `eval` CLI subcommand. |
 | `eval/metrics.py` | Canonical rank-based routing metrics — `recall_at_k` (classic fractional recall@k), `precision_at_k`, `reciprocal_rank` (issue #354). Single source of truth imported by both `eval/routing.py` and `benchmarks/benchmark.py` so the harness and the benchmark script can no longer define the same names with different semantics. |
-| `__main__.py` | CLI: 10 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`, `eval`) plus the `mcp` Typer sub-app (`mcp serve`, [experimental] stdio MCP gateway/proxy entrypoint; issues #243/#246). Typer + Rich (both core deps as of v0.5, issue #221). |
-| `_mcp_cli.py` | Backs the `mcp` Typer sub-app mounted from `__main__.py`. Hosts `mcp serve` (stdio MCP gateway or transparent proxy) and the catalog loader that accepts native contextweaver, raw MCP `tools/list`, and `{tools:[...]}` snapshot shapes. `mcp serve --config FILE` loads catalog + serve options from one JSON/YAML file (zero-Python drop-in launch, issue #346); relative catalog paths resolve from the config file's directory and explicit CLI flags win. Marked `[experimental]` in `--help` for v0.9. Uses `typer.echo(..., err=True)` for stderr output (library-code `print()` is forbidden). |
+| `__main__.py` | CLI: 11 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `inspect`, `budget-check`, `eval`) plus the `mcp` Typer sub-app. `inspect` renders payload-safe context/routing/artifact JSON or Markdown (issue #398). |
+| `_mcp_cli.py` | Backs the `mcp` Typer sub-app. Hosts `mcp serve`, `mcp inspect`, and `mcp stats`; accepts native contextweaver, raw MCP `tools/list`, and `{tools:[...]}` catalog shapes. `mcp serve --diagnostics FILE` appends sanitized JSONL and `--quiet` suppresses lifecycle stderr; both are config-file keys. The packaged serve path remains a static catalog + stub upstream. |
 | `data/` | Packaged data files shipped inside the wheel via `[tool.setuptools.package-data]`. Exposes `gateway_catalog_path()` (resolves `mcp_gateway_catalog.yaml` to a concrete `Path` for both editable installs and zipped wheels — falls back to a persistent cache under `tempfile.gettempdir()/contextweaver/` for zipimport). Issue #264. |
 | `examples/recipes/` | MCP-client integration recipes: installed-CLI configs for Claude Desktop, Claude Code, GitHub Copilot, and Cursor plus `gateway_config.yaml`; `serve_gateway.py` remains a legacy/custom-runtime launcher (issues #278, #279, #346, #371, #429, #437). |
 
@@ -127,7 +130,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ContextItem` | Event log entry with `parent_id` for dependency closure |
 | `ResultEnvelope` | Processed tool output: summary + facts + artifacts + views |
 | `ContextPack` | Rendered prompt + stats from a context build |
-| `BuildStats` | What was kept, dropped, and why — diagnostic output of every build. Carries `firewall_events: list[FirewallStats]` + `firewall_summary()` (issue #402) |
+| `BuildStats` | What was kept, dropped, and why. `total_candidates` is pre-sensitivity; `dropped_items` attributes every exclusion; completed builds satisfy included + dropped = total. Carries `firewall_events` + `firewall_summary()` (issues #402/#414/#459). |
 | `FirewallStats` | Per-firewall diagnostics: `triggered`, `strategy`, original/summary chars+tokens, `artifact_ref`, `summarized_by_llm` (issues #402 / #404) |
 | `CompactResult` | Output of the single-call `compact_tool_result` facade: `firewalled`, `payload`, `summary`, `facts`, `artifact_ref`, `stats` (issue #399) |
 | `StructuredFirewall` | Non-summarising firewall strategy — keep an allow-list of JSON paths inline, offload the rest (issue #406) |

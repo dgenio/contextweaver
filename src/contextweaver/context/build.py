@@ -27,7 +27,7 @@ from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
-from contextweaver.envelope import ContextPack
+from contextweaver.envelope import BuildStats, ContextPack, DroppedItem
 from contextweaver.types import Phase
 
 if TYPE_CHECKING:
@@ -79,16 +79,23 @@ def run_build_pipeline(
     if explain:
         pre_closure_ids = {c.id for c in candidates}
     candidates, closures = resolve_dependency_closure(candidates, manager._event_log)
+    total_candidates = len(candidates)
     closure_added_ids = {c.id for c in candidates} - pre_closure_ids if explain else set()
 
     # 3. Sensitivity filter
+    pre_sensitivity = list(candidates)
     if explain:
-        pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in candidates}
+        pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in pre_sensitivity}
     candidates, sensitivity_drops = apply_sensitivity_filter(candidates, manager._policy)
+    post_sensitivity_ids = {item.id for item in candidates}
+    sensitivity_dropped_items = [
+        item for item in pre_sensitivity if item.id not in post_sensitivity_ids
+    ]
     if explain:
-        post_sens_ids = {c.id for c in candidates}
         sensitivity_dropped_records: list[tuple[str, str, str]] = sorted(
-            (cid, kind, sens) for (cid, kind, sens) in pre_sens_ids if cid not in post_sens_ids
+            (cid, kind, sens)
+            for (cid, kind, sens) in pre_sens_ids
+            if cid not in post_sensitivity_ids
         )
     else:
         sensitivity_dropped_records = []
@@ -107,15 +114,20 @@ def run_build_pipeline(
     scored = score_candidates(candidates, query, _tags, manager._scoring)
 
     # 6. Dedup
+    pre_dedup_scored = list(scored)
     if explain:
         pre_dedup_view: list[tuple[str, str, str, float]] = [
-            (item.id, item.kind.value, item.sensitivity.value, score) for score, item in scored
+            (item.id, item.kind.value, item.sensitivity.value, score)
+            for score, item in pre_dedup_scored
         ]
     scored, dedup_removed = deduplicate_candidates(
         scored, similarity_threshold=manager._scoring.dedup_threshold
     )
+    post_dedup_ids = {item.id for _score, item in scored}
+    dedup_dropped_items = [
+        item for _score, item in pre_dedup_scored if item.id not in post_dedup_ids
+    ]
     if explain:
-        post_dedup_ids = {item.id for _score, item in scored}
         dedup_dropped_records: list[tuple[str, str, str, float]] = [
             (iid, kind, sens, sc)
             for (iid, kind, sens, sc) in pre_dedup_view
@@ -133,24 +145,52 @@ def run_build_pipeline(
     adjusted = _adjust_budget_for_header(effective_budget, phase, hf_tokens)
 
     # 7. Select (budget already accounts for header/footer overhead)
-    selected, stats = select_and_pack(scored, phase, adjusted, manager._policy, manager._estimator)
-    stats.dedup_removed = dedup_removed
-    stats.dependency_closures = closures
-    stats.header_footer_tokens = hf_tokens
+    selection = select_and_pack(scored, phase, adjusted, manager._policy, manager._estimator)
+    selected = selection.selected
+    dropped_records = [
+        *(DroppedItem(item.id, "sensitivity") for item in sensitivity_dropped_items),
+        *(DroppedItem(item.id, "dedup") for item in dedup_dropped_items),
+        *(DroppedItem(item.id, reason) for item, reason in selection.dropped),
+    ]
+    dropped_reasons: dict[str, int] = {}
+    for record in dropped_records:
+        dropped_reasons[record.reason] = dropped_reasons.get(record.reason, 0) + 1
+    stats = BuildStats(
+        tokens_per_section=selection.tokens_per_section,
+        total_candidates=total_candidates,
+        included_count=len(selected),
+        dropped_count=len(dropped_records),
+        dropped_reasons=dropped_reasons,
+        dropped_items=dropped_records,
+        dedup_removed=dedup_removed,
+        dependency_closures=closures,
+        header_footer_tokens=hf_tokens,
+    )
     # Surface per-item firewall diagnostics (issue #402): one FirewallStats per
     # offloaded tool result.  Read ``stats.firewall_summary()`` for the roll-up.
     stats.firewall_events = [
         env.firewall_stats for env in envelopes if env.firewall_stats is not None
     ]
-    if sensitivity_drops > 0:
-        # Account for items dropped by sensitivity filtering in both the
-        # total candidate count and the drop breakdown so that
-        # dropped_count + included_count <= total_candidates remains true.
-        stats.total_candidates += sensitivity_drops
-        stats.dropped_count += sensitivity_drops
-        stats.dropped_reasons["sensitivity"] = (
-            stats.dropped_reasons.get("sensitivity", 0) + sensitivity_drops
-        )
+    if sensitivity_dropped_items:
+        manager._hook.on_items_excluded(sensitivity_dropped_items, "sensitivity")
+    if dedup_dropped_items:
+        manager._hook.on_items_excluded(dedup_dropped_items, "dedup")
+    for reason in ("kind_limit", "budget"):
+        excluded = [item for item, drop_reason in selection.dropped if drop_reason == reason]
+        if excluded:
+            manager._hook.on_items_excluded(excluded, reason)
+    active_budget = effective_budget.for_phase(phase)
+    if hf_tokens > active_budget:
+        manager._hook.on_budget_exceeded(hf_tokens, active_budget)
+    elif selection.budget_overruns:
+        requested, limit = max(selection.budget_overruns)
+        manager._hook.on_budget_exceeded(requested, limit)
+
+    assert stats.included_count + stats.dropped_count == stats.total_candidates, (
+        "context build accounting invariant failed: "
+        f"included={stats.included_count} dropped={stats.dropped_count} "
+        f"total={stats.total_candidates}"
+    )
 
     # 8. Render
     prompt = render_context(selected, header=full_header, footer=footer)

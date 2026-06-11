@@ -7,9 +7,11 @@ from datetime import datetime, timezone
 import pytest
 
 from contextweaver.envelope import (
+    BUILD_STATS_REPORT_VERSION,
     BuildStats,
     ChoiceCard,
     ContextPack,
+    DroppedItem,
     ResultEnvelope,
     RoutingDecision,
 )
@@ -71,6 +73,7 @@ def test_build_stats_defaults() -> None:
     assert bs.included_count == 0
     assert bs.dropped_count == 0
     assert bs.dropped_reasons == {}
+    assert bs.dropped_items == []
     assert bs.dedup_removed == 0
     assert bs.dependency_closures == 0
     assert bs.header_footer_tokens == 0
@@ -83,6 +86,10 @@ def test_build_stats_roundtrip() -> None:
         included_count=30,
         dropped_count=20,
         dropped_reasons={"budget": 15, "policy": 5},
+        dropped_items=[
+            DroppedItem(item_id="budget-item", reason="budget"),
+            DroppedItem(item_id="policy-item", reason="policy"),
+        ],
         dedup_removed=3,
         dependency_closures=2,
         header_footer_tokens=42,
@@ -94,6 +101,10 @@ def test_build_stats_roundtrip() -> None:
     assert restored.included_count == 30
     assert restored.dropped_count == 20
     assert restored.dropped_reasons == {"budget": 15, "policy": 5}
+    assert restored.dropped_items == [
+        DroppedItem(item_id="budget-item", reason="budget"),
+        DroppedItem(item_id="policy-item", reason="policy"),
+    ]
     assert restored.dedup_removed == 3
     assert restored.dependency_closures == 2
     assert restored.header_footer_tokens == 42
@@ -215,7 +226,7 @@ def test_build_stats_report_rich_has_markup() -> None:
 
 def test_build_stats_report_dict_versioned() -> None:
     payload = _sample_stats().report_dict(phase="answer", budget=4000)
-    assert payload["version"] == 1
+    assert payload["version"] == BUILD_STATS_REPORT_VERSION
     assert payload["phase"] == "answer"
     assert payload["budget"] == 4000
     assert payload["prompt_tokens"] == 180 + 1200 + 1800 + 320
@@ -228,6 +239,7 @@ def test_build_stats_report_dict_versioned() -> None:
     }
     # dropped_reasons sorted deterministically
     assert list(payload["dropped_reasons"].keys()) == ["budget_exceeded", "dedup", "sensitivity"]
+    assert payload["dropped_items"] == []
 
 
 def test_build_stats_report_dict_empty_recommendations_without_budget() -> None:

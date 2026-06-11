@@ -38,10 +38,18 @@ from typing import Annotated, Any
 import typer
 import yaml
 
+from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
+from contextweaver.diagnostics import (
+    DiagnosticSink,
+    JsonlDiagnosticSink,
+    load_diagnostic_events,
+    render_diagnostic_report,
+    summarize_diagnostics,
+)
 
 logger = logging.getLogger("contextweaver.mcp_cli")
 
@@ -49,6 +57,11 @@ logger = logging.getLogger("contextweaver.mcp_cli")
 class _ServeMode(str, Enum):
     gateway = "gateway"
     proxy = "proxy"
+
+
+class _ReportFormat(str, Enum):
+    json = "json"
+    markdown = "markdown"
 
 
 mcp_app = typer.Typer(
@@ -66,13 +79,23 @@ mcp_app = typer.Typer(
 
 
 _CONFIG_KEYS: frozenset[str] = frozenset(
-    {"catalog", "mode", "top_k", "beam_width", "cache_stable", "name", "version"}
+    {
+        "catalog",
+        "mode",
+        "top_k",
+        "beam_width",
+        "cache_stable",
+        "name",
+        "version",
+        "diagnostics",
+        "quiet",
+    }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
 _FALSE_STRINGS: frozenset[str] = frozenset({"false", "0", "no", "off"})
 
 
-def _coerce_config_bool(value: object) -> bool:
+def _coerce_config_bool(key: str, value: object) -> bool:
     """Coerce a config value to ``bool``, accepting common string spellings.
 
     Plain ``bool(value)`` is wrong for config files: ``bool("false")`` is
@@ -86,9 +109,7 @@ def _coerce_config_bool(value: object) -> bool:
             return True
         if norm in _FALSE_STRINGS:
             return False
-    raise typer.BadParameter(
-        f"cache_stable must be a boolean, got {value!r}", param_hint="--config"
-    )
+    raise typer.BadParameter(f"{key} must be a boolean, got {value!r}", param_hint="--config")
 
 
 def _coerce_config_int(key: str, value: object) -> int:
@@ -109,10 +130,11 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
 
     The config is a JSON/YAML mapping whose keys mirror the ``serve`` options:
     ``catalog`` (path, required), ``mode`` (``gateway`` | ``proxy``),
-    ``top_k``, ``beam_width``, ``cache_stable``, ``name``, ``version``. Explicit
-    CLI flags still win over config values; the file supplies everything else so
-    a drop-in proxy can be launched with ``mcp serve --config gateway.yaml``.
-    Relative catalog paths are resolved from the config file's directory.
+    ``top_k``, ``beam_width``, ``cache_stable``, ``name``, ``version``,
+    ``diagnostics``, and ``quiet``. Explicit CLI flags still win over config
+    values; the file supplies everything else so a drop-in proxy can be launched
+    with ``mcp serve --config gateway.yaml``. Relative catalog and diagnostics
+    paths are resolved from the config file's directory.
 
     Args:
         config_path: Filesystem path to the config file (``.json``/``.yaml``/``.yml``).
@@ -171,8 +193,14 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
     for int_key in ("top_k", "beam_width"):
         if int_key in data:
             data[int_key] = _coerce_config_int(int_key, data[int_key])
-    if "cache_stable" in data:
-        data["cache_stable"] = _coerce_config_bool(data["cache_stable"])
+    for bool_key in ("cache_stable", "quiet"):
+        if bool_key in data:
+            data[bool_key] = _coerce_config_bool(bool_key, data[bool_key])
+    if "diagnostics" in data:
+        diagnostics_path = Path(str(data["diagnostics"])).expanduser()
+        if not diagnostics_path.is_absolute():
+            diagnostics_path = config_path.parent / diagnostics_path
+        data["diagnostics"] = str(diagnostics_path.resolve())
     return data
 
 
@@ -293,6 +321,7 @@ def _build_runtime(
     top_k: int,
     beam_width: int,
     cache_stable: bool,
+    diagnostic_sink: DiagnosticSink | None = None,
 ) -> ProxyRuntime:
     """Construct a :class:`ProxyRuntime` populated from *catalog_path*.
 
@@ -302,6 +331,7 @@ def _build_runtime(
         top_k: Maximum number of cards returned by ``tool_browse``.
         beam_width: Router beam width.
         cache_stable: Toggle cache-stable browse ordering.
+        diagnostic_sink: Optional structured event destination.
 
     Returns:
         A ready-to-serve :class:`ProxyRuntime`.
@@ -314,11 +344,72 @@ def _build_runtime(
         top_k=top_k,
         beam_width=beam_width,
         cache_stable=cache_stable,
+        diagnostic_sink=diagnostic_sink,
     )
     runtime.register_tool_defs_sync(tool_defs)
     # Reuse the helper so test code can introspect the resulting catalog
     # without re-parsing the file.
     return runtime
+
+
+@mcp_app.command("inspect")
+def inspect_catalog(
+    catalog: Annotated[
+        Path, typer.Option(..., "--catalog", help="Path to a JSON/YAML tool catalog.")
+    ],
+    mode: Annotated[
+        _ServeMode, typer.Option("--mode", help="Exposure mode used for savings estimates.")
+    ] = _ServeMode.gateway,
+    format: Annotated[  # noqa: A002
+        _ReportFormat, typer.Option("--format", help="Output format.")
+    ] = _ReportFormat.markdown,
+) -> None:
+    """Inspect catalog size, namespaces, and static schema savings."""
+    tool_defs = _load_tool_defs_from_catalog(catalog)
+    runtime = ProxyRuntime(
+        StubUpstream(tool_defs, handler=_stub_handler),
+        mode=ExposureMode.GATEWAY if mode == _ServeMode.gateway else ExposureMode.TRANSPARENT,
+    )
+    runtime.register_tool_defs_sync(tool_defs)
+    items = runtime.catalog.all()
+    raw_defs = {item.id: raw for item, raw in zip(items, tool_defs, strict=True)}
+    summary = catalog_diagnostic_summary(items, raw_defs, mode=mode.value)
+    summary["catalog"] = str(catalog)
+    summary["tool_ids"] = runtime.list_tool_ids()
+    if format == _ReportFormat.json:
+        typer.echo(json.dumps(summary, indent=2, sort_keys=True))
+        return
+    lines = [
+        "# MCP Catalog Inspection",
+        "",
+        f"- Catalog: `{catalog}`",
+        f"- Mode: {mode.value}",
+        f"- Upstream tools: {summary['tool_count']}",
+        f"- Exposed tools: {summary['exposed_tool_count']}",
+        f"- Full schema tokens: {summary['full_schema_tokens']}",
+        f"- Exposed schema tokens: {summary['exposed_schema_tokens']}",
+        f"- Schema tokens avoided: {summary['schema_tokens_avoided']}",
+        "",
+        "## Namespaces",
+    ]
+    for namespace, count_value in summary["namespace_counts"].items():
+        lines.append(f"- `{namespace or '(default)'}`: {count_value}")
+    typer.echo("\n".join(lines))
+
+
+@mcp_app.command("stats")
+def diagnostic_stats(
+    events: Annotated[Path, typer.Option(..., "--events", help="Diagnostic JSONL file.")],
+    format: Annotated[  # noqa: A002
+        _ReportFormat, typer.Option("--format", help="Output format.")
+    ] = _ReportFormat.markdown,
+) -> None:
+    """Aggregate gateway event counts, savings, failures, and latency."""
+    summary = summarize_diagnostics(load_diagnostic_events(events))
+    if format == _ReportFormat.json:
+        typer.echo(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        typer.echo(render_diagnostic_report(summary), nl=False)
 
 
 def _install_sigint_handler(loop: asyncio.AbstractEventLoop) -> None:
@@ -408,6 +499,20 @@ def serve(
             help="Validate catalog and print summary; do not bind stdio.",
         ),
     ] = False,
+    diagnostics: Annotated[
+        Path | None,
+        typer.Option(
+            "--diagnostics",
+            help="Append sanitized gateway events to this JSONL file.",
+        ),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet/--no-quiet",
+            help="Suppress lifecycle messages on stderr.",
+        ),
+    ] = False,
 ) -> None:
     """[experimental] Run contextweaver as an MCP server over stdio.
 
@@ -446,6 +551,10 @@ def serve(
             name = str(cfg["name"])
         if not _from_cli("version") and "version" in cfg:
             version = str(cfg["version"])
+        if not _from_cli("diagnostics") and "diagnostics" in cfg:
+            diagnostics = Path(str(cfg["diagnostics"]))
+        if not _from_cli("quiet") and "quiet" in cfg:
+            quiet = cfg["quiet"]
 
     if catalog is None:
         raise typer.BadParameter(
@@ -454,24 +563,29 @@ def serve(
         )
     resolved_mode = _ServeMode.gateway if gateway else _ServeMode.proxy if proxy else mode
 
+    diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
     runtime = _build_runtime(
         catalog,
         mode=resolved_mode,
         top_k=top_k,
         beam_width=beam_width,
         cache_stable=cache_stable,
+        diagnostic_sink=diagnostic_sink,
     )
     tool_count = len(runtime.list_tool_ids())
 
-    typer.echo(
-        f"contextweaver mcp serve: mode={resolved_mode.value} "
-        f"catalog={catalog} tools={tool_count} top_k={top_k} "
-        f"beam_width={beam_width} cache_stable={cache_stable}",
-        err=True,
-    )
+    if not quiet:
+        typer.echo(
+            f"contextweaver mcp serve: mode={resolved_mode.value} "
+            f"catalog={catalog} tools={tool_count} top_k={top_k} "
+            f"beam_width={beam_width} cache_stable={cache_stable} "
+            f"diagnostics={diagnostics or 'off'}",
+            err=True,
+        )
 
     if dry_run:
-        typer.echo("dry-run: catalog validated; not binding stdio.", err=True)
+        if not quiet:
+            typer.echo("dry-run: catalog validated; not binding stdio.", err=True)
         raise typer.Exit(0)
 
     server: McpGatewayServer | McpProxyServer
@@ -492,7 +606,8 @@ def serve(
         _install_sigint_handler(loop)
         loop.run_until_complete(_serve())
     except (KeyboardInterrupt, asyncio.CancelledError):
-        typer.echo("contextweaver mcp serve: interrupted, shutting down.", err=True)
+        if not quiet:
+            typer.echo("contextweaver mcp serve: interrupted, shutting down.", err=True)
         raise typer.Exit(0) from None
     finally:
         loop.close()
