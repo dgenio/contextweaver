@@ -35,12 +35,12 @@ from contextweaver.metrics import MetricsCollector
 from contextweaver.profiles import Mode, ProfileConfig
 from contextweaver.protocols import (
     ArtifactStore,
-    CharDivFourEstimator,
     EpisodicStore,
     EventHook,
     EventLog,
     Extractor,
     FactStore,
+    HeuristicEstimator,
     NoOpHook,
     Summarizer,
     TokenEstimator,
@@ -62,6 +62,10 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         policy: Context policy (allowed kinds, per-kind limits, etc.).
         scoring_config: Weights for the relevance scorer.
         estimator: Token estimator for items without ``token_estimate``.
+            Defaults to the dependency-free, script-aware
+            :class:`~contextweaver.protocols.HeuristicEstimator` (issue #525):
+            accurate for CJK/Kana/Hangul/emoji content offline and identical
+            to ``len // 4`` for Latin text.
         hook: Lifecycle event hook.
         stores: Optional :class:`StoreBundle` — fills ``None`` fields with
             in-memory defaults.  If *event_log* or *artifact_store* are also
@@ -128,7 +132,7 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         self._budget = budget or ContextBudget()
         self._policy = policy or ContextPolicy()
         self._scoring = scoring_config or ScoringConfig()
-        self._estimator: TokenEstimator = estimator or CharDivFourEstimator()
+        self._estimator: TokenEstimator = estimator or HeuristicEstimator()
         self._hook: EventHook = hook or NoOpHook()
         self._view_registry: ViewRegistry = ViewRegistry()
         self._summarizer: Summarizer | None = summarizer

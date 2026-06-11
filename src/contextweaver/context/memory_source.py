@@ -14,15 +14,25 @@ from typing import Any
 from contextweaver.context.memory_fixture import JsonFixtureMemorySource
 from contextweaver.context.memory_types import PHASE_SCOPE_PREFERENCES, MemoryEntry
 from contextweaver.protocols import MemorySource, TokenEstimator
+from contextweaver.tokens import heuristic_counter
 from contextweaver.types import ContextItem, ItemKind, Phase
 
 logger = logging.getLogger("contextweaver.context")
 
+# Module-level default counter reused across entries so per-entry costing does
+# not construct a fresh estimator on every call (the heuristic is stateless).
+_DEFAULT_COUNTER: TokenEstimator = heuristic_counter()
+
 
 def _estimate_cost(text: str, estimator: TokenEstimator | None) -> int:
-    """Return a positive token estimate for *text*."""
-    estimate = estimator.estimate(text) if estimator is not None else len(text) // 4
-    return max(1, int(estimate))
+    """Return a positive token estimate for *text*.
+
+    Falls back to the shared canonical script-aware heuristic counter
+    (issue #530) rather than an inline ``len // 4`` literal when no estimator is
+    supplied, so every budget number flows through one source of truth.
+    """
+    counter = estimator if estimator is not None else _DEFAULT_COUNTER
+    return max(1, int(counter.estimate(text)))
 
 
 def _contextweaver_namespace(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -49,8 +59,9 @@ def memory_entries_to_context_items(
 
     Args:
         entries: Source entries.
-        estimator: Optional token estimator. When omitted, ``len(text) // 4``
-            is used with a minimum cost of one token per entry.
+        estimator: Optional token estimator. When omitted, the canonical
+            script-aware heuristic counter is used with a minimum cost of one
+            token per entry.
         now: UNIX seconds reference time for expiry filtering.
 
     Returns:

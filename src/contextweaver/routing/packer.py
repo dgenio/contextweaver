@@ -15,22 +15,32 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from contextweaver.routing.cards import make_choice_cards
+from contextweaver.tokens import heuristic_counter
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ChoiceCard
     from contextweaver.types import SelectableItem
 
+# Deterministic, env-independent counter for the packer's coarse cumulative-cap
+# estimate.  Per-card §2.3 hard caps stay exact (tiktoken) in ``cards.py``; this
+# soft cap only needs a reproducible upper bound, so it uses the script-aware
+# heuristic to avoid varying with tiktoken-cache availability (issues #493/#530).
+_HEURISTIC = heuristic_counter()
+
 
 def _estimate_card_tokens(card: ChoiceCard) -> int:
-    """Cheap character-/4 token estimate matching the rest of the engine.
+    """Cheap, deterministic token estimate for a card's cumulative-budget cap.
 
     The :class:`~contextweaver.routing.cards` renderer already pins each
     card to a target-token budget per §2.4; the packer only needs a coarse
-    upper bound for the cumulative-budget cap.
+    upper bound for the cumulative-budget cap. Routing it through the shared
+    :func:`contextweaver.tokens.heuristic_counter` keeps it on the single
+    source of truth rather than a stray ``// 4`` literal (issue #493) while
+    staying reproducible across environments.
     """
     parts = [card.id, card.namespace or "", card.name, card.kind, card.description]
     parts.extend(card.tags)
-    return sum(len(p) for p in parts) // 4
+    return _HEURISTIC.estimate(" ".join(p for p in parts if p))
 
 
 class DefaultCardPacker:

@@ -21,7 +21,8 @@ from dataclasses import replace
 
 from contextweaver.config import ContextPolicy
 from contextweaver.exceptions import ConfigError, PolicyViolationError
-from contextweaver.protocols import RedactionHook
+from contextweaver.protocols import RedactionHook, TokenEstimator
+from contextweaver.tokens import heuristic_counter
 from contextweaver.types import ContextItem, Sensitivity
 
 logger = logging.getLogger("contextweaver.context")
@@ -68,7 +69,23 @@ class MaskRedactionHook:
     All other item fields (id, kind, metadata, parent_id, artifact_ref) are
     preserved so the item still participates in dependency closure, stats
     tracking, and rendering structure.
+
+    The placeholder's ``token_estimate`` is computed through a configured
+    :class:`~contextweaver.protocols.TokenEstimator` rather than an inline
+    ``len // 4`` literal, so every number that feeds budget enforcement comes
+    from one source of truth (issue #530). For the ASCII redaction placeholder
+    the default script-aware heuristic yields exactly ``len // 4``, so the
+    estimate is unchanged from prior behaviour.
+
+    Args:
+        estimator: Token estimator used to size the placeholder. ``None`` uses
+            the canonical :func:`contextweaver.tokens.heuristic_counter`; the
+            build pipeline threads the manager's configured estimator so a
+            custom counter is honoured on redaction paths.
     """
+
+    def __init__(self, estimator: TokenEstimator | None = None) -> None:
+        self._estimator: TokenEstimator = estimator or heuristic_counter()
 
     def redact(self, item: ContextItem) -> ContextItem:
         """Return a copy of *item* with its text replaced by a redaction mask.
@@ -77,11 +94,15 @@ class MaskRedactionHook:
             item: The context item to redact.
 
         Returns:
-            A new :class:`ContextItem` with masked text and a minimal
-            token estimate.
+            A new :class:`ContextItem` with masked text and a token estimate
+            from the configured estimator.
         """
         placeholder = f"[REDACTED: {item.sensitivity.value}]"
-        return replace(item, text=placeholder, token_estimate=len(placeholder) // 4)
+        return replace(
+            item,
+            text=placeholder,
+            token_estimate=self._estimator.estimate(placeholder),
+        )
 
 
 # Register the built-in hook so it can be referenced by name in
@@ -89,11 +110,19 @@ class MaskRedactionHook:
 _HOOK_REGISTRY["mask"] = MaskRedactionHook()
 
 
-def _resolve_hooks(names: list[str]) -> list[RedactionHook]:
+def _resolve_hooks(
+    names: list[str],
+    estimator: TokenEstimator | None = None,
+) -> list[RedactionHook]:
     """Resolve hook names to instances.
+
+    The built-in ``"mask"`` hook is instantiated per-call so the configured
+    *estimator* sizes its placeholder; custom registered hooks are returned
+    as-is (they own their own behaviour).
 
     Args:
         names: Hook names from :attr:`ContextPolicy.redaction_hooks`.
+        estimator: Token estimator threaded into the built-in mask hook.
 
     Returns:
         Resolved :class:`RedactionHook` instances.
@@ -103,6 +132,9 @@ def _resolve_hooks(names: list[str]) -> list[RedactionHook]:
     """
     hooks: list[RedactionHook] = []
     for name in names:
+        if name == "mask":
+            hooks.append(MaskRedactionHook(estimator=estimator))
+            continue
         hook = _HOOK_REGISTRY.get(name)
         if hook is None:
             msg = f"Unknown redaction hook {name!r}. Available: {sorted(_HOOK_REGISTRY)}"
@@ -114,6 +146,7 @@ def _resolve_hooks(names: list[str]) -> list[RedactionHook]:
 def apply_sensitivity_filter(
     items: list[ContextItem],
     policy: ContextPolicy,
+    estimator: TokenEstimator | None = None,
 ) -> tuple[list[ContextItem], int]:
     """Filter or redact items whose sensitivity meets or exceeds the policy floor.
 
@@ -121,6 +154,10 @@ def apply_sensitivity_filter(
         items: Candidate items to inspect.
         policy: The active context policy (provides ``sensitivity_floor``,
             ``sensitivity_action``, and ``redaction_hooks``).
+        estimator: Optional token estimator used to size redaction
+            placeholders (issue #530). ``None`` uses the canonical
+            script-aware heuristic; the build pipeline passes the manager's
+            configured estimator so a custom counter is honoured here too.
 
     Returns:
         A 2-tuple ``(filtered_items, dropped_count)``.  In ``"redact"`` mode
@@ -138,7 +175,7 @@ def apply_sensitivity_filter(
     hooks: list[RedactionHook] = []
     if action == "redact":
         hook_names = policy.redaction_hooks or ["mask"]
-        hooks = _resolve_hooks(hook_names)
+        hooks = _resolve_hooks(hook_names, estimator)
 
     result: list[ContextItem] = []
     dropped = 0

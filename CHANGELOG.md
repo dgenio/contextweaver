@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Script-aware offline token heuristic — `HeuristicEstimator` (#525).** The
+  default estimator (and the `tiktoken` offline fallback) now counts dense
+  scripts (CJK, Kana, Hangul, emoji) at ≈1 token/character instead of
+  `len // 4`, fixing a ~4× budget under-count on non-Latin content. Latin/ASCII
+  estimates are unchanged. Dependency-free (stdlib range checks); exposed via
+  `tokens.heuristic_counter()` and `contextweaver.HeuristicEstimator`.
+- **Provider-calibrated token estimation (#493).** Register accurate counters by
+  name (`tokens.register_estimator(name, counter)`) and select them via
+  `tokens.get_token_counter(provider)`; `tiktoken` stays the default. The
+  estimator path that produced a build's numbers is recorded on the new
+  additive `BuildStats.token_estimator` field (e.g. `"tiktoken/cl100k_base"`,
+  `"heuristic/v2"`, or a registered provider name). New
+  `benchmarks/token_calibration.py` (+ `make token-calibration`) renders the
+  divergence table at `docs/token_calibration.md` across ≥4 corpus shapes;
+  provider `count_tokens` legs are opt-in via `CW_TOKEN_CALIBRATION_PROVIDERS`
+  and never run in CI.
+- **Non-ASCII regression suite (#525).** `tests/test_unicode_regression.py`
+  pins CJK/emoji/RTL behaviour across tokenization, budgeting, dedup, card
+  rendering, serialization, and an in-process build.
 - **Dockerfile for the MCP gateway.** A top-level `Dockerfile` (+ `.dockerignore`)
   boots `contextweaver mcp serve --gateway` over stdio against the packaged
   reference catalog, so an MCP client or automated scanner (e.g. Glama) can
@@ -89,6 +108,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Token estimates flow through one source of truth (#530).** The
+  sensitivity-redaction placeholder, the firewall summary item, card budgeting
+  (`routing/cards.count_tokens`, `routing/packer`), and memory-source costing
+  no longer carry inline `len // 4` literals — they route through the
+  configured estimator / `contextweaver.tokens`. The sensitivity stage receives
+  the manager's estimator, so a custom counter is honoured on redaction paths.
+  ASCII placeholder estimates are unchanged; offline non-Latin estimates become
+  more accurate (and generally higher), which can shift selection outcomes in
+  offline mode by design. The default `ContextManager` estimator is now
+  `HeuristicEstimator` (was `CharDivFourEstimator`); `heuristic_counter()`
+  returns it.
 - **`BuildStats` accounting now has one pipeline owner (#459).**
   `total_candidates` is measured after dependency closure and before
   sensitivity filtering; `dropped_count` includes every later exclusion, so

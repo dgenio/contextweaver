@@ -107,6 +107,7 @@ from contextweaver.protocols import (
     EventHook,
     Extractor,
     FactStore,
+    HeuristicEstimator,
     Labeler,
     MemorySource,
     Navigator,
@@ -232,6 +233,7 @@ __all__ = [
     "RoutingScoreProvider",
     "Summarizer",
     "TokenEstimator",
+    "HeuristicEstimator",
     "DiagnosticSink",
     # exceptions
     "ArtifactNotFoundError",
