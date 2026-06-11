@@ -18,6 +18,7 @@ from contextweaver.context._manager_base import _ManagerState
 from contextweaver.exceptions import DuplicateItemError, ItemNotFoundError
 from contextweaver.store.episodic import Episode
 from contextweaver.store.facts import Fact
+from contextweaver.types import Sensitivity
 
 if TYPE_CHECKING:
     from contextweaver.envelope import ResultEnvelope
@@ -177,6 +178,7 @@ class _IngestMixin(_ManagerState):
             media_type=media_type,
             firewall_threshold=firewall_threshold,
             deterministic=self._deterministic,
+            redact_secrets=self._redact_secrets,
             firewall=firewall,
         )
 
@@ -253,6 +255,7 @@ class _IngestMixin(_ManagerState):
             tool_name=tool_name,
             firewall_threshold=firewall_threshold,
             deterministic=self._deterministic,
+            redact_secrets=self._redact_secrets,
             firewall=firewall,
             view_registry=self._view_registry,
         )
@@ -275,7 +278,14 @@ class _IngestMixin(_ManagerState):
     # Fact / episodic memory writes
     # ------------------------------------------------------------------
 
-    def add_fact(self, key: str, value: str, metadata: dict[str, Any] | None = None) -> None:
+    def add_fact(
+        self,
+        key: str,
+        value: str,
+        metadata: dict[str, Any] | None = None,
+        *,
+        sensitivity: Sensitivity = Sensitivity.public,
+    ) -> None:
         """Store a fact in the fact store.
 
         The fact ID uses a monotonic per-manager counter (``fact:{key}:{seq}``)
@@ -293,6 +303,10 @@ class _IngestMixin(_ManagerState):
             key: Fact key.
             value: Fact value.
             metadata: Optional metadata dict.
+            sensitivity: Keyword-only sensitivity label for the fact (issue
+                #450).  Defaults to :attr:`~contextweaver.types.Sensitivity.public`;
+                set it higher to have the fact dropped/redacted by the header
+                sensitivity enforcement when it meets the policy floor.
 
         Raises:
             DuplicateItemError: If the generated ID already exists.  After
@@ -320,19 +334,29 @@ class _IngestMixin(_ManagerState):
                 key=key,
                 value=value,
                 metadata=metadata or {},
+                sensitivity=sensitivity,
             )
         )
         self._fact_seq += 1
 
-    def add_fact_sync(self, key: str, value: str, metadata: dict[str, Any] | None = None) -> None:
+    def add_fact_sync(
+        self,
+        key: str,
+        value: str,
+        metadata: dict[str, Any] | None = None,
+        *,
+        sensitivity: Sensitivity = Sensitivity.public,
+    ) -> None:
         """Synchronous alias for :meth:`add_fact`."""
-        self.add_fact(key, value, metadata)
+        self.add_fact(key, value, metadata, sensitivity=sensitivity)
 
     def add_episode(
         self,
         episode_id: str,
         summary: str,
         metadata: dict[str, Any] | None = None,
+        *,
+        sensitivity: Sensitivity = Sensitivity.public,
     ) -> None:
         """Store an episodic memory summary.
 
@@ -340,12 +364,17 @@ class _IngestMixin(_ManagerState):
             episode_id: Unique episode identifier.
             summary: Summary text.
             metadata: Optional metadata dict.
+            sensitivity: Keyword-only sensitivity label for the episode (issue
+                #450).  Defaults to :attr:`~contextweaver.types.Sensitivity.public`;
+                set it higher to have the summary dropped/redacted by the header
+                sensitivity enforcement when it meets the policy floor.
         """
         self._episodic_store.add(
             Episode(
                 episode_id=episode_id,
                 summary=summary,
                 metadata=metadata or {},
+                sensitivity=sensitivity,
             )
         )
 
@@ -354,6 +383,8 @@ class _IngestMixin(_ManagerState):
         episode_id: str,
         summary: str,
         metadata: dict[str, Any] | None = None,
+        *,
+        sensitivity: Sensitivity = Sensitivity.public,
     ) -> None:
         """Synchronous alias for :meth:`add_episode`."""
-        self.add_episode(episode_id, summary, metadata)
+        self.add_episode(episode_id, summary, metadata, sensitivity=sensitivity)

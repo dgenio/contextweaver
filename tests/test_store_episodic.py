@@ -108,3 +108,31 @@ def test_episode_roundtrip() -> None:
     assert restored.episode_id == "ep1"
     assert restored.tags == ["search", "db"]
     assert restored.metadata["took_ms"] == 42
+
+
+# ------------------------------------------------------------------
+# Sensitivity field (issue #450)
+# ------------------------------------------------------------------
+
+
+def test_episode_sensitivity_defaults_public() -> None:
+    from contextweaver.types import Sensitivity
+
+    assert Episode(episode_id="e1", summary="s").sensitivity is Sensitivity.public
+
+
+def test_episode_sensitivity_roundtrip() -> None:
+    from contextweaver.types import Sensitivity
+
+    ep = Episode(episode_id="e1", summary="s", sensitivity=Sensitivity.confidential)
+    payload = ep.to_dict()
+    assert payload["sensitivity"] == "confidential"
+    restored = Episode.from_dict(payload)
+    assert restored.sensitivity is Sensitivity.confidential
+
+
+def test_episode_from_dict_without_sensitivity_defaults_public() -> None:
+    from contextweaver.types import Sensitivity
+
+    restored = Episode.from_dict({"episode_id": "e1", "summary": "s"})
+    assert restored.sensitivity is Sensitivity.public

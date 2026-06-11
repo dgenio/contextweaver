@@ -36,6 +36,7 @@ from contextweaver import tokens
 from contextweaver.envelope import ChoiceCard
 from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
+from contextweaver.secrets import scrub_secrets
 from contextweaver.types import SelectableItem
 
 # §2.3 default token budgets.
@@ -116,6 +117,7 @@ def item_to_card(
     item: SelectableItem,
     *,
     score: float | None = None,
+    redact_secrets: bool = False,
 ) -> ChoiceCard:
     """Convert a :class:`SelectableItem` to a :class:`ChoiceCard`.
 
@@ -126,17 +128,24 @@ def item_to_card(
     Args:
         item: The source item.
         score: Optional relevance score to attach.
+        redact_secrets: When ``True`` (issue #428) the card's prompt-bound text
+            (name, description, tags) is passed through the deterministic
+            :func:`contextweaver.secrets.scrub_secrets` pass, so a secret copied
+            into an upstream tool's name/description never reaches the prompt.
 
     Returns:
         A :class:`ChoiceCard` with ``args_schema`` omitted.
     """
+    name = scrub_secrets(item.name) if redact_secrets else item.name
+    description = scrub_secrets(item.description) if redact_secrets else item.description
+    tags = [scrub_secrets(t) for t in item.tags] if redact_secrets else item.tags
     # §2.1 caps: name ≤ 64 chars, tags ≤ 5 entries (each ≤ 24 chars).
-    capped_name = item.name[:64]
-    capped_tags = sorted({t[:24] for t in item.tags})[:5]
+    capped_name = name[:64]
+    capped_tags = sorted({t[:24] for t in tags})[:5]
     return ChoiceCard(
         id=item.id,
         name=capped_name,
-        description=item.description,
+        description=description,
         tags=capped_tags,
         kind=item.kind,
         namespace=item.namespace,
@@ -147,16 +156,17 @@ def item_to_card(
     )
 
 
-def render_cards(items: list[SelectableItem]) -> list[ChoiceCard]:
+def render_cards(items: list[SelectableItem], *, redact_secrets: bool = False) -> list[ChoiceCard]:
     """Render a list of items as choice cards.
 
     Args:
         items: The items to render.
+        redact_secrets: Forwarded to :func:`item_to_card` (issue #428).
 
     Returns:
         A list of :class:`ChoiceCard` in the same order.
     """
-    return [item_to_card(item) for item in items]
+    return [item_to_card(item, redact_secrets=redact_secrets) for item in items]
 
 
 def _card_token_count(card: ChoiceCard) -> int:
@@ -241,6 +251,7 @@ def make_choice_cards(
     target_tokens_per_card: int = DEFAULT_CARD_TARGET_TOKENS,
     hard_cap_tokens_per_card: int = DEFAULT_CARD_HARD_CAP_TOKENS,
     scores: dict[str, float] | None = None,
+    redact_secrets: bool = False,
 ) -> list[ChoiceCard]:
     """Create a bounded list of :class:`ChoiceCard` objects.
 
@@ -267,6 +278,8 @@ def make_choice_cards(
             Defaults to :data:`DEFAULT_CARD_HARD_CAP_TOKENS` (80).
         scores: Optional mapping of item-id → score.  When absent, the
             original input order is preserved.
+        redact_secrets: Forwarded to :func:`item_to_card` (issue #428) so card
+            text is secret-scrubbed before truncation and rendering.
 
     Returns:
         A list of :class:`ChoiceCard` objects.
@@ -277,7 +290,7 @@ def make_choice_cards(
     score_map = scores or {}
     cards = [
         _enforce_card_budget(
-            item_to_card(item, score=score_map.get(item.id)),
+            item_to_card(item, score=score_map.get(item.id), redact_secrets=redact_secrets),
             target_tokens=target_tokens_per_card,
             hard_cap_tokens=hard_cap_tokens_per_card,
         )
@@ -363,7 +376,9 @@ def render_cards_text(cards: list[ChoiceCard]) -> str:
     return "\n".join(lines)
 
 
-def cards_for_route(route: list[str], catalog: Catalog) -> list[ChoiceCard]:
+def cards_for_route(
+    route: list[str], catalog: Catalog, *, redact_secrets: bool = False
+) -> list[ChoiceCard]:
     """Return choice cards for items that appear in *route* and exist in *catalog*.
 
     Nodes that are not catalog items (e.g. namespace / category nodes) are
@@ -372,6 +387,7 @@ def cards_for_route(route: list[str], catalog: Catalog) -> list[ChoiceCard]:
     Args:
         route: A list of node IDs from the router.
         catalog: The catalog to look up items in.
+        redact_secrets: Forwarded to :func:`item_to_card` (issue #428).
 
     Returns:
         A list of :class:`ChoiceCard` for each matching item.
@@ -380,7 +396,7 @@ def cards_for_route(route: list[str], catalog: Catalog) -> list[ChoiceCard]:
     for node_id in route:
         try:
             item = catalog.get(node_id)
-            cards.append(item_to_card(item))
+            cards.append(item_to_card(item, redact_secrets=redact_secrets))
         except ItemNotFoundError:
             continue
     return cards

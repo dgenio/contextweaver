@@ -126,7 +126,9 @@ def test_redact_mode_replaces_text() -> None:
     assert filtered[1].text == "[REDACTED: confidential]"
 
 
-def test_redact_mode_preserves_metadata() -> None:
+def test_redact_mode_preserves_structure_and_marks_redacted() -> None:
+    """Redaction preserves structural fields, keeps original metadata keys, and
+    adds the ``redacted`` marker while dropping the artifact handle (issue #451)."""
     policy = ContextPolicy(
         sensitivity_floor=Sensitivity.confidential,
         sensitivity_action="redact",
@@ -145,7 +147,8 @@ def test_redact_mode_preserves_metadata() -> None:
     assert redacted.id == "s1"
     assert redacted.kind == ItemKind.doc_snippet
     assert redacted.text == "[REDACTED: restricted]"
-    assert redacted.metadata == {"source": "vault"}
+    # Original metadata is preserved; the redaction marker is added (issue #451).
+    assert redacted.metadata == {"source": "vault", "redacted": True}
     assert redacted.parent_id == "parent1"
     assert redacted.sensitivity == Sensitivity.restricted
 
@@ -402,3 +405,106 @@ def test_unregister_unknown_hook_raises() -> None:
     """Unregistering a name that was never registered raises ItemNotFoundError."""
     with pytest.raises(ItemNotFoundError, match="not registered"):
         unregister_redaction_hook("never_registered_hook")
+
+
+# ------------------------------------------------------------------
+# Redaction is effective end-to-end (issue #451)
+# ------------------------------------------------------------------
+
+
+def test_redaction_drops_artifact_ref() -> None:
+    """A redacted item must not retain an artifact handle that the prompt would
+    advertise and drilldown could dereference back to the original (issue #451)."""
+    from contextweaver.types import ArtifactRef
+
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.confidential,
+        sensitivity_action="redact",
+    )
+    item = ContextItem(
+        id="r1",
+        kind=ItemKind.tool_result,
+        text="secret payload",
+        sensitivity=Sensitivity.restricted,
+        artifact_ref=ArtifactRef(handle="artifact:r1", media_type="text/plain", size_bytes=14),
+    )
+    filtered, _ = apply_sensitivity_filter([item], policy)
+    assert filtered[0].text == "[REDACTED: restricted]"
+    assert filtered[0].artifact_ref is None
+    assert filtered[0].metadata.get("redacted") is True
+
+
+def test_redacted_item_renders_without_handle() -> None:
+    """The rendered prompt for a redacted item exposes no artifact handle (issue #451)."""
+    from contextweaver.context.prompt import render_item
+    from contextweaver.types import ArtifactRef
+
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.confidential,
+        sensitivity_action="redact",
+    )
+    item = ContextItem(
+        id="r2",
+        kind=ItemKind.tool_result,
+        text="AKIAIOSFODNN7EXAMPLE",
+        sensitivity=Sensitivity.restricted,
+        artifact_ref=ArtifactRef(handle="artifact:r2", media_type="text/plain", size_bytes=20),
+    )
+    filtered, _ = apply_sensitivity_filter([item], policy)
+    rendered = render_item(filtered[0])
+    assert "artifact:r2" not in rendered
+    assert "AKIAIOSFODNN7EXAMPLE" not in rendered
+
+
+# ------------------------------------------------------------------
+# SecretRedactor hook (issue #428)
+# ------------------------------------------------------------------
+
+
+def test_secret_redactor_registered_under_name() -> None:
+    """Importing the package registers the built-in "secret" hook (issue #428)."""
+    import contextweaver  # noqa: F401  (ensures registration side effect)
+
+    assert "secret" in _HOOK_REGISTRY
+
+
+def test_secret_redactor_scrubs_substring_keeps_rest() -> None:
+    from contextweaver.context.secret_redaction import SecretRedactor
+
+    item = ContextItem(
+        id="s1",
+        kind=ItemKind.tool_result,
+        text="connecting with key=AKIAIOSFODNN7EXAMPLE now",
+        sensitivity=Sensitivity.public,
+    )
+    redacted = SecretRedactor().redact(item)
+    assert "AKIAIOSFODNN7EXAMPLE" not in redacted.text
+    assert redacted.text.startswith("connecting with key=")
+    assert redacted.text.endswith(" now")
+
+
+def test_secret_redactor_noop_when_clean_returns_same_item() -> None:
+    from contextweaver.context.secret_redaction import SecretRedactor
+
+    item = ContextItem(id="c1", kind=ItemKind.tool_result, text="no secrets here")
+    assert SecretRedactor().redact(item) is item
+
+
+def test_secret_hook_via_policy() -> None:
+    """The "secret" hook works through ContextPolicy.redaction_hooks (issue #428)."""
+    import contextweaver  # noqa: F401
+
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.confidential,
+        sensitivity_action="redact",
+        redaction_hooks=["secret"],
+    )
+    item = ContextItem(
+        id="h1",
+        kind=ItemKind.tool_result,
+        text="db: postgres://u:p4ssword@host/db",
+        sensitivity=Sensitivity.confidential,
+    )
+    filtered, dropped = apply_sensitivity_filter([item], policy)
+    assert dropped == 0
+    assert "p4ssword" not in filtered[0].text

@@ -153,6 +153,13 @@ class ContextPolicy:
             the floor; ``"redact"`` replaces their text via redaction hooks.
         redaction_hooks: Names of redaction hook implementations to apply,
             in order.  Resolved at runtime by the context manager.
+        allow_redacted_drilldown: When ``False`` (default, closed) a
+            :meth:`~contextweaver.context.manager.ContextManager.drilldown` whose
+            source item meets the sensitivity floor (or was already redacted)
+            raises :class:`~contextweaver.exceptions.PolicyViolationError`,
+            so ``redact``/``drop`` cannot be bypassed by re-fetching the raw
+            artifact bytes (issue #451).  Set ``True`` only for deployments that
+            intentionally rely on drilldown to recover filtered content.
     """
 
     allowed_kinds_per_phase: dict[Phase, list[ItemKind]] = field(
@@ -166,6 +173,7 @@ class ContextPolicy:
     sensitivity_floor: Sensitivity = Sensitivity.confidential
     sensitivity_action: Literal["drop", "redact"] = "drop"
     redaction_hooks: list[str] = field(default_factory=list)
+    allow_redacted_drilldown: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -194,6 +202,7 @@ class ContextPolicy:
             "sensitivity_floor": self.sensitivity_floor.value,
             "sensitivity_action": self.sensitivity_action,
             "redaction_hooks": list(self.redaction_hooks),
+            "allow_redacted_drilldown": self.allow_redacted_drilldown,
             "extra": dict(self.extra),
         }
 
@@ -227,6 +236,9 @@ class ContextPolicy:
                 data.get("sensitivity_action", _d.sensitivity_action),
             ),
             redaction_hooks=list(data.get("redaction_hooks", _d.redaction_hooks)),
+            allow_redacted_drilldown=bool(
+                data.get("allow_redacted_drilldown", _d.allow_redacted_drilldown)
+            ),
             extra=dict(data.get("extra", _d.extra)),
         )
 

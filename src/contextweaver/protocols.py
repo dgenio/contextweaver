@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from contextweaver.context.memory_source import MemoryEntry
     from contextweaver.envelope import ChoiceCard, ContextPack
     from contextweaver.routing.graph import ChoiceGraph
-    from contextweaver.types import ContextItem, Phase, SelectableItem
+    from contextweaver.types import ContextItem, Phase, SelectableItem, Sensitivity
 
 
 _tiktoken_logger = _logging.getLogger("contextweaver.protocols")
@@ -292,6 +292,32 @@ class RedactionHook(Protocol):
 
     def redact(self, item: ContextItem) -> ContextItem:
         """Return a (possibly modified) copy of *item* with sensitive data removed."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# SensitivityClassifier (issue #542)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class SensitivityClassifier(Protocol):
+    """Assign a :class:`~contextweaver.types.Sensitivity` label to an item.
+
+    Invoked during the build pipeline's sensitivity stage (before
+    :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter`) so that
+    content callers forgot to label is *raised* to an appropriate level before
+    enforcement runs — input-side defence in depth complementing output-side
+    redaction (issue #428).
+
+    Contract: an implementation MUST NOT *lower* an item's existing label; it
+    returns the level the item should carry, and the pipeline takes the maximum
+    of that and the item's current label as a safety net.  Classification must
+    be deterministic — no model, no randomness — so enforcement stays auditable.
+    """
+
+    def classify(self, item: ContextItem) -> Sensitivity:
+        """Return the sensitivity *item* should carry (never below its current label)."""
         ...
 
 

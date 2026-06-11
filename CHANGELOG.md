@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Opt-in deterministic secret-redaction pass (#428).** A new pure
+  `contextweaver.secrets` module (`scrub_secrets()`, `contains_secret()`,
+  `SecretPattern`) detects well-known secret shapes (cloud access keys, provider
+  tokens, private-key blocks, JWTs, credential-bearing URLs, `key=value`
+  credential assignments). `ContextManager(redact_secrets=True)` scrubs firewall
+  summaries and extracted facts before they reach the prompt; `ProxyRuntime(...,
+  redact_secrets=True)` additionally scrubs `ChoiceCard` text. A `SecretRedactor`
+  `RedactionHook` (registered as `"secret"`) is available for
+  `ContextPolicy.redaction_hooks`. Off by default; only ever tightens a surface.
+- **Opt-in ingestion-time sensitivity classification (#542).** New
+  `SensitivityClassifier` protocol + built-in `HeuristicSensitivityClassifier`
+  (and `detect_sensitivity()`) raise an item's sensitivity label before
+  enforcement so content callers forgot to label (e.g. tool results carrying
+  credentials/PII) no longer defaults silently to `public`. Wired via
+  `ContextManager(sensitivity_classifier=...)`; runs at the start of the
+  sensitivity stage and over fact/episode header content. A classifier may only
+  raise a label, never lower it. Every raise records
+  `metadata["sensitivity_raised_by"]` (the classifier's type name) so the
+  decision is auditable.
+
+### Changed
+
+- **Header memory is now enforced (#450).** Facts (`add_fact`) and episode
+  summaries (`add_episode`) injected into the prompt header are routed through
+  the sensitivity floor/redaction action **and** the per-phase `memory_fact`
+  kind policy — closing a side-channel where header content bypassed stage-3
+  enforcement. `Fact` and `Episode` gained an optional `sensitivity` field
+  (defaults `public`, round-trips in `to_dict`/`from_dict`); `add_fact` /
+  `add_episode` accept a keyword-only `sensitivity`. A phase that excludes
+  `memory_fact` no longer receives fact/episode text via the header.
+- **Redaction is effective end-to-end (#451).** A redacted item now drops its
+  `artifact_ref` and is stamped `metadata["redacted"]=True`, so the rendered
+  prompt no longer advertises an artifact handle that `drilldown` could
+  dereference back to the original, pre-redaction bytes. `drilldown` is now also
+  policy-aware: a drilldown whose source item meets the sensitivity floor (or was
+  redacted) raises `PolicyViolationError` unless the new
+  `ContextPolicy.allow_redacted_drilldown=True` opt-out (default `False`, closed)
+  is set, and an injected drilldown slice inherits its source item's sensitivity
+  instead of defaulting to `public` — so filtered content cannot be laundered back
+  in via the drilldown path.
+- **`deterministic=True` now also gates LLM-backed extractors (#461).** The
+  firewall's fail-closed determinism guarantee previously covered only the
+  summarizer; an LLM-backed `Extractor` (e.g. `LlmExtractor`) would still run.
+  Both the large-output firewall path and the small-output ingest path now raise
+  `DeterminismError` rather than passing data through a model.
+
 - **`contextweaver catalog lint` (#538).** A new `catalog` CLI sub-app exposes
   `catalog lint FILE`, which runs the existing `CatalogNormalizer` plus
   cross-item reference validation over a catalog and reports findings (missing

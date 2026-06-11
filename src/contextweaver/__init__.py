@@ -34,6 +34,7 @@ from contextweaver import (
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer, jaccard
 from contextweaver._version import __version__  # noqa: F401
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+from contextweaver.context.classify import HeuristicSensitivityClassifier, detect_sensitivity
 from contextweaver.context.explanation import (
     EXPLANATION_VERSION,
     CandidateExplanation,
@@ -60,6 +61,7 @@ from contextweaver.context.memory_source import (
     memory_entries_to_context_items,
     select_memory_for_phase,
 )
+from contextweaver.context.secret_redaction import SecretRedactor
 from contextweaver.context.sensitivity import (
     MaskRedactionHook,
     register_redaction_hook,
@@ -119,6 +121,7 @@ from contextweaver.protocols import (
     Reranker,
     Retriever,
     RoutingScoreProvider,
+    SensitivityClassifier,
     Summarizer,
     TokenEstimator,
 )
@@ -235,6 +238,7 @@ __all__ = [
     "Reranker",
     "Retriever",
     "RoutingScoreProvider",
+    "SensitivityClassifier",
     "Summarizer",
     "TokenEstimator",
     "HeuristicEstimator",
@@ -281,12 +285,15 @@ __all__ = [
     "HANDOFF_PACK_VERSION",
     "HandoffEntry",
     "JsonFixtureMemorySource",
+    "HeuristicSensitivityClassifier",
     "MaskRedactionHook",
     "MemoryEntry",
     "PHASE_SCOPE_PREFERENCES",
+    "SecretRedactor",
     "SessionHandoffPack",
     "ViewRegistry",
     "build_session_handoff_pack",
+    "detect_sensitivity",
     "drilldown_tool_spec",
     "generate_views",
     "memory_entries_to_context_items",

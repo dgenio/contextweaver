@@ -82,9 +82,16 @@ def unregister_redaction_hook(name: str) -> None:
 class MaskRedactionHook:
     """Replace item text with ``[REDACTED: {sensitivity}]``.
 
-    All other item fields (id, kind, metadata, parent_id, artifact_ref) are
-    preserved so the item still participates in dependency closure, stats
-    tracking, and rendering structure.
+    Structural fields (id, kind, parent_id) are preserved so the item still
+    participates in dependency closure and rendering structure, and
+    ``metadata["redacted"]`` is set to ``True`` so downstream code can recognise
+    a redacted item.
+
+    The item's ``artifact_ref`` is **dropped** (issue #451): if it were kept, the
+    rendered prompt would advertise an artifact handle and the ``drilldown`` path
+    could re-fetch the original, pre-redaction bytes and re-inject them — making
+    ``redact`` weaker than its name implies.  Dropping the ref makes redaction
+    effective end-to-end on the standard rendered surfaces.
 
     The placeholder's ``token_estimate`` is computed through a configured
     :class:`~contextweaver.protocols.TokenEstimator` rather than an inline
@@ -110,14 +117,19 @@ class MaskRedactionHook:
             item: The context item to redact.
 
         Returns:
-            A new :class:`ContextItem` with masked text and a token estimate
-            from the configured estimator.
+            A new :class:`ContextItem` with masked text, a token estimate from
+            the configured estimator, ``artifact_ref`` cleared, and
+            ``metadata["redacted"]`` set (issue #451).
         """
         placeholder = f"[REDACTED: {item.sensitivity.value}]"
+        metadata = dict(item.metadata)
+        metadata["redacted"] = True
         return replace(
             item,
             text=placeholder,
             token_estimate=self._estimator.estimate(placeholder),
+            artifact_ref=None,
+            metadata=metadata,
         )
 
 
