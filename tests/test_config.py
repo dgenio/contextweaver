@@ -227,6 +227,37 @@ def test_profile_default_mode_is_strict() -> None:
     assert ProfileConfig().mode == Mode.strict
 
 
+# ---------------------------------------------------------------------------
+# Mode.adaptive no-op warning (issue #521)
+# ---------------------------------------------------------------------------
+
+
+def test_profile_adaptive_mode_warns() -> None:
+    """Selecting the inert Mode.adaptive must warn rather than silently no-op."""
+    with pytest.warns(UserWarning, match="no effect"):
+        ProfileConfig(mode=Mode.adaptive)
+
+
+def test_profile_strict_and_seeded_do_not_warn() -> None:
+    import warnings
+
+    for mode in (Mode.strict, Mode.seeded):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ProfileConfig(mode=mode)
+
+
+def test_profile_adaptive_roundtrips_with_warning() -> None:
+    """A persisted 'adaptive' profile round-trips but re-warns on load (issue #521)."""
+    with pytest.warns(UserWarning):
+        original = ProfileConfig(mode=Mode.adaptive)
+    payload = original.to_dict()
+    assert payload["mode"] == "adaptive"
+    with pytest.warns(UserWarning, match="no effect"):
+        restored = ProfileConfig.from_dict(payload)
+    assert restored.mode is Mode.adaptive
+
+
 def test_profile_explicit_mode() -> None:
     p = ProfileConfig(mode=Mode.seeded, seed=42)
     assert p.mode == Mode.seeded

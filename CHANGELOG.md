@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`contextweaver catalog lint` (#538).** A new `catalog` CLI sub-app exposes
+  `catalog lint FILE`, which runs the existing `CatalogNormalizer` plus
+  cross-item reference validation over a catalog and reports findings (missing
+  descriptions, duplicate/blank IDs, tag/whitespace hygiene, dangling
+  `depends_on`/`requires`). Accepts the native JSON/YAML catalog, a raw MCP
+  `tools/list` array, and the `{"tools": [...]}` snapshot shape. Supports
+  `--json` and exits `0` (clean) / `1` (findings) / `3` (load error) for CI
+  gating; never mutates the input file.
+- **Typed cross-item reference validation on catalog load (#519).** New
+  `routing.validate_references()` + `Catalog.validate_references()` return a
+  `CatalogValidationReport` of dangling `depends_on` (item IDs) and unsatisfied
+  `requires` (capabilities) references. The `load_catalog*` loaders gained an
+  additive `on_invalid` kwarg (`"warn"` default → log per finding, `"raise"` →
+  `CatalogValidationError` carrying the report, `"ignore"`). Per-item
+  deserialization failures now name the offending item by `id` (or index).
+- **Structured DEBUG/INFO routing diagnostics (#524).** `logging.DEBUG` on
+  `contextweaver.routing` now traces the previously silent decision points:
+  the tree-building strategy per subtree (INFO when a clustering/alphabetical
+  *fallback* is taken), per-step beam pruning counts and pruned IDs, and the
+  original-vs-augmented scoring query. Log messages are diagnostics, not API.
 - **Script-aware offline token heuristic — `HeuristicEstimator` (#525).** The
   default estimator (and the `tiktoken` offline fallback) now counts dense
   scripts (CJK, Kana, Hangul, emoji) at ≈1 token/character instead of
@@ -36,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Actionable graph-validation diagnostics (#523).** `GraphBuildError` now
+  carries structured `cycle` / `edge` / `missing_root` attributes and names the
+  specifics in its message: cycle failures report the full path
+  (`a -> b -> c -> a`, deterministically), dangling edges name both ends, and a
+  missing root lists known-node hints. The structured attributes are the stable
+  contract; message text is not.
+- **`Mode.adaptive` no longer fails silently (#521).** Constructing a
+  `ProfileConfig(mode=Mode.adaptive)` now emits a `UserWarning` stating the mode
+  is inert (no pipeline stage honours it; output equals `Mode.strict`).
+  `strict`/`seeded` are unaffected and persisted `"adaptive"` profiles still
+  round-trip (re-warning on load).
 - **`contextweaver mcp serve` advertises the installed package version.**
   `--version` now defaults to the contextweaver package version (was `None`)
   when neither the flag nor the config file sets it, and the resolved version

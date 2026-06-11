@@ -7,6 +7,7 @@ bundle with named presets).
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -34,13 +35,23 @@ class Mode(str, Enum):
             randomness-using algorithms (e.g. embedding-based ANN) as long
             as the seed is fixed.  Reserved for forward compatibility.
         adaptive: FUTURE.  Engine may learn from telemetry / prior runs.
-            Not currently honoured by any pipeline stage; selecting this
-            mode is accepted but has no effect today.
+            Not currently honoured by any pipeline stage.  Selecting it via
+            :class:`ProfileConfig` emits a :class:`UserWarning` (issue #521)
+            so the no-op is visible rather than silently misleading; it does
+            not change routing or context output.
     """
 
     strict = "strict"
     seeded = "seeded"
     adaptive = "adaptive"
+
+
+#: Warning text emitted when the inert ``Mode.adaptive`` is selected (issue #521).
+_ADAPTIVE_NO_OP_WARNING = (
+    "Mode.adaptive is not honoured by any pipeline stage and has no effect; "
+    "routing and context output are identical to Mode.strict. Use Mode.strict "
+    "or Mode.seeded to make configuration intent explicit."
+)
 
 
 # Named-preset definitions: (beam_width, max_depth, top_k, confidence_gap, max_children, answer)
@@ -122,6 +133,8 @@ class ProfileConfig:
         mode: Determinism mode (default :attr:`Mode.strict`).  ``seeded`` and
             ``adaptive`` are reserved for future LLM-backed pipeline stages
             and currently have no effect on routing or context output.
+            Selecting :attr:`Mode.adaptive` emits a :class:`UserWarning`
+            because it is inert today (issue #521).
         budget: Per-phase token budgets for the context engine.
         policy: Policy constraints for the context engine.
         scoring: Scoring weights for candidate ranking.
@@ -136,6 +149,11 @@ class ProfileConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     routing: RoutingConfig = field(default_factory=RoutingConfig)
     seed: int | None = None
+
+    def __post_init__(self) -> None:
+        """Warn when the inert :attr:`Mode.adaptive` placeholder is selected (issue #521)."""
+        if self.mode is Mode.adaptive:
+            warnings.warn(_ADAPTIVE_NO_OP_WARNING, UserWarning, stacklevel=2)
 
     @classmethod
     def from_preset(cls, name: str) -> ProfileConfig:
