@@ -382,6 +382,56 @@ def test_stats_subcommand_rich_format(tmp_path: Path) -> None:
 
 
 # ------------------------------------------------------------------
+# inspect (issue #398)
+# ------------------------------------------------------------------
+
+
+def test_inspect_subcommand_emits_payload_safe_json(tmp_path: Path) -> None:
+    jsonl_path = _write_session_jsonl(tmp_path)
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "inspect",
+        "--session",
+        str(ingested_path),
+        "--budget",
+        "1000",
+        "--format",
+        "json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["version"] == 1
+    assert payload["build"]["candidates"]["total"] > 0
+    assert "prompt" not in payload
+    assert "text" not in payload
+
+
+def test_inspect_subcommand_markdown_lists_drop_reasons(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "events.jsonl"
+    jsonl_path.write_text(
+        '{"id":"big","type":"user_turn","text":"large","token_estimate":500}\n',
+        encoding="utf-8",
+    )
+    ingested_path = tmp_path / "ingested.json"
+    _run("ingest", "--events", str(jsonl_path), "--out", str(ingested_path))
+
+    result = _run(
+        "inspect",
+        "--session",
+        str(ingested_path),
+        "--budget",
+        "10",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Context Inspection" in result.stdout
+    assert "`big`: budget" in result.stdout
+
+
+# ------------------------------------------------------------------
 # budget-check (issue #276)
 # ------------------------------------------------------------------
 

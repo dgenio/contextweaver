@@ -17,9 +17,10 @@ from typing import Any, Literal
 
 from contextweaver.types import ArtifactRef, Phase, SelectableItem, ViewSpec
 
-#: Schema version for :meth:`BuildStats.report_dict` payloads.  Bumped on
-#: backwards-incompatible field changes.
-BUILD_STATS_REPORT_VERSION: int = 1
+#: Schema version for :meth:`BuildStats.report_dict` payloads.  Version 2
+#: adds per-item drop attribution and gives candidate counts one consistent
+#: pre-sensitivity meaning (issues #414 / #459).
+BUILD_STATS_REPORT_VERSION: int = 2
 
 #: Canonical firewall strategy labels recorded on :class:`FirewallStats`
 #: (issues #402 / #404 / #406).
@@ -164,14 +165,47 @@ class ResultEnvelope:
 
 
 @dataclass
+class DroppedItem:
+    """Lightweight attribution for one item excluded from a context build.
+
+    Attributes:
+        item_id: The excluded :class:`~contextweaver.types.ContextItem` id.
+        reason: The pipeline stage reason: ``"sensitivity"``, ``"dedup"``,
+            ``"kind_limit"``, or ``"budget"``.
+    """
+
+    item_id: str
+    reason: str
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialise to a JSON-compatible dict."""
+        return {"item_id": self.item_id, "reason": self.reason}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DroppedItem:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(item_id=str(data["item_id"]), reason=str(data["reason"]))
+
+
+@dataclass
 class BuildStats:
-    """Diagnostic statistics produced by a context build pass."""
+    """Diagnostic statistics produced by a context build pass.
+
+    ``total_candidates`` is the number of phase candidates after dependency
+    closure and before sensitivity filtering. ``included_count`` is the final
+    number rendered into the prompt. ``dropped_count`` includes every later
+    exclusion (sensitivity, deduplication, kind limit, and token budget), so a
+    completed build satisfies ``included_count + dropped_count ==
+    total_candidates``. ``dropped_items`` carries the matching lightweight
+    per-item attribution without requiring ``explain=True``.
+    """
 
     tokens_per_section: dict[str, int] = field(default_factory=dict)
     total_candidates: int = 0
     included_count: int = 0
     dropped_count: int = 0
     dropped_reasons: dict[str, int] = field(default_factory=dict)
+    dropped_items: list[DroppedItem] = field(default_factory=list)
     dedup_removed: int = 0
     dependency_closures: int = 0
     header_footer_tokens: int = 0
@@ -233,6 +267,7 @@ class BuildStats:
             "included_count": self.included_count,
             "dropped_count": self.dropped_count,
             "dropped_reasons": dict(self.dropped_reasons),
+            "dropped_items": [item.to_dict() for item in self.dropped_items],
             "dedup_removed": self.dedup_removed,
             "dependency_closures": self.dependency_closures,
             "header_footer_tokens": self.header_footer_tokens,
@@ -248,6 +283,7 @@ class BuildStats:
             included_count=int(data.get("included_count", 0)),
             dropped_count=int(data.get("dropped_count", 0)),
             dropped_reasons=dict(data.get("dropped_reasons", {})),
+            dropped_items=[DroppedItem.from_dict(item) for item in data.get("dropped_items", [])],
             dedup_removed=int(data.get("dedup_removed", 0)),
             dependency_closures=int(data.get("dependency_closures", 0)),
             header_footer_tokens=int(data.get("header_footer_tokens", 0)),
@@ -328,7 +364,7 @@ def _build_stats_report_dict(
             )
 
     return {
-        "version": 1,
+        "version": BUILD_STATS_REPORT_VERSION,
         "phase": phase,
         "budget": budget,
         "prompt_tokens": prompt_tokens,
@@ -341,6 +377,7 @@ def _build_stats_report_dict(
             "dependency_closures": stats.dependency_closures,
         },
         "dropped_reasons": dict(reasons),
+        "dropped_items": [item.to_dict() for item in stats.dropped_items],
         "recommendations": recommendations,
     }
 

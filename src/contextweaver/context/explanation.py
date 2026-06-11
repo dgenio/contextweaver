@@ -64,9 +64,7 @@ class CandidateExplanation:
             (``None`` for candidates dropped before scoring).
         included: ``True`` when the candidate landed in the final pack.
         drop_reason: One of ``"sensitivity"``, ``"dedup"``,
-            ``"selection"``, ``""`` (kept).  ``"selection"`` is a
-            coarse bucket covering both per-kind-limit and budget
-            drops (the breakdown lives on :class:`BuildStats`).
+            ``"kind_limit"``, ``"budget"``, or ``""`` (kept).
             Empty when ``included`` is ``True``.
         dependency_closure: ``True`` when the candidate was pulled in
             by the dependency-closure stage rather than the phase
@@ -117,8 +115,8 @@ class ContextBuildExplanation:
         version: Schema version (currently :data:`EXPLANATION_VERSION`).
         phase: The :attr:`Phase` the build targeted.
         query: The query string passed to :meth:`ContextManager.build`.
-        total_candidates: Number of candidates entering the scoring
-            stage (i.e. after sensitivity + firewall).
+        total_candidates: Number of candidates after dependency closure
+            and before sensitivity filtering.
         included_count: Number of items in the final pack.
         dropped_count: Number of candidates not included.
         dropped_reasons: Aggregate counts per drop reason — mirrors the
@@ -282,6 +280,7 @@ def build_explanation(
 
     # Build the score lookup for the remaining survivors (post-dedup).
     score_by_id: dict[str, float] = {item.id: score for score, item in scored}
+    drop_reason_by_id = {item.item_id: item.reason for item in stats.dropped_items}
 
     # 3) Every scored item — included or dropped by selection.
     for _score, item in scored:
@@ -290,13 +289,7 @@ def build_explanation(
         included = item.id in selected_ids
         reason = ""
         if not included:
-            # Selection drops items for two reasons: per-kind limit or
-            # token budget.  We cannot distinguish them per-item from
-            # the public surface — both share the same dropped_reasons
-            # bucket in BuildStats — so we report "selection" as a
-            # single coarse bucket here and leave the breakdown to
-            # ``stats.dropped_reasons``.
-            reason = "selection"
+            reason = drop_reason_by_id.get(item.id, "selection")
         candidates.append(
             CandidateExplanation(
                 item_id=item.id,

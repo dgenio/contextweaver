@@ -53,6 +53,7 @@
       "dedup_removed": 0,
       "dependency_closures": 0,
       "dropped_count": 0,
+      "dropped_items": [],
       "dropped_reasons": {},
       "firewall_events": [],
       "header_footer_tokens": 81,

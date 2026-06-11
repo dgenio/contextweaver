@@ -54,6 +54,8 @@ filesystem or caller-supplied stores.
 - Routing queries, candidate identifiers, scores, and build statistics.
 - OpenTelemetry attributes and metrics when the optional integration is
   enabled.
+- Local gateway JSONL diagnostics when `mcp serve --diagnostics FILE` is
+  enabled.
 
 MCP annotations such as `readOnlyHint` are untrusted metadata. They may improve
 presentation or routing, but must not grant permission or bypass approval.
@@ -77,6 +79,12 @@ The default OpenTelemetry emission excludes raw queries, full tool
 descriptions, schemas, and prompt content. Enabling
 `otel_emit_experimental=True` can add sensitive content and should be limited
 to a trusted, access-controlled backend.
+
+The built-in gateway JSONL stream excludes query text, argument values, result
+text, prompt text, and artifact bytes. It does include canonical tool and
+artifact handles, namespaces, argument key names, sizes, timings, and error
+codes. Treat those identifiers as operationally sensitive and restrict file
+permissions and retention accordingly.
 
 ## Trust boundaries
 
@@ -159,6 +167,9 @@ contextweaver does not:
   artifact stores.
 - Leave experimental OTel content emission disabled unless the exporter is
   trusted for the data class involved.
+- Store gateway JSONL diagnostics in an access-controlled path and define a
+  retention policy; use `--quiet` only to suppress lifecycle stderr, not as a
+  substitute for diagnostics access control.
 - Review tool descriptions and results as untrusted input; do not rely on
   `readOnlyHint`, `destructiveHint`, or similar annotations as policy.
 - Pin the contextweaver version in managed deployments and review release notes

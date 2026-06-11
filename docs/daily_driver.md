@@ -51,6 +51,26 @@ pip install contextweaver
 contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
 ```
 
+Enable local, payload-safe diagnostics in a directory that already exists:
+
+```bash
+contextweaver mcp serve \
+  --config /path/to/gateway.yaml \
+  --diagnostics /path/to/logs/contextweaver.jsonl \
+  --quiet
+```
+
+Inspect the static catalog before launch and aggregate the event stream later:
+
+```bash
+contextweaver mcp inspect --catalog /path/to/catalog.yaml
+contextweaver mcp stats --events /path/to/logs/contextweaver.jsonl
+```
+
+The packaged CLI still represents one configured static catalog source. Its
+catalog report groups tools by namespace; it does not claim live health for
+multiple upstream MCP processes.
+
 `pipx run contextweaver ...` is another isolated option. The first `uvx` or
 `pipx run` launch resolves a temporary environment and is slower than later
 runs. Pin a deployment when reproducibility matters:
@@ -129,7 +149,9 @@ When a route or prompt looks wrong, inspect these in order:
    score gaps, filters, and ambiguity. Use `debug=True` when you need the
    expansion trace.
 3. **Build statistics.** Check `included_count`, `dropped_count`,
-   `dropped_reasons`, `dedup_removed`, and token usage in `BuildStats`.
+   `dropped_reasons`, per-item `dropped_items`, `dedup_removed`, and token
+   usage in `BuildStats`. For an ingested session, run
+   `contextweaver inspect --session session.json`.
 4. **Artifact reference.** Confirm the handle exists before calling
    `tool_view`, then request a bounded `head`, `lines`, `rows`, or `json_keys`
    selector.
@@ -137,8 +159,11 @@ When a route or prompt looks wrong, inspect these in order:
    inspect phase budgets, the firewall threshold, sensitivity policy, and
    scoring/retrieval backend. These are Python runtime settings, not fields in
    the current `mcp serve` YAML.
-6. **Telemetry.** When the `[otel]` extra is enabled, inspect the context-build,
-   firewall, and routing spans. Raw prompt content remains off by default.
+6. **Telemetry.** Use `mcp serve --diagnostics FILE` for local JSONL counts,
+   savings, failures, artifact-view usage, and latency. The built-in stream
+   records IDs, sizes, argument key names, and error codes, but not queries,
+   argument values, result text, prompt text, or artifact bytes. When the
+   `[otel]` extra is enabled, inspect context-build, firewall, and routing spans.
 
 Do not respond to a poor route by immediately increasing every budget or
 returning whole artifacts. Better descriptions, a sharper browse query, and a

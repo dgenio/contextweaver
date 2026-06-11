@@ -33,5 +33,12 @@ beam_width: 3
 # Byte-stable browse prefix for prompt-cache hits.
 cache_stable: false
 
+# Optional append-only, payload-safe diagnostic event stream. Parent directory
+# must already exist. Uncomment for operator counts, savings, and latency:
+# diagnostics: ./logs/contextweaver.jsonl
+
+# Suppress lifecycle messages on stderr (stdout remains reserved for MCP).
+quiet: false
+
 # MCP server display name advertised on init.
 name: contextweaver

@@ -7,13 +7,23 @@ configured token budget for the current phase.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 
 from contextweaver.config import ContextBudget, ContextPolicy
-from contextweaver.envelope import BuildStats
 from contextweaver.protocols import TokenEstimator
 from contextweaver.types import ContextItem, Phase
 
 logger = logging.getLogger("contextweaver.context")
+
+
+@dataclass
+class _SelectionOutcome:
+    """Raw selection-stage outcome consumed by the build pipeline."""
+
+    selected: list[ContextItem] = field(default_factory=list)
+    dropped: list[tuple[ContextItem, str]] = field(default_factory=list)
+    tokens_per_section: dict[str, int] = field(default_factory=dict)
+    budget_overruns: list[tuple[int, int]] = field(default_factory=list)
 
 
 def select_and_pack(
@@ -22,7 +32,7 @@ def select_and_pack(
     budget: ContextBudget,
     policy: ContextPolicy,
     estimator: TokenEstimator,
-) -> tuple[list[ContextItem], BuildStats]:
+) -> _SelectionOutcome:
     """Select items up to the phase budget, enforcing per-kind limits.
 
     Iterates through *scored* in descending order and greedily includes items
@@ -36,7 +46,8 @@ def select_and_pack(
         estimator: Token estimator for items whose ``token_estimate`` is zero.
 
     Returns:
-        A 2-tuple ``(selected_items, stats)``.
+        The raw selection outcome. The enclosing build pipeline owns final
+        :class:`~contextweaver.envelope.BuildStats` construction.
     """
     token_limit = budget.for_phase(phase)
     max_per_kind = policy.max_items_per_kind
@@ -44,7 +55,8 @@ def select_and_pack(
     selected: list[ContextItem] = []
     tokens_used = 0
     kind_counts: dict[str, int] = {}
-    dropped_reasons: dict[str, int] = {}
+    dropped: list[tuple[ContextItem, str]] = []
+    budget_overruns: list[tuple[int, int]] = []
 
     for _, item in scored:
         kind_key = item.kind.value
@@ -52,7 +64,7 @@ def select_and_pack(
         # Per-kind limit
         kind_limit = max_per_kind.get(item.kind, 50)
         if kind_counts.get(kind_key, 0) >= kind_limit:
-            dropped_reasons["kind_limit"] = dropped_reasons.get("kind_limit", 0) + 1
+            dropped.append((item, "kind_limit"))
             continue
 
         # Token estimate
@@ -60,7 +72,8 @@ def select_and_pack(
 
         # Budget check
         if tokens_used + token_count > token_limit:
-            dropped_reasons["budget"] = dropped_reasons.get("budget", 0) + 1
+            dropped.append((item, "budget"))
+            budget_overruns.append((tokens_used + token_count, token_limit))
             continue
 
         selected.append(item)
@@ -74,23 +87,20 @@ def select_and_pack(
         t = item.token_estimate or estimator.estimate(item.text)
         tokens_per_section[k] = tokens_per_section.get(k, 0) + t
 
-    total_candidates = len(scored)
-    included = len(selected)
-    dropped = total_candidates - included
-
-    stats = BuildStats(
-        tokens_per_section=tokens_per_section,
-        total_candidates=total_candidates,
-        included_count=included,
-        dropped_count=dropped,
-        dropped_reasons=dropped_reasons,
-    )
+    dropped_reasons: dict[str, int] = {}
+    for _item, reason in dropped:
+        dropped_reasons[reason] = dropped_reasons.get(reason, 0) + 1
     logger.debug(
         "select_and_pack: included=%d, dropped=%d, tokens=%d/%d, reasons=%s",
-        included,
-        dropped,
+        len(selected),
+        len(dropped),
         tokens_used,
         token_limit,
         dropped_reasons,
     )
-    return selected, stats
+    return _SelectionOutcome(
+        selected=selected,
+        dropped=dropped,
+        tokens_per_section=tokens_per_section,
+        budget_overruns=budget_overruns,
+    )

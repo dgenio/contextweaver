@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Trustworthy diagnostics across context builds and the MCP gateway
+  (#370, #378, #398, #414, #459).** `BuildStats.dropped_items` attributes
+  every excluded item to `sensitivity`, `dedup`, `kind_limit`, or `budget`;
+  the production context pipeline now fires exclusion and budget lifecycle
+  hooks. New versioned `DiagnosticEvent` / `DiagnosticSink` APIs include
+  thread-safe in-memory and append-only JSONL sinks. `ProxyRuntime` emits
+  sanitized catalog, browse, hydrate, execute, and artifact-view events with
+  counts, token/schema savings, failures, and latency. Operators can use
+  `contextweaver mcp inspect`, `contextweaver mcp stats`, and
+  `contextweaver inspect` for JSON or Markdown reports without exposing raw
+  queries, argument values, result text, prompt text, or artifact bytes.
 - **Single-call firewall facade — `compact_tool_result()` /
   `firewalled_tool_result()` (#399).** Shrink one large tool result before it
   enters the prompt without standing up a `ContextManager`. Returns a
@@ -53,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`BuildStats` accounting now has one pipeline owner (#459).**
+  `total_candidates` is measured after dependency closure and before
+  sensitivity filtering; `dropped_count` includes every later exclusion, so
+  completed builds satisfy `included_count + dropped_count ==
+  total_candidates`. The report schema is version 2.
 - **CI now exercises every committed generated-artifact drift check
   (#389–#393).** `llms.txt` / `llms-full.txt`, recorded demo casts, and the
   gateway scorecard are gating checks on the Python 3.12 matrix cell; the

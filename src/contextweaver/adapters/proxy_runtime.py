@@ -37,14 +37,17 @@ import hashlib
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
+from time import perf_counter
 from typing import Any, Protocol, runtime_checkable
 
 import jsonschema
 import jsonschema.exceptions
 
+from contextweaver.adapters.gateway_diagnostics import GatewayTelemetry
 from contextweaver.adapters.gateway_error import GatewayError
 from contextweaver.adapters.mcp import mcp_result_to_envelope, mcp_tool_to_selectable
 from contextweaver.context.manager import ContextManager
+from contextweaver.diagnostics import DiagnosticSink
 from contextweaver.envelope import ChoiceCard, HydrationResult, ResultEnvelope
 from contextweaver.exceptions import (
     ArtifactNotFoundError,
@@ -148,6 +151,10 @@ class ProxyRuntime:
             downstream consumers can still rank after the fact —
             **the first emitted card is not guaranteed to be the
             highest-ranked card when this flag is on**.
+        diagnostic_sink: Optional destination for sanitized catalog, browse,
+            hydrate, execute, and artifact-view events.
+        session_id: Optional stable identifier attached to diagnostic events.
+            A random identifier is generated when omitted.
     """
 
     def __init__(
@@ -160,6 +167,8 @@ class ProxyRuntime:
         beam_width: int = 3,
         top_k: int = 10,
         cache_stable: bool = False,
+        diagnostic_sink: DiagnosticSink | None = None,
+        session_id: str | None = None,
     ) -> None:
         self._upstream = upstream
         self._mode = mode
@@ -181,6 +190,7 @@ class ProxyRuntime:
         self._router: Router | None = None
         self._upstream_names = _UpstreamNameIndex()
         self._raw_tool_defs: dict[str, dict[str, Any]] = {}
+        self._telemetry = GatewayTelemetry(diagnostic_sink, session_id=session_id)
 
     # ------------------------------------------------------------------
     # Properties
@@ -214,6 +224,11 @@ class ProxyRuntime:
         :class:`frozenset` so callers cannot mutate runtime state through it.
         """
         return frozenset(self._browsed_tool_ids)
+
+    @property
+    def diagnostic_session_id(self) -> str:
+        """Return the identifier attached to this runtime's diagnostic events."""
+        return self._telemetry.session_id
 
     # ------------------------------------------------------------------
     # Catalog management
@@ -264,6 +279,7 @@ class ProxyRuntime:
         else:
             self._graph = None
             self._router = None
+        self._telemetry.catalog_registered(items, raw_defs, mode=self._mode.value)
         logger.debug("proxy_runtime: registered %d tools", len(items))
         return len(items)
 
@@ -299,15 +315,25 @@ class ProxyRuntime:
             :class:`GatewayError` describing why the request was
             rejected.
         """
+        started = perf_counter()
         if (query is None) == (path is None):
-            return GatewayError(
+            result: list[ChoiceCard] | GatewayError = GatewayError(
                 code="ARGS_INVALID",
                 message="tool_browse requires exactly one of 'query' or 'path'.",
             )
-        if query is not None:
-            return self._browse_by_query(query, top_k=top_k)
-        assert path is not None  # narrowed by the XOR check above
-        return self._browse_by_path(path)
+        elif query is not None:
+            result = self._browse_by_query(query, top_k=top_k)
+        else:
+            assert path is not None  # narrowed by the XOR check above
+            result = self._browse_by_path(path)
+        self._telemetry.browse_completed(
+            result,
+            duration_ms=(perf_counter() - started) * 1000,
+            query_chars=len(query) if query is not None else 0,
+            path_depth=len([part for part in (path or "").split("/") if part]),
+            raw_defs=self._raw_tool_defs,
+        )
+        return result
 
     def _browse_by_query(self, query: str, *, top_k: int | None) -> list[ChoiceCard] | GatewayError:
         if self._router is None or not self._catalog.all():
@@ -375,16 +401,26 @@ class ProxyRuntime:
             A :class:`HydrationResult` or :class:`GatewayError` with code
             ``HYDRATE_FAILED`` when *tool_id* is unknown.
         """
+        started = perf_counter()
+        namespace: str | None = None
+        result: HydrationResult | GatewayError
         try:
             result = self._catalog.hydrate(tool_id)
+            namespace = result.item.namespace
         except ItemNotFoundError as exc:
-            return GatewayError(
+            result = GatewayError(
                 code="HYDRATE_FAILED",
                 message=str(exc),
                 path=tool_id,
             )
-        if self._cache_stable:
+        if self._cache_stable and not isinstance(result, GatewayError):
             self._browsed_tool_ids.add(tool_id)
+        self._telemetry.hydrate_completed(
+            tool_id,
+            result,
+            duration_ms=(perf_counter() - started) * 1000,
+            namespace=namespace,
+        )
         return result
 
     # ------------------------------------------------------------------
@@ -469,31 +505,59 @@ class ProxyRuntime:
             ``ARGS_INVALID`` per §4.4; transport / protocol failures map
             to ``UPSTREAM_ERROR``.
         """
+        started = perf_counter()
+        arg_keys = sorted(args)
+        namespace: str | None = None
         try:
             hydrated = self._catalog.hydrate(tool_id)
+            namespace = hydrated.item.namespace
         except ItemNotFoundError as exc:
-            return GatewayError(
+            error = GatewayError(
                 code="HYDRATE_FAILED",
                 message=str(exc),
                 path=tool_id,
             )
+            self._telemetry.execute_failed(
+                tool_id,
+                error,
+                duration_ms=(perf_counter() - started) * 1000,
+                namespace=namespace,
+                arg_keys=arg_keys,
+            )
+            return error
         validation_error = _validate_args(args, hydrated.args_schema)
         if validation_error is not None:
-            return GatewayError(
+            error = GatewayError(
                 code="ARGS_INVALID",
                 message=validation_error.message,
                 path=tool_id,
                 details={"path": list(validation_error.path)},
             )
+            self._telemetry.execute_failed(
+                tool_id,
+                error,
+                duration_ms=(perf_counter() - started) * 1000,
+                namespace=namespace,
+                arg_keys=arg_keys,
+            )
+            return error
         upstream_name = self._upstream_names.by_tool_id.get(tool_id, hydrated.item.name)
         try:
             raw = await self._upstream.call_tool(upstream_name, args)
         except Exception as exc:  # noqa: BLE001
-            return GatewayError(
+            error = GatewayError(
                 code="UPSTREAM_ERROR",
                 message=f"upstream call failed: {exc}",
                 path=tool_id,
             )
+            self._telemetry.execute_failed(
+                tool_id,
+                error,
+                duration_ms=(perf_counter() - started) * 1000,
+                namespace=namespace,
+                arg_keys=arg_keys,
+            )
+            return error
         envelope, binaries, full_text = mcp_result_to_envelope(raw, upstream_name)
         # Persist binaries on the session's artifact store so subsequent
         # tool_view calls can drill in.  Text content larger than the
@@ -503,7 +567,7 @@ class ProxyRuntime:
         for handle, (data, mime, label) in binaries.items():
             if not artifact_store.exists(handle):
                 artifact_store.put(handle=handle, content=data, media_type=mime, label=label)
-        if full_text and not envelope.artifacts:
+        if full_text:
             content_bytes = full_text.encode("utf-8")
             text_hash = hashlib.sha256(content_bytes).hexdigest()[:16]
             text_handle = f"text:{tool_id}:{text_hash}"
@@ -520,6 +584,15 @@ class ProxyRuntime:
         envelope.provenance.setdefault("tool_id", tool_id)
         if self._cache_stable:
             self._browsed_tool_ids.add(tool_id)
+        self._telemetry.execute_completed(
+            tool_id,
+            envelope,
+            duration_ms=(perf_counter() - started) * 1000,
+            namespace=namespace,
+            arg_keys=arg_keys,
+            full_text=full_text,
+            binary_bytes=sum(len(data) for data, _mime, _label in binaries.values()),
+        )
         return envelope
 
     # ------------------------------------------------------------------
@@ -533,15 +606,23 @@ class ProxyRuntime:
         code ``VIEW_FAILED`` if the handle is unknown or the selector is
         invalid.
         """
+        started = perf_counter()
         store: InMemoryArtifactStore = self._context_manager.artifact_store  # type: ignore[assignment]
         try:
-            return store.drilldown(handle, selector)
+            result: str | GatewayError = store.drilldown(handle, selector)
         except (ArtifactNotFoundError, ContextWeaverError) as exc:
-            return GatewayError(
+            result = GatewayError(
                 code="VIEW_FAILED",
                 message=str(exc),
                 path=handle,
             )
+        self._telemetry.view_completed(
+            handle,
+            str(selector.get("type", "")),
+            result,
+            duration_ms=(perf_counter() - started) * 1000,
+        )
+        return result
 
     # ------------------------------------------------------------------
     # Proxy-only: stripped tools/list (§4.1)

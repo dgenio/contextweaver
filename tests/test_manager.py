@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from contextweaver.config import ContextBudget, ContextPolicy
 from contextweaver.context.manager import ContextManager
 from contextweaver.exceptions import ContextWeaverError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
@@ -21,6 +22,7 @@ from contextweaver.types import (
     Phase,
     ResultEnvelope,
     SelectableItem,
+    Sensitivity,
 )
 
 
@@ -29,6 +31,29 @@ def _make_log(*texts: str) -> InMemoryEventLog:
     for i, text in enumerate(texts):
         log.append(ContextItem(id=f"item-{i}", kind=ItemKind.user_turn, text=text))
     return log
+
+
+class _RecordingHook:
+    """Capture build lifecycle callbacks for production-pipeline tests."""
+
+    def __init__(self) -> None:
+        self.excluded: list[tuple[list[str], str]] = []
+        self.budget_events: list[tuple[int, int]] = []
+
+    def on_context_built(self, pack: ContextPack) -> None:
+        _ = pack
+
+    def on_firewall_triggered(self, item: ContextItem, reason: str) -> None:
+        _ = item, reason
+
+    def on_items_excluded(self, items: list[ContextItem], reason: str) -> None:
+        self.excluded.append(([item.id for item in items], reason))
+
+    def on_budget_exceeded(self, requested: int, budget: int) -> None:
+        self.budget_events.append((requested, budget))
+
+    def on_route_completed(self, tool_ids: list[str]) -> None:
+        _ = tool_ids
 
 
 @pytest.mark.asyncio
@@ -62,6 +87,49 @@ async def test_build_stats_populated() -> None:
     mgr = ContextManager(event_log=log)
     pack = await mgr.build(phase=Phase.answer)
     assert pack.stats.total_candidates == 3
+
+
+def test_build_stats_attribute_every_drop_and_fire_hooks() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="keep", kind=ItemKind.user_turn, text="keep", token_estimate=20))
+    log.append(ContextItem(id="dup-a", kind=ItemKind.doc_snippet, text="same text"))
+    log.append(ContextItem(id="dup-b", kind=ItemKind.doc_snippet, text="same text"))
+    log.append(ContextItem(id="kind-limit", kind=ItemKind.doc_snippet, text="different text"))
+    log.append(
+        ContextItem(
+            id="secret",
+            kind=ItemKind.memory_fact,
+            text="secret",
+            sensitivity=Sensitivity.confidential,
+        )
+    )
+    log.append(ContextItem(id="budget", kind=ItemKind.agent_msg, text="large", token_estimate=100))
+    policy = ContextPolicy()
+    policy.max_items_per_kind[ItemKind.doc_snippet] = 1
+    hook = _RecordingHook()
+    mgr = ContextManager(
+        event_log=log,
+        budget=ContextBudget(answer=40),
+        policy=policy,
+        hook=hook,
+    )
+
+    pack = mgr.build_sync(phase=Phase.answer, query="keep")
+
+    assert pack.stats.included_count + pack.stats.dropped_count == pack.stats.total_candidates
+    assert pack.stats.total_candidates == 6
+    dropped = {item.item_id: item.reason for item in pack.stats.dropped_items}
+    assert dropped["secret"] == "sensitivity"
+    assert dropped["budget"] == "budget"
+    assert sorted(dropped.values()) == ["budget", "dedup", "kind_limit", "sensitivity"]
+    assert pack.stats.dropped_reasons == {
+        "budget": 1,
+        "dedup": 1,
+        "kind_limit": 1,
+        "sensitivity": 1,
+    }
+    assert sorted(reason for _ids, reason in hook.excluded) == sorted(pack.stats.dropped_reasons)
+    assert len(hook.budget_events) == 1
 
 
 def test_build_sync() -> None:

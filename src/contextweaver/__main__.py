@@ -11,6 +11,7 @@ ingest      Ingest a JSONL session into a serialised session file.
 replay      Replay a session and build context for a given phase.
 stats       Render a human-readable :class:`BuildStats` diagnostic report
             from an ingested session (issue #106).
+inspect     Render a payload-safe context/routing/artifact report (issue #398).
 budget-check
             Assert an ingested session's rendered prompt stays under a
             token ceiling for CI regression checks (issue #276).
@@ -43,6 +44,8 @@ from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
 from contextweaver.eval.dataset import EvalDataset
 from contextweaver.eval.routing import evaluate_routing
+from contextweaver.exceptions import ContextWeaverError
+from contextweaver.inspection import build_inspection_report, render_inspection_report
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import generate_sample_catalog, load_catalog, load_catalog_json
 from contextweaver.routing.graph_io import load_graph, save_graph
@@ -79,6 +82,11 @@ class _PhaseChoice(str, Enum):
 class _StatsFormatChoice(str, Enum):
     rich = "rich"
     text = "text"
+
+
+class _InspectFormatChoice(str, Enum):
+    json = "json"
+    markdown = "markdown"
 
 
 class _DemoScenario(str, Enum):
@@ -447,6 +455,68 @@ def stats(
         print(pack.stats.report(format="text", phase=phase.value, budget=budget))
 
 
+@app.command("inspect")
+def inspect_cmd(
+    session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
+    phase: Annotated[
+        _PhaseChoice, typer.Option(help="Context phase to inspect.")
+    ] = _PhaseChoice.answer,
+    budget: Annotated[int, typer.Option(help="Token budget for the context build.")] = 4000,
+    format: Annotated[  # noqa: A002
+        _InspectFormatChoice, typer.Option("--format", help="Output format.")
+    ] = _InspectFormatChoice.markdown,
+    graph: Annotated[Path | None, typer.Option(help="Optional routing graph to inspect.")] = None,
+    catalog: Annotated[Path | None, typer.Option(help="Catalog paired with --graph.")] = None,
+    route_query: Annotated[
+        str | None, typer.Option("--route-query", help="Query used with --graph and --catalog.")
+    ] = None,
+) -> None:
+    """Inspect context decisions, optional routing, and artifact metadata."""
+    routing_requested = any(value is not None for value in (graph, catalog, route_query))
+    if routing_requested and (graph is None or catalog is None or route_query is None):
+        raise typer.BadParameter(
+            "--graph, --catalog, and --route-query must be supplied together",
+            param_hint="--graph",
+        )
+
+    manager = _restore_manager_from_session(str(session), budget)
+    pack, explanation = manager.build_sync(
+        phase=Phase(phase.value),
+        query="inspect",
+        budget_tokens=budget,
+        explain=True,
+    )
+    raw_session: dict[str, Any] = json.loads(session.read_text(encoding="utf-8"))
+    artifacts: list[dict[str, Any]] = []
+    for handle, metadata in raw_session.get("artifacts", {}).items():
+        item = dict(metadata) if isinstance(metadata, dict) else {}
+        item["handle"] = handle
+        artifacts.append(item)
+
+    routing: dict[str, Any] | None = None
+    if graph is not None and catalog is not None and route_query is not None:
+        graph_obj = load_graph(str(graph))
+        items = load_catalog(str(catalog))
+        graph_ids = set(graph_obj.items())
+        router = Router(
+            graph_obj,
+            items=[item for item in items if item.id in graph_ids],
+        )
+        routing = router.route(route_query).to_dict(include_items=False)
+
+    report = build_inspection_report(
+        pack,
+        explanation=explanation,
+        artifacts=artifacts,
+        routing=routing,
+        budget=budget,
+    )
+    if format == _InspectFormatChoice.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(render_inspection_report(report), end="")
+
+
 @app.command("budget-check")
 def budget_check(
     session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
@@ -607,7 +677,7 @@ def main() -> None:
     except json.JSONDecodeError as exc:
         print(f"Error: invalid JSON — {exc}", file=sys.stderr)
         sys.exit(1)
-    except (ValueError, PermissionError) as exc:
+    except (ContextWeaverError, ValueError, PermissionError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 

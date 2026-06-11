@@ -682,6 +682,10 @@ contextweaver route --graph g.json --catalog c.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
+contextweaver inspect --session session.json --format markdown
+contextweaver mcp inspect --catalog c.json --format json
+contextweaver mcp serve --catalog c.json --diagnostics gateway.jsonl --quiet
+contextweaver mcp stats --events gateway.jsonl
 ```
 
 ## Examples
@@ -729,7 +733,9 @@ Provide a custom `Summarizer` to control how the summary is generated.
 
 **Q: How do I debug what was kept or dropped?**
 Inspect `pack.stats` (a `BuildStats` object) after every `build_sync()` / `build()` call:
-`included_count`, `dropped_count`, `dropped_reasons`, `dedup_removed`.
+`included_count`, `dropped_count`, `dropped_reasons`, `dropped_items`,
+`dedup_removed`. Completed builds satisfy
+`included_count + dropped_count == total_candidates`.
 
 **Q: Does this work with [framework X]?**
 Yes, contextweaver is framework-agnostic — it compiles context; you send `pack.prompt`
