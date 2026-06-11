@@ -14,6 +14,26 @@ from contextweaver.store.artifacts import InMemoryArtifactStore
 _BIG = {"invoices": [{"invoiceNumber": f"A-{i}", "amount": i, "status": "due"} for i in range(200)]}
 
 
+def test_compact_rejects_reserved_cw_key_in_input() -> None:
+    """A payload already carrying the reserved _cw key raises (#467)."""
+    with pytest.raises(ConfigError, match=CW_SIDECAR_KEY):
+        compact_tool_result({"data": 1, CW_SIDECAR_KEY: {"mine": True}})
+
+
+def test_compact_overwrite_sidecar_escape_hatch() -> None:
+    """overwrite_sidecar=True replaces an existing _cw instead of raising (#467)."""
+    out = compact_tool_result({"data": 1, CW_SIDECAR_KEY: {"mine": True}}, overwrite_sidecar=True)
+    # Small payload → passthrough; the sidecar is replaced with firewall metadata.
+    assert out.payload[CW_SIDECAR_KEY]["strategy"] == "passthrough"
+    assert "mine" not in out.payload[CW_SIDECAR_KEY]
+
+
+def test_firewalled_alias_also_guards_reserved_key() -> None:
+    """The firewalled_tool_result alias shares the collision guard (#467)."""
+    with pytest.raises(ConfigError, match=CW_SIDECAR_KEY):
+        firewalled_tool_result({"x": 1, CW_SIDECAR_KEY: {}})
+
+
 class _FakeLlmSummarizer:
     """Stand-in LLM summariser flagged via the ``is_llm`` provenance marker."""
 

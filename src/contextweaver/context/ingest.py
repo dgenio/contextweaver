@@ -230,8 +230,14 @@ def ingest_mcp_result(
     firewall_threshold: int = 2000,
     deterministic: bool = False,
     firewall: StructuredFirewall | None = None,
+    view_registry: ViewRegistry | None = None,
 ) -> tuple[ContextItem, ResultEnvelope]:
-    """Ingest an MCP result via :meth:`ContextManager.ingest_mcp_result` logic."""
+    """Ingest an MCP result via :meth:`ContextManager.ingest_mcp_result` logic.
+
+    *view_registry* is threaded into the firewall so custom view generators
+    registered on the manager fire on this path too (issue #460); ``None`` uses
+    the default registry.
+    """
     from contextweaver.adapters.mcp import mcp_result_to_envelope
 
     envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, tool_name)
@@ -264,7 +270,7 @@ def ingest_mcp_result(
             item,
             artifact_store,
             hook=hook,
-            view_registry=None,
+            view_registry=view_registry,
             summarizer=summarizer,
             extractor=extractor,
             deterministic=deterministic,

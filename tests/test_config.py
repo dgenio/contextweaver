@@ -10,6 +10,26 @@ from contextweaver.profiles import Mode, ProfileConfig, RoutingConfig
 from contextweaver.types import ItemKind, Phase, Sensitivity
 
 
+def test_context_policy_rejects_invalid_sensitivity_action() -> None:
+    """Invalid sensitivity_action fails at construction, not at first build (#463)."""
+    with pytest.raises(ConfigError, match="sensitivity_action must be one of"):
+        ContextPolicy(sensitivity_action="nope")  # type: ignore[arg-type]
+
+
+def test_context_policy_valid_sensitivity_actions_round_trip() -> None:
+    """Both valid actions construct and survive a to_dict/from_dict round-trip (#463)."""
+    for action in ("drop", "redact"):
+        policy = ContextPolicy(sensitivity_action=action)  # type: ignore[arg-type]
+        restored = ContextPolicy.from_dict(policy.to_dict())
+        assert restored.sensitivity_action == action
+
+
+def test_context_policy_from_dict_rejects_invalid_action() -> None:
+    """from_dict also routes through __post_init__ validation (#463)."""
+    with pytest.raises(ConfigError, match="sensitivity_action must be one of"):
+        ContextPolicy.from_dict({"sensitivity_action": "bogus"})
+
+
 def test_context_budget_defaults() -> None:
     b = ContextBudget()
     assert b.route == 2000

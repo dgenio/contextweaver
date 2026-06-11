@@ -39,6 +39,7 @@ from contextweaver.context.sensitivity import (
     MaskRedactionHook,
     apply_sensitivity_filter,
     register_redaction_hook,
+    unregister_redaction_hook,
 )
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
 
@@ -67,6 +68,7 @@ __all__ = [
     "generate_views",
     "memory_entries_to_context_items",
     "register_redaction_hook",
+    "unregister_redaction_hook",
     "render_context",
     "render_handoff_pack",
     "render_item",

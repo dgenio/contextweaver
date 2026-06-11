@@ -34,6 +34,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from contextweaver.exceptions import ValidationError
 from contextweaver.protocols import Extractor, Summarizer
 from contextweaver.summarize.extract import StructuredExtractor
 from contextweaver.summarize.rules import RuleBasedSummarizer
@@ -114,7 +115,7 @@ class LlmSummarizer:
         try:
             result = self._call(f"{self._system_prompt}{raw[: self._max_input]}")
             if not isinstance(result, str) or not result.strip():
-                raise ValueError("LLM summariser returned an empty completion")
+                raise ValidationError("LLM summariser returned an empty completion")
             return result.strip()
         except Exception as exc:  # noqa: BLE001 - any model failure must degrade safely
             logger.warning("LlmSummarizer: call_fn failed (%s); using rule-based fallback", exc)
@@ -162,7 +163,7 @@ class LlmExtractor:
                 raise TypeError("LLM extractor returned a non-string completion")
             facts = _parse_fact_lines(result)
             if not facts:
-                raise ValueError("LLM extractor produced no facts")
+                raise ValidationError("LLM extractor produced no facts")
             return facts
         except Exception as exc:  # noqa: BLE001 - any model failure must degrade safely
             logger.warning("LlmExtractor: call_fn failed (%s); using rule-based fallback", exc)

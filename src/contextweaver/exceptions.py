@@ -97,6 +97,18 @@ class ConfigError(ContextWeaverError):
     """Raised when a configuration value or preset name is invalid."""
 
 
+class ValidationError(ContextWeaverError, ValueError):
+    """Raised when a core data type fails construction-time validation (issue #463).
+
+    Used by the pure-data layer (``envelope.py`` dataclasses such as
+    :class:`~contextweaver.envelope.ChoiceCard`, and
+    :meth:`~contextweaver.envelope.RoutingDecision.from_dict`) instead of a bare
+    ``ValueError``, so the whole error family stays catchable via
+    :class:`ContextWeaverError`.  It *also* derives from the builtin
+    ``ValueError`` so existing ``except ValueError`` call sites keep working.
+    """
+
+
 class DeterminismError(ContextWeaverError):
     """Raised when a ``deterministic=True`` firewall path would invoke an LLM.
 

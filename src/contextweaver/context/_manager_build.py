@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 from contextweaver.context._manager_base import _ManagerState
 from contextweaver.context.build import run_build_pipeline
+from contextweaver.exceptions import ContextWeaverError
 from contextweaver.types import Phase
 
 if TYPE_CHECKING:
@@ -159,7 +160,10 @@ class _BuildMixin(_ManagerState):
             explain=explain,
         )
         if explain:
-            assert explanation is not None
+            if explanation is None:  # invariant: _build populates it when explain=True
+                raise ContextWeaverError(
+                    "internal invariant violated: explain=True but no explanation was built"
+                )
             return (pack, explanation)
         return pack
 
@@ -242,6 +246,9 @@ class _BuildMixin(_ManagerState):
             explain=explain,
         )
         if explain:
-            assert explanation is not None
+            if explanation is None:  # invariant: _build populates it when explain=True
+                raise ContextWeaverError(
+                    "internal invariant violated: explain=True but no explanation was built"
+                )
             return (pack, explanation)
         return pack

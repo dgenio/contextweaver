@@ -28,6 +28,7 @@ from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.envelope import BuildStats, ContextPack, DroppedItem
+from contextweaver.exceptions import ContextWeaverError
 from contextweaver.tokens import estimator_name
 from contextweaver.types import Phase
 
@@ -108,6 +109,7 @@ def run_build_pipeline(
         candidates,
         manager._artifact_store,
         manager._hook,
+        view_registry=manager._view_registry,
         summarizer=manager._summarizer,
         extractor=manager._extractor,
         deterministic=manager._deterministic,
@@ -190,11 +192,12 @@ def run_build_pipeline(
         requested, limit = max(selection.budget_overruns)
         manager._hook.on_budget_exceeded(requested, limit)
 
-    assert stats.included_count + stats.dropped_count == stats.total_candidates, (
-        "context build accounting invariant failed: "
-        f"included={stats.included_count} dropped={stats.dropped_count} "
-        f"total={stats.total_candidates}"
-    )
+    if stats.included_count + stats.dropped_count != stats.total_candidates:
+        raise ContextWeaverError(
+            "context build accounting invariant failed: "
+            f"included={stats.included_count} dropped={stats.dropped_count} "
+            f"total={stats.total_candidates}"
+        )
 
     # 8. Render
     prompt = render_context(selected, header=full_header, footer=footer)
