@@ -28,6 +28,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Non-ASCII regression suite (#525).** `tests/test_unicode_regression.py`
   pins CJK/emoji/RTL behaviour across tokenization, budgeting, dedup, card
   rendering, serialization, and an in-process build.
+- **Dockerfile for the MCP gateway.** A top-level `Dockerfile` (+ `.dockerignore`)
+  boots `contextweaver mcp serve --gateway` over stdio against the packaged
+  reference catalog, so an MCP client or automated scanner (e.g. Glama) can
+  build, start, and introspect the gateway with no extra configuration. The
+  image build validates the catalog with `--dry-run`.
+
+### Changed
+
+- **`contextweaver mcp serve` advertises the installed package version.**
+  `--version` now defaults to the contextweaver package version (was `None`)
+  when neither the flag nor the config file sets it, and the resolved version
+  is shown in the serve lifecycle line.
+
+## [0.14.1] - 2026-06-11
+
+### Added
+
+- **MCP Registry listing + PyPI ownership marker (#348).** Adds a
+  registry-publishable `server.json` describing the gateway as a
+  `uvx contextweaver mcp serve --config <gateway.yaml>` stdio server (linking
+  to the gateway quickstart, not the raw API docs), an
+  `mcp-name: io.github.dgenio/contextweaver` marker in the README for PyPI
+  ownership verification, and a release-triggered GitHub Actions job that
+  publishes to the official MCP Registry via GitHub OIDC (no interactive
+  login required).
 - **Trustworthy diagnostics across context builds and the MCP gateway
   (#370, #378, #398, #414, #459).** `BuildStats.dropped_items` attributes
   every excluded item to `sensitivity`, `dedup`, `kind_limit`, or `budget`;
