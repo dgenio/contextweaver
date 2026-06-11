@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dockerfile for the MCP gateway.** A top-level `Dockerfile` (+ `.dockerignore`)
+  boots `contextweaver mcp serve --gateway` over stdio against the packaged
+  reference catalog, so an MCP client or automated scanner (e.g. Glama) can
+  build, start, and introspect the gateway with no extra configuration. The
+  image build validates the catalog with `--dry-run`.
+
+### Changed
+
+- **`contextweaver mcp serve` advertises the installed package version.**
+  `--version` now defaults to the contextweaver package version (was `None`)
+  when neither the flag nor the config file sets it, and the resolved version
+  is shown in the serve lifecycle line.
+
 ## [0.14.1] - 2026-06-11
 
 ### Added

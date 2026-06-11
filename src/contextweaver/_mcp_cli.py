@@ -38,6 +38,7 @@ from typing import Annotated, Any
 import typer
 import yaml
 
+from contextweaver._version import __version__
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
@@ -490,7 +491,13 @@ def serve(
     ] = "contextweaver",
     version: Annotated[
         str | None,
-        typer.Option("--version", help="Optional MCP server version string."),
+        typer.Option(
+            "--version",
+            help=(
+                "MCP server version advertised on init. Defaults to the installed "
+                "contextweaver package version."
+            ),
+        ),
     ] = None,
     dry_run: Annotated[
         bool,
@@ -563,6 +570,11 @@ def serve(
         )
     resolved_mode = _ServeMode.gateway if gateway else _ServeMode.proxy if proxy else mode
 
+    # Advertise the installed contextweaver version on MCP ``initialize`` unless
+    # an explicit version was supplied via ``--version`` or the config file.
+    if version is None:
+        version = __version__
+
     diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
     runtime = _build_runtime(
         catalog,
@@ -579,7 +591,7 @@ def serve(
             f"contextweaver mcp serve: mode={resolved_mode.value} "
             f"catalog={catalog} tools={tool_count} top_k={top_k} "
             f"beam_width={beam_width} cache_stable={cache_stable} "
-            f"diagnostics={diagnostics or 'off'}",
+            f"version={version} diagnostics={diagnostics or 'off'}",
             err=True,
         )
 
