@@ -104,6 +104,11 @@ def redact_upstream_detail(text: str, *, max_len: int = DEFAULT_DETAIL_MAX_LEN) 
     terminal-escape bytes.  This collapses it to a single bounded line safe for
     model-visible context; operators retain the full detail via logging.
 
+    Note: this **sanitises and bounds** the text — it strips control characters
+    and truncates to *max_len* — it does **not** scrub secrets.  Secrets are not
+    detectable in arbitrary upstream text; the length cap bounds the exposure
+    blast radius, and full detail is kept operator-side only (never the model).
+
     Args:
         text: Raw upstream error detail.
         max_len: Maximum length of the returned string.
