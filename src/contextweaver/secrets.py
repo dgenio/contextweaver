@@ -84,10 +84,15 @@ _DEFAULT_PATTERNS: tuple[SecretPattern, ...] = (
         re.compile(r"\beyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b"),
     ),
     # Credentials embedded in a URL / connection string (``scheme://user:pass@``).
-    # Only the password component is masked.
+    # Only the password component is masked.  The password is matched greedily up
+    # to the *last* ``@`` before a host-shaped segment, so a raw (unescaped) ``@``
+    # inside the password is masked whole rather than leaking its suffix.
     SecretPattern(
         "url_credentials",
-        re.compile(r"(?P<prefix>[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s:/@]+:)(?P<secret>[^\s:/@]+)(?=@)"),
+        re.compile(
+            r"(?P<prefix>[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s:/@]+:)"
+            r"(?P<secret>[^\s/]+)(?=@[^\s:/@]+)"
+        ),
     ),
     # Bearer / authorization tokens.
     SecretPattern(

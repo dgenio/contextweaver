@@ -47,8 +47,9 @@ class SecretRedactor:
     def redact(self, item: ContextItem) -> ContextItem:
         """Return a copy of *item* with secret-shaped substrings masked.
 
-        When no secret is detected the text is unchanged and the item is returned
-        with its token estimate recomputed from the same source of truth.
+        When no secret is detected the item is returned unchanged (its existing
+        ``token_estimate`` is preserved); otherwise the scrubbed copy's estimate
+        is recomputed from the configured single source of truth.
         """
         scrubbed = scrub_secrets(item.text, mask=self._mask)
         if scrubbed == item.text:

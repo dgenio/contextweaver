@@ -202,7 +202,11 @@ def ingest_tool_result(
         label=f"raw tool result for {item.id}",
     )
     views = generate_views(ref, raw_bytes, registry=view_registry)
-    _tokens = count_tokens(summary_text)
+    # ``original_*`` reflect the raw tool output; ``summary_*`` reflect the
+    # prompt-bound surface, which differs from the raw output only when
+    # ``redact_secrets`` scrubbed it.  When scrubbing is off the two are equal.
+    original_tokens = count_tokens(raw_output)
+    summary_tokens = count_tokens(summary_text)
     envelope = ResultEnvelope(
         status=status,
         summary=summary_text,
@@ -215,9 +219,9 @@ def ingest_tool_result(
             strategy="passthrough",
             threshold_chars=firewall_threshold,
             original_chars=len(raw_output),
-            original_tokens=_tokens,
+            original_tokens=original_tokens,
             summary_chars=len(summary_text),
-            summary_tokens=_tokens,
+            summary_tokens=summary_tokens,
             artifact_ref=ref.handle,
         ),
     )
