@@ -40,9 +40,7 @@ from enum import Enum
 from time import perf_counter
 from typing import Any, Literal, Protocol, runtime_checkable
 
-import jsonschema
 import jsonschema.exceptions
-import jsonschema.protocols
 
 from contextweaver.adapters.gateway_args import Repair, normalize_args
 from contextweaver.adapters.gateway_diagnostics import GatewayTelemetry
@@ -55,6 +53,7 @@ from contextweaver.adapters.gateway_validation import (
     DEFAULT_SCHEMA_LIMITS,
     CatalogRefreshReport,
     SchemaLimits,
+    SchemaValidator,
     SkippedTool,
     build_validator,
     check_schema_health,
@@ -246,7 +245,7 @@ class ProxyRuntime:
         #: Compiled ``jsonschema`` validators keyed by ``tool_id`` so the hot
         #: ``execute`` path validates without recompiling (issue #484). Cleared
         #: on every catalog refresh.
-        self._validator_cache: dict[str, jsonschema.protocols.Validator] = {}
+        self._validator_cache: dict[str, SchemaValidator] = {}
         #: Outcome of the most recent catalog refresh (issues #464 / #484).
         self._last_refresh_report = CatalogRefreshReport()
 
@@ -380,8 +379,11 @@ class ProxyRuntime:
             report.skipped.append(
                 SkippedTool(index=index, name=name_repr, reason=redact_upstream_detail(str(exc)))
             )
+            # Use %r for upstream-controlled values (name, exception text): repr
+            # escapes any control characters, preventing terminal-escape /
+            # log-injection via a hostile tool definition (#464).
             logger.warning(
-                "proxy_runtime: skipping malformed tool def at index %d (%s): %s",
+                "proxy_runtime: skipping malformed tool def at index %d (%r): %r",
                 index,
                 name_repr or "<no name>",
                 exc,
@@ -399,8 +401,9 @@ class ProxyRuntime:
                 )
             report.schema_findings.extend(findings)
             for finding in findings:
+                # detail can embed untrusted schema text — repr it (#464/#484).
                 logger.warning(
-                    "proxy_runtime: schema finding for %s: %s (%s)",
+                    "proxy_runtime: schema finding for %s: %s (%r)",
                     finding.tool_id,
                     finding.kind,
                     finding.detail,

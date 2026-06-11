@@ -23,12 +23,27 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 import jsonschema
 import jsonschema.exceptions
-import jsonschema.protocols
 import jsonschema.validators
+
+
+@runtime_checkable
+class SchemaValidator(Protocol):
+    """Minimal structural type for a compiled ``jsonschema`` validator.
+
+    Only the :meth:`validate` method is used by the gateway hot path.  Typing
+    against this local Protocol rather than ``jsonschema.protocols.Validator``
+    keeps the module import-safe across the whole ``jsonschema>=4.0`` floor and
+    avoids coupling to that submodule's availability.
+    """
+
+    def validate(self, instance: object) -> None:
+        """Validate *instance*, raising ``ValidationError`` on failure."""
+        ...
+
 
 #: Finding categories emitted by :func:`check_schema_health`.
 SchemaFindingKind = Literal[
@@ -229,7 +244,7 @@ def check_schema_health(
     return findings
 
 
-def build_validator(schema: dict[str, Any]) -> jsonschema.protocols.Validator:
+def build_validator(schema: dict[str, Any]) -> SchemaValidator:
     """Compile a reusable ``jsonschema`` validator for *schema* (#484).
 
     The compiled validator is cached by the runtime keyed on ``tool_id`` so the
@@ -246,7 +261,7 @@ def build_validator(schema: dict[str, Any]) -> jsonschema.protocols.Validator:
     """
     validator_cls = jsonschema.validators.validator_for(schema)
     validator_cls.check_schema(schema)
-    return validator_cls(schema)
+    return cast(SchemaValidator, validator_cls(schema))
 
 
 __all__ = [
@@ -254,6 +269,7 @@ __all__ = [
     "CatalogRefreshReport",
     "SchemaFinding",
     "SchemaFindingKind",
+    "SchemaValidator",
     "SchemaLimits",
     "SkippedTool",
     "build_validator",
