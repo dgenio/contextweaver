@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from contextweaver import tokens
-from contextweaver.protocols import HeuristicEstimator
+from contextweaver.protocols import HeuristicEstimator, TiktokenEstimator
 
 # ---------------------------------------------------------------------------
 # Fixed corpus — ≥4 shapes, multilingual (acceptance criterion #1).
@@ -94,12 +94,6 @@ def _provider_counters() -> dict[str, object]:
     return out
 
 
-def _tiktoken_available() -> bool:
-    """Return ``True`` when the cl100k encoding loads (warmed cache / online)."""
-    counter = tokens.get_token_counter(_TIKTOKEN_MODEL)
-    return tokens.estimator_name(counter).startswith("tiktoken/")
-
-
 def _rel_error(estimate: int, reference: int) -> float | None:
     """Signed relative error of *estimate* versus *reference* (``None`` if 0)."""
     if reference <= 0:
@@ -110,16 +104,18 @@ def _rel_error(estimate: int, reference: int) -> float | None:
 def compute() -> dict[str, object]:
     """Compute the calibration snapshot (pure, deterministic given the corpus)."""
     heuristic = HeuristicEstimator()
-    tiktoken_ok = _tiktoken_available()
+    # Instantiate tiktoken directly (do NOT go through get_token_counter): the
+    # registry resolves names first, so a counter registered under the encoding
+    # name would otherwise replace and corrupt the tiktoken reference column.
+    tiktoken_counter = TiktokenEstimator(_TIKTOKEN_MODEL)
+    tiktoken_ok = tiktoken_counter.name.startswith("tiktoken/")
     providers = _provider_counters()
 
     shapes: list[dict[str, object]] = []
     for shape, samples in _CORPUS.items():
         chars = sum(len(s) for s in samples)
         h_tokens = sum(heuristic.estimate(s) for s in samples)
-        tt_tokens = (
-            sum(tokens.count(s, model=_TIKTOKEN_MODEL) for s in samples) if tiktoken_ok else None
-        )
+        tt_tokens = sum(tiktoken_counter.estimate(s) for s in samples) if tiktoken_ok else None
         row: dict[str, object] = {
             "shape": shape,
             "samples": len(samples),

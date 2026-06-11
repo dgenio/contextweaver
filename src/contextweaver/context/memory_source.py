@@ -19,15 +19,19 @@ from contextweaver.types import ContextItem, ItemKind, Phase
 
 logger = logging.getLogger("contextweaver.context")
 
+# Module-level default counter reused across entries so per-entry costing does
+# not construct a fresh estimator on every call (the heuristic is stateless).
+_DEFAULT_COUNTER: TokenEstimator = heuristic_counter()
+
 
 def _estimate_cost(text: str, estimator: TokenEstimator | None) -> int:
     """Return a positive token estimate for *text*.
 
-    Falls back to the canonical script-aware heuristic counter (issue #530)
-    rather than an inline ``len // 4`` literal when no estimator is supplied,
-    so every budget number flows through one source of truth.
+    Falls back to the shared canonical script-aware heuristic counter
+    (issue #530) rather than an inline ``len // 4`` literal when no estimator is
+    supplied, so every budget number flows through one source of truth.
     """
-    counter = estimator if estimator is not None else heuristic_counter()
+    counter = estimator if estimator is not None else _DEFAULT_COUNTER
     return max(1, int(counter.estimate(text)))
 
 

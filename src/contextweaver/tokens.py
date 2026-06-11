@@ -105,9 +105,15 @@ def estimator_name(counter: TokenEstimator) -> str:
 
 
 @lru_cache(maxsize=16)
-def _tiktoken_counter(encoding: str) -> TokenEstimator:
-    """Return a cached tiktoken-backed counter for *encoding* (memoised)."""
-    return TiktokenEstimator(encoding)
+def _tiktoken_counter(model: str) -> TokenEstimator:
+    """Return a tiktoken-backed counter for *model*, memoised by the raw string.
+
+    The cache key is the exact *model* string passed in (a model name like
+    ``"gpt-4o"`` or an encoding name like ``"cl100k_base"``); it is **not**
+    normalised to the resolved encoding, so two distinct names that happen to
+    share an encoding are cached as separate instances.
+    """
+    return TiktokenEstimator(model)
 
 
 def get_token_counter(model: str | None = None) -> TokenEstimator:
@@ -121,10 +127,10 @@ def get_token_counter(model: str | None = None) -> TokenEstimator:
     Returns:
         A :class:`~contextweaver.protocols.TokenEstimator`.  Registered names
         resolve to their registered counter; otherwise the result is a
-        tiktoken-backed counter, memoised per encoding so repeated calls reuse
-        the loaded encoding.  In offline environments the underlying
-        :class:`TiktokenEstimator` falls back to the script-aware heuristic;
-        callers always get a usable counter.
+        tiktoken-backed counter, memoised by the raw *model* string (two model
+        names that share an encoding are cached separately).  In offline
+        environments the underlying :class:`TiktokenEstimator` falls back to the
+        script-aware heuristic; callers always get a usable counter.
     """
     if model is not None and model in _REGISTRY:
         return _REGISTRY[model]
