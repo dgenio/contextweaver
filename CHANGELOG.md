@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Remote store backends: Redis & S3 (#426).** New `RedisEventLog` and
+  `RedisArtifactStore` (behind `pip install 'contextweaver[redis]'`) and
+  `S3ArtifactStore` (`contextweaver[s3]`, works with AWS S3 / MinIO / R2 / GCS
+  interop) give multi-process and long-lived gateways durable event/artifact
+  storage beyond one process or disk. All three import their client library
+  lazily — importing `contextweaver.store` never requires the extra — and are
+  run through the #520 conformance kit (against `fakeredis` and `moto` in CI,
+  no service container required). `RedisArtifactStore` supports an optional
+  per-artifact TTL and namespace isolation; `S3ArtifactStore` supports a key
+  prefix and a custom `endpoint_url`.
 - **Stdlib SQLite episodic & fact stores (#496).** New `SqliteEpisodicStore`
   and `SqliteFactStore` (`contextweaver.store`) give long-lived agents durable
   episodic/fact memory with zero external services, built on the same

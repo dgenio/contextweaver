@@ -17,9 +17,16 @@ from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
 from contextweaver.store.json_file_artifacts import JsonFileArtifactStore
+from contextweaver.store.redis_artifacts import RedisArtifactStore
+from contextweaver.store.redis_event_log import RedisEventLog
+from contextweaver.store.s3_artifacts import S3ArtifactStore
 from contextweaver.store.sqlite_episodic import SqliteEpisodicStore
 from contextweaver.store.sqlite_event_log import SqliteEventLog
 from contextweaver.store.sqlite_facts import SqliteFactStore
+
+# NOTE: the Redis/S3 backends import their client libraries (``redis`` /
+# ``boto3``) lazily, so importing this package never requires those extras —
+# only constructing a store without passing a client does (issue #426).
 
 __all__ = [
     "InMemoryArtifactStore",
@@ -27,6 +34,9 @@ __all__ = [
     "InMemoryEventLog",
     "InMemoryFactStore",
     "JsonFileArtifactStore",
+    "RedisArtifactStore",
+    "RedisEventLog",
+    "S3ArtifactStore",
     "SqliteEpisodicStore",
     "SqliteEventLog",
     "SqliteFactStore",
