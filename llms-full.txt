@@ -1,3493 +1,6985 @@
 # contextweaver — Full Documentation
 
+
+
 > Dynamic context management for tool-using AI agents.
+
+
 
 ---
 
+
+
 <!--
+
   GENERATED FILE — do not edit by hand.
 
+
+
   Source files (concatenated in order):
+
     README.md
+
     docs/architecture.md
+
     docs/concepts.md
+
     docs/quickstart.md
+
     docs/daily_driver.md
+
     docs/security_model.md
+
     docs/recipes/index.md
+
     docs/recipes/claude_code.md
+
     docs/integration_mcp.md
+
     docs/integration_a2a.md
+
     docs/agent-context/architecture.md
+
     docs/agent-context/invariants.md
+
     docs/agent-context/workflows.md
+
     docs/agent-context/lessons-learned.md
+
     docs/agent-context/review-checklist.md
+
     docs/guide_agent_loop.md
 
+
+
   To regenerate: `make llms` (or `python scripts/gen_llms.py`).
+
 -->
+
+
 
 <!-- FILE: README.md -->
 
+
+
 # contextweaver
+
+
 
 <!-- mcp-name: io.github.dgenio/contextweaver -->
 
+
+
 [![CI](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml/badge.svg)](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml)
+
 [![PyPI version](https://img.shields.io/pypi/v/contextweaver.svg)](https://pypi.org/project/contextweaver/)
+
 [![Python versions](https://img.shields.io/pypi/pyversions/contextweaver.svg)](https://pypi.org/project/contextweaver/)
+
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
+
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
 
+
+
 > **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
+
 > front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
+
 > instead of every tool schema, plus an artifact-backed firewall that swaps a
+
 > huge raw tool result for a compact summary. Deterministic, no model in the
+
 > loop, and 42-84 % fewer prompt tokens on the committed benchmarks.
 
+
+
 **Who it's for:** anyone whose agent — Claude Desktop, Cursor, VS Code, or a
+
 custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
+
 blew up my prompt."*
 
+
+
 ```bash
+
 uvx contextweaver demo --scenario killer  # zero-install trial
 
+
+
 # Or install it:
+
 pip install contextweaver
+
 python -c "import contextweaver; print(contextweaver.__version__)"
+
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
+
 ```
 
+
+
 **Use it for real →** the **[MCP gateway quickstart](docs/recipes/index.md)**
+
 (Claude Desktop / Copilot / custom MCP clients), backed by the
+
 [MCP Context Gateway architecture](docs/architectures/mcp_context_gateway.md).
+
 Already have a loop and not sure which piece you need? The two engines also work
+
 [routing-only or firewall-only](docs/which_pattern.md).
+
 For day-to-day operating guidance, see the [Daily Driver guide](docs/daily_driver.md);
+
 for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md).
 
+
+
 <p align="center">
+
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
+
 </p>
+
+
 
 **1150+ tests passing · minimal core dependencies · deterministic by default · Python 3.10–3.13**
 
+
+
 #### More tools ≠ better answers
 
+
+
 <p align="center">
+
   <img src="docs/assets/context_rot.svg" width="660" alt="Context-rot curve: as the tool catalog grows from 83 to 1328 tools, a naive route prompt carries every schema (line climbs on a log scale) while contextweaver stays flat at 5 ChoiceCards; contextweaver's correct-tool recall@5 erodes from 36 percent to 10 percent as distractor tools accumulate."/>
+
 </p>
+
+
 
 > As an agent's tool catalog grows, a naive "show every schema" route prompt
+
 > balloons while the right tool gets harder to find — *context rot*.
+
 > contextweaver keeps the model-visible surface bounded (5 `ChoiceCard`s, not
+
 > 1,328 schemas), so the route prompt stays flat and deterministic. Reproduce
+
 > the curve with no API key: [`docs/context_rot.md`](docs/context_rot.md).
 
-<p align="center">
-  <img src="docs/assets/demo.svg" alt="Animated terminal recording of `python -m contextweaver demo`: load a 40-tool catalog, build a 9-node routing graph, narrow to 5 ChoiceCards for the query 'find unpaid invoices and send a reminder email', build a phase-answer context pack, and print the 321-character compiled prompt."/>
-</p>
+
 
 <p align="center">
-  <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
+
+  <img src="docs/assets/demo.svg" alt="Animated terminal recording of `python -m contextweaver demo`: load a 40-tool catalog, build a 9-node routing graph, narrow to 5 ChoiceCards for the query 'find unpaid invoices and send a reminder email', build a phase-answer context pack, and print the 321-character compiled prompt."/>
+
 </p>
+
+
+
+<p align="center">
+
+  <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
+
+</p>
+
+
 
 [📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [📉 Context rot demo](docs/context_rot.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
 
+
+
 ---
+
+
 
 ## Part of the Weaver Stack
 
+
+
 contextweaver is the **context** layer of the **Weaver Stack** — small,
+
 deterministic, independently-usable building blocks for tool-using agents. The
+
 core request path runs:
 
+
+
 ```text
+
 contextweaver ─▶ ChainWeaver ─▶ agent-kernel ─▶ agentfence
+
 ```
 
+
+
 | Stage | Component | Responsibility |
+
 |---|---|---|
+
 | **Context** | **contextweaver** (this repo) | Route a catalog to bounded `ChoiceCard`s, firewall large tool results, compile a budgeted prompt. |
+
 | Execution | ChainWeaver | Run the selected capability as a deterministic tool/flow. |
+
 | Boundary | agent-kernel | Own the execution boundary; hand contextweaver `Frame`s, not raw output. |
+
 | Guardrails | agentfence | Apply output guardrails to the response. |
 
+
+
 The contextweaver → ChainWeaver handoff is **advisory**: contextweaver routes
+
 (it recommends a capability) and ingests results behind its firewall; the
+
 runtime owns authorization and execution. A runnable end-to-end example —
+
 route a catalog of tools + imported ChainWeaver flows, hand the selection to a
+
 (stubbed) ChainWeaver runtime, then ingest the result — lives at
+
 [`examples/architectures/contextweaver_to_chainweaver/`](examples/architectures/contextweaver_to_chainweaver/),
+
 and the contract boundary is documented in
+
 [`docs/weaver_spec_mapping.md`](docs/weaver_spec_mapping.md).
 
+
+
 Adjacent tools: **vibeguard** (code-diff safety gate), **lessonweaver** (lesson
+
 capture), and **skdr-eval** (offline evaluation). Every piece works
+
 **standalone** — contextweaver has **no hard dependency** on any sibling, so you
+
 can use it on its own or slot it into the stack. See the
+
 [Ecosystem Map](docs/ecosystem.md) for how the pieces compose.
 
+
+
 ---
+
+
 
 ## The 60-second failure mode
 
+
+
 See why a naive tool-using agent loop breaks down — and what contextweaver
+
 does about it — in one command (no API keys, no network):
 
+
+
 ```bash
+
 contextweaver demo --scenario killer
+
 ```
 
+
+
 An internal ops agent with **100 tools** and a running conversation is asked
+
 to *"find unpaid invoices, check the account notes, and draft a reminder."*
+
 A naive loop pays for all 100 tool descriptions, the full history, and a
+
 huge raw tool result at once:
 
+
+
 | | Naive | contextweaver | Reduction |
+
 |---|---|---|---|
+
 | Tools in the route prompt | all 100 (6,326 chars) | 5 ChoiceCards (491 chars) | **92.2%** |
+
 | The huge tool result | raw (14,430 chars) | firewalled summary (60 chars) | **99.6%** |
+
 | The full answer prompt | everything raw (21,332 chars) | compiled (814 chars) | **96.2%** |
 
+
+
 Full walkthrough: [The 60-second failure mode](docs/killer_demo.md). For the
+
 same story as a runnable, inspectable script, see the
+
 [catalog showcase architecture](docs/architectures/catalog_showcase.md).
 
+
+
 ---
+
+
 
 ## The Problem
 
+
+
 Even with 200K-token context windows, dumping everything into the prompt is expensive,
+
 slow, and degrades output quality. More context ≠ better answers — **context engineering**
+
 (deciding what the model sees, when, and at what cost) is the lever that actually moves
+
 quality and latency.
 
+
+
 Imagine a tool-using agent with a 100-tool catalog and a 50-turn conversation history.
+
 At each step the agent must answer four questions:
 
+
+
 1. **Route** — which tool should I call?
+
 2. **Call** — what arguments?
+
 3. **Interpret** — what did it return?
+
 4. **Answer** — how do I respond to the user?
+
+
 
 **Naive approach A — concatenate everything:**
 
+
+
 ```
+
 100 tool schemas (≈50k tokens) + 50 turns (≈30k tokens) = 80k tokens
+
 Cost: $0.48/request at GPT-4o rates  ·  Latency: 3–5s TTFT
+
 Quality: LLM loses focus — needle-in-haystack accuracy drops with context size
+
 Token limit: 8k → 10× overflow
+
 ```
+
+
 
 **Naive approach B — cherry-pick manually:**
 
+
+
 ```
+
 Pick 10 tools, last 5 turns → lose dependency chains
+
 Agent hallucinates tool calls, repeats questions, forgets context
+
 ```
+
+
 
 **contextweaver approach — phase-specific budgeted compilation:**
 
-```
-Route phase:  5 tool cards (≈500 tokens), no full schemas
-Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
-Result:       2.5k tokens, complete context, deterministic
-Cost:         41.6 %-84.3 % fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
+
+
 ```
 
+Route phase:  5 tool cards (≈500 tokens), no full schemas
+
+Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
+
+Result:       2.5k tokens, complete context, deterministic
+
+Cost:         41.6 %-84.3 % fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
+
+```
+
+
+
 [^naive-baseline]: Measured against the "concatenate all tool schemas + full
+
     conversation history" baseline using `tiktoken.cl100k_base` on the six
+
     committed benchmark scenarios. Range 41.6 %-84.3 %, average 64.3 %.
+
     Reproducible via `make benchmark-matrix && make scorecard` — see the
+
     *vs. naïve concat baseline* section of
+
     [`benchmarks/scorecard.md`](benchmarks/scorecard.md) and the
+
     methodology in [`scripts/baseline_naive.py`](scripts/baseline_naive.py).
+
+
 
 See [`examples/before_after.py`](examples/before_after.py) for a runnable side-by-side comparison.
 
+
+
 ---
+
+
 
 ## How contextweaver Solves It
 
+
+
 contextweaver provides two cooperating engines:
 
+
+
 ```
+
                 ┌────────────────────────────┐
+
   Events ──────>│      Context Engine         │──> ContextPack (prompt)
+
                 │  candidates → closure →     │
+
                 │  sensitivity → firewall →   │
+
                 │  score → dedup → select →   │
+
                 │  render                     │
+
                 └────────────────────────────┘
+
                            ▲ facts / episodes
+
                 ┌──────────┴─────────────────┐
+
   Tools ───────>│      Routing Engine         │──> ChoiceCards
+
                 │  Catalog → TreeBuilder →    │
+
                 │  ChoiceGraph → Router       │
+
                 └────────────────────────────┘
+
 ```
+
+
 
 **Context Engine** — eight-stage pipeline:
 
+
+
 1. **generate_candidates** — pull phase-relevant events from the log for this request.
+
 2. **dependency_closure** — if a selected item has a `parent_id`, include the parent automatically.
+
 3. **sensitivity_filter** — drop or redact items at or above the configured sensitivity floor.
+
 4. **apply_firewall** — tool results are stored out-of-band; large outputs are summarized/truncated before prompt assembly.
+
 5. **score_candidates** — rank by recency, tag match, kind priority, and token cost.
+
 6. **deduplicate_candidates** — remove near-duplicates using Jaccard similarity.
+
 7. **select_and_pack** — greedily pack highest-scoring items into the phase token budget.
+
 8. **render_context** — assemble final prompt string with `BuildStats` metadata.
+
+
 
 **Routing Engine** — four-stage pipeline:
 
+
+
 1. **Catalog** — register and manage `SelectableItem` objects.
+
 2. **TreeBuilder** — convert a flat catalog into a bounded `ChoiceGraph` DAG.
+
 3. **Router** — beam-search over the graph; deterministic tie-breaking by ID.
+
 4. **ChoiceCards** — compact, LLM-friendly cards (never includes full schemas).
 
+
+
 ---
+
+
 
 ## Also works as routing-only or firewall-only
 
+
+
 The MCP gateway is the headline, but those are really **two cooperating engines**
+
 you can adopt independently — a context compiler and a tool router. Reach for
+
 whichever your agent needs:
 
+
+
 | If your agent has... | contextweaver gives you... |
+
 |---|---|
+
 | Too many MCP / FastMCP / Python tools | A bounded `ChoiceCard` shortlist instead of dumping every schema into the route prompt. |
+
 | Huge JSON, logs, tables, or binary tool results | An artifact-backed context firewall: compact summary in the prompt, raw bytes out of band. |
+
 | Long tool-using conversations | Phase-specific context packs with budgeted selection and dependency closure. |
 
+
+
 | Use this when... | Do not use this when... |
+
 |---|---|
+
 | You already have an agent loop and need runtime context control. | You need an agent framework, LLM SDK, or tool executor. |
+
 | Your model-visible tool list or tool-result payloads are getting too large. | Your agent has a handful of tiny tools and no context-budget pressure. |
+
 | You want deterministic prompt budgeting and traceable drops. | You only need long-term memory, RAG, or observability by itself. |
 
+
+
 Not sure which piece fits? The [which-pattern decision tree](docs/which_pattern.md)
+
 maps each symptom (long conversations → full pipeline; 50+ tools → routing-only;
+
 huge tool outputs → firewall-only) to one concrete next step.
 
+
+
 ---
+
+
 
 ## When not to use contextweaver
 
+
+
 contextweaver is a context compiler for tool-using agents — its value scales
+
 with the size of the catalog and the length of the conversation. Reach for
+
 something simpler when none of that pressure exists:
 
+
+
 - **Small tool catalogs (≤ 5 tools).** Dumping every schema into the prompt
+
   costs a few hundred tokens. Building a routing graph and running beam
+
   search adds latency and a dependency you don't need.
+
 - **Single-shot Q&A or one-turn agents.** With no history to compact and no
+
   follow-up phases (`call` / `interpret` / `answer`), phase-aware budgeting
+
   is dead weight — pass the user's message straight to the model.
+
 - **Tiny tool outputs.** If every `tool_result` is comfortably under the
+
   configured `firewall_threshold` (default 2000 characters), the
+
   [context firewall](docs/context_firewall.md) correctly no-ops — you're
+
   paying the conceptual cost of the firewall for zero token savings.
+
 - **Full context is cheaper than the engineering.** If your naïve prompt
+
   fits comfortably under the model's context window and your token bill is
+
   not a concern, the [before/after scorecard](benchmarks/scorecard.md)
+
   numbers won't move the needle.
+
 - **You need non-deterministic, LLM-driven routing.** contextweaver's
+
   routing engine is deterministic by design (tie-break by sorted ID). If
+
   you want an LLM to decide which tool to call from free-form reasoning,
+
   LangGraph or a plain `tool_choice="auto"` call is a better fit — see
+
   [`docs/comparison.md`](docs/comparison.md) for the trade-offs.
 
+
+
 If you're not sure, the [10-minute Quickstart](#10-minute-quickstart) below
+
 is the cheapest way to find out: a 40-tool catalog and a 50-turn transcript
+
 is the smallest scenario where contextweaver clearly pays for itself.
 
+
+
 ---
+
+
 
 ## Quickstart
 
+
+
 ### Install
+
+
 
 Try the CLI without installing it:
 
+
+
 ```bash
+
 uvx contextweaver demo --scenario killer
+
 ```
+
+
 
 Or install it persistently:
 
+
+
 ```bash
+
 pip install contextweaver
+
 ```
 
+
+
 `contextweaver` ships with a minimal, opinionated core: `tiktoken`,
+
 `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, Typer, and Rich. These power
+
 token budgeting, YAML catalog/config files, the default lexical retrieval
+
 backend, the MCP proxy/gateway runtime, schema validation, and the CLI.
+
+
 
 Optional capabilities are gated behind extras so the core install stays small:
 
+
+
 | Extra | What it adds |
+
 |---|---|
+
 | `contextweaver[cli]` | Deprecated no-op alias; Typer/Rich now ship in core |
+
 | `contextweaver[weaver-spec]` | Weaver Stack contract adapters (`weaver_contracts`) |
+
 | `contextweaver[fastmcp]` | FastMCP catalog adapter and discovery helpers |
+
 | `contextweaver[crewai]` | CrewAI runtime integration |
+
 | `contextweaver[pydantic-ai]` | Pydantic AI runtime integration |
+
 | `contextweaver[smolagents]` | Hugging Face smolagents runtime integration |
+
 | `contextweaver[agno]` | Agno runtime integration |
+
 | `contextweaver[langchain]` | LangChain integration helpers |
+
 | `contextweaver[voice]` | Pipecat voice-agent integration |
+
 | `contextweaver[retrieval]` | Fuzzy lexical matching backend (`rapidfuzz`) |
+
 | `contextweaver[embeddings]` | Sentence-transformers embedding backend |
+
 | `contextweaver[sqlite]` | SQLite store install contract (stdlib-backed today) |
+
 | `contextweaver[mem0]` | Mem0 external-memory backend |
+
 | `contextweaver[otel]` | OpenTelemetry tracing + metrics export |
+
 | `contextweaver[e2e-eval]` | Optional real-model benchmark hook (no dependency today) |
+
 | `contextweaver[docs]` | MkDocs documentation toolchain |
+
 | `contextweaver[dev]` | Test, lint, type-check, and fixture toolchain |
+
 | `contextweaver[ann]` | Approximate-nearest-neighbour backend (reserved) |
+
 | `contextweaver[graph]` | NetworkX-backed graph ops (reserved) |
+
 | `contextweaver[all]` | Convenience bundle for broad optional runtime capabilities |
+
+
 
 Or from source:
 
+
+
 ```bash
+
 git clone https://github.com/dgenio/contextweaver.git
+
 cd contextweaver
+
 pip install -e ".[dev]"
+
 ```
+
+
 
 ### Adopting in 5 lines from an existing OpenAI / Anthropic / Gemini agent
 
+
+
 ```python
+
 from contextweaver.adapters.openai_messages import from_openai_messages
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import Phase
 
+
+
 mgr = ContextManager()
+
 from_openai_messages(messages, into=mgr)   # also: from_anthropic_messages / from_gemini_contents
+
 pack = mgr.build_sync(phase=Phase.answer, query="...")
+
 ```
 
+
+
 See [Adopting from an existing chat history](docs/quickstart.md#adopting-from-an-existing-chat-history-5-line-drop-in)
+
 for the full snippet (including the `to_*` inverse adapters for round-tripping
+
 back into the provider SDK).
+
+
 
 ## 10-Minute Quickstart
 
+
+
 For a guided setup with prerequisites, three runnable examples, expected output,
+
 and next steps, see [docs/quickstart.md](docs/quickstart.md).
 
+
+
 **Already have an agent and not sure which piece you need?**
+
 See [Which pattern fits my use case?](docs/which_pattern.md) — a symptom-based
+
 decision tree (long conversations → full pipeline; 50+ tools → routing-only;
+
 huge tool outputs → firewall-only) that points each branch to one concrete
+
 next step.
+
+
 
 ### Minimal agent loop
 
+
+
 ```python
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import ContextItem, ItemKind, Phase
 
+
+
 mgr = ContextManager()
+
 mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="How many users?"))
+
 mgr.ingest(ContextItem(id="tc1", kind=ItemKind.tool_call,
+
                        text="db_query('SELECT COUNT(*) FROM users')", parent_id="u1"))
+
 mgr.ingest(ContextItem(id="tr1", kind=ItemKind.tool_result,
+
                        text="count: 1042", parent_id="tc1"))
 
+
+
 pack = mgr.build_sync(phase=Phase.answer, query="user count")
+
 print(pack.prompt)   # budget-aware compiled context
+
 print(pack.stats)    # what was kept, dropped, deduplicated
+
 ```
+
+
 
 ### Route a large tool catalog
 
+
+
 ```python
+
 from contextweaver.routing.catalog import Catalog, load_catalog_json
+
 from contextweaver.routing.tree import TreeBuilder
+
 from contextweaver.routing.router import Router
 
+
+
 catalog = Catalog()
+
 for item in load_catalog_json("catalog.json"):
+
     catalog.register(item)
 
+
+
 graph = TreeBuilder(max_children=10).build(catalog.all())
+
 router = Router(graph, items=catalog.all(), beam_width=3, top_k=5)
+
 result = router.route("send a reminder email about unpaid invoices")
+
 print(result.candidate_ids)
+
 ```
+
+
 
 ## Runtime Loop (4 Phases)
 
+
+
 For a complete route -> call -> interpret -> answer reference flow, see:
 
+
+
 - `examples/full_agent_loop.py` for a runnable end-to-end script.
+
 - `docs/guide_agent_loop.md` for the flow diagram, pseudo-code, and module map.
+
+
 
 The runtime loop example demonstrates:
 
+
+
 1. Route-phase prompt assembly with ChoiceCards.
+
 2. Call-phase prompt assembly with selected tool schema hydration.
+
 3. Interpret-phase firewall behavior (large tool output summarized into context).
+
 4. Answer-phase context composition with accumulated history and result envelopes.
 
+
+
 ---
+
+
 
 ## Framework Integrations
 
+
+
 Looking for "where does contextweaver fit alongside my runtime?" — start with the
+
 [How contextweaver Fits](docs/interop.md) positioning page, then jump into the
+
 [Cookbook](docs/cookbook.md) for copy-paste recipes.
 
+
+
 | Framework | Guide | Use Case |
+
 |---|---|---|
+
 | MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
+
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
+
 | FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
+
 | LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
+
 | OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
+
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
+
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
+
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+
 | CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+
 | Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+
 | smolagents | [Guide](docs/integration_smolagents.md) | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+
 | Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
+
+
 ---
+
+
 
 ## Core Concepts
 
+
+
 | Concept | Description |
+
 |---|---|
+
 | `ContextItem` | Atomic event log entry: user turn, agent message, tool call, tool result, fact, plan state. |
+
 | `Sensitivity` | `ContextItem.sensitivity` defaults to `public`; the default policy drops `confidential` and `restricted` items before they reach the prompt. |
+
 | `Phase` | `route` / `call` / `interpret` / `answer` — each with its own token budget. |
+
 | `ContextFirewall` | Intercepts tool results: stores raw bytes out-of-band, injects compact summary (with truncation for large outputs). |
+
 | `ChoiceGraph` | Bounded DAG over the tool catalog. Router beam-searches it; LLM sees only a focused shortlist. |
+
 | `ResultEnvelope` | Structured tool output: summary + extracted facts + artifact handles + views. |
+
 | `BuildStats` | Per-build diagnostics: candidate count, included/dropped counts, token usage, drop reasons. |
 
+
+
 See [`docs/concepts.md`](docs/concepts.md) for the full glossary,
+
 [`docs/architecture.md`](docs/architecture.md) for pipeline detail and design rationale,
+
 and [`docs/troubleshooting.md`](docs/troubleshooting.md) for common issues, debugging
+
 techniques, and performance optimisation tips.
 
+
+
 ---
+
+
 
 ## Why Trust contextweaver?
 
+
+
 ### 1. Test Coverage & Reliability
+
+
 
 contextweaver is built for production use with comprehensive quality gates:
 
+
+
 - **1100+ passing tests** across all modules — context pipeline, routing engine, firewall,
+
   adapters, stores, CLI, sensitivity enforcement
+
 - **mypy strict** type checking — zero errors across all source files
+
 - **ruff clean** linting — zero warnings
+
 - **CI pipeline** on every pull request and on pushes to `main` ([see workflows](.github/workflows/))
+
 - **Deterministic by default** — tie-break by ID, sorted keys; identical inputs always
+
   produce identical outputs. Configurable retrieval backends (TF-IDF, BM25, fuzzy)
+
   preserve determinism within each mode.
+
 - **Public benchmark scorecard** — top-k recall, token savings, and routing latency at
+
   catalog sizes 50 / 83 / 1000, plus context pipeline metrics across six reference
+
   scenarios. See [`benchmarks/scorecard.md`](benchmarks/scorecard.md) (regenerate with
+
   `make scorecard`) and the adopter-facing
+
   [`benchmark report`](docs/benchmark_report.md).
+
+
 
 Run the full suite yourself:
 
+
+
 ```bash
+
 git clone https://github.com/dgenio/contextweaver.git
+
 cd contextweaver
+
 pip install -e ".[dev]"
+
 make ci  # fmt + lint + type + test + schemas-check + example + demo (all pass)
+
 ```
 
+
+
 > Most agent libraries fail unpredictably when context exceeds token limits. contextweaver's
+
 > deterministic design and comprehensive test coverage ensure your agent behaves the same way
+
 > every time — critical for debugging, testing, and production deployment.
+
+
 
 ### 2. Design Rationale
 
+
+
 Every architectural choice was made for a reason:
 
+
+
 | Decision | Reason |
+
 |---|---|
+
 | **Minimal core dependencies** | A small, audited set of widely-used deps (`tiktoken`, `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, `rich`); no heavy ML / cloud-SDK packages pulled in by default. |
+
 | **Protocol-based interfaces** | `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` are `typing.Protocol` — swap backends without forking. |
+
 | **Async-first context engine** | Async-compatible compilation API for real-time integrations; `build_sync()` wrappers for synchronous callers, with room for future non-blocking execution. |
+
 | **Phase-specific token budgets** | Route / call / interpret / answer phases each get their own budget — no one-size-fits-all truncation. |
+
 | **Context firewall** | Large tool outputs stored out-of-band; only compact summaries reach the prompt. |
+
 | **Dependency closure** | `parent_id` chains keep tool results coherent — tool calls are never separated from their results. |
 
+
+
 > These aren't accidental features. They are design decisions optimized for reliability,
+
 > extensibility, and production use. A minimal, audited core-dependency set means you
+
 > can adopt contextweaver without disrupting your existing stack.
+
+
 
 See [docs/architecture.md](docs/architecture.md) for full pipeline detail and design rationale.
 
+
+
 ### 3. Standardization via Protocol Support
+
+
 
 contextweaver supports both emerging agentic protocols out of the box:
 
+
+
 **MCP (Model Context Protocol)** — convert tool definitions and results into native contextweaver types:
 
+
+
 - Compatible with any MCP server (Claude Desktop, VS Code, custom servers)
+
 - Structured content, output schemas, binary artifacts, and per-part annotations all handled
+
 - `ingest_mcp_result()` for one-call result ingestion with automatic artifact persistence
+
+
 
 **A2A (Agent-to-Agent)** — multi-agent session management with unified context:
 
+
+
 - Agent cards converted to `SelectableItem` for routing
+
 - Cross-agent session loading via `load_a2a_session_jsonl()`
+
 - A2A results stored in `ResultEnvelope` with facts and artifact handles
 
+
+
 **weaver-spec** — canonical contracts for the Weaver Stack (contextweaver,
+
 ChainWeaver, agent-kernel):
 
+
+
 - Lossless `to_weaver_*` / `from_weaver_*` round-trips for `SelectableItem`,
+
   `ChoiceCard`, `RoutingDecision`, and `Frame` (via `ResultEnvelope`)
+
 - `weaver_contracts` is an opt-in dep — `pip install 'contextweaver[weaver-spec]'`
+
 - Validated in CI on every PR against the JSON Schemas at
+
   `raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/`
+
   (the source the gate fetches; the same documents are also published at
+
   `https://weaver-spec.dev/contracts/v0/`)
 
+
+
 > contextweaver is designed as a protocol-friendly context management layer for
+
 > tool-using agents. Supporting MCP, A2A, and weaver-spec keeps the integration
+
 > boundary explicit as these protocols mature.
 
+
+
 - [MCP Integration](docs/integration_mcp.md)
+
 - [A2A Integration](docs/integration_a2a.md)
+
 - [weaver-spec mapping](docs/weaver_spec_mapping.md)
+
 - [MCP Specification](https://modelcontextprotocol.io/)
+
 - [weaver-spec](https://github.com/dgenio/weaver-spec)
+
+
 
 ### 4. Framework Agnostic
 
+
+
 contextweaver works with any LLM provider and any agent framework:
 
+
+
 - **LLM providers**: OpenAI, Anthropic, Google, open-source models — no API keys required
+
   by contextweaver itself
+
 - **Agent frameworks**: LlamaIndex, LangChain, LangGraph, OpenAI Agents SDK, Google ADK,
+
   Pipecat, custom loops
+
 - **No vendor lock-in**: stdlib-only core; no cloud dependencies; runs anywhere Python 3.10+ runs
 
+
+
 <!-- mirrors the Framework Integrations table above; keep in sync -->
+
 | Framework | Guide | Use Case |
+
 |---|---|---|
+
 | MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
+
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
+
 | FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
+
 | LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
+
 | OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
+
 | Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
+
 | LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
+
 | Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
+
 | CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
+
 | Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
+
 | smolagents | [Guide](docs/integration_smolagents.md) | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+
 | Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
 
+
+
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
+
 > *beneath* frameworks — context management as a composable primitive.
+
+
 
 ### 5. Stability & Compatibility
 
+
+
 contextweaver is currently **Alpha** in package metadata because the project is
+
 still clarifying its pre-1.0 stability boundary. The core context/routing APIs
+
 are intentionally deterministic and heavily tested; newer runtime surfaces such
+
 as gateway commands, adapters, and extras are called out as experimental where
+
 appropriate. See the detailed [stability and 1.0 readiness checklist](docs/stability.md).
 
+
+
 | Surface | Current promise | Notes |
+
 |---|---|---|
+
 | Documented public APIs | Change deliberately, with changelog/migration notes when behavior changes. | Dataclasses, stores, context/routing APIs, and documented adapters. |
+
 | Experimental runtime surfaces | May change before 1.0. | MCP gateway/proxy commands, newer optional extras, and reference architecture variants. |
+
 | Internal modules | No compatibility promise. | Modules beginning with `_` and test helpers are implementation details. |
+
 | Python support | Python 3.10–3.13 (inclusive). | Every version is exercised as a gating CI matrix cell; dependencies use library-grade lower-bound-only constraints by default, with a few documented exceptions (a floor-deps CI job proves the floors). 3.14 is pending upstream adapter-ecosystem support. |
 
+
+
 > Adopting a library is a long-term commitment. The stability page makes the
+
 > Alpha/Beta/1.0 line explicit so teams can decide which surfaces are ready for
+
 > their risk tolerance.
+
+
 
 #### Weaver Spec Compatibility
 
+
+
 contextweaver implements `weaver_contracts >= 0.2.0, < 1.0` (canonical
+
 contracts for the Weaver Stack — see
+
 [weaver-spec](https://github.com/dgenio/weaver-spec)).
 
+
+
 | Invariant | Status | Where enforced |
+
 |---|---|---|
+
 | **I-03** — Routing presents bounded choices, not full schema catalogs | ✅ Satisfied | `ChoiceCard` strips `args_schema`; routing returns ≤ `top_k` cards. See [`src/contextweaver/routing/cards.py`](src/contextweaver/routing/cards.py) and [`docs/gateway_spec.md`](docs/gateway_spec.md). |
+
 | **I-05** — contextweaver receives Frames, not raw output | ⚠️ Canonical path shipped; cross-repo mirror pending | The canonical seam is `ContextManager.ingest_envelope()`: the execution boundary firewalls and hands over a `ResultEnvelope` (the native preimage of a spec `Frame`, mapped via [`adapters/weaver_contracts.py`](src/contextweaver/adapters/weaver_contracts.py)); contextweaver does budgeted selection without re-deriving firewalling. The raw-output APIs (`ContextManager.ingest_tool_result(raw_output=...)`, `ingest_mcp_result(...)`) remain for standalone use but are **non-canonical for spec compliance**. See the [firewall boundary doc](docs/context_firewall_boundary.md) for who firewalls what; the matching I-05 statements in weaver-spec and agent-kernel still need to be mirrored. |
+
+
 
 **Contract adapters** (`pip install 'contextweaver[weaver-spec]'`):
 
+
+
 ```python
+
 from contextweaver.adapters.weaver_contracts import (
+
     to_weaver_routing_decision,
+
     from_weaver_routing_decision,
+
     to_weaver_frame,
+
     from_weaver_frame,
+
 )
+
 ```
 
+
+
 Round-trips are lossless via a reserved `metadata["_contextweaver"]` payload;
+
 see [`docs/weaver_spec_mapping.md`](docs/weaver_spec_mapping.md) for the full
+
 mapping table.
 
+
+
 **CI conformance** — every PR runs `scripts/weaver_spec_conformance.py`,
+
 which does both a Python round-trip (`cw → spec → cw == cw`) and JSON-Schema
+
 validation. CI fetches the schemas from
+
 `raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/`, which
+
 mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
+
 (same content, different host). Run locally with `make weaver-conformance`.
+
+
 
 ### 6. Roadmap & Community
 
+
+
 Current package version: **0.14.1**.
+
+
 
 Recent milestones:
 
+
+
 | Milestone | Status | Highlights |
+
 |---|---|---|
+
 | **v0.8** | ✅ complete | CrewAI adapter Phase 1, Mem0 external-memory backend, provider-SDK-leak tests |
+
 | **v0.9** | ✅ complete | Provider message adapters, cache-stable routing, launch polish |
+
 | **v0.10** | ✅ complete | `contextweaver mcp serve`, MCP Context Gateway architecture, gateway benchmark suite, route/context explanations |
+
 | **v0.11** | ✅ complete | Memory-source adapter interface, session-handoff context pack, "when not to use" guidance |
+
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
+
 | **v1.0** | 📋 planned | API freeze, documented deprecation policy, long-term compatibility window |
+
+
 
 **Community:**
 
+
+
 - [GitHub Discussions](https://github.com/dgenio/contextweaver/discussions) — ask questions, share patterns
+
 - [GitHub Issues](https://github.com/dgenio/contextweaver/issues) — report bugs, request features
+
 - [CHANGELOG](CHANGELOG.md) — track every release
 
+
+
 > contextweaver is under active development with a clear roadmap. The core is
+
 > usable today; the project remains Alpha until the
+
 > [Beta readiness checklist](docs/stability.md#beta-readiness-checklist) is
+
 > complete or intentionally revised.
+
+
 
 ### 7. Comparison
 
+
+
 > _Snapshot of the launch landscape as of 2026-05-31 — see footnotes for the
+
 > versions referenced and the evidence behind each non-trivial claim. Will be
+
 > refreshed each minor release._
 
+
+
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
+
 |---|---|---|---|---|---|
+
 | **contextweaver** (this repo, [v0.14.1](https://pypi.org/project/contextweaver/0.14.1/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
+
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
+
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
+
 | **Raw MCP** ([modelcontextprotocol v0.1](https://modelcontextprotocol.io)) | ❌ Servers expose tools; routing across many servers is the client's problem | ❌ Out of scope for the protocol | ❌ Out of scope for the protocol | ✅ Wire protocol is deterministic | ✅ — _is_ the protocol |
 
+
+
 [^cw-route]: `contextweaver.routing.router.Router` ships a four-stage pipeline (`retrieve → rerank → navigate → pack`) with deterministic tie-break by `id`. Locked by `tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`.
+
 [^cw-bench]: Range from the committed scorecard ([`benchmarks/scorecard.md`](benchmarks/scorecard.md)) using `tiktoken.cl100k_base` against the naïve baseline ([`scripts/baseline_naive.py`](scripts/baseline_naive.py)). Average 64.3 %; min 41.6 % on `long_conversation.jsonl`; max 84.3 % on `tiny_payload.jsonl`.
+
 [^cw-fire]: `contextweaver.context.firewall.apply_firewall` plus `ArtifactRef` drilldown selectors (`head` / `lines` / `json_keys` / `rows`). See [`docs/context_firewall.md`](docs/context_firewall.md) and the [`firewall_drilldown_recipe`](examples/cookbook/firewall_drilldown_recipe.py).
+
 [^cw-det]: Determinism is an invariant — see `docs/agent-context/invariants.md` and `make scorecard-check` in the CI gate.
+
 [^cw-mcp]: `src/contextweaver/adapters/mcp_proxy.py`, `mcp_gateway.py`, `mcp_proxy_server.py`, `mcp_gateway_server.py`. Bound by `docs/gateway_spec.md`.
+
 [^lg-mem]: LangGraph 0.6 docs ("Memory"): `ConversationSummaryMemory` requires an LLM round-trip to produce a summary; output is non-deterministic across runs even with `temperature=0` due to model jitter.
+
 [^li-mem]: LlamaIndex 0.11 docs ("Chat memory"): `ChatMemoryBuffer(token_limit=...)` truncates oldest-first; no phase awareness and no dependency closure.
 
+
+
 > Most agent frameworks offer one or two of these capabilities. contextweaver
+
 > ships all five as a composable, framework-agnostic layer that runs under
+
 > whichever framework you already have.
 
+
+
 ---
+
+
 
 ## CLI
 
+
+
 contextweaver ships with a CLI for quick experimentation:
 
+
+
 ```bash
+
 contextweaver demo                                    # end-to-end demonstration
+
 contextweaver demo --scenario killer                  # the 60-second failure mode (100 tools + huge output)
+
 contextweaver init                                    # scaffold config + sample catalog
+
 contextweaver build --catalog c.json --out g.json    # build routing graph
+
 contextweaver route --graph g.json --catalog c.json --query "send email"
+
 contextweaver print-tree --graph g.json
+
 contextweaver ingest --events session.jsonl --out session.json
+
 contextweaver replay --session session.json --phase answer
+
 contextweaver inspect --session session.json --format markdown
+
 contextweaver mcp inspect --catalog c.json --format json
+
 contextweaver mcp serve --catalog c.json --diagnostics gateway.jsonl --quiet
+
 contextweaver mcp stats --events gateway.jsonl
+
 ```
+
+
 
 ## Examples
 
+
+
 | Script | Description |
+
 |---|---|
+
 | `minimal_loop.py` | Basic event ingestion → context build |
+
 | `full_agent_loop.py` | End-to-end route → call → interpret → answer runtime loop |
+
 | `tool_wrapping.py` | Context firewall in action |
+
 | `routing_demo.py` | Build catalog → route queries → choice cards |
+
 | `before_after.py` | Side-by-side token comparison: WITHOUT vs WITH contextweaver |
+
 | `mcp_adapter_demo.py` | MCP adapter: tool conversion, session loading, firewall |
+
 | `a2a_adapter_demo.py` | A2A adapter: agent cards, multi-agent sessions |
+
 | `crewai_adapter_demo.py` | CrewAI adapter: `BaseTool` → catalog → routing |
+
 | `pydantic_ai_adapter_demo.py` | Pydantic AI adapter: tools + lossless message round-trip |
+
 | `smolagents_adapter_demo.py` | smolagents adapter: tools + `MultiStepAgent` step-log ingestion |
+
 | `agno_adapter_demo.py` | Agno adapter: toolkit → catalog + session-history ingestion |
+
 | `langchain_memory_demo.py` | LangChain memory replacement: `InMemoryChatMessageHistory` vs contextweaver |
+
 | `cookbook/byot_recipe.py` | Bring-your-own-tools cookbook recipe — wrap plain Python callables and route |
+
 | `cookbook/firewall_drilldown_recipe.py` | Cookbook recipe: firewall a large tool result, then drill into the artifact |
+
 | `architectures/catalog_showcase/` | **Start-here** reference architecture — 65-tool catalog → 5-card shortlist, single-tool schema hydration, firewall on a ~3 KB result, final `BuildStats` ([guide](docs/architectures/catalog_showcase.md)) |
+
 | `architectures/langgraph_agent_loop/` | contextweaver **inside** a LangGraph `StateGraph` (route → execute → answer), firewall on a ~21 KB log dump, cross-turn retention; optional framework with a hand-rolled fallback ([guide](docs/architectures/langgraph_agent_loop.md)) |
+
 | `architectures/eval_artifact_profile/` | Agent-safe context shaping for offline-evaluation reports — never surfaces `V_hat` without support diagnostics ([guide](docs/architectures/eval_artifact_profile.md)) |
+
 | `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
+
 | `architectures/mcp_context_gateway/main_real.py` | Same flow, run against verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (`server-time`, `server-filesystem`, `server-everything`) committed under `real_catalogs/` |
+
 | `recipes/` | Installed-CLI configs for [Claude Desktop](docs/recipes/claude_desktop.md), [Claude Code](docs/recipes/claude_code.md), [GitHub Copilot](docs/recipes/github_copilot.md), and [Cursor](docs/recipes/cursor.md); `serve_gateway.py` remains a legacy/custom-wiring example |
+
 | `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
+
+
 ```bash
+
 make example   # run all examples
+
 ```
 
+
+
 ---
+
+
 
 ## FAQ
 
+
+
 **Q: What token budgets should I use?**
+
 Start with the defaults (`route=2000`, `call=3000`, `interpret=4000`, `answer=6000`).
+
 Inspect `pack.stats` after each build and increase any phase that drops too many items.
 
+
+
 **Q: My tool result was summarized. Why?**
+
 The context firewall intercepts *every* `tool_result` item (not just large ones).
+
 Raw data is stored out-of-band; access it via `mgr.artifact_store.get("artifact:<item_id>")`.
+
 Provide a custom `Summarizer` to control how the summary is generated.
 
+
+
 **Q: How do I debug what was kept or dropped?**
+
 Inspect `pack.stats` (a `BuildStats` object) after every `build_sync()` / `build()` call:
+
 `included_count`, `dropped_count`, `dropped_reasons`, `dropped_items`,
+
 `dedup_removed`. Completed builds satisfy
+
 `included_count + dropped_count == total_candidates`.
 
+
+
 **Q: Does this work with [framework X]?**
+
 Yes, contextweaver is framework-agnostic — it compiles context; you send `pack.prompt`
+
 to any LLM or framework. See dedicated guides for
+
 [MCP](docs/integration_mcp.md),
+
 [A2A](docs/integration_a2a.md),
+
 [LlamaIndex](docs/integration_llamaindex.md),
+
 [LangChain + LangGraph](docs/integration_langchain.md),
+
 [OpenAI Agents SDK](docs/integration_openai_adk.md),
+
 [Google ADK / Vertex AI](docs/integration_google_adk.md),
+
 [Pipecat](docs/integration_pipecat.md),
+
 [CrewAI](docs/integration_crewai.md),
+
 [Pydantic AI](docs/integration_pydantic_ai.md),
+
 [smolagents](docs/integration_smolagents.md), and
+
 [Agno](docs/integration_agno.md).  If your runtime isn't listed, the
+
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
+
 is the canonical starting point.
 
+
+
 **Q: What's the performance overhead?**
+
 Typically 10–50 ms for a context build (depends on event log size and deduplication).
+
 For real-time / async agents, run `build_sync()` in a worker thread (e.g.
+
 `await asyncio.to_thread(mgr.build_sync, phase, query)`) so the synchronous
+
 pipeline does not block the event loop. If an offline or air-gapped run prints a
+
 `tiktoken cl100k_base encoding unavailable` warning, see the
+
 [troubleshooting note](docs/troubleshooting.md#offline-air-gapped-tiktoken-warning);
+
 the fallback keeps budget enforcement deterministic.
 
+
+
 See [docs/troubleshooting.md](docs/troubleshooting.md) for the full troubleshooting
+
 guide, debugging techniques, optimisation tips, and 10+ common issues with solutions.
 
+
+
 ---
+
+
 
 ## Development
 
+
+
 ```bash
+
 make fmt      # format (ruff)
+
 make lint     # lint (ruff)
+
 make type     # type-check (mypy)
+
 make test     # run tests (pytest)
+
 make example  # run all examples
+
 make demo     # run the built-in demo
+
 make ci       # all validation targets, including schemas-check
+
 ```
 
+
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, and
+
 [docs/contributing_paths.md](docs/contributing_paths.md) to pick a contribution
+
 path (docs, adapters, benchmarks, examples, good-first-issues) by how much time
+
 you have. All contributors agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+
+
 ---
+
+
 
 ## Roadmap
 
+
+
 | Milestone | Status | Highlights |
+
 |---|---|---|
+
 | **v0.1 — Foundation** (2026-03) | ✅ complete | Context Engine + Routing Engine cores, CLI scaffold, sensitivity enforcement, in-memory stores |
+
 | **v0.2 — Determinism + benchmarks** (2026-04) | ✅ complete | Naïve-concat baseline, scorecard, weekly cron, gold set 50→200, ScoringConfig sweep |
+
 | **v0.3 — Framework integrations** (2026-05-11) | ✅ complete | LlamaIndex, LangChain + LangGraph, OpenAI Agents SDK, Google ADK, Pipecat guides + interop matrix |
+
 | **v0.4 — MCP gateway + weaver-spec** (2026-05-16) | ✅ complete | Gateway spec, MCP proxy + two-tool gateway runtime, weaver-spec interop, JSON Schemas + drift gate |
+
 | **v0.5 — Persistent stores + reports** (2026-05-17) | ✅ complete | `SqliteEventLog`, `JsonFileArtifactStore`, `BuildStats.report()`, `RouteResult.explanation()`, `stats` CLI |
+
 | **v0.6 — Adopter surface** (2026-05-17) | ✅ complete | Typer + Rich CLI rewrite, OTel GenAI semconv, provider message adapters (OpenAI / Anthropic / Gemini), 5-line adoption snippet |
+
 | **v0.7 — Reference architectures + routing pipeline** (2026-05-18) | ✅ complete | Explicit routing pipeline, embedding backend, history-aware routing, code-review bot + voice agent architectures, FastMCP CodeMode hooks |
+
 | **v0.8 — CrewAI + Mem0** (2026-05-19) | ✅ complete | CrewAI adapter (Phase 1), Mem0 external-memory backend, provider-SDK-leak invariant tests |
+
 | **v0.9 — Launch polish + adapters** (2026-05-20) | ✅ complete | Budget checks, provider adapters, benchmark transparency suite, launch polish |
+
 | **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ complete | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
+
 | **v0.11 — Memory source + session handoff** (2026-05-27) | ✅ current | `MemorySource` protocol + `JsonFixtureMemorySource`, session-handoff context pack, "when not to use" section |
+
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
+
 | **v1.0 — API stability** | 📋 planned | API freeze, semantic-versioning commitment, long-term support window |
+
 | **Future** | 📋 planned | DAG visualization, LLM-assisted labeler, distributed stores, multi-agent coordination |
+
+
 
 See [CHANGELOG.md](CHANGELOG.md) for the detailed release history.
 
+
+
 ---
+
+
 
 ## License
 
+
+
 Apache-2.0
 
+
+
 ---
+
+
 
 <!-- FILE: docs/architecture.md -->
 
+
+
 # Architecture
 
+
+
 > **New here?** [Which pattern fits my use case?](which_pattern.md) routes you
+
 > to the smallest piece that fixes your symptom — most callers only need one
+
 > of the two engines, not the whole pipeline.
 
+
+
 contextweaver is structured around two cooperating engines that together solve
+
 the "context window problem" for tool-using AI agents.
+
+
 
 ## Why context engineering matters
 
+
+
 The discipline of **context engineering** — deciding *what* goes into a model's
+
 context window, *when*, and *at what cost* — has emerged as the lever that
+
 moves quality and latency once tool-use agents reach production scale. Even
+
 with 200K-token windows, dumping every tool schema and conversation turn into
+
 the prompt is expensive, slows latency, and degrades output quality as the
+
 model's effective attention thins. The lever is selective compilation
+
 (per-phase budgets, tool shortlisting, oversized-output firewalling), not raw
+
 window size.
 
+
+
 contextweaver implements that lever as two cooperating engines — the Context
+
 Engine (eight-stage pipeline) and the Routing Engine (bounded DAG + beam
+
 search) — and treats determinism, dependency closure, and sensitivity filters
+
 as load-bearing invariants rather than nice-to-haves. For background on the
+
 term itself, see Atlan's
+
 [*What Is Context Engineering*](https://atlan.com/know/what-is-context-engineering/).
+
+
 
 ## High-level overview
 
+
+
 ```
+
                ┌────────────────────────────┐
+
   Events ─────>│      Context Engine         │──> ContextPack (prompt)
+
                │  candidates → closure →     │
+
                │  sensitivity → firewall →   │
+
                │  score → dedup → select →   │
+
                │  render                     │
+
                └────────────────────────────┘
+
                           ▲ facts / episodes
+
                ┌──────────┴─────────────────┐
+
   Tools ──────>│      Routing Engine         │──> ChoiceCards
+
                │  Catalog → TreeBuilder →    │
+
                │  ChoiceGraph → Router       │
+
                └────────────────────────────┘
+
 ```
+
+
 
 ## Package layout
 
+
+
 | Path | Responsibility |
+
 |---|---|
+
 | `types.py` | Core dataclasses and enums (`SelectableItem`, `ContextItem`, `Phase`, `ItemKind`) |
+
 | `envelope.py` | Result types (`ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`) |
+
 | `diagnostics.py` | Versioned gateway event schema, JSONL/in-memory sinks, aggregate reports |
+
 | `inspection.py` | Payload-safe offline context/routing/artifact reports |
+
 | `config.py` | Configuration dataclasses (`ContextBudget`, `ContextPolicy`, `ScoringConfig`) |
+
 | `protocols.py` | Protocol interfaces (`TokenEstimator`, `EventHook`, `Summarizer`, …) |
+
 | `exceptions.py` | Custom exception hierarchy |
+
 | `_utils.py` | Text similarity primitives (`tokenize`, `jaccard`, `TfIdfScorer`) |
+
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` patterns |
+
 | `store/` | In-memory data stores (`EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`) |
+
 | `summarize/` | Rule engine and structured fact extraction |
+
 | `context/` | Full context compilation pipeline |
+
 | `routing/` | Catalog, DAG builder, beam-search router, card renderer |
+
 | `adapters/` | MCP, FastMCP, and A2A protocol adapters |
+
 | `__main__.py` | CLI entry point (`inspect` includes context/routing/artifact diagnostics) |
+
+
 
 ## Context Engine pipeline
 
+
+
 The Context Engine compiles a phase-aware, budget-constrained prompt from
+
 the event log. The pipeline has eight stages:
 
+
+
 1. **generate_candidates** — pull phase-relevant events from the event log
+
    into the initial candidate pool.
+
 2. **dependency_closure** — if a selected item has a `parent_id`, bring
+
    the parent along even if it scored lower.
+
 3. **sensitivity_filter** — drop or redact items whose `sensitivity`
+
    level meets or exceeds `ContextPolicy.sensitivity_floor`.
+
 4. **apply_firewall** — tool results are stored out-of-band in the
+
    ArtifactStore and replaced with summarized/truncated text for prompt
+
    assembly.
+
 5. **score_candidates** — rank candidates by recency, tag match, kind
+
    priority, and token cost.
+
 6. **deduplicate_candidates** — remove near-duplicate items using Jaccard
+
    similarity over tokenised text.
+
 7. **select_and_pack** — greedily pack the highest-scoring candidates
+
    into the token budget for the current phase.
+
 8. **render_context** — assemble the final prompt string, grouped by
+
    section (facts, history, tool results), with `BuildStats` metadata.
 
+
+
 The pipeline owns `BuildStats` construction after selection. Candidate totals
+
 are captured before sensitivity filtering, while sensitivity, deduplication,
+
 kind-limit, and budget exclusions are attributed per item. This preserves the
+
 invariant `included_count + dropped_count == total_candidates` and keeps
+
 lifecycle hooks aligned with the returned statistics.
+
+
 
 ## Routing Engine pipeline
 
+
+
 The Routing Engine efficiently navigates large tool catalogs so the LLM
+
 never sees all tools at once:
 
+
+
 1. **Catalog** — register and manage `SelectableItem` objects.
+
 2. **TreeBuilder** — convert a flat item list into a bounded
+
    `ChoiceGraph` DAG using namespace grouping, Jaccard clustering, or
+
    alphabetical fallback.
+
 3. **Router** — beam-search over the graph to find the top-k items most
+
    relevant to a user query.
+
 4. **ChoiceCards** — render compact, LLM-friendly cards for the selected
+
    items (never includes full schemas).
+
+
 
 ## Data stores
 
+
+
 All stores are protocol-based with in-memory defaults:
 
+
+
 - **EventLog** — append-only log of `ContextItem` events.
+
 - **ArtifactStore** — blob storage for raw tool outputs intercepted by
+
   the firewall.
+
 - **EpisodicStore** — short episodic memory entries (keyed by episode ID).
+
 - **FactStore** — key-value fact entries persisted across turns.
+
 - **StoreBundle** — convenience wrapper grouping all four stores.
+
+
 
 ## Progressive disclosure
 
+
+
 `context/views.py` provides a `ViewRegistry` that maps content-type patterns
+
 to view generators. When the firewall stores a large tool output as an artifact,
+
 the view system generates alternative representations (JSON subset, CSV summary,
+
 etc.) the agent can drilldown into without retrieving the full blob.
+
 `drilldown_tool_spec()` exposes drilldown as an agent-callable tool.
+
+
 
 ## Design principles
 
+
+
 - **Minimal core dependencies** — a small, audited set (`tiktoken`, `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, `rich`); Python ≥ 3.10.
+
 - **Deterministic** — tie-break by ID, sorted keys.
+
 - **Protocol-based** — all store and estimator interfaces are
+
   `typing.Protocol`, allowing custom implementations.
+
 - **Async-first** — the Context Engine exposes `build()` (async) with a
+
   `build_sync()` wrapper for synchronous callers.
+
 - **Budget-aware** — every build is constrained by the phase-specific
+
   token budget; `BuildStats` explains what was kept and what was dropped.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/concepts.md -->
 
+
+
 # Concepts
+
+
 
 This document explains the core concepts in contextweaver.
 
+
+
 ## Context Item
 
+
+
 A `ContextItem` is the atomic unit of the event log. Every user turn,
+
 agent message, tool call, tool result, documentation snippet, memory
+
 fact, plan state, or policy rule is represented as a `ContextItem`.
+
+
 
 Key fields:
 
+
+
 | Field | Description |
+
 |---|---|
+
 | `id` | Unique identifier |
+
 | `kind` | One of the `ItemKind` enum values |
+
 | `text` | The textual content |
+
 | `parent_id` | Optional link to a parent item (e.g. tool_result → tool_call) |
+
 | `token_estimate` | Pre-computed token count (optional) |
+
 | `sensitivity` | Data sensitivity level (`public`, `internal`, `confidential`, `restricted`) |
+
 | `metadata` | Arbitrary key-value metadata |
+
+
 
 ## Phases
 
+
+
 contextweaver organises agent execution into four phases, each with its
+
 own token budget:
 
+
+
 - **route** — selecting which tool(s) to call.
+
 - **call** — preparing tool call arguments.
+
 - **interpret** — understanding tool results.
+
 - **answer** — composing the final response to the user.
 
+
+
 The `ContextBudget` dataclass defines the token limit for each phase.
+
 Different phases emphasise different item kinds — for example, the
+
 `answer` phase prioritises user turns and tool results, while the
+
 `route` phase prioritises tool descriptions.
 
+
+
 ### User Query vs Routing Query
+
 Production agents may transform raw user input into a routing query prior to retrieval or context selection. Routing queries remove conversational context so retrievers can match tools and context more precisely.
 
+
+
 `Router.route(query)` takes a query that is formatted like a routing query, not the actual user input query.
+
 ContextWeaver does not mandate what happens during the query transformation step. Different applications might adopt different strategies, such as LLM rewriting, classification, templates, or custom middleware.
+
 Check out the MCP context gateway example [MCP gateway example](../examples/mcp_gateway_demo.py) for a worked example.
+
+
 
 ## Selectable Item (ToolCard)
 
+
+
 A `SelectableItem` is the unified representation of anything the Routing
+
 Engine can select — a tool, agent, skill, or internal function. The type
+
 alias `ToolCard` is used when emphasising the LLM-facing card framing.
 
+
+
 Key fields: `id`, `kind`, `name`, `description`, `tags`, `namespace`,
+
 `side_effects`, `cost_hint`.
+
+
 
 ## Context Firewall
 
+
+
 The context firewall intercepts `tool_result` items before raw output
+
 reaches the prompt. It stores the raw output in the `ArtifactStore`,
+
 replaces the prompt-facing text with a compact summary, and prevents
+
 large tool outputs from consuming the entire token budget. In practice:
 
+
+
 1. Stores the raw output in the `ArtifactStore`.
+
 2. Generates a compact summary using the `Summarizer`.
+
 3. Extracts structured facts into the `ResultEnvelope`.
+
 4. Replaces the original item text with a summary + artifact reference.
+
+
 
 ## Result Envelope
 
+
+
 A `ResultEnvelope` captures the processed output of a tool call:
 
+
+
 - `summary` — compact text summary of the result.
+
 - `facts` — list of extracted factual statements.
+
 - `artifacts` — list of `ArtifactRef` handles for raw data.
+
 - `views` — optional alternative representations.
+
 - `status` — success / error / partial.
+
+
 
 ## Sensitivity Enforcement
 
+
+
 Each `ContextItem` has a `sensitivity` field (default: `public`) that
+
 classifies its data sensitivity level. The `ContextPolicy.sensitivity_floor`
+
 setting (default: `confidential`) determines which items are subject to
+
 filtering during context compilation.
+
+
 
 Items whose sensitivity level meets or exceeds the floor are either:
 
+
+
 - **Dropped** (`sensitivity_action="drop"`, the default) — removed from
+
   the candidate list before scoring or rendering.
+
 - **Redacted** (`sensitivity_action="redact"`) — text replaced with
+
   `[REDACTED: {sensitivity}]` via the `MaskRedactionHook`, while
+
   preserving all item metadata.
+
+
 
 Dropped items are recorded in `BuildStats.dropped_reasons["sensitivity"]`.
 
+
+
 ## Build Stats
 
+
+
 Every context build produces a `BuildStats` object that explains exactly
+
 what happened:
 
+
+
 - How many candidates were generated.
+
 - How many were included, dropped, or deduplicated.
+
 - Token usage per section.
+
 - Which items were dropped and why (`dropped_items` carries item ID + reason).
+
 - Dependency closures applied.
 
+
+
 `total_candidates` is measured after dependency closure and before sensitivity
+
 filtering. Every later exclusion is counted, so completed builds satisfy
+
 `included_count + dropped_count == total_candidates`.
+
+
 
 ## Choice Graph
 
+
+
 The `ChoiceGraph` is a bounded DAG used by the Routing Engine. Interior
+
 nodes are labelled navigation points; leaf nodes are items from the
+
 catalog. The `TreeBuilder` constructs the graph using one of three
+
 strategies:
 
+
+
 1. **Namespace grouping** — items sharing a namespace prefix are grouped.
+
 2. **Jaccard clustering** — farthest-first seeding + nearest assignment
+
    based on text similarity.
+
 3. **Alphabetical fallback** — sorted by name, split into labelled
+
    chunks.
 
+
+
 The `Router` performs beam search over this graph, scoring each path
+
 to find the top-k most relevant items for a given query.
+
+
 
 ## Choice Cards
 
+
+
 A `ChoiceCard` is the LLM-friendly representation of a routing result.
+
 It contains the item name, description, relevance score, and optional
+
 side-effect warning — but **never** the full argument schema. This keeps
+
 the LLM's context focused on *which* tool to use, not *how* to call it.
+
+
 
 ## Episodic Memory & Facts
 
+
+
 contextweaver supports two forms of persistent memory:
 
+
+
 - **EpisodicStore** — stores short summaries of past interactions,
+
   keyed by episode ID. These are injected into the prompt header.
+
 - **FactStore** — stores key-value pairs (e.g. `user_timezone=UTC`).
+
   Facts are injected into the prompt alongside episodic memory.
 
+
+
 Both are capped in the prompt to prevent memory from crowding out the
+
 current conversation.
+
+
 
 ## View Registry
 
+
+
 The `ViewRegistry` (in `context/views.py`) maps content-type patterns to view
+
 generators. When the context firewall stores a large tool output as an artifact,
+
 the view system can generate alternative representations — a JSON subset, a CSV
+
 summary, or a column listing — that the agent can request via drilldown without
+
 retrieving the full blob. This progressive-disclosure mechanism keeps the
+
 context window focused while preserving access to the raw data.
+
+
 
 ## Hydration Result
 
+
+
 A `HydrationResult` (in `envelope.py`) captures the output of hydrating a
+
 tool call with context. Hydration enriches a tool call's arguments or
+
 description with context-aware information before execution, and the
+
 `HydrationResult` carries both the enriched payload and metadata about
+
 what context was used.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/quickstart.md -->
 
+
+
 # 10-Minute Quickstart
 
+
+
 This guide gets you to a working context build, a firewall-protected tool result,
+
 and a routed tool shortlist in under 10 minutes.
 
+
+
 > **In a hurry?** Run the built-in demo in an isolated environment with no
+
 > persistent install:
+
 >
+
 > ```bash
+
 > uvx contextweaver demo --scenario killer
+
 > ```
+
 >
+
 > After `pip install contextweaver`, the installed CLI exposes the same
+
 > scenarios:
+
 >
+
 > ```bash
+
 > contextweaver demo                                  # friendly walkthrough
+
 > contextweaver demo --scenario large-catalog         # 1,000 tools → compact cards
+
 > contextweaver demo --scenario huge-tool-output      # context firewall on a big tool result
+
 > contextweaver demo --scenario mcp-gateway           # MCP gateway meta-tools end-to-end
+
 > ```
+
 >
+
 > Each scenario is deterministic and network-free. Run `contextweaver demo
+
 > --help` to see the full list.
+
+
 
 Time budget:
 
+
+
 - Prerequisites: 30 seconds
+
 - Install: 30 seconds
+
 - Your first context build: 3 minutes
+
 - Try the context firewall: 4 minutes
+
 - Try tool routing: 2 minutes
+
 - What to try next: 1 minute
+
+
 
 ## Adopting from an existing chat history (5-line drop-in)
 
+
+
 > **Already have an OpenAI, Anthropic, or Gemini agent?** You don't need to
+
 > walk the full quickstart — drop contextweaver in front of your existing
+
 > message history with one call. The full walkthrough below is for new agents.
 
+
+
 If you have an OpenAI Chat Completions session saved as JSON, you can build
+
 a context pack in five lines (plus imports):
 
+
+
 ```python
+
 import json
+
 from contextweaver.adapters.openai_messages import from_openai_messages
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import Phase
 
+
+
 mgr = ContextManager()
+
 from_openai_messages(json.load(open("session.json")), into=mgr)
+
 pack = mgr.build_sync(phase=Phase.answer, query="What did we decide?")
+
 print(pack.prompt)
+
 ```
 
+
+
 The adapter handles every OpenAI Chat Completions role — `system`, `user`,
+
 `assistant` (with optional `tool_calls`), `tool` — and threads
+
 `tool_call_id` ↔ `ContextItem.id` so `to_openai_messages(...)` is the exact
+
 inverse for round-tripping back into the OpenAI SDK.
+
+
 
 Anthropic and Google Gemini have sibling adapters with the same shape:
 
+
+
 ```python
+
 from contextweaver.adapters.anthropic_messages import from_anthropic_messages
+
 from contextweaver.adapters.gemini_contents import from_gemini_contents
 
+
+
 # Anthropic Messages API: content blocks (text / tool_use / tool_result)
+
 from_anthropic_messages(anthropic_messages, into=mgr)
 
+
+
 # Google Gemini: contents[].parts[] (text / functionCall / functionResponse)
+
 from_gemini_contents(gemini_contents, into=mgr)
+
 ```
 
+
+
 All three adapters are pure stateless converters — they accept plain `dict`s
+
 and never import a provider SDK at module load time. Session payloads may
+
 contain sensitive prompt content; the adapters do not log message bodies
+
 above `DEBUG` level.
 
+
+
 > **Want to keep working with the provider SDK after building a pack?** Each
+
 > adapter ships an inverse: `to_openai_messages`, `to_anthropic_messages`,
+
 > `to_gemini_contents`. Round-trip equality holds for the representative
+
 > fixtures in `tests/test_adapters_*.py`.
+
+
 
 ## 1. Prerequisites (30 seconds)
 
+
+
 `contextweaver` requires Python 3.10 or newer.
+
+
 
 Check your Python version:
 
+
+
 ```bash
+
 python --version
+
 ```
+
+
 
 Create and activate a virtual environment:
 
+
+
 ```bash
+
 python -m venv .venv
+
 ```
+
+
 
 Linux and macOS:
 
+
+
 ```bash
+
 source .venv/bin/activate
+
 ```
+
+
 
 Windows PowerShell:
 
+
+
 ```powershell
+
 .venv\Scripts\Activate.ps1
+
 ```
+
+
 
 If you see an error like `running scripts is disabled on this system`, either:
 
+
+
 - run the activation script from **Command Prompt (cmd.exe)** instead:
 
+
+
   ```cmd
+
   .venv\Scripts\activate.bat
+
   ```
+
+
 
 - or relax the execution policy for your current user in **PowerShell** (recommended only on machines you control):
 
+
+
   ```powershell
+
   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+
   ```
+
+
 
 ## 2. Install (30 seconds)
 
+
+
 For a zero-install trial:
 
+
+
 ```bash
+
 uvx contextweaver demo --scenario killer
+
 ```
 
+
+
 `uvx` creates an isolated temporary environment. Its first run may be slower
+
 while dependencies resolve. Pin a release with
+
 `uvx contextweaver@0.14.0 demo --scenario killer`.
+
+
 
 Install from PyPI:
 
+
+
 ```bash
+
 pip install contextweaver
+
 ```
+
+
 
 If you are working from a repository checkout instead, install the package in editable mode:
 
+
+
 ```bash
+
 pip install -e ".[dev]"
+
 ```
+
+
 
 Verify that the package imports from the Python environment you just activated:
 
+
+
 ```bash
+
 python -c "import contextweaver; print(contextweaver.__version__)"
+
 ```
+
+
 
 Expected output is the installed version, for example `0.14.0`. Then run the
+
 network-free demo as an end-to-end smoke test:
 
+
+
 ```bash
+
 contextweaver demo
+
 ```
 
+
+
 You should see the friendly walkthrough start without `ModuleNotFoundError` or
+
 `contextweaver: command not found`.
+
 `pipx run contextweaver demo --scenario killer` is the equivalent isolated
+
 path for pipx users.
 
+
+
 If your network blocks `openaipublic.blob.core.windows.net`, the demo or
+
 token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.
+
 That warning is harmless: contextweaver falls back to the deterministic
+
 chars/4 estimator and keeps enforcing budgets. To suppress it while keeping
+
 exact `tiktoken` counts, pre-warm a `TIKTOKEN_CACHE_DIR` on a connected
+
 machine and copy that cache into the offline environment; the
+
 [troubleshooting guide](troubleshooting.md#offline-air-gapped-tiktoken-warning)
+
 has the full workflow.
+
+
 
 ## 3. Your First Context Build (3 minutes)
 
+
+
 Scenario: an agent receives a question, decides to query a database, and builds
+
 an answer-phase prompt from the conversation history.
+
+
 
 Save this as `first_agent.py`:
 
+
+
 ```python
+
 """Your first contextweaver context build."""
 
+
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import ContextItem, ItemKind, Phase
 
+
+
 mgr = ContextManager()
+
 mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="How many active users do we have?"))
+
 mgr.ingest(ContextItem(id="a1", kind=ItemKind.agent_msg, text="I'll check the database for you."))
+
 mgr.ingest(
+
     ContextItem(
+
         id="tc1",
+
         kind=ItemKind.tool_call,
+
         text='db_query(sql="SELECT COUNT(*) FROM users WHERE active=true")',
+
         parent_id="u1",
+
     )
+
 )
+
 mgr.ingest(ContextItem(id="tr1", kind=ItemKind.tool_result, text="count: 1042", parent_id="tc1"))
+
+
 
 pack = mgr.build_sync(phase=Phase.answer, query="active user count")
 
+
+
 print("=== Compiled Context ===")
+
 print(pack.prompt)
+
 print("\n=== Build Stats ===")
+
 print(f"Total candidates: {pack.stats.total_candidates}")
+
 print(f"Included in prompt: {pack.stats.included_count}")
+
 print(f"Dropped: {pack.stats.dropped_count}")
+
 print(f"Deduplicated: {pack.stats.dedup_removed}")
+
 ```
+
+
 
 Run it:
 
+
+
 ```bash
+
 python first_agent.py
+
 ```
+
+
 
 Expected output excerpt:
 
+
+
 ```text
+
 === Compiled Context ===
+
 [TOOL RESULT [artifact:tr1]]
+
 count: 1042
 
+
+
 [TOOL CALL]
+
 db_query(sql="SELECT COUNT(*) FROM users WHERE active=true")
 
+
+
 [USER]
+
 How many active users do we have?
 
+
+
 [ASSISTANT]
+
 I'll check the database for you.
 
+
+
 === Build Stats ===
+
 Total candidates: 4
+
 Included in prompt: 4
+
 Dropped: 0
+
 Deduplicated: 0
+
 ```
+
+
 
 What just happened:
 
+
+
 - You ingested four events into the event log.
+
 - `build_sync()` ran the context pipeline for the `answer` phase.
+
 - The prompt was compiled from the most relevant items and returned with build stats.
+
+
 
 ### Sensitivity & Default Drops
 
+
+
 Every `ContextItem` has a `sensitivity` level. It defaults to `public`, and
+
 the default policy is conservative: items at or above
+
 `Sensitivity.confidential` are dropped before scoring and rendering.
 
+
+
 ```python
+
 from contextweaver.config import ContextPolicy
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
 
+
+
 mgr = ContextManager()
+
 mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="public"))
+
 mgr.ingest(
+
     ContextItem(
+
         id="c1",
+
         kind=ItemKind.user_turn,
+
         text="confidential",
+
         sensitivity=Sensitivity.confidential,
+
     )
+
 )
 
+
+
 pack = mgr.build_sync(phase=Phase.answer, query="any")
+
 print(pack.stats.dropped_reasons.get("sensitivity", 0))  # 1
+
 ```
+
+
 
 If you want to keep `confidential` items but still drop `restricted` items,
+
 raise the floor:
 
+
+
 ```python
+
 policy = ContextPolicy(sensitivity_floor=Sensitivity.restricted)
+
 mgr = ContextManager(policy=policy)
+
 ```
+
+
 
 If you want sensitive items to remain visible only as masks, use redact mode:
 
+
+
 ```python
+
 policy = ContextPolicy(sensitivity_action="redact")
+
 mgr = ContextManager(policy=policy)
+
 ```
+
+
 
 ## 4. Try the Context Firewall (4 minutes)
 
+
+
 Problem: a large tool result can dominate the prompt if you include it verbatim.
+
+
 
 Save this as `firewall_demo.py`:
 
+
+
 ```python
+
 """Show how the context firewall keeps prompts compact."""
 
+
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import ContextItem, ItemKind, Phase
 
+
+
 large_result = '{"users": [' + ', '.join(
+
     [
+
         f'{{"id": {i}, "name": "User{i}", "email": "user{i}@example.com"}}'
+
         for i in range(1, 101)
+
     ]
+
 ) + ']}'
 
+
+
 mgr = ContextManager()
+
 mgr.ingest(ContextItem(id="u1", kind=ItemKind.user_turn, text="List all users"))
+
 mgr.ingest(ContextItem(id="tc1", kind=ItemKind.tool_call, text="list_users()", parent_id="u1"))
+
 mgr.ingest(ContextItem(id="tr1", kind=ItemKind.tool_result, text=large_result, parent_id="tc1"))
+
+
 
 pack = mgr.build_sync(phase=Phase.answer, query="user list")
 
+
+
 print(f"Raw tool result size: {len(large_result)} chars")
+
 print("\n=== Compiled Context ===")
+
 print(pack.prompt)
+
 print("\n=== Firewall Impact ===")
+
 print(f"Prompt size after firewall: {len(pack.prompt)} chars")
+
 print(f"Artifacts stored: {len(mgr.artifact_store.list_refs())}")
+
 ```
+
+
 
 Run it:
 
+
+
 ```bash
+
 python firewall_demo.py
+
 ```
+
+
 
 Expected output excerpt:
 
+
+
 ```text
+
 Raw tool result size: 6087 chars
 
+
+
 === Compiled Context ===
+
 [USER]
+
 List all users
 
+
+
 [TOOL RESULT [artifact:tr1]]
+
 {"users": [{"id": 1, "name": "User1", "email": "user1@example.com"}, ...
 
+
+
 [TOOL CALL]
+
 list_users()
 
+
+
 === Firewall Impact ===
+
 Prompt size after firewall: ... chars
+
 Artifacts stored: 1
+
 ```
+
+
 
 What just happened:
 
+
+
 - The tool result was processed by the firewall during context build (all `tool_result` items go through it by default).
+
 - `contextweaver` stored the raw result in the artifact store.
+
 - The prompt kept only a compact summary plus an artifact reference instead of the full payload.
+
+
 
 ## 5. Try Tool Routing (2 minutes)
 
+
+
 Problem: when a catalog grows, the model should only see the most relevant tools.
+
+
 
 Save this as `routing_demo.py`:
 
+
+
 ```python
+
 """Route a natural-language request to a focused tool shortlist."""
 
+
+
 from contextweaver.routing.catalog import Catalog
+
 from contextweaver.routing.router import Router
+
 from contextweaver.routing.tree import TreeBuilder
+
 from contextweaver.types import SelectableItem
 
+
+
 catalog = Catalog()
+
 catalog.register(SelectableItem(id="t1", kind="tool", name="send_email", description="Send email to a recipient", tags=["notify", "team", "message"]))
+
 catalog.register(SelectableItem(id="t2", kind="tool", name="db_query", description="Query the database", tags=["data"]))
+
 catalog.register(SelectableItem(id="t3", kind="tool", name="create_ticket", description="Create support ticket", tags=["support"]))
+
 catalog.register(SelectableItem(id="t4", kind="tool", name="send_sms", description="Send SMS message", tags=["notify", "team", "message"]))
+
 catalog.register(SelectableItem(id="t5", kind="tool", name="schedule_meeting", description="Schedule a calendar meeting", tags=["calendar"]))
 
+
+
 graph = TreeBuilder(max_children=3).build(catalog.all())
+
 router = Router(graph, items=catalog.all(), beam_width=2, top_k=2)
+
 result = router.route("notify the team about the deadline")
 
+
+
 print("=== Query ===")
+
 print("notify the team about the deadline")
+
 print("\n=== Top Tools ===")
+
 for item_id in result.candidate_ids:
+
     item = catalog.get(item_id)
+
     print(f"- {item.name}: {item.description}")
+
 ```
+
+
 
 Run it:
 
+
+
 ```bash
+
 python routing_demo.py
+
 ```
+
+
 
 Expected output:
 
+
+
 ```text
+
 === Query ===
+
 notify the team about the deadline
 
+
+
 === Top Tools ===
+
 - send_sms: Send SMS message
+
 - send_email: Send email to a recipient
+
 ```
+
+
 
 What just happened:
 
+
+
 - `TreeBuilder` organized the catalog into a bounded routing graph.
+
 - `Router` scored the query against that graph and returned the top two candidates.
+
 - Your model would now see a focused shortlist instead of the full catalog.
+
+
 
 ## 6. What to Try Next (1 minute)
 
+
+
 Available now:
 
+
+
 - [README](../README.md) for the top-level package overview
+
 - [Concepts](concepts.md) for phases, the context firewall, and routing terms
+
 - [Architecture](architecture.md) for the pipeline stages and module layout
+
 - [MCP Integration](integration_mcp.md) for MCP adapters and session ingestion
+
 - [A2A Integration](integration_a2a.md) for multi-agent adapter flows
+
 - [Examples directory](../examples/) for larger end-to-end demos
+
+
 
 Planned separately:
 
+
+
 - Framework-specific integration guides are tracked in separate issues and are not part of this quickstart.
+
+
 
 If you want a deeper local smoke test after this guide, run:
 
+
+
 ```bash
+
 python -m contextweaver demo
+
 ```
 
+
+
 ---
+
+
 
 <!-- FILE: docs/daily_driver.md -->
 
+
+
 # Daily Driver Guide
 
+
+
 Use contextweaver as a pressure-relief layer for tool-heavy sessions, not as
+
 the default path for every chat message.
 
+
+
 ```text
+
 User / IDE chat
+
   |
+
   +-- trivial question, tiny tool set, small result --> normal host-agent path
+
   |
+
   +-- large catalog, large result, long history ----> contextweaver gateway
+
                                                         |
+
                                                         +-- tool_browse
+
                                                         +-- tool_execute
+
                                                         +-- tool_view (only as needed)
+
 ```
 
+
+
 contextweaver prepares bounded tool choices and compact result summaries. The
+
 host application still owns the model call, authorization, user approval, and
+
 execution policy. Upstream MCP servers remain the executors of record.
+
+
 
 ## Recommended daily loop
 
+
+
 1. Start with the host client's normal chat path.
+
 2. Use the gateway when the catalog is difficult to navigate, a result is too
+
    large for the prompt, or the active history needs deterministic budgeting.
+
 3. Ask the client to call `tool_browse` with a routing-oriented query.
+
 4. Execute only the selected `tool_id` through `tool_execute`.
+
 5. Use `tool_view` for a narrow slice only when the summary is insufficient.
+
 6. Inspect the route explanation, build statistics, and artifact reference
+
    before increasing budgets or exposing more data.
 
+
+
 The gateway should usually replace duplicate direct registrations of the same
+
 upstream tools. Advertising both the raw servers and the gateway gives the
+
 model two competing paths and defeats the bounded-tool benefit.
+
+
 
 ## Start the gateway
 
+
+
 The fastest trial requires no persistent installation:
 
+
+
 ```bash
+
 uvx contextweaver mcp serve \
+
   --config examples/recipes/gateway_config.yaml \
+
   --dry-run
+
 ```
+
+
 
 For regular use, install the CLI once:
 
+
+
 ```bash
+
 pip install contextweaver
+
 contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+
 ```
+
+
 
 Enable local, payload-safe diagnostics in a directory that already exists:
 
+
+
 ```bash
+
 contextweaver mcp serve \
+
   --config /path/to/gateway.yaml \
+
   --diagnostics /path/to/logs/contextweaver.jsonl \
+
   --quiet
+
 ```
+
+
 
 Inspect the static catalog before launch and aggregate the event stream later:
 
+
+
 ```bash
+
 contextweaver mcp inspect --catalog /path/to/catalog.yaml
+
 contextweaver mcp stats --events /path/to/logs/contextweaver.jsonl
+
 ```
+
+
 
 The packaged CLI still represents one configured static catalog source. Its
+
 catalog report groups tools by namespace; it does not claim live health for
+
 multiple upstream MCP processes.
 
+
+
 `pipx run contextweaver ...` is another isolated option. The first `uvx` or
+
 `pipx run` launch resolves a temporary environment and is slower than later
+
 runs. Pin a deployment when reproducibility matters:
 
+
+
 ```bash
+
 uvx contextweaver@0.14.0 mcp serve --config /path/to/gateway.yaml
+
 pipx run --spec contextweaver==0.14.0 contextweaver mcp serve \
+
   --config /path/to/gateway.yaml
+
 ```
 
+
+
 The packaged `mcp serve` command currently loads a static catalog and uses the
+
 stub upstream handler for deterministic local exercise. For live upstream MCP
+
 execution, compose `McpClientUpstream` or `MultiplexUpstream` in Python; see
+
 [MCP Integration](integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+
+
 
 ## Client instruction
 
+
+
 Give the host agent a short operational rule. The same rule works in Cursor,
+
 Claude Desktop, Claude Code, VS Code Copilot agent mode, and generic MCP
+
 clients:
 
+
+
 ```text
+
 Use the contextweaver MCP gateway when you need to browse or call tools from a
+
 large catalog. Call tool_browse first with a routing-oriented query, execute
+
 only the selected tool_id through tool_execute, and use tool_view only when the
+
 summary is insufficient. Prefer narrow tool_view selectors. The gateway does
+
 not grant authorization; follow the host application's approval and execution
+
 policy.
+
 ```
+
+
 
 Client-specific placement:
 
+
+
 | Client | Where to put the rule |
+
 |---|---|
+
 | Cursor | Project rules or the task prompt |
+
 | Claude Desktop | Project/custom instructions |
+
 | Claude Code | `CLAUDE.md` or the current task prompt |
+
 | GitHub Copilot | `.github/copilot-instructions.md` or repository instructions |
+
 | Generic MCP client | System/developer prompt owned by the host application |
+
+
 
 ## Use contextweaver when
 
+
+
 - The client sees dozens or hundreds of MCP, FastMCP, or Python tools.
+
 - Tool results include large JSON objects, logs, tables, CSV, resources, or
+
   binary content.
+
 - Multi-turn tool sessions accumulate more history than should reach every
+
   phase.
+
 - You need deterministic prompt budgets and an inspectable record of what was
+
   included, dropped, or deduplicated.
+
 - You want schemas hidden until a tool has been selected and hydrated.
 
+
+
 For catalogs above roughly 300 tools, treat metadata quality as part of the
+
 deployment: capture/import the upstream `tools/list`, normalize names and
+
 descriptions, then validate routing against representative queries. The
+
 current static-catalog workflow is documented in the
+
 [MCP Context Gateway architecture](architectures/mcp_context_gateway.md).
+
+
 
 ## Do not use it when
 
+
+
 - The agent has only three to five small tools.
+
 - The interaction is one-shot Q&A with no tool or history pressure.
+
 - Tool outputs are already small and the prompt comfortably fits its budget.
+
 - The actual problem is pure retrieval, long-term memory, or observability.
+
 - The host application has not defined who may invoke tools or approve side
+
   effects.
+
 - You expect contextweaver to be an agent supervisor, model runtime, sandbox,
+
   or authorization service.
+
+
 
 ## Debug loop
 
+
+
 When a route or prompt looks wrong, inspect these in order:
 
+
+
 1. **Gateway configuration.** Confirm `mode`, `top_k`, `beam_width`,
+
    `cache_stable`, and the catalog path with `mcp serve --dry-run`.
+
 2. **Route result.** Use `RouteResult.explanation()` for ranked candidates,
+
    score gaps, filters, and ambiguity. Use `debug=True` when you need the
+
    expansion trace.
+
 3. **Build statistics.** Check `included_count`, `dropped_count`,
+
    `dropped_reasons`, per-item `dropped_items`, `dedup_removed`, and token
+
    usage in `BuildStats`. For an ingested session, run
+
    `contextweaver inspect --session session.json`.
+
 4. **Artifact reference.** Confirm the handle exists before calling
+
    `tool_view`, then request a bounded `head`, `lines`, `rows`, or `json_keys`
+
    selector.
+
 5. **Embedded runtime settings.** If you use `ContextManager` directly,
+
    inspect phase budgets, the firewall threshold, sensitivity policy, and
+
    scoring/retrieval backend. These are Python runtime settings, not fields in
+
    the current `mcp serve` YAML.
+
 6. **Telemetry.** Use `mcp serve --diagnostics FILE` for local JSONL counts,
+
    savings, failures, artifact-view usage, and latency. The built-in stream
+
    records IDs, sizes, argument key names, and error codes, but not queries,
+
    argument values, result text, prompt text, or artifact bytes. When the
+
    `[otel]` extra is enabled, inspect context-build, firewall, and routing spans.
 
+
+
 Do not respond to a poor route by immediately increasing every budget or
+
 returning whole artifacts. Better descriptions, a sharper browse query, and a
+
 narrow view usually preserve more of the gateway's benefit.
+
+
 
 ## Next steps
 
+
+
 - [Claude Desktop recipe](recipes/claude_desktop.md)
+
 - [Claude Code recipe](recipes/claude_code.md)
+
 - [Cursor recipe](recipes/cursor.md)
+
 - [GitHub Copilot recipe](recipes/github_copilot.md)
+
 - [MCP Integration](integration_mcp.md)
+
 - [Adopter Benchmark Report](benchmark_report.md)
+
 - [Troubleshooting](troubleshooting.md)
+
 - [Security Model](security_model.md)
 
+
+
 ---
+
+
 
 <!-- FILE: docs/security_model.md -->
 
+
+
 # MCP Gateway Security Model
 
+
+
 contextweaver is a local context-compilation and MCP gateway layer. It does
+
 not call an LLM or implement upstream tool side effects, but it can process
+
 tool schemas, tool results, session history, and raw artifacts that contain
+
 sensitive data. Treat its artifact store and diagnostics as sensitive as the
+
 upstream outputs they summarize.
 
+
+
 This page describes deployment boundaries. Vulnerability reporting remains in
+
 the repository's
+
 [`SECURITY.md`](https://github.com/dgenio/contextweaver/blob/main/SECURITY.md).
+
+
 
 ## Data flow
 
+
+
 ```text
+
                          schemas / calls
+
 MCP client  <------>  contextweaver gateway  <------>  upstream MCP server
+
     |                    |          |
+
     |                    |          +--> tool execution and authorization
+
     |                    |               remain upstream / host concerns
+
     |                    |
+
     |                    +--> artifact store
+
     |                         raw tool bytes, local and out-of-band by default
+
     |
+
     +--> model provider
+
          bounded ChoiceCards, summaries, selected artifact slices
+
 ```
+
+
 
 Prompt-visible by default:
 
+
+
 - Compact `ChoiceCard` fields, without full input schemas.
+
 - Firewalled summaries and extracted facts.
+
 - Artifact handles and metadata needed for progressive disclosure.
+
 - A selected slice returned by `tool_view` after the client requests it.
+
+
 
 Out-of-band by default:
 
+
+
 - Raw text, resource, image, and audio bytes stored as artifacts.
+
 - Full schemas until the selected tool is hydrated for execution.
+
 - Context items excluded by budget or sensitivity policy.
 
+
+
 Out-of-band does not mean harmless or encrypted. The default gateway uses an
+
 in-memory artifact store in the gateway process. Other adapters can use
+
 filesystem or caller-supplied stores.
+
+
 
 ## Data contextweaver can touch
 
+
+
 - MCP tool names, descriptions, annotations, and input schemas.
+
 - MCP text, structured content, resources, images, and audio handled by the
+
   adapter.
+
 - Session messages and tool history ingested through provider adapters.
+
 - Artifact bytes, labels, media types, sizes, and handles.
+
 - Catalog and gateway configuration files.
+
 - Routing queries, candidate identifiers, scores, and build statistics.
+
 - OpenTelemetry attributes and metrics when the optional integration is
-  enabled.
-- Local gateway JSONL diagnostics when `mcp serve --diagnostics FILE` is
+
   enabled.
 
+- Local gateway JSONL diagnostics when `mcp serve --diagnostics FILE` is
+
+  enabled.
+
+
+
 MCP annotations such as `readOnlyHint` are untrusted metadata. They may improve
+
 presentation or routing, but must not grant permission or bypass approval.
+
+
 
 ## Network and egress
 
+
+
 The context and routing algorithms do not make model calls and do not require
+
 network access. Data can still leave the machine through surrounding systems:
 
+
+
 - The MCP client sends the compiled prompt and tool responses to its configured
+
   model provider.
+
 - Upstream MCP servers may call remote APIs or databases.
+
 - An enabled OpenTelemetry exporter sends spans and metrics to its configured
+
   endpoint.
+
 - Package installation requires a package index unless artifacts are already
+
   cached or installed.
+
 - An explicitly selected token estimator may fetch tokenizer data on first use
+
   when its cache is cold; the documented fallback remains deterministic.
 
+
+
 The default OpenTelemetry emission excludes raw queries, full tool
+
 descriptions, schemas, and prompt content. Enabling
+
 `otel_emit_experimental=True` can add sensitive content and should be limited
+
 to a trusted, access-controlled backend.
 
+
+
 The built-in gateway JSONL stream excludes query text, argument values, result
+
 text, prompt text, and artifact bytes. It does include canonical tool and
+
 artifact handles, namespaces, argument key names, sizes, timings, and error
+
 codes. Treat those identifiers as operationally sensitive and restrict file
+
 permissions and retention accordingly.
+
+
 
 ## Trust boundaries
 
+
+
 ### Host MCP client
 
+
+
 The host decides which model receives context, which MCP server is available,
+
 and whether a user must approve a call. contextweaver does not replace those
+
 controls.
+
+
 
 ### contextweaver gateway
 
+
+
 The gateway narrows discovery, validates selected arguments against the
+
 hydrated schema, dispatches calls to an `UpstreamCall`, and firewalls returned
+
 content. Routing is relevance selection, not authorization.
+
+
 
 ### Upstream MCP server
 
+
+
 The upstream server implements the operation and its side effects. It must
+
 authenticate callers, authorize access, validate business rules, and protect
+
 its own credentials. contextweaver does not verify that a tool described as
+
 read-only is actually read-only.
+
+
 
 ### Artifact store
 
+
+
 The artifact store contains the bytes deliberately kept out of the prompt.
+
 Anyone with process or storage access may be able to read them. A handle is an
+
 address, not a capability token.
+
+
 
 ## Context firewall limits
 
+
+
 The context firewall reduces prompt exposure and token use. It is not a data
+
 loss prevention system or security sandbox.
 
+
+
 - Raw bytes can remain in the artifact store after a summary is rendered.
+
 - Summaries and extracted facts can still contain sensitive values unless a
+
   sensitivity or redaction policy removes them.
+
 - `tool_view` deliberately re-exposes selected artifact content to the MCP
+
   client and therefore potentially to the model provider.
+
 - The current in-memory gateway store has no TTL, total-size quota, or
+
   per-handle authorization policy.
+
 - Current selectors accept caller-provided ranges; deployments should use
+
   narrow selectors and should not assume a built-in maximum response size.
+
 - The gateway does not neutralize prompt injection contained in a tool result.
+
   The host prompt and execution policy must treat tool content as untrusted.
 
+
+
 Artifact TTLs, size limits, bounded views, redaction, provenance, and a view
+
 policy hook are tracked in
+
 [#375](https://github.com/dgenio/contextweaver/issues/375). Until those
+
 controls ship, high-sensitivity deployments should wrap or disable raw view
+
 access in their host integration.
+
+
 
 ## Non-goals
 
+
+
 contextweaver does not:
 
+
+
 - Authenticate users or authorize tool execution.
+
 - Call the model or control how it follows instructions.
+
 - Sandbox or attest upstream MCP server processes.
+
 - Guarantee that MCP annotations are truthful.
+
 - Replace secret scanning, DLP, endpoint security, or storage encryption.
+
 - Prevent a malicious or compromised upstream from returning prompt-injection
+
   content.
+
 - Make an unsafe tool safe merely because it was selected by the router.
+
+
 
 ## Hardening checklist
 
+
+
 - Use upstream MCP servers you trust and keep them patched.
+
 - Register a tool either directly or behind the gateway, not both.
+
 - Enforce user identity, authorization, and side-effect approval in the host or
+
   upstream server.
+
 - Keep gateway configs, local state, and artifact directories out of version
+
   control when they contain machine paths or credentials.
+
 - Put secrets in the client's environment/secret facility, not in committed
+
   JSON or YAML.
+
 - Use sensitivity labels and redaction before prompt rendering; add
+
   store-before-view redaction when handling regulated data.
+
 - Prefer `json_keys`, short line ranges, or a small `head` selector over whole
+
   artifact retrieval.
+
 - Restrict filesystem permissions and process access around persistent
+
   artifact stores.
+
 - Leave experimental OTel content emission disabled unless the exporter is
+
   trusted for the data class involved.
+
 - Store gateway JSONL diagnostics in an access-controlled path and define a
+
   retention policy; use `--quiet` only to suppress lifecycle stderr, not as a
+
   substitute for diagnostics access control.
+
 - Review tool descriptions and results as untrusted input; do not rely on
+
   `readOnlyHint`, `destructiveHint`, or similar annotations as policy.
+
 - Pin the contextweaver version in managed deployments and review release notes
+
   before upgrading.
+
+
 
 ## Deployment questions
 
+
+
 Before exposing a gateway to users, answer:
 
+
+
 1. Which identities may use each upstream tool?
+
 2. Where are raw artifacts stored, and who can read that location or process?
+
 3. How long may artifacts remain available?
+
 4. Which content is allowed to reach the model provider?
+
 5. Who approves destructive or externally visible calls?
+
 6. Where do OTel spans go, and can that backend hold the same data class?
+
 7. What is the incident path if a summary or view exposes a secret?
 
+
+
 If these answers are undefined, the deployment is not made safe by adding a
+
 context firewall.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/recipes/index.md -->
 
+
+
 # MCP Client Recipes
 
+
+
 These recipes put the installed `contextweaver mcp serve` command in front of
+
 an MCP client. The default examples use `uvx`, so the client receives an
+
 isolated current release without requiring a persistent Python environment.
 
+
+
 | Client | Recipe | Shipped config |
+
 |---|---|---|
+
 | Claude Desktop | [Claude Desktop](claude_desktop.md) | [`claude_desktop_config.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_desktop_config.json) |
+
 | Claude Code | [Claude Code](claude_code.md) | [`claude_code_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_code_mcp.json) |
+
 | GitHub Copilot in VS Code | [GitHub Copilot](github_copilot.md) | [`copilot_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/copilot_mcp.json) |
+
 | Cursor | [Cursor](cursor.md) | [`cursor_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/cursor_mcp.json) |
+
+
 
 ## Choose an invocation
 
+
+
 Zero-install trial:
 
+
+
 ```bash
+
 uvx contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+
 ```
+
+
 
 Persistent installation:
 
+
+
 ```bash
+
 pip install contextweaver
+
 contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+
 ```
+
+
 
 Isolated pipx run:
 
+
+
 ```bash
+
 pipx run contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+
 ```
+
+
 
 The first `uvx` or `pipx run` invocation resolves an environment and may take
+
 longer. Pin the package in managed environments:
 
+
+
 ```bash
+
 uvx contextweaver@0.14.0 mcp serve --config /path/to/gateway.yaml
+
 pipx run --spec contextweaver==0.14.0 contextweaver mcp serve \
+
   --config /path/to/gateway.yaml
+
 ```
+
+
 
 ## Shared gateway config
 
+
+
 The shipped [`gateway_config.yaml`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/gateway_config.yaml)
+
 loads the committed 11-tool filesystem snapshot:
 
+
+
 ```yaml
+
 catalog: ../architectures/mcp_context_gateway/real_catalogs/filesystem.json
+
 mode: gateway
+
 top_k: 10
+
 beam_width: 3
+
 cache_stable: false
+
 name: contextweaver
+
 ```
 
+
+
 Relative catalog paths are resolved from the gateway config file's directory.
+
 This keeps project-scoped client configs portable even when the client starts
+
 the server from a different working directory.
+
+
 
 ## What the client sees
 
+
+
 ```text
+
 MCP client
+
     |
+
     +-- tool_browse  -> bounded ChoiceCards
+
     +-- tool_execute -> hydrated, validated selected call
+
     +-- tool_view    -> selected artifact slice
+
 ```
 
+
+
 The client sees three meta-tools instead of every full upstream schema. Large
+
 results become summaries plus artifact handles.
+
+
 
 ## Current runtime boundary
 
+
+
 The packaged CLI loads a static JSON/YAML catalog and uses a deterministic
+
 stub upstream handler. It is suitable for client wiring, tool shortlisting,
+
 argument validation, and firewall-shape checks. Live upstream execution
+
 requires a Python composition using `McpClientUpstream` or
+
 `MultiplexUpstream`; see
+
 [MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers).
 
+
+
 [`examples/recipes/serve_gateway.py`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/serve_gateway.py)
+
 remains a legacy/development example for custom `ProxyRuntime` wiring. It is
+
 no longer the default client entry point.
+
+
 
 ## Large catalogs
 
+
+
 For 300+ tools, capture/import the upstream `tools/list`, normalize weak names
+
 and descriptions, and test representative `tool_browse` queries before
+
 deployment. The static snapshot workflow and real catalog fixtures are in the
+
 [MCP Context Gateway architecture](../architectures/mcp_context_gateway.md).
+
+
 
 ## Next reading
 
+
+
 - [Daily Driver Guide](../daily_driver.md)
+
 - [MCP Gateway Security Model](../security_model.md)
+
 - [MCP Integration](../integration_mcp.md)
+
 - [Troubleshooting](../troubleshooting.md)
 
+
+
 ---
+
+
 
 <!-- FILE: docs/recipes/claude_code.md -->
 
+
+
 # Claude Code + contextweaver gateway
 
+
+
 Use contextweaver as one project-scoped MCP server so Claude Code sees three
+
 gateway meta-tools instead of a large set of full upstream schemas.
 
+
+
 This recipe's registration syntax and project config were verified on
+
 **Claude Code 2.1.165 on June 10, 2026**. The deterministic gateway surface is
+
 covered by the repository's MCP tests; live model-driven tool selection
+
 remains a manual client check.
+
+
 
 ## Prerequisites
 
+
+
 1. Claude Code installed and signed in.
+
 2. Python 3.10 or newer.
+
 3. `uv` for the zero-install command, or an installed `contextweaver` CLI.
+
 4. A JSON/YAML tool catalog or MCP `tools/list` snapshot.
 
+
+
 The worked example uses the committed 11-tool filesystem snapshot and the
+
 gateway config at `examples/recipes/gateway_config.yaml`.
+
+
 
 ## Validate before registration
 
+
+
 From the contextweaver repository root:
 
+
+
 ```bash
+
 uvx contextweaver mcp serve \
+
   --config examples/recipes/gateway_config.yaml \
+
   --dry-run
+
 ```
+
+
 
 Expected stderr includes:
 
+
+
 ```text
+
 mode=gateway ... tools=11 top_k=10 beam_width=3 ...
+
 dry-run: catalog validated; not binding stdio.
+
 ```
+
+
 
 The first `uvx` invocation may take longer while it resolves an isolated
+
 environment. For a persistent installation, use:
 
+
+
 ```bash
+
 pip install contextweaver
+
 contextweaver mcp serve --config examples/recipes/gateway_config.yaml --dry-run
+
 ```
+
+
 
 ## Option A: commit `.mcp.json`
 
+
+
 The shipped
+
 [`examples/recipes/claude_code_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_code_mcp.json)
+
 contains:
 
+
+
 ```json
+
 {
+
   "mcpServers": {
+
     "contextweaver-gateway": {
+
       "type": "stdio",
+
       "command": "uvx",
+
       "args": [
+
         "contextweaver",
+
         "mcp",
+
         "serve",
+
         "--config",
+
         "${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"
+
       ]
+
     }
+
   }
+
 }
+
 ```
 
+
+
 Copy that structure to `.mcp.json` at the project root and adjust the config
+
 path. Claude Code supports `${VAR}` and `${VAR:-default}` expansion in project
+
 MCP configuration. Keep credentials in environment variables rather than the
+
 committed file.
+
+
 
 To pin the package:
 
+
+
 ```json
+
 "args": [
+
   "contextweaver@0.14.0",
+
   "mcp",
+
   "serve",
+
   "--config",
+
   "${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"
+
 ]
+
 ```
 
+
+
 Claude Code asks each user to approve a project-scoped server before
+
 connecting.
+
+
 
 ## Option B: register the JSON with the Claude CLI
 
+
+
 `claude mcp add-json` accepts the server object and writes it to the selected
+
 scope:
+
+
 
 PowerShell:
 
+
+
 ```powershell
+
 claude mcp add-json --scope project contextweaver-gateway `
+
   '{"type":"stdio","command":"uvx","args":["contextweaver","mcp","serve","--config","${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"]}'
+
 ```
+
+
 
 macOS/Linux:
 
+
+
 ```bash
+
 claude mcp add-json --scope project contextweaver-gateway \
+
   '{"type":"stdio","command":"uvx","args":["contextweaver","mcp","serve","--config","${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"]}'
+
 ```
 
+
+
 Use `--scope local` for a private entry in the current project or
+
 `--scope user` with an absolute config path for all projects.
 
+
+
 Claude Code also documents `claude mcp add <name> -- <command> [args...]`.
+
 On the verified 2.1.165 Windows PowerShell build, a nested server flag such as
+
 `--config` was still parsed as a Claude option. `add-json` and a committed
+
 `.mcp.json` both preserved the arguments correctly, so they are the verified
+
 paths in this recipe.
+
+
 
 ## Confirm the connection
 
+
+
 Run:
 
+
+
 ```bash
+
 claude mcp list
+
 claude mcp get contextweaver-gateway
+
 ```
 
+
+
 Then open Claude Code and use `/mcp`. A project-scoped entry may initially
+
 show `Pending approval`; approve it in the interactive session. Once
+
 connected, the server should advertise:
 
+
+
 - `tool_browse`
+
 - `tool_execute`
+
 - `tool_view`
+
+
 
 It should not advertise the 11 raw filesystem tools from the snapshot.
 
+
+
 ## Give Claude an operating rule
+
+
 
 Add this to the project's `CLAUDE.md` or provide it in the task:
 
+
+
 ```text
+
 Use contextweaver-gateway for large tool catalogs. Call tool_browse first with
+
 a routing-oriented query, execute only the selected tool_id through
+
 tool_execute, and call tool_view with a narrow selector only when the summary
+
 is insufficient. Do not treat routing as authorization; follow normal approval
+
 rules for tool side effects.
+
 ```
 
+
+
 Do not keep the same upstream MCP servers registered directly under other
+
 names. Otherwise Claude sees both the raw tools and the gateway.
+
+
 
 ## Guided first session
 
+
+
 1. Open `/mcp` and confirm the three meta-tools.
+
 2. Ask: `Use contextweaver-gateway to find the filesystem tool for listing a directory.`
+
 3. Confirm Claude calls `tool_browse` before `tool_execute`.
+
 4. For a large result, confirm the response is a summary plus an artifact
+
    handle.
+
 5. Ask for one small slice and confirm Claude uses `tool_view` with `head`,
+
    `lines`, `rows`, or `json_keys`.
 
+
+
 The packaged CLI currently uses a static catalog and deterministic stub
+
 upstream, so this checks client wiring, routing, validation, and firewall
+
 shape. For real upstream calls, wire `McpClientUpstream` or
+
 `MultiplexUpstream` as described in
+
 [MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+
+
 
 ## Troubleshooting
 
+
+
 ### Gateway is not listed
 
+
+
 - Run the dry-run command outside Claude Code first.
+
 - Check `claude mcp get contextweaver-gateway`.
+
 - Approve a project-scoped server in `/mcp`.
+
 - Use an absolute config path for user scope.
+
 - Increase Claude Code's MCP startup timeout if the first cold `uvx` resolve
+
   exceeds the default.
+
+
 
 ### Tool names are rejected or missing
 
+
+
 The client should see only the gateway's underscore-separated meta-tool names.
+
 If raw upstream names appear, the direct upstream server is still registered.
+
 Remove the duplicate registration and restart the session.
+
+
 
 ### Server fails after the first call
 
+
+
 Stdio servers are not automatically reconnected by Claude Code. Fix the
+
 startup or catalog error, then reconnect from `/mcp` or restart the session.
+
+
 
 ### Where diagnostics go
 
+
+
 `contextweaver mcp serve` writes diagnostics to stderr. Stdout is reserved for
+
 the MCP wire protocol; redirecting application logs to stdout can corrupt the
+
 connection.
+
+
 
 ### `uvx` is slow or unavailable
 
+
+
 Install contextweaver persistently and change the entry to:
 
+
+
 ```json
+
 "command": "contextweaver",
+
 "args": ["mcp", "serve", "--config", "/absolute/path/to/gateway.yaml"]
+
 ```
 
+
+
 `pipx run contextweaver mcp serve ...` is also supported for an isolated
+
 invocation.
+
+
 
 ## Security note
 
+
+
 Raw outputs can remain in the artifact store and `tool_view` re-exposes
+
 selected content. Review the [MCP Gateway Security Model](../security_model.md)
+
 before connecting sensitive upstreams.
+
+
 
 ## See also
 
+
+
 - [Daily Driver Guide](../daily_driver.md)
+
 - [Recipes overview](index.md)
+
 - [MCP Integration](../integration_mcp.md)
+
 - [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp)
 
+
+
 ---
+
+
 
 <!-- FILE: docs/integration_mcp.md -->
 
+
+
 # MCP Integration
 
+
+
 contextweaver provides an adapter for the
+
 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) that
+
 converts MCP tool definitions and results into contextweaver's native
+
 types.
 
+
+
 ## Adapter functions
+
+
 
 ### `mcp_tool_to_selectable(tool_dict)`
 
+
+
 Converts an MCP tool definition dict into a `SelectableItem`:
 
+
+
 ```python
+
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 
+
+
 mcp_tool = {
+
     "name": "search_database",
+
     "description": "Search records in the database",
+
     "inputSchema": {
+
         "type": "object",
+
         "properties": {
+
             "query": {"type": "string"},
+
             "limit": {"type": "integer", "default": 10}
+
         }
+
     },
+
     "outputSchema": {
+
         "type": "object",
+
         "properties": {
+
             "results": {"type": "array"},
+
             "total": {"type": "integer"}
+
         }
+
     }
+
 }
 
+
+
 item = mcp_tool_to_selectable(mcp_tool)
+
 # item.id            == "mcp:search_database"
+
 # item.kind          == "tool"
+
 # item.name          == "search_database"
+
 # item.output_schema == {"type": "object", ...}
+
 ```
 
+
+
 If the tool definition includes an `outputSchema`, it is preserved in
+
 `item.output_schema`.  When absent the field is `None`.
+
+
 
 The namespace is inferred automatically from the tool name prefix:
 
+
+
 | Tool name              | Inferred namespace |
+
 |------------------------|--------------------|
+
 | `github.create_issue`  | `github`           |
+
 | `filesystem/read`      | `filesystem`       |
+
 | `slack_send_message`   | `slack`            |
+
 | `search_database`      | `mcp` (fallback)   |
 
+
+
 Use `infer_namespace(tool_name)` directly if you need the logic outside of
+
 `mcp_tool_to_selectable()`.
+
+
 
 ### `mcp_result_to_envelope(result_dict, tool_name)`
 
+
+
 Converts an MCP tool result dict into a `ResultEnvelope`:
 
+
+
 ```python
+
 from contextweaver.adapters.mcp import mcp_result_to_envelope
 
+
+
 mcp_result = {
+
     "content": [{"type": "text", "text": "Found 42 records matching query"}],
+
     "isError": False
+
 }
 
+
+
 envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, "search_database")
+
 # envelope.summary contains truncated text (max 500 chars)
+
 # full_text contains the complete untruncated text
+
 # envelope.status  == "ok"
+
 # binaries maps handle → (raw_bytes, media_type, label)
+
 ```
+
+
 
 #### Supported content types
 
+
+
 | Content type    | Handling                                                                                      |
+
 |-----------------|-----------------------------------------------------------------------------------------------|
+
 | `text`          | Concatenated into `full_text` and `summary`                                                   |
+
 | `image`         | Base64-decoded; stored as binary artifact                                                     |
+
 | `audio`         | Base64-decoded; stored as binary artifact (e.g. `audio/wav`)                                  |
+
 | `resource`      | Text extracted into `full_text`; raw bytes stored as artifact                                 |
+
 | `resource_link` | URI stored as `ArtifactRef`; URI string in `binaries` for caller resolution                |
+
+
 
 #### Structured content
 
+
+
 If the result contains a top-level `structuredContent` dict, it is
+
 serialized as a JSON artifact and its top-level keys are extracted as
+
 facts:
 
+
+
 ```python
+
 mcp_result = {
+
     "content": [{"type": "text", "text": "query done"}],
+
     "structuredContent": {"count": 42, "status": "done"},
+
 }
+
 envelope, binaries, _ = mcp_result_to_envelope(mcp_result, "query")
+
 # binaries["mcp:query:structured_content"] → JSON bytes
+
 # envelope.facts includes "count: 42", "status: done"
+
 ```
+
+
 
 #### Content-part annotations
 
+
+
 Per-part `annotations` (with `audience` and `priority` fields) are
+
 collected into `envelope.provenance["content_annotations"]`:
 
+
+
 ```python
+
 mcp_result = {
+
     "content": [
+
         {"type": "text", "text": "...", "annotations": {"audience": ["human"], "priority": 0.9}},
+
     ],
+
 }
+
 envelope, _, _ = mcp_result_to_envelope(mcp_result, "tool")
+
 # envelope.provenance["content_annotations"] == [{"part_index": 0, "audience": ["human"], ...}]
+
 ```
+
+
 
 ### `load_mcp_session_jsonl(path)`
 
+
+
 Loads a JSONL session file containing MCP-style events and returns a
+
 list of `ContextItem` objects:
 
+
+
 ```python
+
 from contextweaver.adapters.mcp import load_mcp_session_jsonl
 
+
+
 items = load_mcp_session_jsonl("examples/data/mcp_session.jsonl")
+
 for item in items:
+
     print(f"{item.kind.value}: {item.text[:60]}...")
+
 ```
+
+
 
 ## Session JSONL format
 
+
+
 Each line is a JSON object with at minimum `id`, `type`, and either
+
 `text` or `content`:
 
+
+
 ```json
+
 {"id": "u1", "type": "user_turn", "text": "Search for open invoices"}
+
 {"id": "tc1", "type": "tool_call", "text": "invoices.search(status='open')", "parent_id": "u1"}
+
 {"id": "tr1", "type": "tool_result", "content": "...", "parent_id": "tc1"}
+
 ```
+
+
 
 See `examples/data/mcp_session.jsonl` for a complete example.
 
+
+
 ## End-to-end example
 
+
+
 ```python
+
 from contextweaver.adapters.mcp import (
+
     load_mcp_session_jsonl,
+
     mcp_tool_to_selectable,
+
 )
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import ItemKind, Phase
 
+
+
 # Load session events
+
 items = load_mcp_session_jsonl("examples/data/mcp_session.jsonl")
 
+
+
 # Build context with firewall
+
 mgr = ContextManager()
+
 for item in items:
+
     if item.kind == ItemKind.tool_result and len(item.text) > 2000:
+
         mgr.ingest_tool_result(
+
             tool_call_id=item.parent_id or item.id,
+
             raw_output=item.text,
+
             tool_name="mcp_tool",
+
         )
+
     else:
+
         mgr.ingest(item)
 
+
+
 pack = mgr.build_sync(phase=Phase.answer, query="invoice status")
+
 print(pack.prompt)
+
 ```
+
+
 
 See `examples/mcp_adapter_demo.py` for the full runnable demo.
 
+
+
 ## Prompt-caching compatibility
 
+
+
 Anthropic (90%), OpenAI (50%), and Google (75%) all discount the prompt-token
+
 cost of tool definitions when the same prefix is reused across requests.
+
 contextweaver's
+
 [`make_choice_cards`](../src/contextweaver/routing/cards.py) function is
+
 **deterministic and byte-stable** for identical inputs (sorted descending by
+
 score, ascending by `id` for ties — see issue #218 for the regression test
+
 that locks this guarantee), so the cards array your downstream prompt
+
 assembler renders is suitable for placement *before* a cache breakpoint.
 
+
+
 The repo guarantees this via `tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`,
+
 which asserts `bytes(card1) == bytes(card2)` across two consecutive calls
+
 on identical inputs. The invariant survives across the full
+
 `SelectableItem → ChoiceCard → cache prefix` chain.
+
+
 
 ### Worked example: Anthropic `cache_control`
 
+
+
 > **Illustrative — requires the Anthropic SDK.** This snippet imports
+
 > `anthropic` to show how the byte-stable cards array slots into the
+
 > provider's cache-control API. contextweaver itself does not depend on
+
 > the Anthropic SDK; install it separately with `pip install anthropic`
+
 > to run the example as-is, or read it as a pattern reference.
 
+
+
 ```python
+
 import anthropic  # pip install anthropic
+
 from contextweaver.routing.cards import make_choice_cards
+
 from contextweaver.routing.catalog import Catalog
 
+
+
 catalog = Catalog()  # populated elsewhere with stable IDs
+
 cards = make_choice_cards(
+
     catalog.all(),
+
     scores={item.id: 0.5 for item in catalog.all()},   # deterministic scoring
+
     max_cards=20,
+
 )
+
+
 
 # Render cards into Anthropic's `tools` array (cacheable prefix).
+
 tools = [
+
     {
+
         "name": c.name,
+
         "description": c.description,
+
         "input_schema": {"type": "object"},  # hydrate per-call when selected
+
     }
+
     for c in cards
+
 ]
 
+
+
 # Place the cache breakpoint on the LAST tool definition. As long as the
+
 # `cards` array is stable, every request reuses the cache prefix and only
+
 # the trailing user turn varies.
+
 if tools:
+
     tools[-1]["cache_control"] = {"type": "ephemeral"}
 
+
+
 client = anthropic.Anthropic()
+
 client.messages.create(
+
     model="claude-3-5-sonnet-latest",
+
     max_tokens=1024,
+
     tools=tools,
+
     messages=[{"role": "user", "content": "..."}],
+
 )
+
 ```
 
+
+
 > **Practical guidance for multi-turn navigation.** When the cards array
+
 > *naturally* changes between turns (e.g., user navigated into a sub-tree),
+
 > the cache prefix invalidates — that's expected. To keep the prefix stable
+
 > across navigation, sort hydrated cards by ID once and append newly-discovered
+
 > cards after the breakpoint. The
+
 > [Webfuse MCP cheat sheet](https://www.webfuse.com/mcp-cheat-sheet)
+
 > documents the canonical "append after cache breakpoint" pattern.
+
 >
+
 > **First-class flag:** `ProxyRuntime(cache_stable=True)` implements this
+
 > pattern automatically — see [gateway spec §5](gateway_spec.md#5-cache-stable-tool-browsing-cache_stabletrue).
+
 > Browsed/hydrated tool ids are tracked per session; on each
+
 > `tool_browse` call, previously-seen cards are emitted first in
+
 > ascending-`id` order, followed by a `__cache_breakpoint__` marker
+
 > card, followed by newly-discovered cards (also `id`-ascending).
+
 > First-sighting card content is frozen, so the prefix bytes are
+
 > stable across browses with different queries. **Caveat:** the
+
 > first emitted card is not the highest-ranked when this flag is on
+
 > — read rank from `ChoiceCard.score`.
+
+
 
 ## Security Considerations
 
+
+
 For the full gateway data flow, artifact-store boundary, egress model, and
+
 deployment checklist, read the
+
 [MCP Gateway Security Model](security_model.md).
+
+
 
 ### MCP annotations are untrusted hints
 
+
+
 MCP tool annotations — `readOnlyHint`, `destructiveHint`, `costHint` — are
+
 **server-declared metadata**, not verified security properties.  The
+
 [MCP specification](https://modelcontextprotocol.io/legacy/concepts/tools)
+
 explicitly states:
 
+
+
 > _"Clients SHOULD NOT make security-critical decisions based solely on tool
+
 > annotations. Annotations are informational metadata, not security controls."_
+
+
 
 contextweaver maps these hints to informational fields on `SelectableItem`:
 
+
+
 | Annotation       | Field mapped to             | Purpose               |
+
 |------------------|-----------------------------|-----------------------|
+
 | `readOnlyHint`   | `side_effects=False`, tag `"read-only"` | Routing UX display |
+
 | `destructiveHint`| tag `"destructive"`         | Routing UX display    |
+
 | `costHint`       | `cost_hint` (float)         | Routing cost scoring  |
+
+
 
 ### `side_effects` is informational only
 
+
+
 `item.side_effects = False` (derived from `readOnlyHint=True`) means the
+
 **server advertised** the tool as read-only.  It does **not** guarantee the
+
 tool has no side effects.  A malicious or misconfigured MCP server could
+
 declare `readOnlyHint: True` on a destructive tool; contextweaver would
+
 faithfully tag it `"read-only"` with `side_effects=False`.
+
+
 
 **Do not build access-control or safety-gate logic on these fields.**
 
+
+
 ### Authorization status
 
+
+
 contextweaver does **not currently provide an authorization mechanism** for
+
 MCP tools. Do not rely on server-declared annotation hints for access
+
 control.
 
+
+
 `CapabilityToken` (see
+
 [issue #20](https://github.com/dgenio/contextweaver/issues/20)) is a
+
 proposed/future feature, not a type that is implemented in the library
+
 today. For actual access control, enforce authorization in your own
+
 application or policy layer.
 
+
+
 ---
+
+
 
 ## Runtime modes: transparent proxy and two-tool gateway
 
+
+
 The MCP adapter ships two runtime modes for fronting one or more
+
 upstream MCP servers.  Both share the
+
 [`ProxyRuntime`](../src/contextweaver/adapters/proxy_runtime.py) core and
+
 satisfy the contracts in [`docs/gateway_spec.md`](gateway_spec.md):
 
+
+
 Production MCP gateway deployments commonly transform raw
+
 user input into routing-oriented queries before calling
+
 `Router.route(query)`. ContextWeaver does not require a
+
 specific rewriting strategy and accepts whichever
+
 routing-shaped query your gateway produces.
 
+
+
 | Mode | Discovery channel | Invocation channel | Schema exposure |
+
 |------|-------------------|--------------------|-----------------|
+
 | `ExposureMode.TRANSPARENT` (#13) | Stripped `tools/list` — one entry per upstream tool with sentinel `inputSchema: {"type": "object"}` | `tool_hydrate(tool_id)` + `tool_execute(tool_id, args)` | On demand via `tool_hydrate` |
+
 | `ExposureMode.GATEWAY` (#28 + #34) | None — the agent never sees a `tools/list` | `tool_browse(query|path)` + `tool_execute(tool_id, args)` + `tool_view(handle, selector)` | Internal: `tool_execute` hydrates and validates before upstream dispatch |
 
+
+
 Both modes share the same invocation contract: arguments to
+
 `tool_execute` are validated against the hydrated schema via
+
 `jsonschema` before any upstream call, per
+
 [`gateway_spec.md` §4.4](gateway_spec.md#4-schema-exposure-strategy).
+
+
 
 ### Wiring a gateway over stdio
 
+
+
 ```python
+
 import asyncio
+
 from contextweaver.adapters import ProxyRuntime, StubUpstream
+
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 
+
+
 runtime = ProxyRuntime(StubUpstream([...]))
+
 await runtime.refresh_catalog()
+
 server = McpGatewayServer(runtime, name="example-gateway")
+
 asyncio.run(server.run_stdio())
+
 ```
+
+
 
 ### Wiring a transparent proxy over stdio
 
+
+
 ```python
+
 from contextweaver.adapters import ExposureMode, ProxyRuntime, StubUpstream
+
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 
+
+
 runtime = ProxyRuntime(StubUpstream([...]), mode=ExposureMode.TRANSPARENT)
+
 await runtime.refresh_catalog()
+
 server = McpProxyServer(runtime, name="example-proxy")
+
 asyncio.run(server.run_stdio())
+
 ```
+
+
 
 ### Connecting to real upstream MCP servers
 
+
+
 Swap [`StubUpstream`](../src/contextweaver/adapters/mcp_upstream.py) for
+
 `McpClientUpstream(session)` (one upstream) or
+
 `MultiplexUpstream([a, b, ...])` (multi-server fan-out).  The runtime
+
 itself is transport-agnostic; the upstream adapter handles the wire
+
 protocol.
+
+
 
 ### Error shape
 
+
+
 Every gateway / proxy meta-tool returns either a `ResultEnvelope` or a
+
 typed
+
 [`GatewayError`](../src/contextweaver/adapters/gateway_error.py)
+
 matching `gateway_spec.md` §3.4:
 
+
+
 ```json
+
 {
+
   "error": "PATH_INVALID" | "PATH_NOT_FOUND" | "ARGS_INVALID" | "UPSTREAM_ERROR" | "HYDRATE_FAILED" | "VIEW_FAILED",
+
   "message": "<human-readable>",
+
   "path": "<offending path or tool_id>",
+
   "details": { "...": "..." }
+
 }
+
 ```
 
+
+
 The meta-tools never raise across the MCP boundary — failures are
+
 delivered as `isError=true` `CallToolResult` payloads.
+
+
 
 ### See also
 
+
+
 - [`docs/gateway_spec.md`](gateway_spec.md) — the normative
+
   surface specification.
+
 - [`examples/mcp_gateway_demo.py`](../examples/mcp_gateway_demo.py) —
+
   end-to-end gateway flow using `StubUpstream`.
+
 - [`examples/mcp_proxy_demo.py`](../examples/mcp_proxy_demo.py) —
+
   end-to-end proxy flow.
+
 - [Recipes > Claude Desktop](recipes/claude_desktop.md) — put a
+
   contextweaver gateway in front of Claude Desktop's MCP client.
+
 - [Recipes > GitHub Copilot](recipes/github_copilot.md) — put a
+
   contextweaver gateway in front of VS Code Copilot Chat (agent mode).
+
 - [Recipes > Claude Code](recipes/claude_code.md) — project-scoped gateway
+
   registration for Claude Code.
+
 - [MCP Gateway Security Model](security_model.md) — data flow, trust
+
   boundaries, artifact exposure, and hardening.
+
 - [`examples/architectures/mcp_context_gateway/main_real.py`](../examples/architectures/mcp_context_gateway/main_real.py)
+
   — the reference architecture run against verbatim `tools/list`
+
   snapshots of MIT-licensed reference MCP servers.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/integration_a2a.md -->
 
+
+
 # A2A Integration
 
+
+
 contextweaver provides an adapter for the
+
 [Agent-to-Agent (A2A) protocol](https://google.github.io/A2A/) that
+
 converts A2A agent cards and task results into contextweaver's native
+
 types.
+
+
 
 ## Adapter functions
 
+
+
 ### `a2a_agent_to_selectable(agent_card)`
+
+
 
 Converts an A2A agent card dict into a `SelectableItem`:
 
+
+
 ```python
+
 from contextweaver.adapters.a2a import a2a_agent_to_selectable
 
+
+
 agent_card = {
+
     "name": "DataAgent",
+
     "description": "Retrieves and aggregates data from warehouses",
+
     "url": "https://agents.example.com/data",
+
     "skills": [
+
         {"id": "sql_query", "name": "SQL Query", "description": "Run SQL queries"},
+
         {"id": "aggregate", "name": "Aggregate", "description": "Aggregate results"},
+
     ]
+
 }
 
+
+
 item = a2a_agent_to_selectable(agent_card)
+
 # item.id    == "a2a:DataAgent"
+
 # item.kind  == "agent"
+
 # item.name  == "DataAgent"
+
 # item.tags  includes skill names
+
 ```
+
+
 
 ### `a2a_result_to_envelope(task_result, agent_name)`
 
+
+
 Converts an A2A task result dict into a `ResultEnvelope`:
 
+
+
 ```python
+
 from contextweaver.adapters.a2a import a2a_result_to_envelope
 
+
+
 task_result = {
+
     "status": {"state": "completed"},
+
     "artifacts": [
+
         {"parts": [{"type": "text", "text": "Q4 revenue: $2.1M, +15% YoY"}]}
+
     ]
+
 }
 
+
+
 envelope = a2a_result_to_envelope(task_result, "DataAgent")
+
 # envelope.summary contains the artifact text
+
 # envelope.status  == "ok"
+
 ```
+
+
 
 ### `load_a2a_session_jsonl(path)`
 
+
+
 Loads a JSONL session file containing A2A-style multi-agent events:
 
+
+
 ```python
+
 from contextweaver.adapters.a2a import load_a2a_session_jsonl
 
+
+
 items = load_a2a_session_jsonl("examples/data/a2a_session.jsonl")
+
 ```
+
+
 
 ## Session JSONL format
 
+
+
 Each line is a JSON object. A2A sessions typically involve multi-agent
+
 handoffs where an orchestrator delegates to specialised agents:
 
+
+
 ```json
+
 {"id": "u1", "type": "user_turn", "text": "Generate the Q4 report"}
+
 {"id": "tc1", "type": "tool_call", "text": "delegate_to(DataAgent, 'fetch Q4 data')", "parent_id": "u1"}
+
 {"id": "tr1", "type": "tool_result", "content": "...", "parent_id": "tc1"}
+
 ```
 
+
+
 See `examples/data/a2a_session.jsonl` for a complete multi-agent
+
 session.
+
+
 
 ## End-to-end example
 
+
+
 ```python
+
 from contextweaver.adapters.a2a import (
+
     a2a_agent_to_selectable,
+
     a2a_result_to_envelope,
+
     load_a2a_session_jsonl,
+
 )
+
 from contextweaver.context.manager import ContextManager
+
 from contextweaver.types import ItemKind, Phase
 
+
+
 # Load multi-agent session
+
 items = load_a2a_session_jsonl("examples/data/a2a_session.jsonl")
 
+
+
 # Build context
+
 mgr = ContextManager()
+
 for item in items:
+
     if item.kind == ItemKind.tool_result and len(item.text) > 2000:
+
         mgr.ingest_tool_result(
+
             tool_call_id=item.parent_id or item.id,
+
             raw_output=item.text,
+
             tool_name="a2a_agent",
+
         )
+
     else:
+
         mgr.ingest(item)
 
+
+
 pack = mgr.build_sync(phase=Phase.answer, query="Q4 report")
+
 print(pack.prompt)
+
 ```
+
+
 
 See `examples/a2a_adapter_demo.py` for the full runnable demo.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/agent-context/architecture.md -->
 
+
+
 # Architecture Guidance
 
+
+
 > Deeper architectural detail lives in [docs/architecture.md](../architecture.md).
+
 > This file covers non-obvious design decisions relevant to change-scoping.
+
+
 
 ## Architectural Intent
 
+
+
 contextweaver separates **what to show the LLM** (Context Engine) from **which tools to offer** (Routing Engine). These engines share types and stores but have intentionally different execution models:
 
+
+
 - **Context Engine** — async-first. Deals with I/O-bound operations (event log queries, artifact storage).
+
 - **Routing Engine** — sync-only. Pure computation (DAG traversal, beam search). No I/O.
+
+
 
 This boundary is intentional. Do not propose making routing async "for consistency" — it adds complexity for zero benefit.
 
+
+
 ## Non-Goals
+
+
 
 contextweaver is **not** an LLM inference layer and **not** a tool execution runtime. It prepares context and routes tools but never calls models or executes tools. Feature proposals that cross these boundaries are out of scope.
 
+
+
 ## Major Boundaries
+
+
 
 ### Context Pipeline (8 stages)
 
+
+
 The pipeline is a fixed sequence. Each stage has a single responsibility:
 
+
+
 1. **generate_candidates** — pulls events from stores into a candidate pool
+
 2. **dependency_closure** — ensures parent items (via `parent_id`) are included alongside their children
+
 3. **sensitivity_filter** — drops or redacts items above the sensitivity floor
+
 4. **apply_firewall** — summarises large outputs, stores raw data as artifacts
+
 5. **score_candidates** — ranks candidates by recency, tag match, kind priority, token cost
+
 6. **deduplicate_candidates** — removes near-duplicates via Jaccard similarity
+
 7. **select_and_pack** — greedily packs highest-scoring candidates into the phase token budget
+
 8. **render_context** — assembles the final prompt with BuildStats metadata
 
+
+
 **Why this order matters:**
+
 - Dependency closure must happen before scoring, otherwise parents could be discarded before their children pull them in.
+
 - Sensitivity filtering before the firewall prevents sensitive data from reaching the summarizer.
+
 - Scoring after the firewall ensures scores reflect the summarised (not raw) content.
+
+
 
 ### Routing Pipeline (4 stages)
 
+
+
 1. **Catalog** — register and manage `SelectableItem` objects
+
 2. **TreeBuilder** — convert flat items into a bounded `ChoiceGraph` DAG
+
 3. **Router** — beam-search over the graph for top-k relevant items
+
 4. **ChoiceCards** — render compact LLM-friendly cards (never full schemas)
+
+
 
 ### Store Layer
 
+
+
 All stores use `typing.Protocol` interfaces with in-memory defaults. This enables custom backends (database, Redis, etc.) without changing pipeline code.
 
+
+
 - **EventLog** — append-only. The audit trail.
+
 - **ArtifactStore** — raw tool outputs stored by the firewall. Supports drilldown via `ViewRegistry`.
+
 - **EpisodicStore** — short episodic memory entries.
+
 - **FactStore** — key-value facts persisted across turns.
 
+
+
 Any backend can prove it honours these protocols with the shipped conformance
+
 kit (`contextweaver.store.testing`, issue #520): each `check_*_conformance`
+
 function takes a factory for an empty backend and asserts the round-trip,
+
 ordering, and not-found semantics the Context Engine relies on. For the
+
 `ArtifactStore` it also asserts that `put()` stamps a sha256 `content_hash`
+
 on the returned ref — the firewall's content-addressed idempotency
+
 short-circuit (#190) depends on it, so it is a protocol contract, not a
+
 backend detail. The bundled in-memory, JSON-file, and SQLite backends are all
+
 run through it in `tests/test_store_conformance.py`.
+
+
 
 #### Thread-safety contract (issue #458)
 
+
+
 The store protocols make **no concurrency guarantee** in their interface; each
+
 backend documents its own. The bundled backends:
 
+
+
 - **`InMemory*` stores** are *not* thread-safe. They are for single-threaded
+
   use and tests; guard them with your own lock for concurrent access.
+
 - **`JsonFileArtifactStore`** is single-process. Within one process it is
+
   thread-safe: `put` / `delete` / `list_refs` on a shared instance are
+
   serialised by an internal lock, and each individual file write is **atomic**
+
   (temp file + `os.replace`), so a reader never observes a torn or truncated
+
   artifact and a crash mid-write leaves the previous version intact. There is
+
   no cross-process advisory locking, so two processes writing the same
+
   `base_dir` are still unsupported.
+
 - **`SqliteEventLog`** opens its connection in WAL mode for single-process use;
+
   it is not shared across threads.
 
+
+
 The gateway runtime (`ProxyRuntime`) inherits these guarantees through the
+
 store it is given: its read-only `tool_view` (drilldown) is safe to call
+
 concurrently against a `JsonFileArtifactStore`. A gateway that fans out to
+
 real concurrent clients should pick (or wrap) a backend whose contract matches
+
 its load — this is exactly what the protocol seam and conformance kit are for.
+
+
 
 ### Sensitivity Enforcement
 
+
+
 `context/sensitivity.py` is security-grade code. It enforces data classification (`public` → `restricted`) with two actions: drop or redact. The `MaskRedactionHook` is the built-in redactor. Changes to this module require extra review scrutiny — never weaken defaults.
+
+
 
 ### Progressive Disclosure (ViewRegistry)
 
+
+
 `context/views.py` provides a `ViewRegistry` that maps content-type patterns to view generators. When the firewall stores a large tool output as an artifact, the view system generates alternative representations (JSON subset, CSV summary, etc.) the agent can drilldown into without retrieving the full blob. `drilldown_tool_spec()` exposes drilldown as an agent-callable tool.
+
+
 
 ## Key Tradeoffs
 
+
+
 | Decision | Tradeoff | Consequence of reversing |
+
 |---|---|---|
+
 | Protocol-based stores | More files and indirection | Allows backend swaps without pipeline changes |
+
 | `to_dict()`/`from_dict()` + `serde.py` | Two serialization paths | Per-class methods handle class-specific logic; `serde.py` handles shared primitives. Consolidating loses encapsulation. |
+
 | Sync routing / async context | Two calling conventions | Routing has no I/O — async would add overhead for zero benefit |
+
 | 8-stage pipeline | Pipeline is long | Each stage has a single well-defined responsibility. Merging stages creates coupling. |
+
 | ChoiceCards never include schemas | Limits LLM tool-call generation | Keeps routing focused on *which* tool, not *how* — schema is provided at call-time via hydration |
+
+
 
 ## Structural Mental Model
 
+
+
 Think of contextweaver as three layers:
 
+
+
 1. **Data layer** (`types.py`, `envelope.py`, `config.py`, `serde.py`, `exceptions.py`) — pure data, no I/O, no side effects.
+
 2. **Store layer** (`store/`, `protocols.py`) — stateful but simple append-only/read interfaces.
+
 3. **Pipeline layer** (`context/`, `routing/`, `summarize/`) — orchestration logic that reads from stores and produces output types.
+
+
 
 Adapters (`adapters/`) convert external formats (MCP, FastMCP, A2A) into contextweaver types at the boundary.
 
+
+
 Changes should flow within a layer. Cross-layer changes (e.g., adding I/O to the data layer) are red flags.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/agent-context/invariants.md -->
 
+
+
 # Invariants
+
+
 
 These are the constraints that must not be broken. Violations are review blockers.
 
+
+
 ## Hard Rules (auto-reject)
+
+
 
 These cause automatic rejection in review. No engineering judgment — they are absolute.
 
+
+
 1. **No `print()` in library code.** Use hooks or logging. `__main__.py` and `_demos.py` (CLI) are exempt.
+
 2. **No business logic in `__init__.py`.** Only re-exports allowed.
+
+
 
 ## Must-Preserve Constraints
 
+
+
 ### Minimal core dependencies
+
+
 
 Core dependencies (`pyproject.toml` `dependencies`) must stay small, audited, and broadly used. Current core set: `tiktoken`, `PyYAML`, `rank-bm25`, `mcp`, `jsonschema`, `typer`, `rich` — each justified inline in `pyproject.toml` (see the `dependencies` section and inline comments). A new core dep requires the same explicit justification: load-bearing for a primary user-facing surface (e.g. MCP for the gateway, Typer for the CLI) or so widely used in the ecosystem that it is effectively already installed. Heavy or runtime-specific packages (embedding backends, cloud SDKs, vector DBs) must remain under `[project.optional-dependencies]`. The original "zero runtime dependencies" invariant was relaxed in v0.4 (MCP / `jsonschema`) and v0.5 (`typer` / `rich`) when the guarded-import dance for load-bearing surfaces became its own maintenance burden; the discipline above replaces it.
 
+
+
 ### Async/sync boundary
+
+
 
 Context Engine (`context/`) is async-first with `_sync` wrappers. Routing Engine (`routing/`) is sync-only. This split is intentional — routing is pure computation with no I/O. Do not unify them.
 
+
+
 ### 8-stage context pipeline
+
+
 
 The pipeline stages must remain in this exact order:
 
+
+
 1. `generate_candidates` → 2. `dependency_closure` → 3. `sensitivity_filter` →
+
 4. `apply_firewall` → 5. `score_candidates` → 6. `deduplicate_candidates` →
+
 7. `select_and_pack` → 8. `render_context`
+
+
 
 Stage reordering breaks correctness (see [architecture.md](architecture.md) for why-this-order).
 
+
+
 ### Dependency closure
+
+
 
 If a selected `ContextItem` has a `parent_id`, the parent must be included in the final context even if it scored lower. Without this, tool results can appear without their tool calls, producing incoherent context. Do not remove or bypass.
 
+
+
 ### Append-only event log
+
+
 
 The event log is append-only. Mutate only via `InMemoryEventLog.append()`. Direct mutation breaks the audit trail and consistency invariants.
 
+
+
 ### Determinism
+
+
 
 All core pipelines must be deterministic. Tie-break by ID, sorted keys. No randomness in pipeline stages.
 
+
+
 ## Forbidden Shortcuts
+
+
 
 ### Do not collapse protocols into concrete classes
 
+
+
 Store protocols exist for backend extensibility. The protocol layer in `protocols.py` is separate from the `InMemory*` implementations in `store/` by design. Merging them locks the library to in-memory backends.
+
+
 
 ### Do not consolidate serialization into `serde.py` alone
 
+
+
 <a name="serialization-design"></a>
+
+
 
 `serde.py` provides shared primitives (enum handling, optional-field handling). Per-class `to_dict()` / `from_dict()` methods handle class-specific serialization logic. They are complementary:
 
+
+
 - `serde.py` = shared helpers (used by multiple classes)
+
 - `to_dict()` / `from_dict()` = class-specific encapsulation
+
+
 
 Consolidating all serialization into `serde.py` removes encapsulation. Removing per-class methods and using `dataclasses.asdict()` loses custom serialization logic.
 
+
+
 ### Do not weaken sensitivity defaults
+
+
 
 `context/sensitivity.py` is security-grade code. The default sensitivity floor (`confidential`) and default action (`drop`) are deliberately conservative. Never weaken these defaults without explicit security review.
 
+
+
 ### Do not add I/O to the data layer
+
+
 
 `types.py`, `envelope.py`, `config.py`, `serde.py`, and `exceptions.py` are pure data — no I/O, no side effects. Adding I/O (file reads, network calls, logging) to these modules breaks the layered architecture.
 
+
+
 ### Do not put schemas on `ChoiceCard`
+
+
 
 `ChoiceCard` (`envelope.py:134`) carries the `has_schema: bool` flag and never the schema itself. Embedding `args_schema` or `output_schema` (in any form, including stringified or nested in `tags`) regresses the constant-context-cost property of the gateway surface. Agents that need the full schema call the `tool_hydrate(tool_id)` meta-tool (proxy) or the gateway's `tool_execute`, which hydrates internally; both ultimately route to the `Catalog.hydrate` primitive in `routing/catalog.py`. See [`docs/gateway_spec.md`](../gateway_spec.md) §2 and §4.
 
+
+
 ### Do not bypass canonical `tool_id` round-trip
+
+
 
 Adapters MUST emit `tool_id` values that round-trip through the canonical `parse_tool_id` / `format_tool_id` helpers (landing under [#29](https://github.com/dgenio/contextweaver/issues/29)). Hand-formatted ids like the legacy `f"mcp:{name}"` form will not survive the cutover described in [`docs/gateway_spec.md`](../gateway_spec.md) §1.7 and are a review blocker once those helpers ship.
 
+
+
 ## Safe vs Unsafe Simplifications
 
+
+
 | Change | Safe? | Why |
+
 |---|---|---|
+
 | Add a field to an existing dataclass | Usually safe | Follow `to_dict`/`from_dict` pattern, add default value |
+
 | Add a new store protocol method | Safe | Existing backends won't break if the method has a default impl |
+
 | Merge two pipeline stages | **Unsafe** | Each stage has a single responsibility; merging creates coupling |
+
 | Replace protocols with ABCs | **Unsafe** | Breaks structural typing; forces inheritance on custom backends |
+
 | Inline `_utils.py` helpers into calling code | **Unsafe** | Creates duplicate similarity logic |
+
 | Move types from `envelope.py` to `types.py` | **Unsafe** | `envelope.py` exists to keep result types separate from input types |
+
 | Remove `ViewRegistry` | **Unsafe** | Breaks progressive disclosure for large artifacts |
+
+
 
 ## Cross-Cutting Rules
 
+
+
 - **Module size ≤ 300 lines** — exempt: `types.py`, `envelope.py`, `__main__.py`,
+
   `_mcp_cli.py` (experimental Typer sub-app), `_demos.py` (CLI demo-output module).
+
 - **`from __future__ import annotations`** — every source file.
+
 - **Google-style docstrings** — every public class and function.
+
 - **Type hints** — every public function and method.
+
 - **Custom exceptions only** — from `contextweaver.exceptions`, not bare Python exceptions.
+
 - **Reserved `metadata['_contextweaver']` namespace** — the weaver-spec adapter
+
   (`adapters/weaver_contracts.py`) round-trips contextweaver-specific fields
+
   through `metadata['_contextweaver']` on the produced spec objects. Caller
+
   input that already uses this key must raise `CatalogError` rather than be
+
   silently clobbered, and the reverse path must read it back before falling
+
   back to heuristics. Do not repurpose the key for unrelated metadata.
+
+
 
 ## Update Triggers
 
+
+
 Update this file when:
+
 - A new hard constraint is established by the maintainer.
+
 - A forbidden shortcut is discovered through a bad change.
+
 - A safe/unsafe determination changes due to architectural evolution.
+
 - A cross-cutting rule is added or relaxed.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/agent-context/workflows.md -->
 
+
+
 # Workflows
+
+
 
 ## Authoritative Commands
 
+
+
 ```bash
+
 make fmt      # ruff format src/ tests/ examples/ scripts/
+
 make lint     # ruff check src/ tests/ examples/ scripts/
+
 make type     # mypy src/
+
 make test     # pytest --cov=contextweaver --cov-report=term-missing -q
+
 make example  # run all example scripts (includes architectures)
+
 make architectures  # run reference architecture scripts under examples/architectures/
+
 make demo     # python -m contextweaver demo
+
 make ci       # fmt + lint + type + test + schemas-check + example + demo
+
 make docs     # mkdocs build --clean (docs site — not part of CI)
+
 make docs-serve  # mkdocs serve (live preview)
+
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
+
 make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
+
 make scorecard        # render benchmarks/scorecard.md from benchmarks/results/latest.json
+
 make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits non-zero on drift)
+
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
+
 make context-rot       # render context-rot demo JSON + docs/assets/context_rot.svg (#349)
+
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating CI step; exits non-zero on drift)
+
 make readme-version-check  # verify README version references match pyproject.toml (gating CI step; #347)
+
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
+
 make llms-check  # verify llms.txt and llms-full.txt are up to date (gating CI step; exits non-zero on drift)
+
 make gateway-scorecard-check  # verify gateway scorecard Markdown matches its committed JSON (gating CI step)
+
 make record-demos-check  # verify committed asciinema casts match demo output (gating CI step)
+
 make smoke-eval  # deterministic, credential-free smoke evaluation (non-gating CI step)
+
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
+
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
+
 ```
 
+
+
 > Gating CI steps beyond `make ci`: `make scorecard-check`,
+
 > `make readme-version-check` (#347), `make context-rot-check` (#349),
+
 > `make llms-check` (#389), `make record-demos-check` (#390),
+
 > `make gateway-scorecard-check` (#391), and `make weaver-conformance`.
+
 > `make smoke-eval` (#392) also runs in CI but remains non-gating.
+
 > (`make schemas-check` also gates, but it runs *inside* `make ci`.)
 
+
+
 `make ci` runs all declared targets in sequence. Run the additional gating checks
+
 listed above before opening a PR when the affected artifacts or integrations change.
+
+
 
 ## Command-Selection Rules
 
+
+
 | Goal | Command |
+
 |---|---|
+
 | Quick format check | `make fmt` |
+
 | Quick lint check | `make lint` |
+
 | Full validation | `make ci` (always — do not skip targets) |
+
 | Run a single test | `pytest tests/test_<module>.py` or `pytest -k "test_name"` |
+
 | Run all tests | `make test` |
+
 | Verify examples work | `make example` |
+
 | Interactive demo | `make demo` |
+
 | Verify recorded demo casts | `make record-demos-check` |
+
 | Build docs site | `make docs` |
+
 | Live docs preview | `make docs-serve` |
+
 | Run benchmark harness | `make benchmark` (non-gating; writes `benchmarks/results/latest.json`) |
+
 | Run full per-backend × per-size matrix | `make benchmark-matrix` (#208 + #209) |
+
 | Verify gateway benchmark scorecard | `make gateway-scorecard-check` |
+
 | Run deterministic smoke evaluation | `make smoke-eval` (non-gating) |
+
 | Run scoring-weight sweep | `make sweep-scoring` (#214; writes `benchmarks/sweep_scoring.md`) |
+
 | Add an eval for a feature | follow [`.github/prompts/add-eval.prompt.md`](../../.github/prompts/add-eval.prompt.md) (#216) |
+
 | Regenerate llms.txt / llms-full.txt | `make llms` (after editing canonical docs) |
+
 | Check llms.txt / llms-full.txt for drift | `make llms-check` (exits non-zero if regeneration needed) |
+
+
 
 **Do not** use `make test` alone as a validation gate. Always run `make ci` before declaring a change complete — it includes example and demo verification that catch integration issues `make test` misses.
 
+
+
 ## Setup (one-time)
 
+
+
 ```bash
+
 pip install -e ".[dev]"
+
 pre-commit install
+
 ```
+
+
 
 Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks on every commit. Hooks may modify files — re-stage with `git add` if needed.
 
+
+
 ## Adding a Feature
 
+
+
 1. Identify the relevant module (see module map in [AGENTS.md](../../AGENTS.md)).
+
 2. Modify only the targeted module.
+
 3. Update `protocols.py` if adding a new protocol.
+
 4. Add tests in `tests/test_<module>.py`.
+
 5. Run `make ci` — all declared targets must pass.
+
 6. Update `CHANGELOG.md` under `## [Unreleased]`.
+
 7. Add Google-style docstrings to any new public APIs.
+
 8. Update examples/demos if the feature is user-facing.
+
 9. Update agent-facing docs if the pipeline or public API changed.
+
 10. **If the feature can move `recall@k` / `dropped` / `dedup_removed` /
+
     `prompt_tokens`**, follow
+
     [`.github/prompts/add-eval.prompt.md`](../../.github/prompts/add-eval.prompt.md)
+
     (#216) to extend the gold set or scenarios and regenerate
+
     `benchmarks/scorecard.md`. The sticky CI benchmark-delta comment
+
     (#211) surfaces any matrix-cell ⚠️ markers on the PR.
+
+
 
 ## Definition of Done
 
+
+
 A change is complete when **all** of the following are true:
 
+
+
 - [ ] `make ci` passes (all declared targets)
+
 - [ ] `CHANGELOG.md` updated
+
 - [ ] Google-style docstrings on all new public APIs
+
 - [ ] Type hints on all new public functions and methods
+
 - [ ] Tests added for new functionality
+
 - [ ] Examples/demos updated if the feature is user-facing
+
 - [ ] Agent-facing docs updated if pipeline, public API, or conventions changed
+
+
 
 ## Fixing a Bug
 
+
+
 1. Write a failing test that reproduces the bug.
+
 2. Fix the bug.
+
 3. Run `make ci`.
+
 4. Update `CHANGELOG.md`.
+
 5. If the bug revealed a reusable lesson, record it per the process in [lessons-learned.md](lessons-learned.md).
+
+
 
 ## Adding a Store Backend
 
+
+
 1. Implement the store class in `src/contextweaver/store/<name>.py`.
+
 2. The class must implement the relevant protocol from `protocols.py`.
+
 3. Export from `src/contextweaver/store/__init__.py`.
+
 4. Add tests in `tests/test_store_<name>.py`.
+
 5. Update `StoreBundle` if appropriate.
+
+
 
 ## Adding an Adapter
 
+
+
 1. Create the adapter in `src/contextweaver/adapters/<protocol>.py`.
+
 2. Pure stateless converter — no state, no core-type leakage.
+
 3. External format dependencies stay at the adapter boundary.
+
 4. Add tests in `tests/test_adapters.py`.
+
 5. Add an example in `examples/`.
+
+
 
 ## Documentation Governance
 
+
+
 ### When docs must be updated
 
+
+
 - Any PR that changes the context pipeline stages, routing pipeline, or public API.
+
 - Any PR that adds, removes, or renames a module.
+
 - Any PR that changes project conventions, commands, or the definition of done.
+
+
 
 ### Who triggers updates
 
+
+
 - The author of the PR is responsible for updating docs in the same PR.
+
 - Reviewers should check the [review checklist](review-checklist.md) for doc-update requirements.
+
+
 
 ### Resolving contradictions
 
+
+
 If two docs disagree:
+
 1. `AGENTS.md` is authoritative for agent guidance and shared rules.
+
 2. `docs/architecture.md` is authoritative for architecture detail.
+
 3. `Makefile` is ground truth for command definitions.
+
 4. Source code is ground truth for implementation details.
+
+
 
 Fix the less-authoritative source to match.
 
+
+
 ### Promoting lessons into canonical docs
 
+
+
 When a lesson from [lessons-learned.md](lessons-learned.md) represents a durable pattern:
+
 1. Add it to the appropriate canonical doc (`AGENTS.md`, `invariants.md`, or `workflows.md`).
+
 2. Keep the lesson entry but mark it as promoted with a cross-reference.
+
+
 
 ### Avoiding duplicate authority
 
+
+
 Each piece of guidance should have exactly one canonical home. Use cross-references instead of copies. Exception: hard rules (the 2 auto-reject items) may be briefly restated in tool-specific override files for visibility, since those files may be the only context an agent loads.
+
+
 
 ### Updating navigation tables
 
+
+
 When adding a new canonical doc under `docs/agent-context/`, update the navigation tables in all three routing files:
+
 - `AGENTS.md` (Documentation Map)
+
 - `.github/copilot-instructions.md` (Canonical References)
+
 - `.claude/CLAUDE.md` (Canonical References)
 
+
+
 ---
+
+
 
 <!-- FILE: docs/agent-context/lessons-learned.md -->
 
+
+
 # Lessons Learned
 
+
+
 This is not an incident archive. It captures reusable patterns from past mistakes
+
 and defines the process for converting incidents into durable guidance.
+
+
 
 ## Failure-Capture Workflow
 
+
+
 When a bad change is caught in review or causes a regression:
 
+
+
 1. **Identify the root cause** — was it a missing rule, a misunderstood boundary, or a documentation gap?
+
 2. **Determine if it's reusable** — would a different agent make the same mistake on a different change? If yes, it's a lesson. If no, it's a one-off incident — don't record it here.
+
 3. **Generalize the lesson** — write it as a pattern, not a narrative. "Don't do X because Y" is better than "on date Z, agent A did X to file B."
+
 4. **Choose the right home:**
+
    - If it's a hard constraint → add to [invariants.md](invariants.md)
+
    - If it's a workflow fix → add to [workflows.md](workflows.md)
+
    - If it's an architectural insight → add to [architecture.md](architecture.md)
+
    - If it's a recurring trap that doesn't fit elsewhere → add to this file
+
 5. **If promoted**, keep the entry here but mark it: "**Promoted →** [target file](link)."
+
+
 
 ## What Belongs Here
 
+
+
 - Recurring mistakes that agents make across different changes
+
 - Generalized lessons with clear "do this instead" guidance
+
 - Patterns where the obvious approach is wrong
+
+
 
 ## What Does Not Belong Here
 
+
+
 - One-off incidents tied to specific dates, PRs, or files
+
 - Narrative history of past bugs
+
 - Lessons that have been fully captured in invariants, workflows, or architecture docs (mark as promoted instead)
+
+
 
 ## Durable Lessons
 
+
+
 ### 1. Pipeline stage count drift
+
+
 
 **Mistake:** Docs described a 7-stage context pipeline; the actual implementation has 8 stages (missing `dependency_closure`).
 
+
+
 **Lesson:** When modifying pipeline documentation, always verify stage count and order against the source code (`context/manager.py`). Do not copy pipeline descriptions from other docs without verification.
+
+
 
 **Generalized rule:** Treat pipeline stage documentation like API documentation — verify against implementation, not against other docs.
 
+
+
 ### 2. "Simplification" proposals that break design intent
+
+
 
 **Mistake:** Proposing to merge `serde.py` with per-class `to_dict()`/`from_dict()`, or to collapse store protocols into concrete classes, or to make routing async for "consistency."
 
+
+
 **Lesson:** Before proposing a simplification, check [invariants.md](invariants.md) for the "Things That Must Not Be Simplified" section. If the thing you want to simplify is listed, it exists for a reason. Read the rationale before proposing changes.
+
+
 
 **Generalized rule:** Things that look redundant in this codebase often exist for extensibility or correctness. Check invariants before proposing consolidation.
 
+
+
 ### 3. Overstatement in documentation
+
+
 
 **Mistake:** "Zero-dependency is a hard constraint" (overstated — extras are acceptable). "Always use X" for things that are strong patterns, not hard rules.
 
+
+
 **Lesson:** Distinguish hard rules (auto-reject, 2 items) from strong patterns (recommended, judgment applies). Overstated rules cause agents to either (a) reject valid changes or (b) ignore all rules after discovering false mandates.
+
+
 
 **Generalized rule:** Use precise language in constraints. "Must" and "always" should be reserved for actual invariants. Use "prefer" or "strongly recommended" for patterns.
 
+
+
 ### 4. Module map staleness
+
+
 
 **Mistake:** `envelope.py` added in an early version but never added to the module map in agent-facing docs. Agents couldn't find `ResultEnvelope`, `BuildStats`, etc.
 
+
+
 **Lesson:** When adding a new module, update the module map in `AGENTS.md` in the same PR.
+
+
 
 **Generalized rule:** Treat the module map as part of the public API surface. New modules require map updates just like new functions require docstrings.
 
+
+
 ### 5. `make ci` composition drift
 
+
+
 **Mistake:** `AGENTS.md` described `make ci` with a stale fixed target count and
+
 omitted a target that the Makefile runs.
+
+
 
 **Lesson:** Do not describe command composition from memory. Check the `Makefile` for ground truth.
 
+
+
 **Generalized rule:** For command documentation, the build system file (`Makefile`, `pyproject.toml`) is always ground truth.
+
+
 
 ## Update Triggers
 
+
+
 Record a new lesson when:
+
 - A review catches a mistake that a well-documented rule would have prevented.
+
 - The same category of mistake recurs across multiple changes or agents.
+
 - A documentation gap directly causes a bad change.
 
+
+
 Do not record lessons for:
+
 - Typos, formatting issues, or trivial errors.
+
 - One-off issues that are unlikely to recur.
 
+
+
 ---
+
+
 
 <!-- FILE: docs/agent-context/review-checklist.md -->
 
+
+
 # Review Checklist
 
+
+
 Use this checklist for both agent self-check (before proposing changes) and
+
 maintainer review (when reviewing PRs). Items are grouped by category.
+
+
 
 ## Validation
 
+
+
 - [ ] `make ci` passes (fmt, lint, type, test, schemas-check, example, demo)
+
 - [ ] No new warnings introduced
+
+
 
 ## Hard Rules
 
+
+
 - [ ] No `print()` in library code (exempt: `__main__.py`)
+
 - [ ] No business logic in `__init__.py` (only re-exports)
+
+
 
 ## Code Quality
 
+
+
 - [ ] Type hints on all new public functions and methods
+
 - [ ] Google-style docstrings on all new public classes and functions
+
 - [ ] `from __future__ import annotations` in any new or modified file
+
 - [ ] Exceptions use custom types from `contextweaver.exceptions`
+
 - [ ] New modules ≤ 300 lines (exempt: `types.py`, `envelope.py`, `__main__.py`)
+
 - [ ] 100-character line length respected
+
+
 
 ## Testing
 
+
+
 - [ ] Tests added for new functionality in `tests/test_<module>.py`
+
 - [ ] Async tests use `pytest.mark.asyncio`
+
 - [ ] No mocking of internal modules — uses real in-memory implementations
+
+
 
 ## Architectural Consistency
 
+
+
 - [ ] No runtime dependencies added to core (`install_requires` stays empty)
+
 - [ ] `context/` code is async-first with `_sync` wrappers
+
 - [ ] `routing/` code is sync-only
+
 - [ ] Store changes implement the relevant protocol from `protocols.py`
+
 - [ ] Adapter changes are pure stateless converters
+
 - [ ] No text similarity logic duplicated outside `_utils.py`
+
 - [ ] `to_dict()` / `from_dict()` added to any new dataclass
+
 - [ ] Event log mutations only via `append()`
+
+
 
 ## Pipeline Integrity
 
+
+
 - [ ] Context pipeline stage order preserved (8 stages — see [invariants](invariants.md))
+
 - [ ] Dependency closure not bypassed or weakened
+
 - [ ] Sensitivity defaults not weakened
+
 - [ ] Changes to `context/sensitivity.py` received extra security scrutiny
+
+
 
 ## Documentation
 
+
+
 - [ ] `CHANGELOG.md` updated under `## [Unreleased]`
+
 - [ ] Module map in `AGENTS.md` updated if modules were added/removed/renamed
+
 - [ ] Agent-facing docs updated if pipeline, API, or conventions changed
+
 - [ ] Examples/demos updated if feature is user-facing
+
 - [ ] No contradictions introduced between `AGENTS.md` and supporting docs
+
+
 
 ## Cross-File Consistency
 
+
+
 - [ ] Pipeline stage count/order matches across all docs and code
+
 - [ ] Command descriptions match `Makefile`
+
 - [ ] Module map matches filesystem
+
 - [ ] Convention changes reflected in both `AGENTS.md` and `CONTRIBUTING.md`
+
+
 
 ## Invariant Spot-Checks
 
+
+
 If the change touches any of these areas, verify the corresponding invariant:
 
+
+
 | Area touched | Verify |
+
 |---|---|
+
 | Pipeline stages | 8-stage order preserved, dependency closure intact |
+
 | `sensitivity.py` | Defaults not weakened, security review done |
+
 | Store protocols | Protocol interface unchanged or backward-compatible |
+
 | `serde.py` or `to_dict`/`from_dict` | Both mechanisms still in use, not consolidated |
+
 | `_utils.py` | No similarity logic duplicated elsewhere |
+
 | `__init__.py` files | Only re-exports, no logic |
+
 | `envelope.py` or `types.py` | No I/O added to data layer |
+
+
 
 ## Update Triggers
 
+
+
 Update this checklist when:
+
 - New hard rules or invariants are established.
+
 - New review gates are identified from recurring review feedback.
+
 - Definition of done changes (sync with [workflows.md](workflows.md)).
+
+
 
 ---
 
+
+
 <!-- FILE: docs/guide_agent_loop.md -->
+
+
 
 # Agent Runtime Loop Guide
 
+
+
 This guide explains the reference runtime loop in
+
 `examples/full_agent_loop.py`.
+
+
 
 The loop demonstrates all four context phases in one deterministic flow:
 
+
+
 1. `route` - shortlist candidate tools.
+
 2. `call` - inject only the selected tool schema.
+
 3. `interpret` - summarize tool output via the firewall.
+
 4. `answer` - compose the final response context.
+
+
 
 ## Flow Diagram
 
+
+
 ```mermaid
+
 flowchart TD
+
     U[User Query] --> R[Phase.route\nContextManager.build_route_prompt_sync]
+
     R --> C[ChoiceCards + routed candidate IDs]
+
     C --> M[Model selects tool_id]
+
     M --> H[Catalog.hydrate(tool_id)]
+
     H --> P[Phase.call\nContextManager.build_call_prompt_sync]
+
     P --> X[Simulated tool execution]
+
     X --> F[ingest_tool_result_sync\nFirewall stores raw artifact + summary]
+
     F --> I[Phase.interpret\nContextManager.build_sync]
+
     I --> A[Phase.answer\nContextManager.build_sync]
+
 ```
+
+
 
 ## Pseudo-code
 
+
+
 ```python
+
 catalog = build_catalog_with_schemas()
+
 router = Router(TreeBuilder().build(catalog.all()), items=catalog.all())
+
 manager = ContextManager(budget=ContextBudget(route=500, call=800, interpret=600, answer=1000))
+
+
 
 manager.ingest(user_turn)
 
+
+
 route_pack, cards, route_result = manager.build_route_prompt_sync(goal, query, router)
+
 tool_id = model_select(route_result.candidate_ids)
 
+
+
 manager.ingest(tool_call)
+
 call_pack = manager.build_call_prompt_sync(tool_id, query, catalog)
 
+
+
 raw_result = simulate_large_json()
+
 manager.ingest_tool_result_sync(tool_call_id, raw_result)
+
 interpret_pack = manager.build_sync(phase=Phase.interpret, query=query)
 
+
+
 answer_pack = manager.build_sync(phase=Phase.answer, query=final_query)
+
 ```
+
+
 
 ## Module Pointers
 
+
+
 - `src/contextweaver/context/manager.py`
+
   - `build_route_prompt_sync()` for route-phase prompt + ChoiceCards.
+
   - `build_call_prompt_sync()` for selected-schema call prompts.
+
   - `ingest_tool_result_sync()` for firewall interception and envelope creation.
+
   - `build_sync()` for `interpret` and `answer` context compilation.
+
 - `src/contextweaver/routing/router.py`
+
   - `Router.route()` to rank candidate tools.
+
 - `src/contextweaver/routing/catalog.py`
+
   - `Catalog` and `Catalog.hydrate()` for schema hydration.
+
 - `src/contextweaver/routing/cards.py`
+
   - Choice-card rendering used in route prompts.
+
 - `src/contextweaver/config.py`
+
   - `ContextBudget` with per-phase token limits.
+
+
 
 ## When To Use Each Phase
 
+
+
 | Phase | Primary goal | Typical contents | Budget posture |
+
 | --- | --- | --- | --- |
+
 | `route` | Choose tools | user intent, policy, compact cards | small |
+
 | `call` | Generate arguments | selected tool schema, examples, constraints | medium |
+
 | `interpret` | Understand result | tool call + summarized result + extracted facts | medium |
+
 | `answer` | Compose final response | relevant history + interpreted findings + policy | largest |
+
+
 
 ## Running The Example
 
+
+
 ```bash
+
 python examples/full_agent_loop.py
+
 ```
+
+
 
 What you should see:
 
+
+
 1. Four phase sections (`route`, `call`, `interpret`, `answer`).
+
 2. Compiled prompt text for each phase.
+
 3. BuildStats output for each phase, including token counts.
+
 4. Firewall behavior in `interpret` (raw payload size > summarized text size).
