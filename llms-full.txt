@@ -56,6 +56,7 @@ uvx contextweaver demo --scenario killer  # zero-install trial
 
 # Or install it:
 pip install contextweaver
+python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
 ```
 
@@ -1306,6 +1307,21 @@ If you are working from a repository checkout instead, install the package in ed
 pip install -e ".[dev]"
 ```
 
+Verify that the package imports from the Python environment you just activated:
+
+```bash
+python -c "import contextweaver; print(contextweaver.__version__)"
+```
+
+Expected output is the installed version, for example `0.14.0`. Then run the
+network-free demo as an end-to-end smoke test:
+
+```bash
+contextweaver demo
+```
+
+You should see the friendly walkthrough start without `ModuleNotFoundError` or
+`contextweaver: command not found`.
 `pipx run contextweaver demo --scenario killer` is the equivalent isolated
 path for pipx users.
 
@@ -3474,4 +3490,4 @@ What you should see:
 1. Four phase sections (`route`, `call`, `interpret`, `answer`).
 2. Compiled prompt text for each phase.
 3. BuildStats output for each phase, including token counts.
-4. Firewall behavior in `interpret` (raw payload size > summarized text size)
+4. Firewall behavior in `interpret` (raw payload size > summarized text size).
