@@ -7,69 +7,95 @@ paired with a ``{handle}.json`` file (the :class:`~contextweaver.types.ArtifactR
 metadata, JSON-encoded).
 
 Useful when artifacts are large (full API responses, images) and the agent
-wants directly-inspectable files for debugging, backup, or external
-tooling.  Trade-off vs. the SQLite event log: one file per artifact is
-heavier than a single database, but the contents are human-grep-friendly.
+wants directly-inspectable, human-grep-friendly files.
 
-Limitations:
+Durability and limits (issue #497): writes are **atomic** (temp file +
+:func:`os.replace`, so a crash never leaves a truncated file); an in-memory
+handle -> :class:`ArtifactRef` index is built once on construction and
+maintained on ``put`` / ``delete``, so :meth:`list_refs` never rescans the
+directory; and optional ``max_bytes`` / ``max_artifacts`` quotas raise
+:class:`~contextweaver.exceptions.ArtifactStoreQuotaError`.
 
-- **Single process.**  No advisory locking on writes; running two processes
-  against the same ``base_dir`` is unsupported.
-- **Handle safety.**  Handles are written verbatim into filenames; path
-  separators (``/``, ``\\``) and ``..`` traversal segments are rejected on
-  write to keep artifacts inside ``base_dir``.
+Concurrency (issue #458): single process only. Within one process ``put`` /
+``delete`` / :meth:`list_refs` are serialised by an internal lock, so a shared
+instance is thread-safe; there is no cross-process advisory locking.
+
+Handle safety (issue #466): handles are validated (path separators, ``..``
+traversal, and null bytes rejected) and then **percent-encoded** into
+filenames, so a handle legal as a handle but hostile as a filename — chiefly
+``:`` (which opens an NTFS alternate data stream on Windows; the firewall emits
+``artifact:result:call_1``) — is stored portably. See
+:mod:`contextweaver.store._json_file_io`.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
-from contextweaver.exceptions import ArtifactNotFoundError, ContextWeaverError
+from contextweaver.exceptions import ArtifactNotFoundError, ArtifactStoreQuotaError
+from contextweaver.store._json_file_io import DATA_SUFFIX as _DATA_SUFFIX
+from contextweaver.store._json_file_io import META_SUFFIX as _META_SUFFIX
+from contextweaver.store._json_file_io import atomic_write as _atomic_write
+from contextweaver.store._json_file_io import consistent_data_size as _consistent_data_size
+from contextweaver.store._json_file_io import encode_handle as _encode_handle
+from contextweaver.store._json_file_io import validate_handle as _validate_handle
 from contextweaver.store.artifacts import _apply_selector
 from contextweaver.types import ArtifactRef
 
 logger = logging.getLogger("contextweaver.store")
-
-_META_SUFFIX = ".json"
-_DATA_SUFFIX = ".data"
-_FORBIDDEN_HANDLE_CHARS: frozenset[str] = frozenset({"/", "\\", "\x00"})
-
-
-def _validate_handle(handle: str) -> None:
-    """Reject handles that would escape ``base_dir`` or contain path separators."""
-    if not handle:
-        raise ContextWeaverError("Artifact handle must be non-empty")
-    if handle in {".", ".."}:
-        raise ContextWeaverError(f"Invalid artifact handle: {handle!r}")
-    if any(ch in handle for ch in _FORBIDDEN_HANDLE_CHARS):
-        raise ContextWeaverError(
-            f"Invalid artifact handle (contains path separator or null byte): {handle!r}"
-        )
 
 
 class JsonFileArtifactStore:
     """Filesystem implementation of the :class:`ArtifactStore` protocol.
 
     All artifacts are stored under *base_dir*.  Each artifact occupies two
-    sibling files:
+    sibling files, named after the percent-encoded handle:
 
-    - ``{base_dir}/{handle}.json`` — :class:`~contextweaver.types.ArtifactRef`
+    - ``{base_dir}/{enc(handle)}.json`` — :class:`~contextweaver.types.ArtifactRef`
       metadata, serialised via :meth:`ArtifactRef.to_dict` + :func:`json.dumps`.
-    - ``{base_dir}/{handle}.data`` — raw bytes.
+    - ``{base_dir}/{enc(handle)}.data`` — raw bytes.
 
-    The directory is created on instantiation if absent.  Existing
-    ``{handle}.json`` files in *base_dir* are visible to :meth:`list_refs`
-    immediately, so re-instantiating against an existing directory recovers
-    the previous metadata index.
+    The directory is created on instantiation if absent, and existing
+    ``*.json`` metadata files are scanned once into an in-memory index, so
+    re-instantiating against an existing directory recovers the previous
+    metadata index without rescanning on every :meth:`list_refs`.
+
+    Args:
+        base_dir: Directory that backs the store (created if missing).
+        max_bytes: Optional ceiling on the total size of stored artifact
+            bytes.  ``None`` (default) means unbounded.
+        max_artifacts: Optional ceiling on the number of stored artifacts.
+            ``None`` (default) means unbounded.
     """
 
-    def __init__(self, base_dir: str | Path) -> None:
+    def __init__(
+        self,
+        base_dir: str | Path,
+        *,
+        max_bytes: int | None = None,
+        max_artifacts: int | None = None,
+    ) -> None:
         self._base_dir = Path(base_dir)
         self._base_dir.mkdir(parents=True, exist_ok=True)
-        logger.debug("json_file_artifacts.init: base_dir=%s", self._base_dir)
+        self._max_bytes = max_bytes
+        self._max_artifacts = max_artifacts
+        self._index: dict[str, ArtifactRef] = {}
+        self._total_bytes = 0
+        # Serialises put/delete/list_refs so a single-process gateway can share
+        # one instance across threads without racing the index/byte counter.
+        self._lock = threading.RLock()
+        self._load_index()
+        logger.debug(
+            "json_file_artifacts.init: base_dir=%s, artifacts=%d, bytes=%d",
+            self._base_dir,
+            len(self._index),
+            self._total_bytes,
+        )
 
     @property
     def base_dir(self) -> Path:
@@ -77,19 +103,71 @@ class JsonFileArtifactStore:
         return self._base_dir
 
     # ------------------------------------------------------------------
+    # Index
+    # ------------------------------------------------------------------
+
+    def _load_index(self) -> None:
+        """Populate the in-memory index from the metadata files on disk.
+
+        Runs once at construction.  An entry is indexed only when it is both
+        decodable *and* self-consistent — a valid handle, a metadata filename
+        that matches ``enc(handle).json``, and a present ``.data`` file (see
+        :func:`~contextweaver.store._json_file_io.consistent_data_size`).
+        Orphan or mismatched metadata is skipped (logged at ``DEBUG``) so the
+        index never advertises a handle :meth:`get` cannot serve and the quota
+        byte counter reflects bytes actually on disk (#497 review).
+        """
+        for meta in self._base_dir.glob(f"*{_META_SUFFIX}"):
+            try:
+                raw = json.loads(meta.read_text(encoding="utf-8"))
+                ref = ArtifactRef.from_dict(raw)
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+                logger.debug("json_file_artifacts.load_index: skip %s (%s)", meta.name, exc)
+                continue
+            size = _consistent_data_size(self._base_dir, meta.name, ref)
+            if size is None:
+                logger.debug("json_file_artifacts.load_index: skip inconsistent %s", meta.name)
+                continue
+            self._index[ref.handle] = ref
+            self._total_bytes += size
+
+    # ------------------------------------------------------------------
     # Path helpers
     # ------------------------------------------------------------------
 
     def _meta_path(self, handle: str) -> Path:
         # Centralised validation keeps every public method that resolves a
-        # handle (put/get/ref/list_refs/delete/exists/drilldown/metadata)
-        # safe against path-traversal — see _validate_handle docstring.
+        # handle (put/get/ref/delete/exists/drilldown/metadata) safe against
+        # path-traversal; encoding then makes the stem filename-safe (#466).
         _validate_handle(handle)
-        return self._base_dir / f"{handle}{_META_SUFFIX}"
+        return self._base_dir / f"{_encode_handle(handle)}{_META_SUFFIX}"
 
     def _data_path(self, handle: str) -> Path:
         _validate_handle(handle)
-        return self._base_dir / f"{handle}{_DATA_SUFFIX}"
+        return self._base_dir / f"{_encode_handle(handle)}{_DATA_SUFFIX}"
+
+    # ------------------------------------------------------------------
+    # Quota
+    # ------------------------------------------------------------------
+
+    def _check_quota(self, handle: str, new_size: int) -> None:
+        """Raise :class:`ArtifactStoreQuotaError` if storing *new_size* breaks a limit."""
+        existing = self._index.get(handle)
+        if (
+            self._max_artifacts is not None
+            and existing is None
+            and len(self._index) >= self._max_artifacts
+        ):
+            raise ArtifactStoreQuotaError(
+                f"artifact count limit reached ({self._max_artifacts}); cannot store {handle!r}"
+            )
+        if self._max_bytes is not None:
+            prospective = self._total_bytes - (existing.size_bytes if existing else 0) + new_size
+            if prospective > self._max_bytes:
+                raise ArtifactStoreQuotaError(
+                    f"byte limit reached ({self._max_bytes}); "
+                    f"storing {handle!r} ({new_size} bytes) would total {prospective}"
+                )
 
     # ------------------------------------------------------------------
     # ArtifactStore protocol
@@ -104,26 +182,39 @@ class JsonFileArtifactStore:
     ) -> ArtifactRef:
         """Store *content* under *handle* and return its :class:`ArtifactRef`.
 
-        Writes are not atomic across the metadata/data pair — a crash between
-        the two writes can leave a stale metadata file.  In practice the
-        :meth:`list_refs` / :meth:`get` pair tolerates this because
-        :meth:`get` errors loudly when the data file is missing.
+        The data and metadata files are each written atomically (temp file +
+        :func:`os.replace`), so a crash never leaves a half-written pair.  The
+        returned ref carries a populated ``content_hash`` (sha256 of *content*,
+        #466), which is persisted with the metadata and powers the firewall's
+        cross-restart idempotency short-circuit (#190).
 
         Raises:
             ContextWeaverError: If *handle* contains a path separator,
                 ``..``, ``.``, or a null byte.
+            ArtifactStoreQuotaError: If the write would exceed ``max_bytes``
+                or ``max_artifacts``.
         """
-        # Validation runs via the _data_path / _meta_path helpers below.
+        _validate_handle(handle)
         ref = ArtifactRef(
             handle=handle,
             media_type=media_type,
             size_bytes=len(content),
             label=label,
+            content_hash=hashlib.sha256(content).hexdigest(),
         )
-        self._data_path(handle).write_bytes(content)
-        self._meta_path(handle).write_text(
-            json.dumps(ref.to_dict(), sort_keys=True), encoding="utf-8"
-        )
+        with self._lock:
+            self._check_quota(handle, len(content))
+            # Data first, then metadata: a crash between the two leaves an
+            # orphan ``.data`` file that no index entry references (harmless),
+            # never a metadata file advertising bytes that are not there.
+            _atomic_write(self._data_path(handle), content)
+            _atomic_write(
+                self._meta_path(handle),
+                json.dumps(ref.to_dict(), sort_keys=True).encode("utf-8"),
+            )
+            previous = self._index.get(handle)
+            self._total_bytes += len(content) - (previous.size_bytes if previous else 0)
+            self._index[handle] = ref
         logger.debug("json_file_artifacts.put: handle=%s, size=%d", handle, len(content))
         return ref
 
@@ -141,58 +232,50 @@ class JsonFileArtifactStore:
     def ref(self, handle: str) -> ArtifactRef:
         """Return the :class:`ArtifactRef` metadata for *handle*.
 
+        Served from the in-memory index (#497).
+
         Raises:
             ArtifactNotFoundError: If *handle* is not in the store.
         """
-        meta_path = self._meta_path(handle)
-        if not meta_path.is_file():
+        _validate_handle(handle)
+        ref = self._index.get(handle)
+        if ref is None:
             raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
-        raw = json.loads(meta_path.read_text(encoding="utf-8"))
-        return ArtifactRef.from_dict(raw)
+        return ref
 
     def list_refs(self) -> list[ArtifactRef]:
         """Return all stored :class:`ArtifactRef` objects, sorted by handle.
 
-        Scans the directory for ``*.json`` files; entries whose JSON does not
-        decode into an :class:`ArtifactRef` are skipped silently (logged at
-        ``DEBUG``).  Use :meth:`ref` if you need a per-handle error.
-
-        Skipped failure modes include ``json.JSONDecodeError`` (file is not
-        valid JSON), ``KeyError`` / ``ValueError`` (missing required field or
-        invalid value), and ``TypeError`` (JSON is valid but the top-level
-        shape is wrong — e.g. ``[]``, ``null``, or a bare string instead of
-        a mapping; ``ArtifactRef.from_dict`` raises ``TypeError`` in that
-        case).
+        Reads the in-memory index rather than rescanning the directory (#497).
         """
-        refs: list[ArtifactRef] = []
-        for meta in sorted(self._base_dir.glob(f"*{_META_SUFFIX}")):
-            try:
-                raw = json.loads(meta.read_text(encoding="utf-8"))
-                refs.append(ArtifactRef.from_dict(raw))
-            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
-                logger.debug("json_file_artifacts.list_refs: skip %s (%s)", meta.name, exc)
-        return refs
+        with self._lock:
+            return [self._index[k] for k in sorted(self._index)]
 
     def delete(self, handle: str) -> None:
         """Remove the artifact identified by *handle*.
 
-        Both the metadata and data files are removed.  If neither file
-        exists the operation raises :class:`ArtifactNotFoundError`; if only
-        one is present (e.g. after a crash) both are cleaned up silently.
+        Both the metadata and data files are removed.  If neither file nor an
+        index entry exists the operation raises :class:`ArtifactNotFoundError`;
+        if only one file is present (e.g. after a crash) both are cleaned up.
 
         Raises:
             ArtifactNotFoundError: If *handle* is not in the store.
         """
         meta = self._meta_path(handle)
         data = self._data_path(handle)
-        if not meta.is_file() and not data.is_file():
-            raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
-        meta.unlink(missing_ok=True)
-        data.unlink(missing_ok=True)
+        with self._lock:
+            if handle not in self._index and not meta.is_file() and not data.is_file():
+                raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
+            meta.unlink(missing_ok=True)
+            data.unlink(missing_ok=True)
+            previous = self._index.pop(handle, None)
+            if previous is not None:
+                self._total_bytes -= previous.size_bytes
 
     def exists(self, handle: str) -> bool:
         """Return ``True`` if *handle* is in the store."""
-        return self._data_path(handle).is_file()
+        _validate_handle(handle)
+        return handle in self._index
 
     def metadata(self, handle: str) -> ArtifactRef:
         """Return the :class:`ArtifactRef` for *handle*.

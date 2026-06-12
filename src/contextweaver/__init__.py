@@ -90,6 +90,7 @@ from contextweaver.envelope import (
 )
 from contextweaver.exceptions import (
     ArtifactNotFoundError,
+    ArtifactStoreQuotaError,
     BudgetExceededError,
     CatalogError,
     ConfigError,
@@ -245,6 +246,7 @@ __all__ = [
     "DiagnosticSink",
     # exceptions
     "ArtifactNotFoundError",
+    "ArtifactStoreQuotaError",
     "BudgetExceededError",
     "CatalogError",
     "ConfigError",

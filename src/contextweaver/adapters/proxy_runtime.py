@@ -76,7 +76,7 @@ from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.path import parse_path, resolve_path
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
-from contextweaver.store.artifacts import InMemoryArtifactStore
+from contextweaver.store.protocols import ArtifactStore
 from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.adapters.proxy_runtime")
@@ -761,7 +761,10 @@ class ProxyRuntime:
         invalid.
         """
         started = perf_counter()
-        store: InMemoryArtifactStore = self._context_manager.artifact_store  # type: ignore[assignment]
+        # ``drilldown`` is part of the ``ArtifactStore`` protocol (#472), so the
+        # gateway no longer needs to assume a concrete ``InMemoryArtifactStore``
+        # backend — any conformant store (e.g. ``JsonFileArtifactStore``) works.
+        store: ArtifactStore = self._context_manager.artifact_store
         try:
             result: str | GatewayError = store.drilldown(handle, selector)
         except (ArtifactNotFoundError, ContextWeaverError) as exc:

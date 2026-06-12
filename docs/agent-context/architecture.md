@@ -52,6 +52,39 @@ All stores use `typing.Protocol` interfaces with in-memory defaults. This enable
 - **EpisodicStore** — short episodic memory entries.
 - **FactStore** — key-value facts persisted across turns.
 
+Any backend can prove it honours these protocols with the shipped conformance
+kit (`contextweaver.store.testing`, issue #520): each `check_*_conformance`
+function takes a factory for an empty backend and asserts the round-trip,
+ordering, and not-found semantics the Context Engine relies on. For the
+`ArtifactStore` it also asserts that `put()` stamps a sha256 `content_hash`
+on the returned ref — the firewall's content-addressed idempotency
+short-circuit (#190) depends on it, so it is a protocol contract, not a
+backend detail. The bundled in-memory, JSON-file, and SQLite backends are all
+run through it in `tests/test_store_conformance.py`.
+
+#### Thread-safety contract (issue #458)
+
+The store protocols make **no concurrency guarantee** in their interface; each
+backend documents its own. The bundled backends:
+
+- **`InMemory*` stores** are *not* thread-safe. They are for single-threaded
+  use and tests; guard them with your own lock for concurrent access.
+- **`JsonFileArtifactStore`** is single-process. Within one process it is
+  thread-safe: `put` / `delete` / `list_refs` on a shared instance are
+  serialised by an internal lock, and each individual file write is **atomic**
+  (temp file + `os.replace`), so a reader never observes a torn or truncated
+  artifact and a crash mid-write leaves the previous version intact. There is
+  no cross-process advisory locking, so two processes writing the same
+  `base_dir` are still unsupported.
+- **`SqliteEventLog`** opens its connection in WAL mode for single-process use;
+  it is not shared across threads.
+
+The gateway runtime (`ProxyRuntime`) inherits these guarantees through the
+store it is given: its read-only `tool_view` (drilldown) is safe to call
+concurrently against a `JsonFileArtifactStore`. A gateway that fans out to
+real concurrent clients should pick (or wrap) a backend whose contract matches
+its load — this is exactly what the protocol seam and conformance kit are for.
+
 ### Sensitivity Enforcement
 
 `context/sensitivity.py` is security-grade code. It enforces data classification (`public` → `restricted`) with two actions: drop or redact. The `MaskRedactionHook` is the built-in redactor. Changes to this module require extra review scrutiny — never weaken defaults.

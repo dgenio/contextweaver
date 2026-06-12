@@ -24,6 +24,16 @@ class ArtifactNotFoundError(ContextWeaverError):
     """Raised when a requested artifact handle cannot be found in the store."""
 
 
+class ArtifactStoreQuotaError(ContextWeaverError):
+    """Raised when a write would exceed an artifact store's configured quota.
+
+    A persistent :class:`~contextweaver.store.protocols.ArtifactStore` may be
+    constructed with ``max_bytes`` / ``max_artifacts`` limits (issue #497);
+    a :meth:`put` that would breach either limit raises this instead of
+    letting unbounded disk growth go unnoticed in a long-running gateway.
+    """
+
+
 class PolicyViolationError(ContextWeaverError):
     """Raised when an item violates the active :class:`~contextweaver.config.ContextPolicy`."""
 

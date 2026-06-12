@@ -8,7 +8,6 @@ containing a human-readable summary, extracted facts, and an
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from typing import Literal
@@ -22,7 +21,7 @@ from contextweaver.summarize.extract import extract_facts
 from contextweaver.summarize.structured import StructuredFirewall
 from contextweaver.tokens import count as count_tokens
 from contextweaver.tokens import heuristic_counter
-from contextweaver.types import ArtifactRef, ContextItem, ItemKind
+from contextweaver.types import ContextItem, ItemKind
 
 logger = logging.getLogger("contextweaver.context")
 
@@ -164,23 +163,18 @@ def apply_firewall(
         return item, None
 
     raw_bytes = item.text.encode("utf-8")
-    content_hash = hashlib.sha256(raw_bytes).hexdigest()
     handle = f"artifact:{item.id}"
     media = str(item.metadata.get("media_type", "text/plain"))
-    stored_ref = artifact_store.put(
+    # The store stamps ``content_hash`` (sha256 of the stored bytes) onto the
+    # returned ref (#466).  Subsequent firewall passes use it to detect an
+    # already-processed item and short-circuit (#190) — and because the store
+    # now *persists* the hash, that idempotency survives a process restart when
+    # the ref is reloaded from a ``JsonFileArtifactStore``.
+    ref = artifact_store.put(
         handle=handle,
         content=raw_bytes,
         media_type=media,
         label=f"raw tool result for {item.id}",
-    )
-    # Attach the content_hash so subsequent firewall passes can detect
-    # this item as already-processed (#190).
-    ref = ArtifactRef(
-        handle=stored_ref.handle,
-        media_type=stored_ref.media_type,
-        size_bytes=stored_ref.size_bytes,
-        label=stored_ref.label,
-        content_hash=content_hash,
     )
 
     # Choose a strategy.  Structured projection (issue #406) takes precedence
