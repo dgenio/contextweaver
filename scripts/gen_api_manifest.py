@@ -29,6 +29,7 @@ Wired into ``make api-check`` and the unified ``make drift-check`` gate.
 from __future__ import annotations
 
 import argparse
+import enum
 import importlib
 import inspect
 from collections.abc import Sequence
@@ -97,7 +98,15 @@ def _class_lines(name: str, cls: type) -> list[str]:
     """Render a class as its constructor signature plus public method signatures."""
     bases = ", ".join(b.__name__ for b in cls.__bases__ if b is not object)
     header = f"class {name}({bases})" if bases else f"class {name}"
-    lines = [f"{header}{_signature(cls)}"]
+    if issubclass(cls, enum.Enum):
+        # ``inspect.signature`` on an Enum returns the *metaclass* ``__call__``,
+        # whose rendering changes across Python versions (``(value, names=...)``
+        # on 3.10/3.11 vs ``(*values)`` on 3.12+). The stable, meaningful API of
+        # an enum is its member set, so record that instead of the constructor.
+        members = ", ".join(member.name for member in cls)
+        lines = [header, f"    enum members: {members}"]
+    else:
+        lines = [f"{header}{_signature(cls)}"]
     for attr in sorted(vars(cls)):
         if attr.startswith("_"):
             continue

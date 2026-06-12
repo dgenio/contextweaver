@@ -201,7 +201,8 @@
       def list_keys(self, prefix: 'str' = ...) -> 'list[str]'
       def put(self, fact: 'Fact') -> 'None'
       def to_dict(self) -> 'dict[str, Any]'
-  class ItemKind(str, Enum)(value, names=..., *, module=..., qualname=..., type=..., start=..., boundary=...)
+  class ItemKind(str, Enum)
+      enum members: user_turn, agent_msg, tool_call, tool_result, doc_snippet, memory_fact, plan_state, policy
   class ItemNotFoundError(ContextWeaverError)(...)
   class JaccardClusteringEngine()
       def cluster(self, items: 'list[SelectableItem]', *, k: 'int') -> 'dict[str, list[SelectableItem]]'
@@ -248,7 +249,8 @@
       def on_firewall_triggered(self, item: 'ContextItem', reason: 'str') -> 'None'
       def on_items_excluded(self, items: 'list[ContextItem]', reason: 'str') -> 'None'
       def on_route_completed(self, tool_ids: 'list[str]') -> 'None'
-  class Mode(str, Enum)(value, names=..., *, module=..., qualname=..., type=..., start=..., boundary=...)
+  class Mode(str, Enum)
+      enum members: strict, seeded, adaptive
   class Navigator(Protocol)(*args, **kwargs)
       def navigate(self, query: 'str', graph: 'ChoiceGraph', active_items: 'dict[str, SelectableItem]', scorer: 'Retriever', doc_id_to_idx: 'dict[str, int]', *, all_item_ids: 'set[str] | None' = ..., debug: 'bool' = ...) -> 'NavigationResult'
   class NoOpDiagnosticSink()
@@ -258,7 +260,8 @@
   class NormalizationReport(items_processed: 'int' = ..., tag_dedup_count: 'int' = ..., description_filled_count: 'int' = ..., whitespace_normalized_count: 'int' = ..., invalid_ids: 'list[str]' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
   PHASE_SCOPE_PREFERENCES: dict
-  class Phase(str, Enum)(value, names=..., *, module=..., qualname=..., type=..., start=..., boundary=...)
+  class Phase(str, Enum)
+      enum members: route, call, interpret, answer
   class PolicyViolationError(ContextWeaverError)(...)
   class ProfileConfig(mode: 'Mode' = ..., budget: 'ContextBudget' = ..., policy: 'ContextPolicy' = ..., scoring: 'ScoringConfig' = ..., routing: 'RoutingConfig' = ..., seed: 'int | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ProfileConfig'
@@ -316,7 +319,8 @@
   class SelectableItem(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectableItem'
       def to_dict(self) -> 'dict[str, Any]'
-  class Sensitivity(str, Enum)(value, names=..., *, module=..., qualname=..., type=..., start=..., boundary=...)
+  class Sensitivity(str, Enum)
+      enum members: public, internal, confidential, restricted
   class SensitivityClassifier(Protocol)(*args, **kwargs)
       def classify(self, item: 'ContextItem') -> 'Sensitivity'
   class SessionHandoffPack(decisions: 'list[HandoffEntry]' = ..., conventions: 'list[HandoffEntry]' = ..., unresolved_tasks: 'list[HandoffEntry]' = ..., pitfalls: 'list[HandoffEntry]' = ..., next_inspections: 'list[HandoffEntry]' = ..., artifact_refs: 'list[ArtifactRef]' = ..., sensitivity_dropped: 'int' = ..., token_estimate: 'int' = ..., version: 'str' = ...) -> None
@@ -412,7 +416,8 @@
       def to_dict(self) -> 'dict[str, Any]'
   class DryRunReport(tool_id: 'str', upstream_name: 'str', args_valid: 'bool', annotations: 'dict[str, Any]' = ..., checks: 'list[dict[str, str]]' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
-  class ExposureMode(str, Enum)(value, names=..., *, module=..., qualname=..., type=..., start=..., boundary=...)
+  class ExposureMode(str, Enum)
+      enum members: TRANSPARENT, GATEWAY
   GATEWAY_TOOL_NAMES: tuple
   class GatewayError(code: 'GatewayErrorCode', message: 'str', path: 'str' = ..., retryable: 'bool' = ..., details: 'dict[str, Any]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'GatewayError'
