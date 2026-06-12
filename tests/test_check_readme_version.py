@@ -40,25 +40,47 @@ def test_read_pyproject_version_is_scoped_to_project_table(tmp_path: Path) -> No
 
 
 def test_find_drift_flags_mismatch() -> None:
-    """Both tracked references are flagged when they lag the version."""
-    readme = "Current package version: **0.11.0**.\n... (this repo, [v0.10.0](url)) ..."
+    """All tracked references are flagged when they lag the version."""
+    readme = (
+        "Current package version: **0.11.0**.\n"
+        "... (this repo, [v0.10.0](url)) ...\n"
+        "| **v0.11 — Old** | ✅ current (v0.11.0) | stale |"
+    )
     problems = check_readme_version.find_drift("0.12.0", readme)
-    assert len(problems) == 2
+    assert len(problems) == 4
     assert any("Current package version" in p for p in problems)
     assert any("comparison self-reference" in p for p in problems)
+    assert any("roadmap current marker" in p for p in problems)
+    assert any("does not name" in p for p in problems)
 
 
 def test_find_drift_passes_when_in_sync() -> None:
-    """No problems when both references equal the version."""
-    readme = "Current package version: **0.12.0**.\n... (this repo, [v0.12.0](url)) ..."
+    """No problems when tracked references equal the version."""
+    readme = (
+        "Current package version: **0.12.0**.\n"
+        "... (this repo, [v0.12.0](url)) ...\n"
+        "| **v0.12.0 — Current** | ✅ current (v0.12.0) | ok |"
+    )
     assert check_readme_version.find_drift("0.12.0", readme) == []
 
 
 def test_find_drift_reports_missing_references() -> None:
     """Missing references are reported rather than silently passing."""
     problems = check_readme_version.find_drift("0.12.0", "no version references here")
-    assert len(problems) == 2
+    assert len(problems) == 3
     assert all("missing" in p for p in problems)
+
+
+def test_find_drift_flags_current_marker_without_explicit_version() -> None:
+    """The roadmap current marker must include the pyproject version."""
+    readme = (
+        "Current package version: **0.12.0**.\n"
+        "... (this repo, [v0.12.0](url)) ...\n"
+        "| **v0.11 — Old** | ✅ current | stale |"
+    )
+    problems = check_readme_version.find_drift("0.12.0", readme)
+    assert any("roadmap current marker" in p for p in problems)
+    assert any("does not name" in p for p in problems)
 
 
 def test_repo_readme_is_in_sync() -> None:
