@@ -23,7 +23,7 @@ make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make context-rot       # render context-rot demo JSON + docs/assets/context_rot.svg (#349)
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating CI step; exits non-zero on drift)
-make readme-version-check  # verify README version refs and Python classifiers match sources (gating CI step; #347/#473)
+make readme-version-check  # verify README package/comparison/roadmap refs and Python classifiers match sources (gating CI step; #347/#473/#531)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (gating CI step; exits non-zero on drift)
 make gateway-scorecard-check  # verify gateway scorecard Markdown matches its committed JSON (gating CI step)
@@ -37,7 +37,7 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 > offline: the consolidated generated-artifact drift gate `make drift-check`
 > (#522 — schemas, scorecards, recorded demos, llms.txt, context-rot SVG, and
 > the public-API manifest #518), plus `make module-size-check` (#456),
-> `make doc-snippets-check` (#526), and `make readme-version-check` (#347).
+> `make doc-snippets-check` (#526), and `make readme-version-check` (#347/#473/#531).
 > The individual `*-check` targets still exist for granular use, but you no
 > longer need to remember to run them separately before a PR.
 >
