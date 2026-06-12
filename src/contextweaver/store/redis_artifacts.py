@@ -121,7 +121,10 @@ class RedisArtifactStore:
         data = self._client.get(self._data_key(handle))
         if data is None:
             raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
-        return bytes(data)
+        # redis-py's ``get`` is typed ``bytes | str | Any`` (a client configured
+        # with ``decode_responses=True`` returns ``str``); normalise to ``bytes``
+        # so the artifact bytes round-trip regardless of client decode settings.
+        return data.encode() if isinstance(data, str) else bytes(data)
 
     def ref(self, handle: str) -> ArtifactRef:
         """Return the :class:`ArtifactRef` metadata for *handle*.
