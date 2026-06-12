@@ -7,12 +7,20 @@ path without spinning up an MCP server.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
 
+from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
 from contextweaver.adapters.gateway_error import GatewayError
-from contextweaver.adapters.mcp_upstream import StubUpstream
+from contextweaver.adapters.gateway_policy import (
+    DryRunReport,
+    RateLimit,
+    RateLimitPolicy,
+    RetryPolicy,
+)
+from contextweaver.adapters.mcp_upstream import MultiplexUpstream, StubUpstream
 from contextweaver.adapters.proxy_runtime import CACHE_BREAKPOINT_ID, ProxyRuntime
 from contextweaver.envelope import ChoiceCard, HydrationResult, ResultEnvelope
 
@@ -748,3 +756,370 @@ async def test_tolerant_args_no_repairs_leaves_provenance_clean() -> None:
     result = await runtime.execute(tool_id, {"title": "already valid"})
     assert isinstance(result, ResultEnvelope)
     assert "arg_repairs" not in result.provenance
+
+
+# ---------------------------------------------------------------------------
+# Dispatch-path controls: read-only fixtures + counting/flaky upstreams
+# ---------------------------------------------------------------------------
+
+
+def _readonly_defs() -> list[dict[str, Any]]:
+    """A read-only and a mutating tool, distinguished by ``readOnlyHint``."""
+    return [
+        {
+            "name": "files.read",
+            "description": "Read a file (read-only).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+            "annotations": {"readOnlyHint": True},
+        },
+        {
+            "name": "files.write",
+            "description": "Write a file (mutating).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+            "annotations": {"readOnlyHint": False},
+        },
+    ]
+
+
+def _counting_handler() -> tuple[
+    Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]], dict[str, int]
+]:
+    calls = {"n": 0}
+
+    async def handler(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        return {"content": [{"type": "text", "text": "contents"}], "isError": False}
+
+    return handler, calls
+
+
+def _read_tool_id(runtime: ProxyRuntime) -> str:
+    return next(i for i in runtime.list_tool_ids() if i.startswith("files:read"))
+
+
+def _write_tool_id(runtime: ProxyRuntime) -> str:
+    return next(i for i in runtime.list_tool_ids() if i.startswith("files:write"))
+
+
+def _create_issue_id(runtime: ProxyRuntime) -> str:
+    return next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+
+
+# ---------------------------------------------------------------------------
+# Retry policy (#529)
+# ---------------------------------------------------------------------------
+
+
+async def test_execute_retries_transient_upstream_failure() -> None:
+    calls = {"n": 0}
+
+    async def flaky(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionError("upstream reset")
+        return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+    delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    runtime = ProxyRuntime(
+        StubUpstream(_tool_defs(), handler=flaky),
+        retry_policy=RetryPolicy(max_attempts=3, base_delay=0.5, max_delay=10.0),
+        retry_sleep=fake_sleep,
+    )
+    runtime.register_tool_defs_sync(_tool_defs())
+    result = await runtime.execute(_create_issue_id(runtime), {"title": "x"})
+    assert isinstance(result, ResultEnvelope)
+    assert calls["n"] == 3
+    assert delays == [0.5, 1.0]
+
+
+async def test_execute_exhausts_retries_and_returns_classified_error() -> None:
+    calls = {"n": 0}
+
+    async def always_down(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        raise ConnectionError("still down")
+
+    async def fake_sleep(delay: float) -> None:
+        return None
+
+    runtime = ProxyRuntime(
+        StubUpstream(_tool_defs(), handler=always_down),
+        retry_policy=RetryPolicy(max_attempts=3, base_delay=0.1, max_delay=1.0),
+        retry_sleep=fake_sleep,
+    )
+    runtime.register_tool_defs_sync(_tool_defs())
+    err = await runtime.execute(_create_issue_id(runtime), {"title": "x"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "UPSTREAM_UNAVAILABLE"
+    assert err.retryable is True
+    assert calls["n"] == 3
+
+
+async def test_execute_does_not_retry_tool_level_error_results() -> None:
+    calls = {"n": 0}
+
+    async def tool_error(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        return {"content": [{"type": "text", "text": "nope"}], "isError": True}
+
+    runtime = ProxyRuntime(
+        StubUpstream(_tool_defs(), handler=tool_error),
+        retry_policy=RetryPolicy(max_attempts=5, base_delay=0.1),
+    )
+    runtime.register_tool_defs_sync(_tool_defs())
+    result = await runtime.execute(_create_issue_id(runtime), {"title": "x"})
+    # An isError result is the tool running and reporting failure — never retried.
+    assert isinstance(result, ResultEnvelope)
+    assert calls["n"] == 1
+
+
+async def test_execute_does_not_retry_non_retryable_exception() -> None:
+    calls = {"n": 0}
+
+    async def boom(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        raise ValueError("bad request")
+
+    runtime = ProxyRuntime(
+        StubUpstream(_tool_defs(), handler=boom),
+        retry_policy=RetryPolicy(max_attempts=5, base_delay=0.1),
+    )
+    runtime.register_tool_defs_sync(_tool_defs())
+    err = await runtime.execute(_create_issue_id(runtime), {"title": "x"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "UPSTREAM_ERROR"
+    assert calls["n"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting / quotas (#482)
+# ---------------------------------------------------------------------------
+
+
+async def test_execute_rate_limit_breach_returns_rate_limited() -> None:
+    limiter = RateLimiter(
+        RateLimitPolicy(per_meta_tool={"tool_execute": RateLimit(max_calls_per_session=1)})
+    )
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), rate_limiter=limiter)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = _create_issue_id(runtime)
+    assert isinstance(await runtime.execute(tool_id, {"title": "a"}), ResultEnvelope)
+    denied = await runtime.execute(tool_id, {"title": "b"})
+    assert isinstance(denied, GatewayError)
+    assert denied.code == "RATE_LIMITED"
+    assert denied.retryable is True
+
+
+def test_browse_rate_limit_breach_returns_rate_limited() -> None:
+    limiter = RateLimiter(
+        RateLimitPolicy(per_meta_tool={"tool_browse": RateLimit(max_calls_per_session=1)})
+    )
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), rate_limiter=limiter)
+    runtime.register_tool_defs_sync(_tool_defs())
+    assert isinstance(runtime.browse(query="open a github issue"), list)
+    denied = runtime.browse(query="open a github issue")
+    assert isinstance(denied, GatewayError)
+    assert denied.code == "RATE_LIMITED"
+
+
+def test_view_rate_limit_breach_returns_rate_limited() -> None:
+    limiter = RateLimiter(
+        RateLimitPolicy(per_meta_tool={"tool_view": RateLimit(max_calls_per_session=1)})
+    )
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), rate_limiter=limiter)
+    runtime.register_tool_defs_sync(_tool_defs())
+    first = runtime.view("missing-handle", {"type": "head"})
+    assert isinstance(first, GatewayError)
+    assert first.code == "VIEW_FAILED"  # quota consumed, then the real lookup failed
+    second = runtime.view("missing-handle", {"type": "head"})
+    assert isinstance(second, GatewayError)
+    assert second.code == "RATE_LIMITED"
+
+
+async def test_per_tool_quota_is_independent_of_other_tools() -> None:
+    # Resolve the canonical id first, then key the per-tool quota on it.
+    probe = _make_runtime()
+    create_id = _create_issue_id(probe)
+    limiter = RateLimiter(RateLimitPolicy(per_tool={create_id: RateLimit(max_calls_per_session=1)}))
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), rate_limiter=limiter)
+    runtime.register_tool_defs_sync(_tool_defs())
+    close_id = _close_issue_id(runtime)
+    assert isinstance(await runtime.execute(create_id, {"title": "a"}), ResultEnvelope)
+    denied = await runtime.execute(create_id, {"title": "b"})
+    assert isinstance(denied, GatewayError) and denied.code == "RATE_LIMITED"
+    # A different tool is unaffected by the per-tool quota on create_issue.
+    assert isinstance(await runtime.execute(close_id, {"issue_id": 1}), ResultEnvelope)
+
+
+# ---------------------------------------------------------------------------
+# Dry run (#483)
+# ---------------------------------------------------------------------------
+
+
+async def test_dry_run_reports_without_dispatch_or_artifacts() -> None:
+    handler, calls = _counting_handler()
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=handler))
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = _create_issue_id(runtime)
+    report = await runtime.execute(tool_id, {"title": "x"}, dry_run=True)
+    assert isinstance(report, DryRunReport)
+    assert calls["n"] == 0
+    assert report.tool_id == tool_id
+    assert report.args_valid is True
+    assert report.annotations["verified"] is False
+    assert {"name": "schema_validation", "status": "pass"} in report.checks
+    assert runtime.context_manager.artifact_store.list_refs() == []
+
+
+async def test_dry_run_invalid_args_still_args_invalid() -> None:
+    runtime = _make_runtime()
+    tool_id = _create_issue_id(runtime)
+    err = await runtime.execute(tool_id, {}, dry_run=True)  # missing required "title"
+    assert isinstance(err, GatewayError)
+    assert err.code == "ARGS_INVALID"
+
+
+async def test_dry_run_does_not_consume_rate_limit_quota() -> None:
+    limiter = RateLimiter(
+        RateLimitPolicy(per_meta_tool={"tool_execute": RateLimit(max_calls_per_session=1)})
+    )
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), rate_limiter=limiter)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = _create_issue_id(runtime)
+    # A dry run evaluates but does not consume quota, so the real call still runs.
+    assert isinstance(await runtime.execute(tool_id, {"title": "a"}, dry_run=True), DryRunReport)
+    assert isinstance(await runtime.execute(tool_id, {"title": "b"}), ResultEnvelope)
+
+
+# ---------------------------------------------------------------------------
+# Read-only response cache (#512)
+# ---------------------------------------------------------------------------
+
+
+async def test_cache_serves_repeated_read_only_call_from_cache() -> None:
+    handler, calls = _counting_handler()
+    cache = ToolResultCache(ttl_seconds=60.0, max_entries=8)
+    defs = _readonly_defs()
+    runtime = ProxyRuntime(StubUpstream(defs, handler=handler), result_cache=cache)
+    runtime.register_tool_defs_sync(defs)
+    ro = _read_tool_id(runtime)
+    first = await runtime.execute(ro, {"path": "/a"})
+    second = await runtime.execute(ro, {"path": "/a"})
+    assert isinstance(first, ResultEnvelope)
+    assert isinstance(second, ResultEnvelope)
+    assert calls["n"] == 1  # second served from cache
+    assert second.provenance.get("cache_hit") is True
+    assert first.provenance.get("cache_hit") is None
+
+
+async def test_cache_never_serves_mutating_tool() -> None:
+    handler, calls = _counting_handler()
+    cache = ToolResultCache(ttl_seconds=60.0, max_entries=8)
+    defs = _readonly_defs()
+    runtime = ProxyRuntime(StubUpstream(defs, handler=handler), result_cache=cache)
+    runtime.register_tool_defs_sync(defs)
+    rw = _write_tool_id(runtime)
+    await runtime.execute(rw, {"path": "/a"})
+    await runtime.execute(rw, {"path": "/a"})
+    assert calls["n"] == 2  # mutating tool always dispatches
+
+
+async def test_cache_invalidated_on_catalog_refresh() -> None:
+    handler, calls = _counting_handler()
+    cache = ToolResultCache(ttl_seconds=60.0, max_entries=8)
+    defs = _readonly_defs()
+    runtime = ProxyRuntime(StubUpstream(defs, handler=handler), result_cache=cache)
+    runtime.register_tool_defs_sync(defs)
+    ro = _read_tool_id(runtime)
+    await runtime.execute(ro, {"path": "/a"})
+    assert calls["n"] == 1
+    runtime.register_tool_defs_sync(_readonly_defs())  # refresh clears the cache
+    await runtime.execute(_read_tool_id(runtime), {"path": "/a"})
+    assert calls["n"] == 2
+
+
+async def test_cache_does_not_store_error_results() -> None:
+    calls = {"n": 0}
+
+    async def erroring(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        return {"content": [{"type": "text", "text": "boom"}], "isError": True}
+
+    cache = ToolResultCache(ttl_seconds=60.0, max_entries=8)
+    defs = _readonly_defs()
+    runtime = ProxyRuntime(StubUpstream(defs, handler=erroring), result_cache=cache)
+    runtime.register_tool_defs_sync(defs)
+    ro = _read_tool_id(runtime)
+    await runtime.execute(ro, {"path": "/a"})
+    await runtime.execute(ro, {"path": "/a"})
+    assert calls["n"] == 2  # error responses are never cached
+
+
+# ---------------------------------------------------------------------------
+# Catalog-refresh consistency (#507 — characterization)
+# ---------------------------------------------------------------------------
+
+
+async def test_refresh_rename_yields_clean_not_found_never_stale_dispatch() -> None:
+    dispatched: list[str] = []
+
+    async def record(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        dispatched.append(name)
+        return {"content": [{"type": "text", "text": "ok"}], "isError": False}
+
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=record))
+    runtime.register_tool_defs_sync(_tool_defs())
+    old_id = _create_issue_id(runtime)
+    # Refresh: rename github.create_issue → github.open_issue.
+    renamed = [d for d in _tool_defs() if d["name"] != "github.create_issue"]
+    renamed.append(
+        {
+            "name": "github.open_issue",
+            "description": "Open a new GitHub issue (renamed).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+        }
+    )
+    runtime.register_tool_defs_sync(renamed)
+    err = await runtime.execute(old_id, {"title": "x"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "HYDRATE_FAILED"
+    assert dispatched == []  # the stale id never reached any upstream tool
+
+
+async def test_refresh_removal_makes_tool_unresolvable() -> None:
+    runtime = _make_runtime()
+    removed_id = _close_issue_id(runtime)
+    remaining = [d for d in _tool_defs() if d["name"] != "github.close_issue"]
+    runtime.register_tool_defs_sync(remaining)
+    assert removed_id not in runtime.list_tool_ids()
+    err = await runtime.execute(removed_id, {"issue_id": 1})
+    assert isinstance(err, GatewayError)
+    assert err.code == "HYDRATE_FAILED"
+
+
+async def test_duplicate_raw_name_across_upstreams_collapses_to_first() -> None:
+    defs_a = [{"name": "shared.tool", "description": "from A", "inputSchema": {"type": "object"}}]
+    defs_b = [{"name": "shared.tool", "description": "from B", "inputSchema": {"type": "object"}}]
+    mux = MultiplexUpstream([StubUpstream(defs_a), StubUpstream(defs_b)])
+    runtime = ProxyRuntime(mux)
+    registered = await runtime.refresh_catalog()
+    # Duplicate raw names de-duplicate at list_tools (first source wins), so the
+    # catalog never holds an ambiguous canonical-id → upstream-name mapping.
+    assert registered == 1
+    assert len(runtime.list_tool_ids()) == 1

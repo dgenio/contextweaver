@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Gateway `tool_execute` dispatch hardening (#529, #512, #483, #482, #507).**
+  The gateway/proxy dispatch path gains four opt-in, deterministic controls,
+  all inert by default so an unconfigured runtime behaves exactly as before:
+  - **Retry/backoff (#529).** `ProxyRuntime(retry_policy=RetryPolicy(...))` retries
+    transient upstream failures (timeouts, connection errors) with bounded
+    exponential backoff + optional jitter. Tool-level error *results* and
+    non-retryable codes are never retried; the injected `retry_sleep` keeps the
+    schedule testable.
+  - **Read-only response cache (#512).** `ProxyRuntime(result_cache=ToolResultCache(...))`
+    memoises identical `tool_execute` calls for tools the upstream marks
+    read-only (operator opt-in via an optional allow-list). TTL- and size-bounded
+    (LRU), argument-order-insensitive keys, errors never cached, invalidated on
+    catalog refresh.
+  - **Dry run (#483).** `tool_execute(..., dry_run=true)` runs hydration,
+    validation, and quota checks then returns a `DryRunReport` (resolved
+    `tool_id`, upstream name, validation outcome, unverified annotations, check
+    list) **without** invoking upstream or writing artifacts. Invalid args still
+    return `ARGS_INVALID`; dry runs never consume quota.
+  - **Rate limiting / quotas (#482).** `ProxyRuntime(rate_limiter=RateLimiter(...))`
+    enforces per-session and per-minute invocation limits per meta-tool and per
+    `tool_id`, returning a structured `RATE_LIMITED` error (with `retry_after`)
+    on breach without dispatching upstream.
+  - **Catalog-refresh consistency (#507).** Documented and regression-tested that
+    `refresh_catalog` rebuilds all catalog-derived state (name index, validators,
+    cache, graph) within one synchronous call, so a renamed/removed tool's stale
+    `tool_id` yields a clean `HYDRATE_FAILED` — never a dispatch to the wrong
+    upstream tool — and cross-upstream duplicate raw names collapse to the first.
+
+    All four controls are loadable from `mcp serve --config` via the `retry`,
+    `rate_limits`, and `cache` blocks (validated at startup). New public symbols:
+    `RetryPolicy`, `RateLimit`, `RateLimitPolicy`, `RateLimiter`, `ToolResultCache`,
+    `DryRunReport`, `call_with_retry` (in `contextweaver.adapters`). See
+    `docs/gateway_spec.md` §4.5–§4.6.
 - **Persistent gateway sessions: `mcp serve --state-dir` (#511).**
   `contextweaver mcp serve` accepts `--state-dir DIR` (and a `state_dir` config
   key) to wire the gateway's `ContextManager` with file-backed stores —

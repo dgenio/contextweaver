@@ -442,6 +442,89 @@ Off by default, behaviour is byte-identical to strict validation. Every
 applied repair is recorded under the result envelope's
 `provenance["arg_repairs"]` so the normalization is auditable.
 
+### 4.5 Dispatch-path controls (opt-in)
+
+Four deterministic controls layer onto the `tool_execute` dispatch path (and,
+where noted, `tool_browse` / `tool_view`). All are **off by default** — an
+unconfigured runtime behaves exactly as specified above. They are configured on
+`ProxyRuntime` or via the `mcp serve --config` blocks named below, applied in
+this order: quota → dry-run → cache → dispatch-with-retry → cache-store.
+
+**Retry/backoff (issue #529, config `retry`).** With a `RetryPolicy`
+(`max_attempts`, `base_delay`, `max_delay`, `jitter`, `retryable_codes`),
+transient upstream failures are retried with bounded exponential backoff.
+Only exceptions classified retryable (transport-level `UPSTREAM_TIMEOUT` /
+`UPSTREAM_UNAVAILABLE` by default) are retried; tool-level error *results*
+(`isError=true`) and non-retryable codes dispatch exactly once. The default
+`max_attempts=1` is byte-identical to the single-attempt behaviour. Attempt
+counts appear in the `execute.completed` diagnostic.
+
+**Read-only response cache (issue #512, config `cache`).** With a
+`ToolResultCache`, two identical `tool_execute` calls (same `tool_id` and
+argument-order-insensitive args) for an upstream-declared **read-only** tool
+dispatch upstream only once. Caching is operator opt-in (a `cache` block with
+`read_only: true`, plus an optional `allow` list of `tool_id`s); mutating tools
+and error results are never cached; entries are TTL- and size-bounded (LRU) and
+invalidated wholesale on catalog refresh. A cache hit is marked
+`provenance["cache_hit"]=true`. Annotations are upstream-controlled, so caching
+is never inferred — it requires explicit operator opt-in.
+
+**Dry run (issue #483).** `tool_execute` accepts an optional `dry_run: bool`.
+When set, the runtime performs hydration, argument validation, and quota
+evaluation, then returns a report **without** invoking upstream or writing
+artifacts:
+
+```json
+{
+  "dry_run": true,
+  "tool_id": "billing:refund@1#a1b2c3d4",
+  "upstream_name": "refund",
+  "args_valid": true,
+  "annotations": {"destructiveHint": true, "verified": false},
+  "checks": [{"name": "schema_validation", "status": "pass"},
+             {"name": "rate_limit", "status": "pass"}]
+}
+```
+
+Invalid arguments still return the same `ARGS_INVALID` diagnostics as a real
+call. Declared annotations are echoed but always stamped `verified=false` (they
+are unverified upstream hints, per §4.4). A dry run never consumes rate-limit
+quota and is recorded as a distinct `execute.dry_run` diagnostic.
+
+**Rate limiting / quotas (issue #482, config `rate_limits`).** With a
+`RateLimiter`, per-session invocation limits are enforced per meta-tool
+(`tool_browse` / `tool_execute` / `tool_view`) and per `tool_id`, each with an
+optional sliding 60-second `max_calls_per_minute` and a cumulative
+`max_calls_per_session`. A breach returns `{"error": "RATE_LIMITED", "retryable":
+true, "details": {"scope": ..., "retry_after": ...}}` per §3.4 and does **not**
+dispatch upstream. Limits are per process; in stdio deployments (one client per
+process) per-session is effectively per-process. Unconfigured deployments are
+unaffected.
+
+### 4.6 Catalog-refresh consistency contract
+
+`tool_execute` resolves the model-selected canonical `tool_id` to a raw upstream
+name through an internal index before dispatch. To rule out dispatching an
+execution to the wrong upstream tool after a catalog change, the runtime
+guarantees:
+
+- **Atomic rebuild.** `refresh_catalog` / `register_tool_defs_sync` rebuild every
+  catalog-derived structure — the canonical-id→upstream-name index, the
+  per-`tool_id` compiled-validator cache, the read-only response cache, the
+  cache-stable browse state, the `ChoiceGraph`, and the `Router` — within a
+  single synchronous call. No `await` occurs mid-rebuild, so a concurrent
+  `execute` observes either the fully-old or fully-new view, never a half-updated
+  one.
+- **Renamed/removed tools fail closed.** Executing a `tool_id` that no longer
+  exists after a refresh returns a clean `HYDRATE_FAILED`; it is never silently
+  dispatched to an unrelated upstream tool.
+- **Cross-upstream duplicate names collapse deterministically.** `MultiplexUpstream`
+  de-duplicates duplicate raw tool names at `tools/list` (first source wins), so
+  the catalog never holds an ambiguous canonical-id→upstream-name mapping.
+
+These guarantees are pinned by the characterization tests in
+`tests/test_proxy_runtime.py` (refresh-rename, refresh-removal, duplicate-raw-name).
+
 ## 5. Cache-stable tool browsing (`cache_stable=True`)
 
 The default §2.5 ordering (score desc, id asc) maximises agent-side

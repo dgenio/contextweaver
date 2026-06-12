@@ -33,8 +33,10 @@ none of these primitives raise across the MCP boundary.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from time import perf_counter
@@ -43,12 +45,20 @@ from typing import Any, Literal, Protocol, runtime_checkable
 import jsonschema.exceptions
 
 from contextweaver.adapters.gateway_args import Repair, normalize_args
+from contextweaver.adapters.gateway_controls import (
+    RateLimitDecision,
+    RateLimiter,
+    Sleeper,
+    ToolResultCache,
+    call_with_retry,
+)
 from contextweaver.adapters.gateway_diagnostics import GatewayTelemetry
 from contextweaver.adapters.gateway_error import (
     GatewayError,
     classify_upstream_exception,
     redact_upstream_detail,
 )
+from contextweaver.adapters.gateway_policy import DryRunReport, RetryPolicy
 from contextweaver.adapters.gateway_validation import (
     DEFAULT_SCHEMA_LIMITS,
     CatalogRefreshReport,
@@ -135,6 +145,45 @@ class _UpstreamNameIndex:
 # and a stricter character set).
 CACHE_BREAKPOINT_ID: str = "__cache_breakpoint__"
 
+# Meta-tool names the per-session rate limiter keys quotas on (mirrors
+# ``gateway_policy.META_TOOL_NAMES`` / ``mcp_gateway.GATEWAY_TOOL_NAMES``).
+# Defined here as literals to avoid importing ``mcp_gateway`` (which imports
+# this module).
+_TOOL_BROWSE = "tool_browse"
+_TOOL_EXECUTE = "tool_execute"
+_TOOL_VIEW = "tool_view"
+
+# A single-attempt policy used when no ``retry_policy`` is configured, so the
+# execute path always flows through ``call_with_retry`` (one attempt = today's
+# behaviour) and keeps a single upstream-error-to-``GatewayError`` mapping.
+_SINGLE_ATTEMPT = RetryPolicy()
+
+
+def _rate_limited_error(path: str, decision: RateLimitDecision) -> GatewayError:
+    """Build the structured ``RATE_LIMITED`` error for a quota breach (#482)."""
+    details: dict[str, Any] = {"scope": decision.scope}
+    if decision.retry_after is not None:
+        details["retry_after"] = round(decision.retry_after, 3)
+    return GatewayError(
+        code="RATE_LIMITED",
+        message=f"rate limit exceeded ({decision.scope})",
+        path=path,
+        retryable=True,
+        details=details,
+    )
+
+
+def _unverified_annotations(raw_def: dict[str, Any]) -> dict[str, Any]:
+    """Return upstream MCP annotations stamped ``verified=False`` (#483).
+
+    The gateway never trusts upstream-declared hints (``readOnlyHint`` /
+    ``destructiveHint`` / ...), so the dry-run report labels them explicitly.
+    """
+    annotations = raw_def.get("annotations")
+    out = dict(annotations) if isinstance(annotations, dict) else {}
+    out["verified"] = False
+    return out
+
 
 class ProxyRuntime:
     """Shared core for the MCP proxy and gateway modes.
@@ -180,6 +229,18 @@ class ProxyRuntime:
             repair pass (issue #488) before strict validation in
             :meth:`execute`.  Off by default — behaviour is then byte-identical
             to strict validation.
+        retry_policy: Opt-in bounded-backoff retry for transient upstream
+            failures in :meth:`execute` (issue #529).  ``None`` (default) keeps
+            today's single-attempt behaviour.
+        rate_limiter: Opt-in per-session invocation quotas on the meta-tools
+            (issue #482).  ``None`` (default) applies no limits.
+        result_cache: Opt-in response cache for read-only tools (issue #512).
+            ``None`` (default) disables caching; results are never cached unless
+            this is set *and* the tool is upstream-declared read-only.
+        retry_sleep: Awaitable sleep used for retry backoff; injected in tests.
+            Defaults to :func:`asyncio.sleep`.
+        jitter_source: Optional ``() -> float in [0, 1)`` supplying the jitter
+            fraction per backoff delay.  Omitted ⇒ deterministic schedule.
     """
 
     def __init__(
@@ -198,6 +259,11 @@ class ProxyRuntime:
         on_invalid: Literal["skip", "raise"] = "skip",
         schema_limits: SchemaLimits | None = None,
         tolerant_args: bool = False,
+        retry_policy: RetryPolicy | None = None,
+        rate_limiter: RateLimiter | None = None,
+        result_cache: ToolResultCache | None = None,
+        retry_sleep: Sleeper | None = None,
+        jitter_source: Callable[[], float] | None = None,
     ) -> None:
         self._upstream = upstream
         self._mode = mode
@@ -242,6 +308,13 @@ class ProxyRuntime:
         self._on_invalid = on_invalid
         self._schema_limits = schema_limits or DEFAULT_SCHEMA_LIMITS
         self._tolerant_args = tolerant_args
+        #: Opt-in dispatch-path controls (issues #529 / #482 / #512). All inert
+        #: by default — an unconfigured runtime behaves exactly as before.
+        self._retry_policy = retry_policy
+        self._rate_limiter = rate_limiter
+        self._result_cache = result_cache
+        self._retry_sleep: Sleeper = retry_sleep or asyncio.sleep
+        self._jitter_source = jitter_source
         #: Compiled ``jsonschema`` validators keyed by ``tool_id`` so the hot
         #: ``execute`` path validates without recompiling (issue #484). Cleared
         #: on every catalog refresh.
@@ -314,6 +387,12 @@ class ProxyRuntime:
         self._cached_cards.clear()
         self._browsed_tool_ids.clear()
         self._validator_cache.clear()
+        # Cached upstream responses may be stale once the catalog changes — a
+        # refreshed tool_id can resolve to a different upstream schema (#512 /
+        # #507). All derived state below is rebuilt within this single
+        # synchronous call, so executions never observe a half-updated view.
+        if self._result_cache is not None:
+            self._result_cache.invalidate_all()
         report = CatalogRefreshReport()
         items: list[SelectableItem] = []
         upstream_index: dict[str, str] = {}
@@ -456,6 +535,18 @@ class ProxyRuntime:
             rejected.
         """
         started = perf_counter()
+        if self._rate_limiter is not None:
+            decision = self._rate_limiter.check(_TOOL_BROWSE)
+            if not decision.allowed:
+                limited = _rate_limited_error("", decision)
+                self._telemetry.browse_completed(
+                    limited,
+                    duration_ms=(perf_counter() - started) * 1000,
+                    query_chars=len(query) if query is not None else 0,
+                    path_depth=len([part for part in (path or "").split("/") if part]),
+                    raw_defs=self._raw_tool_defs,
+                )
+                return limited
         if (query is None) == (path is None):
             result: list[ChoiceCard] | GatewayError = GatewayError(
                 code="ARGS_INVALID",
@@ -635,18 +726,31 @@ class ProxyRuntime:
         self,
         tool_id: str,
         args: dict[str, Any],
-    ) -> ResultEnvelope | GatewayError:
+        *,
+        dry_run: bool = False,
+    ) -> ResultEnvelope | GatewayError | DryRunReport:
         """Validate *args*, invoke upstream, and return a compacted envelope.
+
+        The dispatch path applies the configured controls in order: per-session
+        quota check (issue #482) → dry-run short-circuit (issue #483) →
+        read-only response-cache lookup (issue #512) → upstream dispatch with
+        bounded retry (issue #529) → cache store.  All are inert unless
+        configured, so an unconfigured runtime behaves exactly as before.
 
         Args:
             tool_id: Canonical ``tool_id`` of the target tool.
             args: Arguments to pass through to the upstream MCP server.
+            dry_run: When ``True``, run every pre-dispatch step (hydration,
+                validation, quota evaluation) and return a :class:`DryRunReport`
+                **without** invoking upstream or writing artifacts (issue #483).
 
         Returns:
-            A :class:`ResultEnvelope` (post-firewall) or a
-            :class:`GatewayError`.  Validation failures map to
-            ``ARGS_INVALID`` per §4.4; transport / protocol failures map
-            to ``UPSTREAM_ERROR``.
+            A :class:`ResultEnvelope` (post-firewall), a :class:`GatewayError`,
+            or — when *dry_run* is set and the call is valid — a
+            :class:`DryRunReport`.  Validation failures map to ``ARGS_INVALID``
+            per §4.4 (identically for dry runs); transport / protocol failures
+            map to the §4.4 upstream taxonomy; a quota breach maps to
+            ``RATE_LIMITED``.
         """
         started = perf_counter()
         arg_keys = sorted(args)
@@ -684,19 +788,90 @@ class ProxyRuntime:
             )
             return validation_error
         upstream_name = self._upstream_names.by_tool_id.get(tool_id, hydrated.item.name)
-        try:
-            raw = await self._upstream.call_tool(upstream_name, args)
-        except Exception as exc:  # noqa: BLE001
-            code, retryable = classify_upstream_exception(exc)
+        read_only = not hydrated.item.side_effects
+
+        # Per-session quota (issue #482). Dry runs evaluate the limit for the
+        # report but never consume quota.
+        rate_decision = RateLimitDecision(allowed=True)
+        if self._rate_limiter is not None:
+            rate_decision = self._rate_limiter.check(
+                _TOOL_EXECUTE, tool_id=tool_id, record=not dry_run
+            )
+        if not dry_run and not rate_decision.allowed:
+            error = _rate_limited_error(tool_id, rate_decision)
+            self._telemetry.execute_failed(
+                tool_id,
+                error,
+                duration_ms=(perf_counter() - started) * 1000,
+                namespace=namespace,
+                arg_keys=arg_keys,
+            )
+            return error
+
+        # Dry run (issue #483): every pre-dispatch check ran above; report the
+        # would-be call without dispatching upstream or writing artifacts.
+        if dry_run:
+            report = DryRunReport(
+                tool_id=tool_id,
+                upstream_name=upstream_name,
+                args_valid=True,
+                annotations=_unverified_annotations(self._raw_tool_defs.get(tool_id, {})),
+                checks=[
+                    {"name": "schema_validation", "status": "pass"},
+                    {"name": "rate_limit", "status": "pass" if rate_decision.allowed else "fail"},
+                ],
+            )
+            self._telemetry.execute_dry_run(
+                tool_id,
+                duration_ms=(perf_counter() - started) * 1000,
+                namespace=namespace,
+                arg_keys=arg_keys,
+            )
+            return report
+
+        # Opt-in read-only response cache (issue #512). Only read-only tools the
+        # operator admitted are eligible; non-serialisable args skip caching.
+        cache_key: str | None = None
+        if self._result_cache is not None and read_only and self._result_cache.admits(tool_id):
+            cache_key = self._result_cache.key(tool_id, args)
+            if cache_key is not None:
+                cached = self._result_cache.get(cache_key)
+                if cached is not None:
+                    cached.provenance["cache_hit"] = True
+                    self._telemetry.execute_cache_hit(
+                        tool_id,
+                        cached,
+                        duration_ms=(perf_counter() - started) * 1000,
+                        namespace=namespace,
+                        arg_keys=arg_keys,
+                    )
+                    return cached
+
+        # Upstream dispatch with bounded retry (issue #529). The default
+        # single-attempt policy makes this one call — identical to before.
+        outcome = await call_with_retry(
+            lambda: self._upstream.call_tool(upstream_name, args),
+            policy=self._retry_policy or _SINGLE_ATTEMPT,
+            classify=classify_upstream_exception,
+            sleep=self._retry_sleep,
+            jitter_source=self._jitter_source,
+        )
+        if outcome.error is not None:
+            failure = outcome.error
+            code, retryable = classify_upstream_exception(failure)
             # Full, unredacted detail goes to the operator-side log only; the
             # model-visible message is classified, length-capped, and stripped
             # of control characters (issue #485).
             logger.warning(
-                "proxy_runtime: upstream call for %s failed [%s]: %r", tool_id, code, exc
+                "proxy_runtime: upstream call for %s failed [%s] after %d attempt(s): %r",
+                tool_id,
+                code,
+                outcome.attempts,
+                failure,
             )
             error = GatewayError(
                 code=code,
-                message=f"upstream call failed: {redact_upstream_detail(str(exc))}",
+                message=f"upstream call failed: {redact_upstream_detail(str(failure))}",
                 path=tool_id,
                 retryable=retryable,
             )
@@ -708,6 +883,8 @@ class ProxyRuntime:
                 arg_keys=arg_keys,
             )
             return error
+        raw = outcome.raw
+        assert raw is not None  # narrow: outcome.error is None ⇒ raw is populated
         envelope, binaries, full_text = mcp_result_to_envelope(raw, upstream_name)
         # Persist binaries on the session's artifact store so subsequent
         # tool_view calls can drill in.  Text content larger than the
@@ -746,7 +923,12 @@ class ProxyRuntime:
             arg_keys=arg_keys,
             full_text=full_text,
             binary_bytes=sum(len(data) for data, _mime, _label in binaries.values()),
+            attempts=outcome.attempts,
         )
+        # Store after firewall stats are stamped so a later cache hit carries the
+        # full envelope. Errors are never cached (issue #512).
+        if cache_key is not None and self._result_cache is not None and envelope.status != "error":
+            self._result_cache.put(cache_key, envelope)
         return envelope
 
     # ------------------------------------------------------------------
@@ -761,6 +943,17 @@ class ProxyRuntime:
         invalid.
         """
         started = perf_counter()
+        if self._rate_limiter is not None:
+            decision = self._rate_limiter.check(_TOOL_VIEW)
+            if not decision.allowed:
+                limited = _rate_limited_error(handle, decision)
+                self._telemetry.view_completed(
+                    handle,
+                    str(selector.get("type", "")),
+                    limited,
+                    duration_ms=(perf_counter() - started) * 1000,
+                )
+                return limited
         # ``drilldown`` is part of the ``ArtifactStore`` protocol (#472), so the
         # gateway no longer needs to assume a concrete ``InMemoryArtifactStore``
         # backend — any conformant store (e.g. ``JsonFileArtifactStore``) works.

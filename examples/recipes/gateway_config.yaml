@@ -42,3 +42,31 @@ quiet: false
 
 # MCP server display name advertised on init.
 name: contextweaver
+
+# --- Opt-in dispatch-path controls (off unless set) -------------------------
+# Bounded retry for transient upstream failures (issue #529). max_attempts: 1
+# (default) means no retries. Only transport-level failures are retried.
+# retry:
+#   max_attempts: 3
+#   base_delay: 0.2
+#   max_delay: 5.0
+#   jitter: 0.2
+
+# Per-session invocation quotas on the meta-tools (issue #482). Each block may
+# set max_calls_per_minute and/or max_calls_per_session; per_tool keys on the
+# canonical tool_id. A breach returns a RATE_LIMITED error and never dispatches.
+# rate_limits:
+#   tool_execute:
+#     max_calls_per_minute: 30
+#     max_calls_per_session: 200
+#   per_tool:
+#     "billing:refund@1#a1b2c3d4":
+#       max_calls_per_session: 3
+
+# Opt-in response cache for upstream-declared read-only tools (issue #512).
+# read_only must be true to enable; allow restricts which tool_ids may cache.
+# cache:
+#   read_only: true
+#   ttl_seconds: 60
+#   max_entries: 256
+#   # allow: ["files:read@1#0badc0de"]

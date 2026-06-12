@@ -32,6 +32,7 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from contextweaver.adapters.gateway_error import GatewayError
+from contextweaver.adapters.gateway_policy import DryRunReport
 from contextweaver.adapters.proxy_runtime import ProxyRuntime
 from contextweaver.envelope import ChoiceCard, ResultEnvelope
 
@@ -84,13 +85,15 @@ def make_gateway_meta_tools(runtime: ProxyRuntime) -> list[dict[str, Any]]:
                 "Invoke an upstream tool by canonical tool_id.  Arguments "
                 "are validated against the hydrated input schema before "
                 "dispatch and the response is compacted via the context "
-                "firewall."
+                "firewall.  Pass dry_run=true to validate and report the "
+                "would-be call without invoking upstream."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "tool_id": {"type": "string"},
                     "args": {"type": "object"},
+                    "dry_run": {"type": "boolean"},
                 },
                 "required": ["tool_id", "args"],
                 "additionalProperties": False,
@@ -146,6 +149,7 @@ async def dispatch_meta_tool(
     if name == TOOL_EXECUTE:
         tool_id = args.get("tool_id")
         tool_args = args.get("args", {}) or {}
+        dry_run = bool(args.get("dry_run", False))
         if not isinstance(tool_id, str) or not isinstance(tool_args, dict):
             return envelope_call_result(
                 GatewayError(
@@ -154,7 +158,7 @@ async def dispatch_meta_tool(
                 ),
                 label="tool_execute",
             )
-        envelope = await runtime.execute(tool_id, tool_args)
+        envelope = await runtime.execute(tool_id, tool_args, dry_run=dry_run)
         return envelope_call_result(envelope, label="tool_execute")
     if name == TOOL_VIEW:
         handle = args.get("handle")
@@ -203,6 +207,11 @@ def envelope_call_result(value: Any, *, label: str) -> dict[str, Any]:  # noqa: 
         return {
             "content": [{"type": "text", "text": json.dumps(value.to_dict())}],
             "isError": value.status == "error",
+        }
+    if isinstance(value, DryRunReport):
+        return {
+            "content": [{"type": "text", "text": json.dumps(value.to_dict())}],
+            "isError": False,
         }
     if isinstance(value, list):
         payload = [c.to_dict() if isinstance(c, ChoiceCard) else c for c in value]

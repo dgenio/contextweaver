@@ -23,6 +23,7 @@ _GATEWAY_META_SCHEMAS: tuple[dict[str, Any], ...] = (
         "properties": {
             "tool_id": {"type": "string"},
             "args": {"type": "object"},
+            "dry_run": {"type": "boolean"},
         },
         "required": ["tool_id", "args"],
         "additionalProperties": False,

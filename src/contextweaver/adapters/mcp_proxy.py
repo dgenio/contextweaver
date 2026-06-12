@@ -86,13 +86,15 @@ def make_proxy_meta_tools(runtime: ProxyRuntime) -> list[dict[str, Any]]:
             "description": (
                 "Invoke an upstream tool by canonical tool_id.  Arguments "
                 "are validated against the hydrated input schema before "
-                "dispatch."
+                "dispatch.  Pass dry_run=true to validate and report the "
+                "would-be call without invoking upstream."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "tool_id": {"type": "string"},
                     "args": {"type": "object"},
+                    "dry_run": {"type": "boolean"},
                 },
                 "required": ["tool_id", "args"],
                 "additionalProperties": False,
@@ -164,6 +166,7 @@ async def dispatch_proxy_request(
         if name == TOOL_EXECUTE:
             tool_id = args.get("tool_id")
             tool_args = args.get("args", {}) or {}
+            dry_run = bool(args.get("dry_run", False))
             if not isinstance(tool_id, str) or not isinstance(tool_args, dict):
                 return envelope_call_result(
                     GatewayError(
@@ -172,7 +175,7 @@ async def dispatch_proxy_request(
                     ),
                     label=TOOL_EXECUTE,
                 )
-            envelope = await runtime.execute(tool_id, tool_args)
+            envelope = await runtime.execute(tool_id, tool_args, dry_run=dry_run)
             return envelope_call_result(envelope, label=TOOL_EXECUTE)
         return envelope_call_result(
             GatewayError(
