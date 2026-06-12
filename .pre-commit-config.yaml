@@ -15,3 +15,18 @@ repos:
         args: [--config, pyproject.toml]
       - id: ruff
         args: [--fix, --config, pyproject.toml]
+
+  # Regenerate llms.txt / llms-full.txt whenever a source doc (or the generator)
+  # changes, so the committed copies never drift from the docs. This is the
+  # local, auto-fixing mirror of CI's gating `make llms-check`: if the hook
+  # rewrites either file, pre-commit reports the change and the commit must be
+  # re-staged (same flow as ruff-format above). Sources are the docs listed in
+  # scripts/gen_llms.py (README.md + docs/**/*.md).
+  - repo: local
+    hooks:
+      - id: llms-drift
+        name: regenerate llms.txt / llms-full.txt from docs
+        entry: python scripts/gen_llms.py
+        language: system
+        pass_filenames: false
+        files: ^(README\.md|docs/.*\.md|scripts/gen_llms\.py)$
