@@ -46,15 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AsyncArtifactStore`, `AsyncEpisodicStore`, and `AsyncFactStore` protocols
   (`contextweaver.store.async_protocols`) mirror the sync surface so
   network-backed backends can avoid blocking the async-first context pipeline.
-  `to_async(store)` wraps any *thread-safe* sync backend as the matching async
-  protocol via `asyncio.to_thread`; `to_sync(async_store, loop)` does the
-  inverse. `ContextManager` now accepts async store backends (via `StoreBundle`)
-  and keeps the event loop responsive during `await build(...)` by offloading
-  the synchronous pipeline body to a worker thread while the async store I/O
-  runs on a private loop thread; the loop thread is released automatically when
-  the manager is garbage-collected (via `weakref.finalize`, so no new public
-  `close()` method is added to `ContextManager`). Concurrent `build()` calls on
-  one manager serialize on an internal lock so the offloaded pipeline runs never
+  `to_async(store)` wraps any sync backend as the matching async protocol via
+  `asyncio.to_thread` (each bridge serializes concurrent awaits on itself with a
+  per-bridge lock, since the in-memory backends are not thread-safe);
+  `to_sync(async_store, loop)` does the inverse. `ContextManager` now accepts
+  async store backends (via `StoreBundle`) and keeps the event loop responsive
+  during `await build(...)` and `await build_call_prompt(...)` by offloading the
+  synchronous pipeline body to a worker thread while the async store I/O runs on
+  a private loop thread; the loop thread is released automatically when the
+  manager is garbage-collected (via `weakref.finalize`, so no new public
+  `close()` method is added to `ContextManager`). Concurrent build calls on one
+  manager serialize on an internal lock so the offloaded pipeline runs never
   race on the thread-unsafe in-memory stores.
   Async conformance checks (`check_async_*_conformance`) ship in
   `contextweaver.store.testing`. (Thread-affine backends such as `SqliteEventLog`

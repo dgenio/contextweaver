@@ -13,6 +13,7 @@ public method surface is unchanged.  The heavy assembly logic lives in
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from contextweaver.context import route_build as _route_build
@@ -158,8 +159,25 @@ class _RoutingMixin(_ManagerState):
     ) -> ContextPack:
         """Async wrapper for :meth:`_build_call_prompt`.
 
+        When the manager is *async-backed* (issue #495), the synchronous
+        pipeline body is offloaded to a worker thread — mirroring :meth:`build`
+        — so the blocking async-store I/O driven through the store bridges does
+        not stall the caller's event loop.  With synchronous stores it runs
+        inline (the event loop already serialises it).
+
         See :meth:`_build_call_prompt` for parameter documentation.
         """
+        if self._async_backed:
+            return await asyncio.to_thread(
+                self._build_call_prompt,
+                tool_id=tool_id,
+                query=query,
+                catalog=catalog,
+                schema=schema,
+                examples=examples,
+                constraints=constraints,
+                budget_tokens=budget_tokens,
+            )
         return self._build_call_prompt(
             tool_id=tool_id,
             query=query,

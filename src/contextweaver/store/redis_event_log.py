@@ -40,6 +40,12 @@ class RedisEventLog:
     Keys: ``{namespace}:events:items`` (hash ``id`` -> JSON
     :class:`~contextweaver.types.ContextItem`) and ``{namespace}:events:order``
     (list of ids in insertion order).
+
+    Performance: the non-indexed reads (:meth:`filter_by_kind`, :meth:`children`,
+    :meth:`parent`, :meth:`tail`, :meth:`query`) fetch and JSON-decode the full
+    log via :meth:`all` on each call, mirroring the in-memory backend's
+    semantics.  This is O(n) per call and fine for typical gateway logs; a
+    server-side index is a future optimisation if logs grow large.
     """
 
     def __init__(

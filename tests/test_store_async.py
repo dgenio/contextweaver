@@ -20,10 +20,11 @@ from pathlib import Path
 import pytest
 
 from contextweaver.context.manager import ContextManager
+from contextweaver.routing.catalog import Catalog
 from contextweaver.store import is_async_store, to_async, to_sync
 from contextweaver.store._async_to_sync import _LoopThread
 from contextweaver.store.artifacts import InMemoryArtifactStore
-from contextweaver.store.async_protocols import AsyncArtifactStore
+from contextweaver.store.async_protocols import AsyncArtifactStore, AsyncEventLog
 from contextweaver.store.bundle import StoreBundle
 from contextweaver.store.episodic import Episode, InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
@@ -37,7 +38,7 @@ from contextweaver.store.testing import (
     check_async_fact_store_conformance,
     check_event_log_conformance,
 )
-from contextweaver.types import ContextItem, ItemKind
+from contextweaver.types import ContextItem, ItemKind, SelectableItem
 
 # ---------------------------------------------------------------------------
 # Async conformance over to_async(<sync backend>)
@@ -260,3 +261,74 @@ async def test_concurrent_async_builds_serialize_per_manager() -> None:
         assert {pack.prompt for pack in packs} == {expected}
     finally:
         mgr._store_loop_finalizer()
+
+
+async def test_async_build_call_prompt_does_not_block_event_loop() -> None:
+    """``build_call_prompt`` must offload like ``build`` for async-backed managers.
+
+    Audit finding A: the async ``build_call_prompt`` previously ran the pipeline
+    inline, so an async-backed manager blocked the caller's event loop on the
+    store bridge. It now offloads to a worker thread; the ticker must keep
+    advancing while the ~0.2s store read is in flight.
+    """
+    catalog = Catalog()
+    catalog.register(
+        SelectableItem(id="db_read", kind="tool", name="read_db", description="Read", tags=["data"])
+    )
+    mgr = ContextManager(stores=StoreBundle(event_log=_SlowAsyncEventLog(delay=0.2)))
+    try:
+        mgr.event_log.append(ContextItem(id="u1", kind=ItemKind.user_turn, text="read data"))
+
+        ticks = 0
+
+        async def ticker() -> None:
+            nonlocal ticks
+            while True:
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        tick_task = asyncio.create_task(ticker())
+        start = time.perf_counter()
+        await mgr.build_call_prompt(tool_id="db_read", query="read data", catalog=catalog)
+        elapsed = time.perf_counter() - start
+        tick_task.cancel()
+
+        assert elapsed >= 0.2
+        assert ticks >= 5
+    finally:
+        mgr._store_loop_finalizer()
+
+
+class _ConcurrencyProbeEventLog(InMemoryEventLog):
+    """An :class:`InMemoryEventLog` that records the peak concurrent ``append``."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.in_flight = 0
+        self.max_in_flight = 0
+
+    def append(self, item: ContextItem) -> None:
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        time.sleep(0.02)  # widen the window an unserialized bridge would overlap
+        try:
+            super().append(item)
+        finally:
+            self.in_flight -= 1
+
+
+async def test_to_async_serializes_concurrent_calls_on_one_bridge() -> None:
+    """A per-bridge lock must stop concurrent awaits racing a thread-unsafe store.
+
+    Audit finding B: ``to_async`` offloads each call to a worker-thread pool, so
+    a ``gather`` of appends would otherwise run the thread-unsafe in-memory store
+    from several threads at once. The bridge's lock must serialize them.
+    """
+    probe = _ConcurrencyProbeEventLog()
+    bridge: AsyncEventLog = to_async(probe)  # type: ignore[assignment]
+    items = [ContextItem(id=f"i{n}", kind=ItemKind.user_turn, text=str(n)) for n in range(6)]
+
+    await asyncio.gather(*(bridge.append(item) for item in items))
+
+    assert probe.max_in_flight == 1  # never two appends in flight at once
+    assert await bridge.count() == 6  # all appended, none lost

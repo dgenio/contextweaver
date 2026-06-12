@@ -15,17 +15,25 @@ direction (async store -> sync protocol, used by
 
 Caveat — thread affinity: :func:`asyncio.to_thread` dispatches to a worker pool,
 so the wrapped store must be safe to call from a thread other than the one that
-created it.  The in-memory and JSON-file backends qualify (the latter guards
-its state with a lock).  A *thread-affine* backend such as
+created it.  A *thread-affine* backend such as
 :class:`~contextweaver.store.sqlite_event_log.SqliteEventLog` (its connection is
 opened with ``check_same_thread=True``) is **not** a valid target for
 :func:`to_async`; its async story is a future native ``aiosqlite`` backend.
+
+Concurrency: the in-memory backends are not internally synchronised, so each
+bridge holds a per-bridge :class:`asyncio.Lock` (see :class:`_BridgeBase`) that
+serialises concurrent awaits on the *same* bridged store — without it, an
+``asyncio.gather`` of two calls would run the wrapped store from two worker
+threads at once and race.  The lock is per bridge, so unrelated stores and other
+event-loop tasks still proceed concurrently; only same-store calls serialise.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+import inspect
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from contextweaver.store.async_protocols import (
     AsyncArtifactStore,
@@ -40,33 +48,53 @@ if TYPE_CHECKING:
     from contextweaver.store.protocols import ArtifactStore, EpisodicStore, EventLog, FactStore
     from contextweaver.types import ArtifactRef, ContextItem, ItemKind
 
+_S = TypeVar("_S")
+_T = TypeVar("_T")
 
-class _AsyncEventLogBridge:
+
+class _BridgeBase(Generic[_S]):
+    """Shared inner-store handle + offload/serialisation for the sync→async bridges.
+
+    :meth:`_call` offloads the wrapped synchronous method to a worker thread via
+    :func:`asyncio.to_thread` (so the event loop stays free) while holding a
+    per-bridge :class:`asyncio.Lock`, so concurrent awaits on the same bridge can
+    never run the wrapped store from two threads at once — required because the
+    in-memory backends are not thread-safe (issue #495).
+    """
+
+    def __init__(self, inner: _S) -> None:
+        self._inner = inner
+        self._lock = asyncio.Lock()
+
+    async def _call(self, fn: Callable[..., _T], *args: Any) -> _T:  # noqa: ANN401 - forwards arbitrary store-method args verbatim
+        """Run *fn(\\*args)* on a worker thread under the per-bridge lock."""
+        async with self._lock:
+            return await asyncio.to_thread(fn, *args)
+
+
+class _AsyncEventLogBridge(_BridgeBase["EventLog"]):
     """Expose a sync :class:`EventLog` through the :class:`AsyncEventLog` protocol."""
 
-    def __init__(self, inner: EventLog) -> None:
-        self._inner = inner
-
     async def append(self, item: ContextItem) -> None:
-        await asyncio.to_thread(self._inner.append, item)
+        await self._call(self._inner.append, item)
 
     async def get(self, item_id: str) -> ContextItem:
-        return await asyncio.to_thread(self._inner.get, item_id)
+        return await self._call(self._inner.get, item_id)
 
     async def all(self) -> list[ContextItem]:
-        return await asyncio.to_thread(self._inner.all)
+        return await self._call(self._inner.all)
 
     async def filter_by_kind(self, *kinds: ItemKind) -> list[ContextItem]:
-        return await asyncio.to_thread(self._inner.filter_by_kind, *kinds)
+        return await self._call(self._inner.filter_by_kind, *kinds)
 
     async def tail(self, n: int) -> list[ContextItem]:
-        return await asyncio.to_thread(self._inner.tail, n)
+        return await self._call(self._inner.tail, n)
 
     async def children(self, parent_id: str) -> list[ContextItem]:
-        return await asyncio.to_thread(self._inner.children, parent_id)
+        return await self._call(self._inner.children, parent_id)
 
     async def parent(self, item_id: str) -> ContextItem | None:
-        return await asyncio.to_thread(self._inner.parent, item_id)
+        return await self._call(self._inner.parent, item_id)
 
     async def query(
         self,
@@ -74,20 +102,17 @@ class _AsyncEventLogBridge:
         since: int | None = None,
         limit: int | None = None,
     ) -> list[ContextItem]:
-        return await asyncio.to_thread(self._inner.query, kinds, since, limit)
+        return await self._call(self._inner.query, kinds, since, limit)
 
     async def count(self) -> int:
-        return await asyncio.to_thread(self._inner.count)
+        return await self._call(self._inner.count)
 
     async def close(self) -> None:
-        await asyncio.to_thread(self._inner.close)
+        await self._call(self._inner.close)
 
 
-class _AsyncArtifactStoreBridge:
+class _AsyncArtifactStoreBridge(_BridgeBase["ArtifactStore"]):
     """Expose a sync :class:`ArtifactStore` through the :class:`AsyncArtifactStore` protocol."""
-
-    def __init__(self, inner: ArtifactStore) -> None:
-        self._inner = inner
 
     async def put(
         self,
@@ -96,78 +121,72 @@ class _AsyncArtifactStoreBridge:
         media_type: str = "application/octet-stream",
         label: str = "",
     ) -> ArtifactRef:
-        return await asyncio.to_thread(self._inner.put, handle, content, media_type, label)
+        return await self._call(self._inner.put, handle, content, media_type, label)
 
     async def get(self, handle: str) -> bytes:
-        return await asyncio.to_thread(self._inner.get, handle)
+        return await self._call(self._inner.get, handle)
 
     async def ref(self, handle: str) -> ArtifactRef:
-        return await asyncio.to_thread(self._inner.ref, handle)
+        return await self._call(self._inner.ref, handle)
 
     async def list_refs(self) -> list[ArtifactRef]:
-        return await asyncio.to_thread(self._inner.list_refs)
+        return await self._call(self._inner.list_refs)
 
     async def delete(self, handle: str) -> None:
-        await asyncio.to_thread(self._inner.delete, handle)
+        await self._call(self._inner.delete, handle)
 
     async def exists(self, handle: str) -> bool:
-        return await asyncio.to_thread(self._inner.exists, handle)
+        return await self._call(self._inner.exists, handle)
 
     async def metadata(self, handle: str) -> ArtifactRef:
-        return await asyncio.to_thread(self._inner.metadata, handle)
+        return await self._call(self._inner.metadata, handle)
 
     async def drilldown(self, handle: str, selector: dict[str, Any]) -> str:
-        return await asyncio.to_thread(self._inner.drilldown, handle, selector)
+        return await self._call(self._inner.drilldown, handle, selector)
 
 
-class _AsyncEpisodicStoreBridge:
+class _AsyncEpisodicStoreBridge(_BridgeBase["EpisodicStore"]):
     """Expose a sync :class:`EpisodicStore` through the :class:`AsyncEpisodicStore` protocol."""
 
-    def __init__(self, inner: EpisodicStore) -> None:
-        self._inner = inner
-
     async def add(self, episode: Episode) -> None:
-        await asyncio.to_thread(self._inner.add, episode)
+        await self._call(self._inner.add, episode)
 
     async def get(self, episode_id: str) -> Episode | None:
-        return await asyncio.to_thread(self._inner.get, episode_id)
+        return await self._call(self._inner.get, episode_id)
 
     async def search(self, query: str, top_k: int = 5) -> list[Episode]:
-        return await asyncio.to_thread(self._inner.search, query, top_k)
+        return await self._call(self._inner.search, query, top_k)
 
     async def all(self) -> list[Episode]:
-        return await asyncio.to_thread(self._inner.all)
+        return await self._call(self._inner.all)
 
     async def latest(self, n: int = 3) -> list[tuple[str, str, dict[str, Any]]]:
-        return await asyncio.to_thread(self._inner.latest, n)
+        return await self._call(self._inner.latest, n)
 
     async def delete(self, episode_id: str) -> None:
-        await asyncio.to_thread(self._inner.delete, episode_id)
+        await self._call(self._inner.delete, episode_id)
 
 
-class _AsyncFactStoreBridge:
+class _AsyncFactStoreBridge(_BridgeBase["FactStore"]):
     """Expose a sync :class:`FactStore` through the :class:`AsyncFactStore` protocol."""
 
-    def __init__(self, inner: FactStore) -> None:
-        self._inner = inner
-
     async def put(self, fact: Fact) -> None:
-        await asyncio.to_thread(self._inner.put, fact)
+        await self._call(self._inner.put, fact)
 
     async def get(self, fact_id: str) -> Fact:
-        return await asyncio.to_thread(self._inner.get, fact_id)
+        return await self._call(self._inner.get, fact_id)
 
     async def get_by_key(self, key: str) -> list[Fact]:
-        return await asyncio.to_thread(self._inner.get_by_key, key)
+        return await self._call(self._inner.get_by_key, key)
 
     async def list_keys(self, prefix: str = "") -> list[str]:
-        return await asyncio.to_thread(self._inner.list_keys, prefix)
+        return await self._call(self._inner.list_keys, prefix)
 
     async def delete(self, fact_id: str) -> None:
-        await asyncio.to_thread(self._inner.delete, fact_id)
+        await self._call(self._inner.delete, fact_id)
 
     async def all(self) -> list[Fact]:
-        return await asyncio.to_thread(self._inner.all)
+        return await self._call(self._inner.all)
 
 
 def to_async(
@@ -200,8 +219,6 @@ def to_async(
 
 def _is_async(store: object) -> bool:
     """Return ``True`` if *store*'s representative method is a coroutine function."""
-    import inspect
-
     for name in ("append", "put", "add"):
         method = getattr(store, name, None)
         if method is not None:
