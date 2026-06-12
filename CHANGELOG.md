@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Stdlib SQLite episodic & fact stores (#496).** New `SqliteEpisodicStore`
+  and `SqliteFactStore` (`contextweaver.store`) give long-lived agents durable
+  episodic/fact memory with zero external services, built on the same
+  `_sqlite_base` scaffolding as `SqliteEventLog`. They are schema-versioned,
+  re-instantiable against an existing file, and can share one database file
+  with the event log (each store type tracks its own migrations under a
+  distinct version table). `SqliteEpisodicStore.search` delegates ranking to a
+  transient in-memory store, and `SqliteFactStore` keeps `fact_id` ordering, so
+  swapping either backend for its in-memory counterpart leaves context-build
+  output byte-identical. (`apply_migrations` / `schema_version` gained an
+  optional `version_table` argument to support the shared-file layout.)
 - **Async store protocol variants (#495).** New `AsyncEventLog`,
   `AsyncArtifactStore`, `AsyncEpisodicStore`, and `AsyncFactStore` protocols
   (`contextweaver.store.async_protocols`) mirror the sync surface so

@@ -13,7 +13,9 @@ from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
 from contextweaver.store.json_file_artifacts import JsonFileArtifactStore
+from contextweaver.store.sqlite_episodic import SqliteEpisodicStore
 from contextweaver.store.sqlite_event_log import SqliteEventLog
+from contextweaver.store.sqlite_facts import SqliteFactStore
 from contextweaver.store.testing import (
     check_artifact_store_conformance,
     check_episodic_store_conformance,
@@ -49,5 +51,13 @@ def test_in_memory_episodic_store_conformance() -> None:
     check_episodic_store_conformance(InMemoryEpisodicStore)
 
 
+def test_sqlite_episodic_store_conformance() -> None:
+    check_episodic_store_conformance(lambda: SqliteEpisodicStore(":memory:"))
+
+
 def test_in_memory_fact_store_conformance() -> None:
     check_fact_store_conformance(InMemoryFactStore)
+
+
+def test_sqlite_fact_store_conformance() -> None:
+    check_fact_store_conformance(lambda: SqliteFactStore(":memory:"))

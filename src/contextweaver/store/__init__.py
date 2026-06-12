@@ -17,7 +17,9 @@ from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
 from contextweaver.store.json_file_artifacts import JsonFileArtifactStore
+from contextweaver.store.sqlite_episodic import SqliteEpisodicStore
 from contextweaver.store.sqlite_event_log import SqliteEventLog
+from contextweaver.store.sqlite_facts import SqliteFactStore
 
 __all__ = [
     "InMemoryArtifactStore",
@@ -25,7 +27,9 @@ __all__ = [
     "InMemoryEventLog",
     "InMemoryFactStore",
     "JsonFileArtifactStore",
+    "SqliteEpisodicStore",
     "SqliteEventLog",
+    "SqliteFactStore",
     "StoreBundle",
     "is_async_store",
     "to_async",
