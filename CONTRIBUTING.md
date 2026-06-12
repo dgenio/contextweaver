@@ -17,6 +17,12 @@ pre-commit install
 make ci     # the validation gate — everything below must pass
 ```
 
+**Fastest path — open in Codespaces:**
+Click "Code → Open with Codespaces" on GitHub. The dev container installs all dev dependencies and pre-commit hooks automatically.
+
+An `.editorconfig` is included — most editors pick it up automatically or via a plugin.
+
+
 `pre-commit install` wires up `ruff format`, `ruff check --fix`, and
 standard file-hygiene hooks to every `git commit`. Hooks may modify
 files — re-stage with `git add` if needed.
