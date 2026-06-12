@@ -75,7 +75,8 @@ def _to_sync_if_async(store: object, loop: _LoopThread | None) -> object:
     async store is present.
     """
     if is_async_store(store):
-        assert loop is not None  # set by ContextManager when any store is async
+        # ContextManager always sets the loop when any store is async.
+        assert loop is not None  # narrow: _LoopThread | None -> _LoopThread for the checker
         return to_sync(cast(Any, store), loop)
     return store
 

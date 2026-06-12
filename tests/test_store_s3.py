@@ -23,9 +23,7 @@ except ImportError:  # pragma: no cover - moto/boto3 are dev dependencies
     boto3 = None  # type: ignore[assignment]
     moto = None  # type: ignore[assignment]
 
-pytestmark = pytest.mark.skipif(
-    boto3 is None or moto is None, reason="moto/boto3 not installed"
-)
+pytestmark = pytest.mark.skipif(boto3 is None or moto is None, reason="moto/boto3 not installed")
 
 _BUCKET = "cw-artifacts"
 
