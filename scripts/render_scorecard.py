@@ -31,6 +31,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from _golden import check_text_artifacts, write_text_artifacts
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT = REPO_ROOT / "benchmarks" / "results" / "latest.json"
 DEFAULT_OUTPUT = REPO_ROOT / "benchmarks" / "scorecard.md"
@@ -654,26 +656,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     payload = json.loads(input_path.read_text(encoding="utf-8"))
-    rendered = render(payload)
+    rendered = {output_path: render(payload)}
 
     if args.check:
-        existing = output_path.read_text(encoding="utf-8") if output_path.exists() else ""
-        if existing != rendered:
-            # Show a brief diff hint so CI output is actionable.
-            old_lines = existing.splitlines()
-            new_lines = rendered.splitlines()
-            diff_count = sum(1 for a, b in zip(old_lines, new_lines, strict=False) if a != b)
-            diff_count += abs(len(old_lines) - len(new_lines))
-            print(
-                f"error: {output_path} is out of date ({diff_count} lines differ). "
-                f"Run `make scorecard`.",
-                file=sys.stderr,
-            )
-            return 1
-        return 0
+        return check_text_artifacts(rendered, label="scorecard", regen="make scorecard")
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(rendered, encoding="utf-8")
+    write_text_artifacts(rendered)
     print(f"Wrote {output_path}")
     return 0
 

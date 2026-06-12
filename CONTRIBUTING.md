@@ -56,13 +56,14 @@ All commands run from the repo root after `pip install -e ".[dev]"`:
 ```bash
 make fmt              # auto-format with ruff
 make lint             # lint with ruff (also runs in pre-commit)
-make type             # strict mypy type-check
+make type             # strict mypy type-check (src/ + examples/ + scripts/)
 make test             # pytest suite (1100+ tests, ~15 s)
 make example          # run every example script end-to-end
 make demo             # run `contextweaver demo`
 make architectures    # run the reference architectures
 make ci               # full validation gate (fmt + lint + type + test +
-                      #                       schemas-check + example + demo)
+                      #   drift-check + module-size-check + doc-snippets-check +
+                      #   readme-version-check + example + demo)
 make docs             # build the mkdocs site to ./site/
 make docs-serve       # local docs server at http://127.0.0.1:8000
 make benchmark        # write benchmarks/results/latest.json (deterministic)
@@ -122,7 +123,9 @@ Re-running after `pip install -e ".[dev]"` should resolve it.
 - **Docstrings** — use Google-style docstrings on all public classes and functions.
 - **Line length** — 100 characters maximum (enforced by ruff).
 - **Imports** — `from __future__ import annotations` at the top of every file.
-- **Module size** — target ≤ 300 lines per module (except `__main__.py`).
+- **Module size** — ≤ 300 lines per module (a few named exemptions); enforced by
+  `make module-size-check`. New modules must stay under the limit; pre-existing
+  oversized modules are frozen at a grandfathered baseline and may not grow.
 - **Determinism** — all algorithms must be deterministic; tie-break by ID / sorted keys.
 
 ## Testing requirements

@@ -329,6 +329,7 @@ pip install -e ".[dev]"
 
 ### Adopting in 5 lines from an existing OpenAI / Anthropic / Gemini agent
 
+<!-- snippet: skip (illustrative; `messages` is the caller's existing history) -->
 ```python
 from contextweaver.adapters.openai_messages import from_openai_messages
 from contextweaver.context.manager import ContextManager
@@ -374,6 +375,7 @@ print(pack.stats)    # what was kept, dropped, deduplicated
 
 ### Route a large tool catalog
 
+<!-- snippet: skip (illustrative; needs a real catalog.json on disk) -->
 ```python
 from contextweaver.routing.catalog import Catalog, load_catalog_json
 from contextweaver.routing.tree import TreeBuilder

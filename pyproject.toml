@@ -413,6 +413,16 @@ ignore_missing_imports = true
 module = "typer.*"
 ignore_missing_imports = true
 
+# ``referencing`` ships with jsonschema>=4.18 (a [dev] dep) and backs the
+# weaver-spec conformance script's local $ref resolver; ``langchain_core`` is
+# the [langchain] extra used by the LangChain memory demo. Both are optional
+# from the type-check's perspective (examples/ and scripts/ are now gated,
+# issue #539), so treat their imports as resolvable whether or not the extra
+# is installed in the type-check environment.
+[[tool.mypy.overrides]]
+module = ["referencing", "referencing.*", "langchain_core", "langchain_core.*"]
+ignore_missing_imports = true
+
 # Typer's ``@app.command()`` decorator is typed as a generic callable in 0.9-
 # 0.12, which trips ``disallow_untyped_decorators`` under strict mypy.
 # Carve out the Typer consumers rather than disable the strictness globally.

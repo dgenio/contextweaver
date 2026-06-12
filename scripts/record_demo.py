@@ -35,8 +35,11 @@ import argparse
 import json
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from _golden import check_text_artifacts, write_text_artifacts
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CASTS_DIR = _REPO_ROOT / "docs" / "assets" / "casts"
@@ -164,7 +167,7 @@ def _select_demos(names: list[str] | None) -> list[Demo]:
     return [valid[n] for n in names]
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -186,28 +189,24 @@ def main() -> int:
         default=_CASTS_DIR,
         help="Directory to write/check casts in.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     demos = _select_demos(args.demo)
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    rc = 0
-    for demo in demos:
-        stdout = _capture_stdout(demo.command)
-        cast = _synthesise_cast(demo, stdout)
-        target = args.output_dir / f"{demo.name}.cast"
-        if args.check:
-            if not target.exists():
-                sys.stderr.write(f"error: {target} missing — run scripts/record_demo.py\n")
-                rc = 1
-                continue
-            existing = target.read_text(encoding="utf-8")
-            if existing != cast:
-                sys.stderr.write(f"error: {target} is stale — re-run scripts/record_demo.py\n")
-                rc = 1
-        else:
-            target.write_text(cast, encoding="utf-8", newline="\n")
-            print(f"Wrote {target} ({len(cast)} chars)")
-    return rc
+    # Both modes must run the demos: the committed cast is derived from a fresh
+    # capture, so --check renders the same artifacts and diffs them against disk.
+    rendered = {
+        args.output_dir / f"{demo.name}.cast": _synthesise_cast(demo, _capture_stdout(demo.command))
+        for demo in demos
+    }
+
+    if args.check:
+        return check_text_artifacts(rendered, label="recorded demos", regen="make record-demos")
+
+    write_text_artifacts(rendered)
+    for target, cast in rendered.items():
+        print(f"Wrote {target} ({len(cast)} chars)")
+    return 0
 
 
 if __name__ == "__main__":

@@ -194,8 +194,8 @@ def main() -> None:
     _print_header("contextweaver -- Code-review bot reference architecture")
 
     catalog = Catalog()
-    for item in load_catalog_yaml(CATALOG_PATH):
-        catalog.register(item)
+    for selectable in load_catalog_yaml(CATALOG_PATH):
+        catalog.register(selectable)
     print(f"Loaded catalog: {len(catalog.all())} tools from {CATALOG_PATH.name}")
 
     router = _build_router(catalog)

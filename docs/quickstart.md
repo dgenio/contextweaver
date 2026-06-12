@@ -41,6 +41,7 @@ Time budget:
 If you have an OpenAI Chat Completions session saved as JSON, you can build
 a context pack in five lines (plus imports):
 
+<!-- snippet: skip (illustrative; reads the reader's own session.json) -->
 ```python
 import json
 from contextweaver.adapters.openai_messages import from_openai_messages
@@ -60,6 +61,7 @@ inverse for round-tripping back into the OpenAI SDK.
 
 Anthropic and Google Gemini have sibling adapters with the same shape:
 
+<!-- snippet: skip (illustrative fragment; mirrors the OpenAI block above) -->
 ```python
 from contextweaver.adapters.anthropic_messages import from_anthropic_messages
 from contextweaver.adapters.gemini_contents import from_gemini_contents

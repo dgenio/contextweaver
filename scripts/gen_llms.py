@@ -21,8 +21,10 @@ Layout of each output:
 from __future__ import annotations
 
 import argparse
-import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+from _golden import check_text_artifacts, write_text_artifacts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -279,7 +281,7 @@ def render_llms_index() -> str:
     return "".join(parts)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--check",
@@ -288,32 +290,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    full_target = REPO_ROOT / "llms-full.txt"
-    index_target = REPO_ROOT / "llms.txt"
-
-    full_new = render_llms_full()
-    index_new = render_llms_index()
+    rendered = {
+        REPO_ROOT / "llms-full.txt": render_llms_full(),
+        REPO_ROOT / "llms.txt": render_llms_index(),
+    }
 
     if args.check:
-        drift: list[str] = []
-        for target, new in ((full_target, full_new), (index_target, index_new)):
-            current = target.read_text(encoding="utf-8") if target.exists() else ""
-            if current != new:
-                drift.append(target.name)
-        if drift:
-            print(
-                f"llms drift detected in: {', '.join(drift)}. "
-                "Run `make llms` and commit the result.",
-                file=sys.stderr,
-            )
-            return 1
-        print("llms.txt and llms-full.txt are up to date")
-        return 0
+        return check_text_artifacts(rendered, label="llms", regen="make llms")
 
-    full_target.write_text(full_new, encoding="utf-8")
-    index_target.write_text(index_new, encoding="utf-8")
-    print(f"Wrote {full_target.name} ({len(full_new)} bytes)")
-    print(f"Wrote {index_target.name} ({len(index_new)} bytes)")
+    write_text_artifacts(rendered)
+    for target, body in rendered.items():
+        print(f"Wrote {target.name} ({len(body)} bytes)")
     return 0
 
 

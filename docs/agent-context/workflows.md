@@ -5,12 +5,15 @@
 ```bash
 make fmt      # ruff format src/ tests/ examples/ scripts/
 make lint     # ruff check src/ tests/ examples/ scripts/
-make type     # mypy src/
+make type     # mypy src/ examples/ scripts/  (examples + scripts gated too, #539)
 make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + schemas-check + example + demo
+make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
+make drift-check  # one gate over every generated-artifact drift check (#522; in `make ci`)
+make module-size-check  # enforce the ≤300-line convention, frozen baseline (#456; in `make ci`)
+make doc-snippets-check # execute README + curated docs Python snippets (#526; in `make ci`)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -30,15 +33,20 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
 
-> Gating CI steps beyond `make ci`: `make scorecard-check`,
-> `make readme-version-check` (#347), `make context-rot-check` (#349),
-> `make llms-check` (#389), `make record-demos-check` (#390),
-> `make gateway-scorecard-check` (#391), and `make weaver-conformance`.
-> `make smoke-eval` (#392) also runs in CI but remains non-gating.
-> (`make schemas-check` also gates, but it runs *inside* `make ci`.)
+> As of #474, `make ci` now mirrors the gating CI checks a contributor can run
+> offline: the consolidated generated-artifact drift gate `make drift-check`
+> (#522 — schemas, scorecards, recorded demos, llms.txt, context-rot SVG, and
+> the public-API manifest #518), plus `make module-size-check` (#456),
+> `make doc-snippets-check` (#526), and `make readme-version-check` (#347).
+> The individual `*-check` targets still exist for granular use, but you no
+> longer need to remember to run them separately before a PR.
+>
+> CI-only gates (not in `make ci` because they need the network or are heavy):
+> `make weaver-conformance` (fetches schemas) and the docs build job.
+> `make smoke-eval` (#392) and the benchmark job run in CI but remain non-gating.
 
-`make ci` runs all declared targets in sequence. Run the additional gating checks
-listed above before opening a PR when the affected artifacts or integrations change.
+`make ci` runs all declared targets in sequence. The CI-only gates above run on
+every PR regardless; run them locally when the affected integrations change.
 
 ## Command-Selection Rules
 

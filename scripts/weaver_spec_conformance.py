@@ -184,7 +184,7 @@ def _spec_to_jsonable(obj: object) -> object:
     return obj
 
 
-def _validate_against_schema(payload: dict[str, Any], schema_path: Path) -> None:
+def _validate_against_schema(payload: object, schema_path: Path) -> None:
     import jsonschema  # noqa: PLC0415  (optional dep, lazy)
 
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
