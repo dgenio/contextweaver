@@ -109,6 +109,13 @@ class RetryPolicy:
         if not isinstance(data, dict):
             raise ConfigError("retry policy config must be a mapping")
         codes = data.get("retryable_codes")
+        if codes is not None:
+            # A bare string is iterable, so ``tuple("FOO")`` would silently become
+            # ``("F", "O", "O")`` — reject anything that is not a list of strings.
+            if isinstance(codes, str) or not isinstance(codes, (list, tuple)):
+                raise ConfigError("retry.retryable_codes must be a list of strings")
+            if not all(isinstance(code, str) for code in codes):
+                raise ConfigError("retry.retryable_codes must contain only strings")
         return cls(
             max_attempts=int(data.get("max_attempts", 1)),
             base_delay=float(data.get("base_delay", 0.1)),

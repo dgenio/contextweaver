@@ -58,6 +58,24 @@ def test_retry_policy_from_dict_defaults_retryable_codes() -> None:
     assert policy.retryable_codes == DEFAULT_RETRYABLE_CODES
 
 
+def test_retry_policy_from_dict_accepts_explicit_codes() -> None:
+    policy = RetryPolicy.from_dict({"retryable_codes": ["UPSTREAM_TIMEOUT"]})
+    assert policy.retryable_codes == ("UPSTREAM_TIMEOUT",)
+
+
+@pytest.mark.parametrize(
+    "codes",
+    [
+        "UPSTREAM_TIMEOUT",  # bare string would split into characters
+        ["UPSTREAM_TIMEOUT", 5],  # non-string member
+        123,  # not a sequence
+    ],
+)
+def test_retry_policy_from_dict_rejects_bad_retryable_codes(codes: object) -> None:
+    with pytest.raises(ConfigError):
+        RetryPolicy.from_dict({"retryable_codes": codes})
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

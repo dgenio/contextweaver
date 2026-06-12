@@ -66,9 +66,13 @@ async def call_with_retry(
     The first failure is retried only when *classify* reports it retryable
     *and* its code is in :attr:`RetryPolicy.retryable_codes`, up to
     :attr:`RetryPolicy.max_attempts` total attempts.  Successful calls and
-    non-retryable failures return immediately.  This never raises: the final
-    exception is returned on :attr:`RetryOutcome.error` so the caller keeps its
-    single error-to-``GatewayError`` mapping.
+    non-retryable failures return immediately.  Any ``Exception`` raised by
+    *call* is captured and, once retries are exhausted or the failure is
+    non-retryable, returned on :attr:`RetryOutcome.error` so the caller keeps
+    its single error-to-``GatewayError`` mapping.  ``BaseException`` subclasses
+    that are not ``Exception`` — notably :class:`asyncio.CancelledError` — are
+    intentionally **not** caught and propagate immediately, so cancellation
+    during backoff is prompt.
 
     Args:
         call: Zero-arg coroutine performing one upstream dispatch.

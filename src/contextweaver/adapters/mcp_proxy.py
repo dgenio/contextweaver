@@ -166,12 +166,22 @@ async def dispatch_proxy_request(
         if name == TOOL_EXECUTE:
             tool_id = args.get("tool_id")
             tool_args = args.get("args", {}) or {}
-            dry_run = bool(args.get("dry_run", False))
-            if not isinstance(tool_id, str) or not isinstance(tool_args, dict):
+            dry_run = args.get("dry_run", False)
+            # MCP args are untyped at runtime; validate dry_run is a real boolean
+            # so a stray "false" string cannot accidentally enable dry-run
+            # (bool("false") is True) or diverge from the declared schema.
+            if (
+                not isinstance(tool_id, str)
+                or not isinstance(tool_args, dict)
+                or not isinstance(dry_run, bool)
+            ):
                 return envelope_call_result(
                     GatewayError(
                         code="ARGS_INVALID",
-                        message="tool_execute requires string 'tool_id' and object 'args'.",
+                        message=(
+                            "tool_execute requires string 'tool_id', object 'args', "
+                            "and optional boolean 'dry_run'."
+                        ),
                     ),
                     label=TOOL_EXECUTE,
                 )

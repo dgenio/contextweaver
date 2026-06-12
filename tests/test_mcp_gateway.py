@@ -121,6 +121,19 @@ async def test_dispatch_tool_execute_requires_string_tool_id() -> None:
     assert result["isError"] is True
 
 
+async def test_dispatch_tool_execute_rejects_non_boolean_dry_run() -> None:
+    # MCP args are untyped on the wire; a stray "false" must not enable dry-run
+    # (bool("false") is True). It is rejected as ARGS_INVALID instead.
+    runtime = _runtime()
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:"))
+    result = await dispatch_meta_tool(
+        runtime, TOOL_EXECUTE, {"tool_id": tool_id, "args": {"title": "x"}, "dry_run": "false"}
+    )
+    assert result["isError"] is True
+    body = json.loads(result["content"][0]["text"])
+    assert body["error"] == "ARGS_INVALID"
+
+
 async def test_dispatch_tool_view_invalid_handle() -> None:
     runtime = _runtime()
     result = await dispatch_meta_tool(

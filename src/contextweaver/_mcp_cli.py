@@ -54,7 +54,7 @@ from contextweaver.diagnostics import (
     render_diagnostic_report,
     summarize_diagnostics,
 )
-from contextweaver.exceptions import ContextWeaverError
+from contextweaver.exceptions import ConfigError, ContextWeaverError
 from contextweaver.store import JsonFileArtifactStore, SqliteEventLog, StoreBundle
 
 logger = logging.getLogger("contextweaver.mcp_cli")
@@ -255,10 +255,17 @@ def _build_dispatch_controls(
             "cache.read_only", cache_cfg.get("read_only", False)
         ):
             allow = cache_cfg.get("allow")
+            if allow is not None and (
+                isinstance(allow, str)
+                or not isinstance(allow, (list, tuple))
+                or not all(isinstance(item, str) for item in allow)
+            ):
+                # A bare string would otherwise become a set of characters.
+                raise ConfigError("cache.allow must be a list of tool_id strings")
             result_cache = ToolResultCache(
                 ttl_seconds=float(cache_cfg.get("ttl_seconds", 60.0)),
                 max_entries=int(cache_cfg.get("max_entries", 256)),
-                allow=frozenset(str(a) for a in allow) if allow is not None else None,
+                allow=frozenset(allow) if allow is not None else None,
             )
     except (ContextWeaverError, ValueError, TypeError) as exc:
         raise typer.BadParameter(str(exc), param_hint="--config") from exc
