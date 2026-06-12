@@ -469,6 +469,16 @@ invalidated wholesale on catalog refresh. A cache hit is marked
 `provenance["cache_hit"]=true`. Annotations are upstream-controlled, so caching
 is never inferred — it requires explicit operator opt-in.
 
+Read-only eligibility is derived from the upstream `readOnlyHint`, an
+**unverified** server-declared hint (see the SECURITY NOTE in
+`adapters/mcp.py` — these hints must not drive safety-critical decisions).
+Enabling `cache.read_only: true` with no `allow` list therefore trusts every
+upstream's self-declaration: a mutating tool that falsely declares itself
+read-only would have its first result cached and a second identical call served
+from cache **without** re-dispatching the side effect. Pair `read_only: true`
+with an explicit `allow` list of `tool_id`s for safety-critical deployments
+rather than trusting hints globally.
+
 **Dry run (issue #483).** `tool_execute` accepts an optional `dry_run: bool`.
 When set, the runtime performs hydration, argument validation, and quota
 evaluation, then returns a report **without** invoking upstream or writing

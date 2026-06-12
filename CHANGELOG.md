@@ -21,7 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     memoises identical `tool_execute` calls for tools the upstream marks
     read-only (operator opt-in via an optional allow-list). TTL- and size-bounded
     (LRU), argument-order-insensitive keys, errors never cached, invalidated on
-    catalog refresh.
+    catalog refresh. Read-only eligibility derives from the **unverified**
+    upstream `readOnlyHint`, so the docstring and `gateway_spec.md` §4.5 now warn
+    that `read_only: true` without an `allow` list trusts each upstream's
+    self-declaration and recommend pairing it with an `allow` list for
+    safety-critical tools.
   - **Dry run (#483).** `tool_execute(..., dry_run=true)` runs hydration,
     validation, and quota checks then returns a `DryRunReport` (resolved
     `tool_id`, upstream name, validation outcome, unverified annotations, check

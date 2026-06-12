@@ -206,6 +206,18 @@ class ToolResultCache:
     and mutating tools are never cached by the runtime.  Entries are evicted
     least-recently-used past :attr:`max_entries` and on TTL expiry; the cache is
     invalidated wholesale on catalog refresh.
+
+    .. warning::
+        Read-only eligibility is derived from the upstream ``readOnlyHint``
+        annotation (see the SECURITY NOTE in
+        :mod:`contextweaver.adapters.mcp`), which is a server-declared,
+        **unverified** hint.  Enabling caching with no :attr:`allow` list
+        therefore trusts every upstream's self-declaration: a mutating tool that
+        falsely declares itself read-only would have its first result cached and
+        a second identical call served from cache *without* re-dispatching the
+        side effect.  Caching stays off unless the operator opts in, and
+        safety-critical deployments should pair ``read_only: true`` with an
+        explicit :attr:`allow` list rather than trusting hints globally.
     """
 
     def __init__(
