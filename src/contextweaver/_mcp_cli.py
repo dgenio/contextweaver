@@ -40,6 +40,8 @@ import yaml
 
 from contextweaver._version import __version__
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
+from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
+from contextweaver.adapters.gateway_policy import RateLimitPolicy, RetryPolicy
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
@@ -52,6 +54,7 @@ from contextweaver.diagnostics import (
     render_diagnostic_report,
     summarize_diagnostics,
 )
+from contextweaver.exceptions import ConfigError, ContextWeaverError
 from contextweaver.store import JsonFileArtifactStore, SqliteEventLog, StoreBundle
 
 logger = logging.getLogger("contextweaver.mcp_cli")
@@ -93,6 +96,9 @@ _CONFIG_KEYS: frozenset[str] = frozenset(
         "diagnostics",
         "quiet",
         "state_dir",
+        "retry",
+        "rate_limits",
+        "cache",
     }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
@@ -210,7 +216,60 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         if not state_dir_path.is_absolute():
             state_dir_path = config_path.parent / state_dir_path
         data["state_dir"] = str(state_dir_path.resolve())
+    for mapping_key in ("retry", "rate_limits", "cache"):
+        if mapping_key in data and not isinstance(data[mapping_key], dict):
+            raise typer.BadParameter(f"{mapping_key} must be a mapping", param_hint="--config")
     return data
+
+
+def _build_dispatch_controls(
+    cfg: dict[str, Any],
+) -> tuple[RetryPolicy | None, RateLimiter | None, ToolResultCache | None]:
+    """Build the opt-in dispatch-path controls from config blocks (issues #529/#482/#512).
+
+    Reads the optional ``retry``, ``rate_limits``, and ``cache`` config blocks
+    and constructs the matching policy objects, validating them at startup.
+    A ``cache`` block only builds a cache when ``read_only`` is truthy
+    (caching is opt-in; the gateway still gates on the upstream read-only hint).
+
+    Args:
+        cfg: The validated config mapping from :func:`_load_serve_config`.
+
+    Returns:
+        ``(retry_policy, rate_limiter, result_cache)`` — each ``None`` when its
+        block is absent.
+
+    Raises:
+        typer.BadParameter: If any block is malformed.
+    """
+    try:
+        retry_policy = RetryPolicy.from_dict(cfg["retry"]) if "retry" in cfg else None
+        rate_limiter = (
+            RateLimiter(RateLimitPolicy.from_dict(cfg["rate_limits"]))
+            if "rate_limits" in cfg
+            else None
+        )
+        result_cache: ToolResultCache | None = None
+        cache_cfg = cfg.get("cache")
+        if isinstance(cache_cfg, dict) and _coerce_config_bool(
+            "cache.read_only", cache_cfg.get("read_only", False)
+        ):
+            allow = cache_cfg.get("allow")
+            if allow is not None and (
+                isinstance(allow, str)
+                or not isinstance(allow, (list, tuple))
+                or not all(isinstance(item, str) for item in allow)
+            ):
+                # A bare string would otherwise become a set of characters.
+                raise ConfigError("cache.allow must be a list of tool_id strings")
+            result_cache = ToolResultCache(
+                ttl_seconds=float(cache_cfg.get("ttl_seconds", 60.0)),
+                max_entries=int(cache_cfg.get("max_entries", 256)),
+                allow=frozenset(allow) if allow is not None else None,
+            )
+    except (ContextWeaverError, ValueError, TypeError) as exc:
+        raise typer.BadParameter(str(exc), param_hint="--config") from exc
+    return retry_policy, rate_limiter, result_cache
 
 
 def _load_tool_defs_from_catalog(catalog_path: Path) -> list[dict[str, Any]]:
@@ -361,6 +420,9 @@ def _build_runtime(
     cache_stable: bool,
     diagnostic_sink: DiagnosticSink | None = None,
     state_dir: Path | None = None,
+    retry_policy: RetryPolicy | None = None,
+    rate_limiter: RateLimiter | None = None,
+    result_cache: ToolResultCache | None = None,
 ) -> ProxyRuntime:
     """Construct a :class:`ProxyRuntime` populated from *catalog_path*.
 
@@ -376,6 +438,9 @@ def _build_runtime(
             with file-backed stores so artifact handles and event history
             survive a restart; when ``None`` (default), in-memory stores are
             used and state is lost on exit.
+        retry_policy: Optional upstream-retry policy (issue #529).
+        rate_limiter: Optional per-session quota enforcer (issue #482).
+        result_cache: Optional read-only response cache (issue #512).
 
     Returns:
         A ready-to-serve :class:`ProxyRuntime`.
@@ -393,6 +458,9 @@ def _build_runtime(
         cache_stable=cache_stable,
         diagnostic_sink=diagnostic_sink,
         context_manager=context_manager,
+        retry_policy=retry_policy,
+        rate_limiter=rate_limiter,
+        result_cache=result_cache,
     )
     runtime.register_tool_defs_sync(tool_defs)
     # Reuse the helper so test code can introspect the resulting catalog
@@ -592,9 +660,16 @@ def serve(
             "--gateway and --proxy are mutually exclusive", param_hint="--gateway"
         )
 
+    # Opt-in dispatch-path controls are config-file only (no CLI flags); they
+    # stay None unless a config block supplies them.
+    retry_policy: RetryPolicy | None = None
+    rate_limiter: RateLimiter | None = None
+    result_cache: ToolResultCache | None = None
+
     # Config file fills any option not passed explicitly on the command line.
     if config is not None:
         cfg = _load_serve_config(config)
+        retry_policy, rate_limiter, result_cache = _build_dispatch_controls(cfg)
 
         def _from_cli(param: str) -> bool:
             source = ctx.get_parameter_source(param)
@@ -644,6 +719,9 @@ def serve(
         cache_stable=cache_stable,
         diagnostic_sink=diagnostic_sink,
         state_dir=state_dir,
+        retry_policy=retry_policy,
+        rate_limiter=rate_limiter,
+        result_cache=result_cache,
     )
     tool_count = len(runtime.list_tool_ids())
 

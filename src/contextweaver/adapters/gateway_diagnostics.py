@@ -182,6 +182,51 @@ class GatewayTelemetry:
             attributes={"error_code": error.code, "arg_keys": arg_keys},
         )
 
+    def execute_dry_run(
+        self,
+        tool_id: str,
+        *,
+        duration_ms: float,
+        namespace: str | None,
+        arg_keys: list[str],
+    ) -> None:
+        """Record a dry-run execution (no upstream dispatch, issue #483)."""
+        if not self.enabled:
+            return
+        self.emit(
+            "execute.dry_run",
+            duration_ms=duration_ms,
+            tool_id=tool_id,
+            namespace=namespace,
+            attributes={"arg_keys": arg_keys, "dispatched": False},
+        )
+
+    def execute_cache_hit(
+        self,
+        tool_id: str,
+        envelope: ResultEnvelope,
+        *,
+        duration_ms: float,
+        namespace: str | None,
+        arg_keys: list[str],
+    ) -> None:
+        """Record a read-only response-cache hit served without dispatch (#512)."""
+        if not self.enabled:
+            return
+        self.emit(
+            "execute.cache_hit",
+            success=envelope.status != "error",
+            duration_ms=duration_ms,
+            tool_id=tool_id,
+            namespace=namespace,
+            attributes={
+                "arg_keys": arg_keys,
+                "status": envelope.status,
+                "cache_hit": True,
+                "dispatched": False,
+            },
+        )
+
     def execute_completed(
         self,
         tool_id: str,
@@ -192,8 +237,13 @@ class GatewayTelemetry:
         arg_keys: list[str],
         full_text: str,
         binary_bytes: int,
+        attempts: int = 1,
     ) -> None:
-        """Attach firewall stats and record compact-result savings."""
+        """Attach firewall stats and record compact-result savings.
+
+        ``attempts`` records how many upstream dispatch attempts the retry layer
+        made (issue #529); ``1`` for the default single-attempt path.
+        """
         original_tokens = count(full_text)
         compact_tokens = count(envelope.summary)
         artifact_ref = next(
@@ -233,6 +283,8 @@ class GatewayTelemetry:
                 ),
                 "artifact_refs": [ref.handle for ref in envelope.artifacts],
                 "firewall_triggered": triggered,
+                "attempts": attempts,
+                "cache_hit": False,
             },
         )
 

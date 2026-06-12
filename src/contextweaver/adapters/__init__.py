@@ -62,10 +62,21 @@ from contextweaver.adapters.fastmcp import (
     make_discovery_tool,
 )
 from contextweaver.adapters.gateway_args import Repair, normalize_args
+from contextweaver.adapters.gateway_controls import (
+    RateLimiter,
+    ToolResultCache,
+    call_with_retry,
+)
 from contextweaver.adapters.gateway_error import (
     GatewayError,
     classify_upstream_exception,
     redact_upstream_detail,
+)
+from contextweaver.adapters.gateway_policy import (
+    DryRunReport,
+    RateLimit,
+    RateLimitPolicy,
+    RetryPolicy,
 )
 from contextweaver.adapters.gateway_validation import (
     CatalogRefreshReport,
@@ -137,6 +148,7 @@ from contextweaver.adapters.weaver_contracts import (
 
 __all__ = [
     "CatalogRefreshReport",
+    "DryRunReport",
     "ExposureMode",
     "GATEWAY_TOOL_NAMES",
     "GatewayError",
@@ -144,12 +156,18 @@ __all__ = [
     "MultiplexUpstream",
     "PROXY_META_TOOL_NAMES",
     "ProxyRuntime",
+    "RateLimit",
+    "RateLimitPolicy",
+    "RateLimiter",
     "Repair",
+    "RetryPolicy",
     "SchemaFinding",
     "SchemaLimits",
     "SkippedTool",
     "StubUpstream",
+    "ToolResultCache",
     "UpstreamCall",
+    "call_with_retry",
     "a2a_agent_to_selectable",
     "a2a_result_to_envelope",
     "agno_tool_to_selectable",

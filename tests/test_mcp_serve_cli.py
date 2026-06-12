@@ -16,8 +16,10 @@ import sys
 from pathlib import Path
 
 import pytest
+import typer
 
 from contextweaver._mcp_cli import (
+    _build_dispatch_controls,
     _build_runtime,
     _load_serve_config,
     _load_tool_defs_from_catalog,
@@ -496,3 +498,38 @@ def test_mcp_stats_aggregates_jsonl(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["event_count"] == 1
     assert payload["tokens_saved"] == 75
+
+
+# ---------------------------------------------------------------------------
+# Dispatch-path control config (#529 / #482 / #512)
+# ---------------------------------------------------------------------------
+
+
+def test_build_dispatch_controls_builds_each_block() -> None:
+    retry, limiter, cache = _build_dispatch_controls(
+        {
+            "retry": {"max_attempts": 3, "base_delay": 0.2},
+            "rate_limits": {"tool_execute": {"max_calls_per_session": 5}},
+            "cache": {"read_only": True, "ttl_seconds": 30, "allow": ["files:read@1#0badc0de"]},
+        }
+    )
+    assert retry is not None and retry.max_attempts == 3
+    assert limiter is not None
+    assert cache is not None
+    assert cache.admits("files:read@1#0badc0de") is True
+    assert cache.admits("other:tool") is False
+
+
+def test_build_dispatch_controls_absent_blocks_are_none() -> None:
+    assert _build_dispatch_controls({}) == (None, None, None)
+
+
+def test_build_dispatch_controls_rejects_string_cache_allow() -> None:
+    # A bare string would otherwise collapse into a set of single characters.
+    with pytest.raises(typer.BadParameter):
+        _build_dispatch_controls({"cache": {"read_only": True, "allow": "files:read"}})
+
+
+def test_build_dispatch_controls_rejects_bad_retryable_codes() -> None:
+    with pytest.raises(typer.BadParameter):
+        _build_dispatch_controls({"retry": {"retryable_codes": "UPSTREAM_TIMEOUT"}})
