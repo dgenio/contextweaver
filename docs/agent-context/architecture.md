@@ -55,9 +55,12 @@ All stores use `typing.Protocol` interfaces with in-memory defaults. This enable
 Any backend can prove it honours these protocols with the shipped conformance
 kit (`contextweaver.store.testing`, issue #520): each `check_*_conformance`
 function takes a factory for an empty backend and asserts the round-trip,
-ordering, and not-found semantics the Context Engine relies on. The bundled
-in-memory, JSON-file, and SQLite backends are all run through it in
-`tests/test_store_conformance.py`.
+ordering, and not-found semantics the Context Engine relies on. For the
+`ArtifactStore` it also asserts that `put()` stamps a sha256 `content_hash`
+on the returned ref — the firewall's content-addressed idempotency
+short-circuit (#190) depends on it, so it is a protocol contract, not a
+backend detail. The bundled in-memory, JSON-file, and SQLite backends are all
+run through it in `tests/test_store_conformance.py`.
 
 #### Thread-safety contract (issue #458)
 

@@ -20,13 +20,15 @@ framework, so it ships in the core wheel and is callable from pytest,
 ``unittest``, or a plain script.
 
 The checks cover the behavioural contract the Context Engine relies on:
-round-trip fidelity, ``not-found`` error semantics, ordering guarantees, and
-idempotent deletes.  They do **not** assert thread-safety — see the
+round-trip fidelity, ``not-found`` error semantics, ordering guarantees,
+raise-on-missing delete semantics, and (for artifacts) the ``content_hash``
+stamp the firewall depends on.  They do **not** assert thread-safety — see the
 concurrency contract in ``docs/agent-context/architecture.md`` (issue #458).
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 
 from contextweaver.exceptions import (
@@ -111,6 +113,10 @@ def check_artifact_store_conformance(make_store: Callable[[], ArtifactStore]) ->
     ref = store.put("h1", b"hello world", media_type="text/plain", label="greeting")
     _assert(ref.handle == "h1", "put must return a ref for the stored handle")
     _assert(ref.size_bytes == 11, "ref.size_bytes must match the content length")
+    _assert(
+        ref.content_hash == hashlib.sha256(b"hello world").hexdigest(),
+        "put must stamp a sha256 content_hash on the returned ref (firewall #190 relies on it)",
+    )
     _assert(store.get("h1") == b"hello world", "get must return the stored bytes")
     _assert(store.exists("h1") is True, "exists must be True after put")
     _assert(store.ref("h1").handle == "h1", "ref must return metadata for a stored handle")

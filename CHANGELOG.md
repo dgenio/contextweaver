@@ -14,9 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `check_artifact_store_conformance`, `check_episodic_store_conformance`,
   `check_fact_store_conformance` — each takes a factory for an empty backend
   and asserts the round-trip, ordering, and not-found contract the Context
-  Engine relies on. It imports no test framework, so it ships in the core
-  wheel and runs under pytest, `unittest`, or a plain script. The bundled
-  in-memory, JSON-file, and SQLite backends are all run through it.
+  Engine relies on — including that `ArtifactStore.put()` stamps a sha256
+  `content_hash` on the returned ref, now documented as a protocol contract
+  because the firewall's idempotency short-circuit (#190) depends on it. It
+  imports no test framework, so it ships in the core wheel and runs under
+  pytest, `unittest`, or a plain script. The bundled in-memory, JSON-file,
+  and SQLite backends are all run through it.
 - **`JsonFileArtifactStore` durability hardening (#497).** Writes are now
   **atomic** (temp file + `os.replace`), so a crash mid-write never leaves a
   truncated artifact; `list_refs()` reads an in-memory handle→ref index built
