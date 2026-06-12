@@ -178,12 +178,12 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 ```bash
 make fmt      # ruff format src/ tests/ examples/ scripts/
 make lint     # ruff check src/ tests/ examples/ scripts/
-make type     # mypy src/
+make type     # mypy src/ examples/ scripts/  (examples + scripts gated too, #539)
 make test     # python -m pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures via the umbrella target)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + schemas-check + example + demo
+make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
 make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -195,6 +195,13 @@ make scorecard        # render benchmarks/scorecard.md from benchmarks/results/l
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
 make schemas         # regenerate schemas/ + docs/schemas/v0/ (issue #225)
 make schemas-check    # verify published schemas match dataclasses (gating, in `make ci`)
+make drift            # regenerate every committed generated artifact (issue #522)
+make drift-check      # one gate over all generated-artifact drift checks (in `make ci`, #522)
+make api             # regenerate api/public_api.txt (public-API manifest, #518)
+make api-check        # verify the public-API manifest matches the surface (in drift-check, #518)
+make module-size-check # enforce the ≤300-line convention; frozen baseline (gating, #456)
+make module-size-update # re-snapshot scripts/module_size_baseline.json (deliberate use only)
+make doc-snippets-check # execute README + curated docs Python snippets (gating, #526)
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make context-rot       # render the context-rot demo: benchmarks/results/context_rot.json + docs/assets/context_rot.svg (#349)
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating in CI; exits non-zero on drift)
@@ -240,6 +247,12 @@ These are strongly recommended. Engineering judgment applies — deviate with go
   `mcp serve` graduates from `[experimental]` to stable), and `_demos.py`
   (CLI demo-output module — print-heavy walkthrough scripts backing the
   `demo` subcommand, same rationale as `__main__.py`).
+  Enforced mechanically by `make module-size-check` (issue #456): new
+  non-exempt modules must stay ≤300 lines, and pre-existing oversized modules
+  are **grandfathered** at their current size in
+  `scripts/module_size_baseline.json` and frozen — they may shrink but may not
+  grow past their recorded ceiling. Decomposing a grandfathered module lowers
+  its ceiling via `make module-size-update`.
 - **Core runtime dependencies.** The core install pulls `tiktoken`, `PyYAML`, `rank-bm25`, plus `mcp` and `jsonschema` (added when the proxy / gateway runtimes landed — both are load-bearing for `docs/gateway_spec.md` §4.4 schema validation and the MCP transport binding).  Adding *another* core dependency requires explicit justification: broad ecosystem use, small wheel, and a default the library would otherwise have to approximate.  Heavy or runtime-specific packages (CLI, OpenTelemetry, fuzzy retrieval, ANN, NetworkX, FastMCP, LangChain) live under `[project.optional-dependencies]` and are loaded via guarded imports.
 - **Dependency-constraint policy** (issue #356). Specifiers are **lower-bound-only** (`>=`), set to the lowest version *actually known to work* — no `==` pins, no speculative upper caps. The only caps kept carry an inline rationale (pre-1.0 `weaver_contracts<1`; docs-extra major pins). Two CI jobs enforce this: a **gating floor-deps job** (`uv pip install --resolution lowest-direct`, Python 3.10, in `ci.yml`) proves the `>=` floors, and a **non-gating weekly** `deps-latest-weekly.yml` (latest + pre-releases) is the no-upper-cap safety net. Raising a floor is a real change — verify with the floor-deps job. Python support is **3.10–3.13**, every cell gating in the CI matrix (3.14 is pending — the heavy dev/adapter stack still caps at `Requires-Python <3.14`).
 

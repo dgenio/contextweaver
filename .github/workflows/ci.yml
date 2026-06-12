@@ -8,9 +8,16 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref (e.g. rapid PR pushes); never cancel
+# on main so every landed commit is fully verified (issue #474).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       # fail-fast disabled so every Python cell reports its own status even
       # when one version fails — important now that the matrix spans the full
@@ -52,7 +59,9 @@ jobs:
         run: ruff check src/ tests/ examples/ scripts/
 
       - name: Type check
-        run: mypy src/
+        # examples/ and scripts/ are type-checked alongside src/ — they are the
+        # most-copied code in the repo and back the gating CI scripts (#539).
+        run: mypy src/ examples/ scripts/
 
       - name: Test
         run: pytest --cov=contextweaver --cov-report=term-missing -q
@@ -63,50 +72,30 @@ jobs:
       - name: Demo
         run: make demo
 
-      - name: "Recorded demo drift check (gating, issue #390)"
+      - name: "Generated-artifact drift gate (gating, issues #522/#518)"
         if: ${{ matrix.python-version == '3.12' }}
-        # The casts are deterministic and interpreter-independent, so one
-        # matrix cell is sufficient to enforce the committed artifacts.
-        run: python scripts/record_demo.py --check
+        # One gate over every committed generated artifact — schemas,
+        # scorecards, recorded demos, llms.txt, the context-rot SVG, and the
+        # public-API manifest — via the shared harness (issue #522). The
+        # artifacts are deterministic and interpreter-independent, so one matrix
+        # cell enforces them. Runs before the benchmark step below, which
+        # overwrites benchmarks/results/latest.json with this runner's numbers
+        # (the scorecard gate reads the committed file).
+        run: make drift-check
 
-      - name: Scorecard drift check (gating)
-        # Runs before the benchmark step so it validates the committed pair
-        # (benchmarks/results/latest.json + benchmarks/scorecard.md). The
-        # benchmark step below overwrites latest.json with this runner's
-        # numbers, which would otherwise make the check non-portable.
-        run: python scripts/render_scorecard.py --check
-
-      - name: "Gateway scorecard drift check (gating, issue #391)"
+      - name: "Module-size convention gate (gating, issue #456)"
         if: ${{ matrix.python-version == '3.12' }}
-        # Mirrors the main scorecard gate for the committed gateway benchmark
-        # JSON/Markdown pair without repeating identical work in every cell.
-        run: python scripts/render_gateway_scorecard.py --check
+        run: make module-size-check
+
+      - name: "Doc-snippet execution gate (gating, issue #526)"
+        if: ${{ matrix.python-version == '3.12' }}
+        run: make doc-snippets-check
 
       - name: README version drift check (gating, issue #347)
         # Fails when a tracked README version reference (the "Current package
         # version" line or the comparison-table self-reference) lags the
         # version in pyproject.toml. Stdlib-only; no install required.
         run: python scripts/check_readme_version.py
-
-      - name: "LLMs drift check (gating, issue #389)"
-        if: ${{ matrix.python-version == '3.12' }}
-        # llms.txt and llms-full.txt are deterministic generated docs; checking
-        # one matrix cell avoids four identical full-document comparisons.
-        run: python scripts/gen_llms.py --check
-
-      - name: Context-rot SVG drift check (gating, issue #349)
-        # Re-renders docs/assets/context_rot.svg from the committed
-        # benchmarks/results/context_rot.json and fails on drift (mirrors the
-        # scorecard-check contract). The compute path is exercised by
-        # tests/test_context_rot_demo.py.
-        run: python scripts/context_rot_demo.py --check
-
-      - name: Schema drift check (gating, issue #225)
-        # Regenerates schemas from dataclasses and fails the build if the
-        # committed files differ.  This is the contract gate that catches
-        # dataclass-field changes that forget to update schemas/ and
-        # docs/schemas/v0/.
-        run: python scripts/gen_schemas.py --check
 
       - name: Weaver-spec conformance
         # Round-trip + JSON-Schema validation against the canonical contracts
@@ -141,6 +130,7 @@ jobs:
     # the ``pytest-asyncio>=0.23.8`` bump that landed with this job).
     name: Floor deps (lowest-direct, 3.10)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -174,6 +164,7 @@ jobs:
     # install can hide.
     name: Tool-run smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -226,6 +217,7 @@ jobs:
     name: Post benchmark delta PR comment
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       pull-requests: write
@@ -271,3 +263,26 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body-path: benchmarks/results/delta.md
           edit-mode: replace
+
+  docs-build:
+    # Gate the docs build on PRs (issue #474). docs.yml only builds+deploys on
+    # push to main, so a malformed docstring or broken nav could land on main
+    # and break the auto-generated API reference before anyone saw it. This job
+    # builds the site (no deploy) with the same command docs.yml uses, so PR
+    # docs breakage fails here first. (Not --strict: the repo has pre-existing
+    # cross-page anchor warnings tracked separately; --strict can be adopted
+    # once those are cleaned up.)
+    name: Docs build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package and docs dependencies
+        run: pip install -e ".[docs]"
+      - name: Build docs
+        run: mkdocs build --clean

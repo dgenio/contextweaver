@@ -140,8 +140,8 @@ def main() -> None:
     # 1. Load the 60-tool catalog and build a routing graph.
     # ------------------------------------------------------------------
     catalog = Catalog()
-    for item in load_catalog_yaml(CATALOG_PATH):
-        catalog.register(item)
+    for selectable in load_catalog_yaml(CATALOG_PATH):
+        catalog.register(selectable)
     items = catalog.all()
     ns_count = len({it.namespace for it in items})
     catalog_tools = len(items)

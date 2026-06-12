@@ -26,8 +26,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+
+from _golden import check_text_artifacts, write_text_artifacts
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_INPUT = _REPO_ROOT / "benchmarks" / "results" / "gateway_latest.json"
@@ -143,10 +146,11 @@ def _load(input_path: Path) -> dict[str, Any]:
             "Run `make benchmark-gateway` first.\n"
         )
         raise SystemExit(2)
-    return json.loads(input_path.read_text(encoding="utf-8"))
+    payload: dict[str, Any] = json.loads(input_path.read_text(encoding="utf-8"))
+    return payload
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=_DEFAULT_INPUT)
@@ -156,24 +160,14 @@ def main() -> int:
         action="store_true",
         help="Exit non-zero if the rendered markdown differs from the committed file.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     payload = _load(args.input)
-    rendered = _render(payload)
+    rendered = {args.output: _render(payload)}
     if args.check:
-        if not args.output.exists():
-            sys.stderr.write(
-                f"error: {args.output} missing — regenerate with `make gateway-scorecard`\n"
-            )
-            return 1
-        existing = args.output.read_text(encoding="utf-8")
-        if existing != rendered:
-            sys.stderr.write(
-                f"error: {args.output} is stale relative to {args.input}. "
-                "Run `make gateway-scorecard` to regenerate.\n"
-            )
-            return 1
-        return 0
-    args.output.write_text(rendered, encoding="utf-8")
+        return check_text_artifacts(
+            rendered, label="gateway-scorecard", regen="make gateway-scorecard"
+        )
+    write_text_artifacts(rendered)
     print(f"Wrote {args.output}")
     return 0
 

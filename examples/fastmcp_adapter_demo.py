@@ -79,7 +79,7 @@ def main() -> None:
 
     # 2. Single tool conversion
     print("\n[2] Single tool conversion:")
-    item = fastmcp_tool_to_selectable(FASTMCP_TOOLS[0])  # type: ignore[arg-type]
+    item = fastmcp_tool_to_selectable(FASTMCP_TOOLS[0])
     print(f"    ID:          {item.id}")
     print(f"    Name:        {item.name}")
     print(f"    Namespace:   {item.namespace}")
@@ -90,7 +90,7 @@ def main() -> None:
 
     # 3. Batch conversion → Catalog
     print("\n[3] Building Catalog from 4 FastMCP tools:")
-    catalog = fastmcp_tools_to_catalog(FASTMCP_TOOLS)  # type: ignore[arg-type]
+    catalog = fastmcp_tools_to_catalog(FASTMCP_TOOLS)
     for it in catalog.all():
         print(f"    {it.id:40s} ns={it.namespace:10s} name={it.name}")
 

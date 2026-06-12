@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -7,7 +7,7 @@ lint:
 	ruff check src/ tests/ examples/ scripts/
 
 type:
-	mypy src/
+	mypy src/ examples/ scripts/
 
 test:
 	python -m pytest --cov=contextweaver --cov-report=term-missing -q
@@ -103,7 +103,45 @@ context-rot-check:
 readme-version-check:
 	python scripts/check_readme_version.py
 
-ci: fmt lint type test schemas-check example demo
+# The local pass bar. Mirrors the gating CI checks a contributor can run
+# offline (issue #474): the consolidated generated-artifact drift gate
+# (issue #522) plus the module-size (#456), doc-snippet (#526), and README
+# version gates. Weaver-spec conformance and the benchmarks stay CI-only —
+# they fetch remote schemas / are heavy — and are documented as such.
+ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-version-check example demo
+
+# Unified generated-artifact drift gate (issue #522). `drift` regenerates every
+# registered artifact; `drift-check` is the gate. Both compose the per-artifact
+# generators (schemas, scorecards, recorded demos, llms.txt, context-rot SVG,
+# public-API manifest) so adding the next artifact is one registry entry.
+drift:
+	python scripts/drift_check.py
+
+drift-check:
+	python scripts/drift_check.py --check
+
+# Public-API manifest (issue #518): committed signature-level snapshot of the
+# public surface; `api-check` fails when the surface changes without a regen.
+api:
+	python scripts/gen_api_manifest.py
+
+api-check:
+	python scripts/gen_api_manifest.py --check
+
+# Module-size convention gate (issue #456): enforces ≤300 lines for new modules
+# and freezes grandfathered violators at their current size. `module-size-update`
+# re-snapshots the frozen baseline (run only when intentionally decomposing).
+module-size-check:
+	python scripts/check_module_size.py
+
+module-size-update:
+	python scripts/check_module_size.py --update
+
+# Doc-snippet execution gate (issue #526): runs the Python blocks in README and
+# the curated docs allowlist so the first code an adopter copies is guaranteed
+# to run against the current API.
+doc-snippets-check:
+	python scripts/check_doc_snippets.py
 
 llms:
 	python scripts/gen_llms.py

@@ -129,7 +129,7 @@ def main() -> None:
 
     # 2. Single conversion.
     print("\n[2] Single tool conversion:")
-    item = agno_tool_to_selectable(AGNO_TOOLS[0])  # type: ignore[arg-type]
+    item = agno_tool_to_selectable(AGNO_TOOLS[0])
     print(f"    ID:         {item.id}")
     print(f"    Name:       {item.name}")
     print(f"    Namespace:  {item.namespace}")
@@ -138,7 +138,7 @@ def main() -> None:
 
     # 3. Batch conversion → Catalog.
     print("\n[3] Building Catalog from 4 Agno tools:")
-    catalog = agno_tools_to_catalog(AGNO_TOOLS)  # type: ignore[arg-type]
+    catalog = agno_tools_to_catalog(AGNO_TOOLS)
     for it in catalog.all():
         print(f"    {it.id:40s} ns={it.namespace:12s} tags={sorted(it.tags)}")
 
@@ -154,7 +154,7 @@ def main() -> None:
 
     # 5. Session-history ingestion.
     print("\n[5] Session-history ingestion:")
-    items = from_agno_session(AGNO_SESSION_MESSAGES)  # type: ignore[arg-type]
+    items = from_agno_session(AGNO_SESSION_MESSAGES)
     print(f"    {len(items)} ContextItem(s) produced:")
     for ci in items:
         suffix = f" parent={ci.parent_id}" if ci.parent_id else ""

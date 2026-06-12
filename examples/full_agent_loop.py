@@ -96,8 +96,8 @@ def _build_catalog() -> Catalog:
             item["constraints"] = {"read_only": True}
 
     catalog = Catalog()
-    for item in load_catalog_dicts(raw):
-        catalog.register(item)
+    for selectable in load_catalog_dicts(raw):
+        catalog.register(selectable)
     return catalog
 
 
@@ -135,7 +135,7 @@ def _simulate_large_result(tool_id: str) -> str:
     The payload is generic (not tool-specific) so it remains valid regardless of
     which tool _pick_tool() selects.
     """
-    rows = []
+    rows: list[dict[str, int | str]] = []
     for idx in range(1, 101):
         rows.append(
             {
@@ -149,8 +149,8 @@ def _simulate_large_result(tool_id: str) -> str:
         "rows": rows,
         "summary": {
             "count": len(rows),
-            "max": max(row["value"] for row in rows),
-            "min": min(row["value"] for row in rows),
+            "max": max(int(row["value"]) for row in rows),
+            "min": min(int(row["value"]) for row in rows),
         },
     }
     return json.dumps(payload, sort_keys=True)

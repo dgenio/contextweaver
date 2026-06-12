@@ -275,7 +275,9 @@ def _make_nodes(session: _Session) -> dict[str, Any]:
     return {"route": route_node, "execute": execute_node, "answer": answer_node}
 
 
-def _run_turn_langgraph(session: _Session, nodes: dict[str, Any], turn: dict[str, Any]) -> dict:
+def _run_turn_langgraph(
+    session: _Session, nodes: dict[str, Any], turn: dict[str, Any]
+) -> dict[str, Any]:
     """Drive one turn through a real LangGraph ``StateGraph``."""
     builder = StateGraph(TurnState)
     builder.add_node("route", nodes["route"])
@@ -289,7 +291,9 @@ def _run_turn_langgraph(session: _Session, nodes: dict[str, Any], turn: dict[str
     return dict(graph.invoke(turn))
 
 
-def _run_turn_fallback(session: _Session, nodes: dict[str, Any], turn: dict[str, Any]) -> dict:
+def _run_turn_fallback(
+    session: _Session, nodes: dict[str, Any], turn: dict[str, Any]
+) -> dict[str, Any]:
     """Drive one turn through an equivalent hand-rolled loop (no LangGraph)."""
     state = dict(turn)
     for name in ("route", "execute", "answer"):

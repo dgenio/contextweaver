@@ -58,6 +58,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from _golden import check_text_artifacts
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_JSON = REPO_ROOT / "benchmarks" / "results" / "context_rot.json"
 DEFAULT_SVG = REPO_ROOT / "docs" / "assets" / "context_rot.svg"
@@ -350,15 +352,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"error: {json_path} not found — run `make context-rot`.", file=sys.stderr)
             return 1
         payload = json.loads(json_path.read_text(encoding="utf-8"))
-        rendered = render_svg(payload)
-        existing = svg_path.read_text(encoding="utf-8") if svg_path.exists() else ""
-        if existing != rendered:
-            print(
-                f"error: {svg_path} is out of date. Run `make context-rot`.",
-                file=sys.stderr,
-            )
-            return 1
-        return 0
+        rendered = {svg_path: render_svg(payload)}
+        return check_text_artifacts(rendered, label="context-rot", regen="make context-rot")
 
     payload = compute_curve()
     json_path.parent.mkdir(parents=True, exist_ok=True)
