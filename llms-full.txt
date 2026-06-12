@@ -3474,4 +3474,4 @@ What you should see:
 1. Four phase sections (`route`, `call`, `interpret`, `answer`).
 2. Compiled prompt text for each phase.
 3. BuildStats output for each phase, including token counts.
-4. Firewall behavior in `interpret` (raw payload size > summarized text size).
+4. Firewall behavior in `interpret` (raw payload size > summarized text size)
