@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Persistent gateway sessions: `mcp serve --state-dir` (#511).**
+  `contextweaver mcp serve` accepts `--state-dir DIR` (and a `state_dir` config
+  key) to wire the gateway's `ContextManager` with file-backed stores —
+  `{DIR}/events.sqlite3` (`SqliteEventLog`) and `{DIR}/artifacts/`
+  (`JsonFileArtifactStore`). Restarting against the same directory rehydrates
+  prior event history and keeps previously issued artifact handles resolvable
+  via `tool_view`; an unwritable directory fails fast with a clear startup
+  error. Without the flag the gateway keeps its zero-config in-memory behaviour.
+  Fixes a latent store-resolution bug where an *empty* persistent backend
+  (which is falsy because it defines `__len__`) was silently replaced by an
+  in-memory default; `ContextManager` now resolves stores with explicit
+  `is None` checks.
 - **Remote store backends: Redis & S3 (#426).** New `RedisEventLog` and
   `RedisArtifactStore` (behind `pip install 'contextweaver[redis]'`) and
   `S3ArtifactStore` (`contextweaver[s3]`, works with AWS S3 / MinIO / R2 / GCS

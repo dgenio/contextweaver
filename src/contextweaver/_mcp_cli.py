@@ -44,6 +44,7 @@ from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
+from contextweaver.context.manager import ContextManager
 from contextweaver.diagnostics import (
     DiagnosticSink,
     JsonlDiagnosticSink,
@@ -51,6 +52,7 @@ from contextweaver.diagnostics import (
     render_diagnostic_report,
     summarize_diagnostics,
 )
+from contextweaver.store import JsonFileArtifactStore, SqliteEventLog, StoreBundle
 
 logger = logging.getLogger("contextweaver.mcp_cli")
 
@@ -90,6 +92,7 @@ _CONFIG_KEYS: frozenset[str] = frozenset(
         "version",
         "diagnostics",
         "quiet",
+        "state_dir",
     }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
@@ -202,6 +205,11 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         if not diagnostics_path.is_absolute():
             diagnostics_path = config_path.parent / diagnostics_path
         data["diagnostics"] = str(diagnostics_path.resolve())
+    if "state_dir" in data:
+        state_dir_path = Path(str(data["state_dir"])).expanduser()
+        if not state_dir_path.is_absolute():
+            state_dir_path = config_path.parent / state_dir_path
+        data["state_dir"] = str(state_dir_path.resolve())
     return data
 
 
@@ -315,6 +323,35 @@ async def _stub_handler(name: str, args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": body}], "isError": False}
 
 
+def _build_state_stores(state_dir: Path) -> StoreBundle:
+    """Build persistent stores rooted at *state_dir* for ``mcp serve`` (issue #511).
+
+    Lays out ``{state_dir}/events.sqlite3`` (a :class:`SqliteEventLog`) and
+    ``{state_dir}/artifacts/`` (a :class:`JsonFileArtifactStore`).  Both
+    backends re-instantiate against existing files/directories, so pointing a
+    restarted server at the same *state_dir* rehydrates prior event history and
+    keeps previously-issued artifact handles resolvable via ``tool_view``.
+
+    Args:
+        state_dir: Directory to persist gateway state under (created if absent).
+
+    Returns:
+        A :class:`StoreBundle` wiring the persistent event log + artifact store.
+
+    Raises:
+        typer.BadParameter: If *state_dir* cannot be created or written.
+    """
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        event_log = SqliteEventLog(state_dir / "events.sqlite3")
+        artifact_store = JsonFileArtifactStore(state_dir / "artifacts")
+    except OSError as exc:
+        raise typer.BadParameter(
+            f"state_dir {state_dir} is not writable: {exc}", param_hint="--state-dir"
+        ) from exc
+    return StoreBundle(event_log=event_log, artifact_store=artifact_store)
+
+
 def _build_runtime(
     catalog_path: Path,
     *,
@@ -323,6 +360,7 @@ def _build_runtime(
     beam_width: int,
     cache_stable: bool,
     diagnostic_sink: DiagnosticSink | None = None,
+    state_dir: Path | None = None,
 ) -> ProxyRuntime:
     """Construct a :class:`ProxyRuntime` populated from *catalog_path*.
 
@@ -333,12 +371,20 @@ def _build_runtime(
         beam_width: Router beam width.
         cache_stable: Toggle cache-stable browse ordering.
         diagnostic_sink: Optional structured event destination.
+        state_dir: Optional directory for persistent gateway state (issue
+            #511).  When set, the runtime's :class:`ContextManager` is wired
+            with file-backed stores so artifact handles and event history
+            survive a restart; when ``None`` (default), in-memory stores are
+            used and state is lost on exit.
 
     Returns:
         A ready-to-serve :class:`ProxyRuntime`.
     """
     tool_defs = _load_tool_defs_from_catalog(catalog_path)
     exposure = ExposureMode.GATEWAY if mode == _ServeMode.gateway else ExposureMode.TRANSPARENT
+    context_manager = (
+        ContextManager(stores=_build_state_stores(state_dir)) if state_dir is not None else None
+    )
     runtime = ProxyRuntime(
         StubUpstream(tool_defs, handler=_stub_handler),
         mode=exposure,
@@ -346,6 +392,7 @@ def _build_runtime(
         beam_width=beam_width,
         cache_stable=cache_stable,
         diagnostic_sink=diagnostic_sink,
+        context_manager=context_manager,
     )
     runtime.register_tool_defs_sync(tool_defs)
     # Reuse the helper so test code can introspect the resulting catalog
@@ -513,6 +560,17 @@ def serve(
             help="Append sanitized gateway events to this JSONL file.",
         ),
     ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help=(
+                "Persist gateway state under this directory so artifact handles "
+                "and event history survive a restart (events.sqlite3 + artifacts/). "
+                "Omit for the zero-config in-memory default."
+            ),
+        ),
+    ] = None,
     quiet: Annotated[
         bool,
         typer.Option(
@@ -560,6 +618,8 @@ def serve(
             version = str(cfg["version"])
         if not _from_cli("diagnostics") and "diagnostics" in cfg:
             diagnostics = Path(str(cfg["diagnostics"]))
+        if not _from_cli("state_dir") and "state_dir" in cfg:
+            state_dir = Path(str(cfg["state_dir"]))
         if not _from_cli("quiet") and "quiet" in cfg:
             quiet = cfg["quiet"]
 
@@ -583,6 +643,7 @@ def serve(
         beam_width=beam_width,
         cache_stable=cache_stable,
         diagnostic_sink=diagnostic_sink,
+        state_dir=state_dir,
     )
     tool_count = len(runtime.list_tool_ids())
 
@@ -591,7 +652,8 @@ def serve(
             f"contextweaver mcp serve: mode={resolved_mode.value} "
             f"catalog={catalog} tools={tool_count} top_k={top_k} "
             f"beam_width={beam_width} cache_stable={cache_stable} "
-            f"version={version} diagnostics={diagnostics or 'off'}",
+            f"version={version} diagnostics={diagnostics or 'off'} "
+            f"state_dir={state_dir or 'in-memory'}",
             err=True,
         )
 

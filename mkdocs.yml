@@ -107,6 +107,7 @@ nav:
       - smolagents: integration_smolagents.md
       - Agno: integration_agno.md
       - External Memory: integration_memory.md
+      - Persistent & Remote Stores: persistent_stores.md
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md
   - Adopter Benchmark Report: benchmark_report.md

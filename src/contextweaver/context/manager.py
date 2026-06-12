@@ -54,6 +54,19 @@ from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
 
 
+def _first_not_none(*candidates: object) -> object:
+    """Return the first argument that is not ``None``.
+
+    Used instead of an ``or`` chain when resolving stores, because a persistent
+    backend may be *falsy* when empty (it defines ``__len__``); ``or`` would
+    discard it (issue #511).  The final argument is the non-``None`` default.
+    """
+    for candidate in candidates:
+        if candidate is not None:
+            return candidate
+    return candidates[-1]
+
+
 def _to_sync_if_async(store: object, loop: _LoopThread | None) -> object:
     """Return *store* unchanged, or its sync bridge if it is an async backend.
 
@@ -146,13 +159,17 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         sensitivity_classifier: SensitivityClassifier | None = None,
         redact_secrets: bool = False,
     ) -> None:
-        _stores = stores or StoreBundle()
-        resolved_event_log = event_log or _stores.event_log or InMemoryEventLog()
-        resolved_artifact_store = (
-            artifact_store or _stores.artifact_store or InMemoryArtifactStore()
+        _stores = stores if stores is not None else StoreBundle()
+        # Resolve with explicit ``is None`` checks, never truthiness: a
+        # persistent backend may define ``__len__`` (e.g. SqliteEventLog), so an
+        # *empty* store is falsy and an ``or`` chain would silently discard it
+        # and fall back to an in-memory default (issue #511).
+        resolved_event_log = _first_not_none(event_log, _stores.event_log, InMemoryEventLog())
+        resolved_artifact_store = _first_not_none(
+            artifact_store, _stores.artifact_store, InMemoryArtifactStore()
         )
-        resolved_episodic_store = _stores.episodic_store or InMemoryEpisodicStore()
-        resolved_fact_store = _stores.fact_store or InMemoryFactStore()
+        resolved_episodic_store = _first_not_none(_stores.episodic_store, InMemoryEpisodicStore())
+        resolved_fact_store = _first_not_none(_stores.fact_store, InMemoryFactStore())
         # Issue #495: accept async store backends. The synchronous pipeline
         # consumes them through an async-to-sync bridge driven by a private loop
         # thread; ``build`` then offloads the pipeline body so the awaited I/O
