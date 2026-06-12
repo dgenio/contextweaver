@@ -1,4 +1,4 @@
-# contextweaver
+# contextweave
 
 > Dynamic context management for tool-using AI agents.
 
