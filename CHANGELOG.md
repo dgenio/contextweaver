@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Package metadata drift guard (#473).** The existing
+  `readme-version-check` now also verifies that Python version classifiers in
+  `pyproject.toml` match the gating CI matrix, preventing PyPI metadata from
+  lagging the tested support range. Package metadata now advertises Python 3.13
+  support, removes the long-expired no-op `[cli]` extra, and drops reserved
+  `[ann]` / `[graph]` extras that installed dependencies without activating any
+  runtime code.
 - **Gateway `tool_execute` dispatch hardening (#529, #512, #483, #482, #507).**
   The gateway/proxy dispatch path gains four opt-in, deterministic controls,
   all inert by default so an unconfigured runtime behaves exactly as before:

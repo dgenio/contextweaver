@@ -298,7 +298,6 @@ Optional capabilities are gated behind extras so the core install stays small:
 
 | Extra | What it adds |
 |---|---|
-| `contextweaver[cli]` | Deprecated no-op alias; Typer/Rich now ship in core |
 | `contextweaver[weaver-spec]` | Weaver Stack contract adapters (`weaver_contracts`) |
 | `contextweaver[fastmcp]` | FastMCP catalog adapter and discovery helpers |
 | `contextweaver[crewai]` | CrewAI runtime integration |
@@ -309,15 +308,20 @@ Optional capabilities are gated behind extras so the core install stays small:
 | `contextweaver[voice]` | Pipecat voice-agent integration |
 | `contextweaver[retrieval]` | Fuzzy lexical matching backend (`rapidfuzz`) |
 | `contextweaver[embeddings]` | Sentence-transformers embedding backend |
+| `contextweaver[tokenizers]` | Tokenizer install contract (core `tiktoken` today) |
 | `contextweaver[sqlite]` | SQLite store install contract (stdlib-backed today) |
 | `contextweaver[mem0]` | Mem0 external-memory backend |
 | `contextweaver[otel]` | OpenTelemetry tracing + metrics export |
 | `contextweaver[e2e-eval]` | Optional real-model benchmark hook (no dependency today) |
 | `contextweaver[docs]` | MkDocs documentation toolchain |
 | `contextweaver[dev]` | Test, lint, type-check, and fixture toolchain |
-| `contextweaver[ann]` | Approximate-nearest-neighbour backend (reserved) |
-| `contextweaver[graph]` | NetworkX-backed graph ops (reserved) |
 | `contextweaver[all]` | Convenience bundle for broad optional runtime capabilities |
+
+Some extras are install-contract markers rather than dependency bundles:
+`tokenizers`, `sqlite`, and `e2e-eval` are intentionally empty today because
+the current implementations use core dependencies or the Python standard
+library. They stay user-facing so requirements files can opt into the capability
+surface without changing when future implementation-specific packages are added.
 
 Or from source:
 

@@ -20,7 +20,7 @@ make scorecard-check  # verify scorecard.md is up to date (gating CI step; exits
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make context-rot       # render context-rot demo JSON + docs/assets/context_rot.svg (#349)
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating CI step; exits non-zero on drift)
-make readme-version-check  # verify README version references match pyproject.toml (gating CI step; #347)
+make readme-version-check  # verify README version refs and Python classifiers match sources (gating CI step; #347/#473)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (gating CI step; exits non-zero on drift)
 make gateway-scorecard-check  # verify gateway scorecard Markdown matches its committed JSON (gating CI step)
@@ -31,7 +31,7 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 ```
 
 > Gating CI steps beyond `make ci`: `make scorecard-check`,
-> `make readme-version-check` (#347), `make context-rot-check` (#349),
+> `make readme-version-check` (#347/#473), `make context-rot-check` (#349),
 > `make llms-check` (#389), `make record-demos-check` (#390),
 > `make gateway-scorecard-check` (#391), and `make weaver-conformance`.
 > `make smoke-eval` (#392) also runs in CI but remains non-gating.
