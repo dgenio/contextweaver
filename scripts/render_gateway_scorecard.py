@@ -139,13 +139,21 @@ def _render(payload: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _load(input_path: Path) -> dict[str, Any]:
+def _load(input_path: Path) -> dict[str, Any] | None:
+    """Load the gateway benchmark JSON, or ``None`` when the input is missing.
+
+    Returning ``None`` (rather than raising) lets ``main`` exit with a uniform
+    ``1`` so the ``drift_check`` harness — which composes this generator's
+    ``main`` and counts non-zero returns — aggregates a missing artifact the
+    same way it does every other generator (e.g. ``render_scorecard``), instead
+    of aborting the whole run on a ``SystemExit`` that escapes the loop.
+    """
     if not input_path.exists():
         sys.stderr.write(
             f"error: gateway benchmark JSON not found at {input_path}. "
             "Run `make benchmark-gateway` first.\n"
         )
-        raise SystemExit(2)
+        return None
     payload: dict[str, Any] = json.loads(input_path.read_text(encoding="utf-8"))
     return payload
 
@@ -162,6 +170,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     payload = _load(args.input)
+    if payload is None:
+        return 1
     rendered = {args.output: _render(payload)}
     if args.check:
         return check_text_artifacts(
