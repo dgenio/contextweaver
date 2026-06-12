@@ -43,8 +43,11 @@ def _rel(path: Path) -> str:
 def drifted_paths(rendered: Mapping[Path, str]) -> list[Path]:
     """Return the subset of *rendered* paths whose on-disk content differs.
 
-    A missing file counts as drift.  Comparison is exact (byte-for-byte after
-    UTF-8 decode), matching the existing generators' contracts.
+    A missing file counts as drift.  Comparison is a UTF-8 *text* comparison
+    via :meth:`Path.read_text` (universal-newline normalised), matching the
+    existing generators' contracts; writes go through
+    :func:`write_text_artifacts`, which pins ``\\n`` so committed artifacts stay
+    byte-stable across platforms.
     """
     drifted: list[Path] = []
     for path, expected in rendered.items():

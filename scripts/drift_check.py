@@ -70,7 +70,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"\nall {len(_GENERATORS)} generated artifacts up to date")
+    if args.check:
+        print(f"\nall {len(_GENERATORS)} generated artifacts up to date")
+    else:
+        print(f"\nregenerated all {len(_GENERATORS)} generated artifacts")
     return 0
 
 

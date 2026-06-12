@@ -68,12 +68,13 @@ def extract_snippets(path: Path, rel: str) -> list[Snippet]:
     """Extract ``python`` fences from *path*, flagging skip-marked blocks."""
     lines = path.read_text(encoding="utf-8").splitlines()
     snippets: list[Snippet] = []
-    prev_nonblank = ""
     i = 0
     count = 0
     while i < len(lines):
-        stripped = lines[i].strip()
-        if stripped == f"{_FENCE}python":
+        if lines[i].strip() == f"{_FENCE}python":
+            # The skip marker must sit on the line *immediately* above the fence
+            # (no intervening blank lines) so the opt-out is unambiguous.
+            skip = i > 0 and SKIP_MARKER in lines[i - 1]
             start = i + 1
             body: list[str] = []
             i += 1
@@ -81,17 +82,9 @@ def extract_snippets(path: Path, rel: str) -> list[Snippet]:
                 body.append(lines[i])
                 i += 1
             snippets.append(
-                Snippet(
-                    file=rel,
-                    index=count,
-                    line=start,
-                    code="\n".join(body),
-                    skip=SKIP_MARKER in prev_nonblank,
-                )
+                Snippet(file=rel, index=count, line=start, code="\n".join(body), skip=skip)
             )
             count += 1
-        elif stripped:
-            prev_nonblank = stripped
         i += 1
     return snippets
 
@@ -116,10 +109,12 @@ def _run_file(snippets: list[Snippet]) -> list[str]:
                         namespace,
                     )
             except Exception:  # noqa: BLE001 — report any snippet failure uniformly
-                failures.append(
-                    f"{snippet.file} block #{snippet.index} (line {snippet.line}):\n"
-                    + traceback.format_exc()
-                )
+                captured = buffer.getvalue()
+                report = f"{snippet.file} block #{snippet.index} (line {snippet.line}):\n"
+                report += traceback.format_exc()
+                if captured:
+                    report += f"\n--- captured stdout before failure ---\n{captured}"
+                failures.append(report)
             finally:
                 os.chdir(cwd)
     return failures

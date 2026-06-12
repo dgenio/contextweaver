@@ -37,7 +37,7 @@ Or via ``make example`` (the ``architectures`` umbrella target).
 from __future__ import annotations
 
 import functools
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
@@ -288,7 +288,11 @@ def _run_turn_langgraph(
     builder.add_edge("execute", "answer")
     builder.add_edge("answer", END)
     graph = builder.compile()
-    return dict(graph.invoke(turn))
+    # LangGraph's typed ``Pregel.invoke`` signature varies across versions (and
+    # is absent when the optional langgraph extra is not installed). The loop
+    # deliberately passes a plain state dict, so invoke through ``Any`` to keep
+    # `make type` deterministic regardless of the installed langgraph version.
+    return dict(cast(Any, graph).invoke(turn))
 
 
 def _run_turn_fallback(

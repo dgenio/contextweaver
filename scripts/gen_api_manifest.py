@@ -51,10 +51,44 @@ PUBLIC_MODULES = (
 )
 
 
+class _StableDefault:
+    """Sentinel whose ``repr`` is a constant ``...``.
+
+    ``inspect.Signature`` renders parameter defaults via ``repr(default)``, and
+    those reprs are *not* stable across Python versions (enum members and some
+    objects render differently on 3.10 vs 3.12). Replacing every default with
+    this sentinel keeps the manifest byte-identical across the CI matrix while
+    still recording *that* a parameter has a default — drift detection on param
+    names, types, and arity is unaffected.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "..."
+
+
+_STABLE_DEFAULT = _StableDefault()
+
+
 def _signature(obj: object) -> str:
-    """Best-effort signature string; stable and never raises."""
+    """Version-independent signature string; stable and never raises.
+
+    Parameter annotations are recorded verbatim (they are string annotations
+    under ``from __future__ import annotations``, so they are already stable);
+    default *values* are normalised to ``...`` so the manifest does not drift on
+    Python-version-specific default reprs.
+    """
     try:
-        return str(inspect.signature(obj))  # type: ignore[arg-type]
+        sig = inspect.signature(obj)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return "(...)"
+    params = [
+        p.replace(default=_STABLE_DEFAULT) if p.default is not inspect.Parameter.empty else p
+        for p in sig.parameters.values()
+    ]
+    try:
+        return str(sig.replace(parameters=params))
     except (ValueError, TypeError):
         return "(...)"
 

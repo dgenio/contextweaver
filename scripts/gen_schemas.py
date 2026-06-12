@@ -98,7 +98,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return check_text_artifacts(rendered, label="schemas", regen="make schemas")
 
     write_text_artifacts(rendered)
-    print(f"wrote {len(rendered)} schema files")
+    # rendered holds each schema twice (schemas/ + the docs/schemas/v0 mirror);
+    # report the distinct schema count to avoid a confusing doubled number.
+    print(f"wrote {len(rendered) // 2} schemas to schemas/ + docs/schemas/v0/")
     return 0
 
 
