@@ -19,6 +19,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import threading
+    import weakref
+
     from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
     from contextweaver.context.explanation import ContextBuildExplanation
     from contextweaver.context.views import ViewRegistry
@@ -36,6 +39,7 @@ if TYPE_CHECKING:
         Summarizer,
         TokenEstimator,
     )
+    from contextweaver.store._async_to_sync import _LoopThread
     from contextweaver.types import Phase
 
 
@@ -75,6 +79,23 @@ class _ManagerState:
     _fact_seq: int
     #: Whether ``_fact_seq`` has been seeded from the fact store yet (issue #462).
     _fact_seq_seeded: bool
+    #: ``True`` when any store passed at construction was an *async* backend
+    #: wrapped into the sync pipeline via an async-to-sync bridge (issue #495).
+    #: When set, :meth:`build` offloads the synchronous pipeline body to a worker
+    #: thread so the awaited store I/O does not block the caller's event loop.
+    _async_backed: bool
+    #: Private loop thread driving any async-to-sync store bridges, or ``None``
+    #: when every store is synchronous (issue #495).
+    _store_loop: _LoopThread | None
+    #: Ties the private loop thread's teardown to this manager's lifetime
+    #: (``weakref.finalize``) instead of a public ``close()`` method, which
+    #: ``context.instructions.md`` forbids until the manager decomposition lands.
+    #: ``None`` when every store is synchronous (issue #495).
+    _store_loop_finalizer: weakref.finalize[[], Any] | None
+    #: Serializes pipeline runs per manager so concurrent ``build()`` calls
+    #: offloaded to worker threads (``_async_backed``) cannot race on the
+    #: thread-unsafe in-memory stores (issue #495).  ``_build`` holds it.
+    _build_lock: threading.Lock
 
     if TYPE_CHECKING:
         # Implemented by ``_BuildMixin``; declared here (type-only, no runtime

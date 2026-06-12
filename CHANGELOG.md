@@ -9,6 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Persistent gateway sessions: `mcp serve --state-dir` (#511).**
+  `contextweaver mcp serve` accepts `--state-dir DIR` (and a `state_dir` config
+  key) to wire the gateway's `ContextManager` with file-backed stores —
+  `{DIR}/events.sqlite3` (`SqliteEventLog`) and `{DIR}/artifacts/`
+  (`JsonFileArtifactStore`). Restarting against the same directory rehydrates
+  prior event history and keeps previously issued artifact handles resolvable
+  via `tool_view`; an unwritable directory fails fast with a clear startup
+  error. Without the flag the gateway keeps its zero-config in-memory behaviour.
+  Fixes a latent store-resolution bug where an *empty* persistent backend
+  (which is falsy because it defines `__len__`) was silently replaced by an
+  in-memory default; `ContextManager` now resolves stores with explicit
+  `is None` checks.
+- **Remote store backends: Redis & S3 (#426).** New `RedisEventLog` and
+  `RedisArtifactStore` (behind `pip install 'contextweaver[redis]'`) and
+  `S3ArtifactStore` (`contextweaver[s3]`, works with AWS S3 / MinIO / R2 / GCS
+  interop) give multi-process and long-lived gateways durable event/artifact
+  storage beyond one process or disk. All three import their client library
+  lazily — importing `contextweaver.store` never requires the extra — and are
+  run through the #520 conformance kit (against `fakeredis` and `moto` in CI,
+  no service container required). `RedisArtifactStore` supports an optional
+  per-artifact TTL and namespace isolation; `S3ArtifactStore` supports a key
+  prefix and a custom `endpoint_url`.
+- **Stdlib SQLite episodic & fact stores (#496).** New `SqliteEpisodicStore`
+  and `SqliteFactStore` (`contextweaver.store`) give long-lived agents durable
+  episodic/fact memory with zero external services, built on the same
+  `_sqlite_base` scaffolding as `SqliteEventLog`. They are schema-versioned,
+  re-instantiable against an existing file, and can share one database file
+  with the event log (each store type tracks its own migrations under a
+  distinct version table). `SqliteEpisodicStore.search` delegates ranking to a
+  transient in-memory store, and `SqliteFactStore` keeps `fact_id` ordering, so
+  swapping either backend for its in-memory counterpart leaves context-build
+  output byte-identical. (`apply_migrations` / `schema_version` gained an
+  optional `version_table` argument to support the shared-file layout.)
+- **Async store protocol variants (#495).** New `AsyncEventLog`,
+  `AsyncArtifactStore`, `AsyncEpisodicStore`, and `AsyncFactStore` protocols
+  (`contextweaver.store.async_protocols`) mirror the sync surface so
+  network-backed backends can avoid blocking the async-first context pipeline.
+  `to_async(store)` wraps any sync backend as the matching async protocol via
+  `asyncio.to_thread` (each bridge serializes concurrent awaits on itself with a
+  per-bridge lock, since the in-memory backends are not thread-safe);
+  `to_sync(async_store, loop)` does the inverse. `ContextManager` now accepts
+  async store backends (via `StoreBundle`) and keeps the event loop responsive
+  during `await build(...)` and `await build_call_prompt(...)` by offloading the
+  synchronous pipeline body to a worker thread while the async store I/O runs on
+  a private loop thread; the loop thread is released automatically when the
+  manager is garbage-collected (via `weakref.finalize`, so no new public
+  `close()` method is added to `ContextManager`). Concurrent build calls on one
+  manager serialize on an internal lock so the offloaded pipeline runs never
+  race on the thread-unsafe in-memory stores.
+  Async conformance checks (`check_async_*_conformance`) ship in
+  `contextweaver.store.testing`. (Thread-affine backends such as `SqliteEventLog`
+  are not valid `to_async` targets; their async story is a future native
+  `aiosqlite` backend.)
 - **Store-protocol conformance kit (#520).** New framework-agnostic
   `contextweaver.store.testing` module — `check_event_log_conformance`,
   `check_artifact_store_conformance`, `check_episodic_store_conformance`,
