@@ -84,11 +84,36 @@ def test_from_dict_empty() -> None:
     assert restored.list_refs() == []
 
 
-def test_from_dict_no_raw_bytes() -> None:
+def test_round_trip_restores_raw_bytes() -> None:
+    """to_dict/from_dict is lossless: raw bytes survive the round-trip (#466)."""
+    store = InMemoryArtifactStore()
+    store.put("h1", b"data", media_type="text/plain")
+    restored = InMemoryArtifactStore.from_dict(store.to_dict())
+    assert restored.exists("h1")
+    assert restored.get("h1") == b"data"
+    assert restored.drilldown("h1", {"type": "head", "chars": 2}) == "da"
+
+
+def test_from_dict_metadata_only_get_raises() -> None:
+    """A ref without a matching ``data`` entry restores metadata-only (#466)."""
     store = InMemoryArtifactStore()
     store.put("h1", b"data")
-    restored = InMemoryArtifactStore.from_dict(store.to_dict())
-    assert not restored.exists("h1")
+    payload = store.to_dict()
+    payload["data"] = {}  # simulate a legacy / metadata-only serialisation
+    restored = InMemoryArtifactStore.from_dict(payload)
+    assert restored.ref("h1").handle == "h1"
+    with pytest.raises(ArtifactNotFoundError):
+        restored.get("h1")
+
+
+def test_put_populates_content_hash() -> None:
+    """put() stamps a sha256 content_hash on the returned ref (#466)."""
+    import hashlib
+
+    store = InMemoryArtifactStore()
+    ref = store.put("h1", b"hello world")
+    assert ref.content_hash == hashlib.sha256(b"hello world").hexdigest()
+    assert store.ref("h1").content_hash == ref.content_hash
 
 
 def test_exists_true() -> None:

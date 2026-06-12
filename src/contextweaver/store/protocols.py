@@ -121,7 +121,18 @@ class ArtifactStore(Protocol):
         media_type: str = "application/octet-stream",
         label: str = "",
     ) -> ArtifactRef:
-        """Store *content* and return an :class:`~contextweaver.types.ArtifactRef`."""
+        """Store *content* and return its :class:`~contextweaver.types.ArtifactRef`.
+
+        The returned ref MUST carry a populated ``content_hash`` — the sha256
+        hex digest of *content*. The firewall relies on this guarantee for its
+        content-addressed idempotency short-circuit (#190): it records the hash
+        on the processed item and skips re-processing on a later ``build()``.
+        A backend that returns an empty ``content_hash`` silently breaks that
+        short-circuit — the firewall would re-fire and overwrite the stored raw
+        bytes with the summary — so every conformant store must stamp it.
+        :func:`contextweaver.store.testing.check_artifact_store_conformance`
+        asserts this.
+        """
         ...
 
     def get(self, handle: str) -> bytes:
@@ -217,7 +228,15 @@ class FactStore(Protocol):
     """
 
     def put(self, fact: Fact) -> None:
-        """Insert or replace the fact identified by ``fact.fact_id``."""
+        """Insert or replace the fact identified by ``fact.fact_id``.
+
+        These are **upsert** semantics: writing a ``fact_id`` that already
+        exists silently replaces the prior fact.  Callers that want
+        collision-proof IDs (no accidental overwrite) should mint IDs via
+        :meth:`~contextweaver.context.manager.ContextManager.add_fact`, which
+        uses a monotonic counter (issue #462), and reserve direct ``put`` for
+        intentional upsert.
+        """
         ...
 
     def get(self, fact_id: str) -> Fact:

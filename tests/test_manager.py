@@ -6,13 +6,21 @@ import json
 
 import pytest
 
+from contextweaver.config import ContextBudget, ContextPolicy
+from contextweaver.context.classify import HeuristicSensitivityClassifier
 from contextweaver.context.manager import ContextManager
-from contextweaver.exceptions import ContextWeaverError, ItemNotFoundError
+from contextweaver.exceptions import (
+    ContextWeaverError,
+    DuplicateItemError,
+    ItemNotFoundError,
+    PolicyViolationError,
+)
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.store import StoreBundle
 from contextweaver.store.event_log import InMemoryEventLog
+from contextweaver.store.facts import Fact
 from contextweaver.types import (
     ArtifactRef,
     ContextItem,
@@ -21,6 +29,7 @@ from contextweaver.types import (
     Phase,
     ResultEnvelope,
     SelectableItem,
+    Sensitivity,
 )
 
 
@@ -29,6 +38,29 @@ def _make_log(*texts: str) -> InMemoryEventLog:
     for i, text in enumerate(texts):
         log.append(ContextItem(id=f"item-{i}", kind=ItemKind.user_turn, text=text))
     return log
+
+
+class _RecordingHook:
+    """Capture build lifecycle callbacks for production-pipeline tests."""
+
+    def __init__(self) -> None:
+        self.excluded: list[tuple[list[str], str]] = []
+        self.budget_events: list[tuple[int, int]] = []
+
+    def on_context_built(self, pack: ContextPack) -> None:
+        _ = pack
+
+    def on_firewall_triggered(self, item: ContextItem, reason: str) -> None:
+        _ = item, reason
+
+    def on_items_excluded(self, items: list[ContextItem], reason: str) -> None:
+        self.excluded.append(([item.id for item in items], reason))
+
+    def on_budget_exceeded(self, requested: int, budget: int) -> None:
+        self.budget_events.append((requested, budget))
+
+    def on_route_completed(self, tool_ids: list[str]) -> None:
+        _ = tool_ids
 
 
 @pytest.mark.asyncio
@@ -62,6 +94,49 @@ async def test_build_stats_populated() -> None:
     mgr = ContextManager(event_log=log)
     pack = await mgr.build(phase=Phase.answer)
     assert pack.stats.total_candidates == 3
+
+
+def test_build_stats_attribute_every_drop_and_fire_hooks() -> None:
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="keep", kind=ItemKind.user_turn, text="keep", token_estimate=20))
+    log.append(ContextItem(id="dup-a", kind=ItemKind.doc_snippet, text="same text"))
+    log.append(ContextItem(id="dup-b", kind=ItemKind.doc_snippet, text="same text"))
+    log.append(ContextItem(id="kind-limit", kind=ItemKind.doc_snippet, text="different text"))
+    log.append(
+        ContextItem(
+            id="secret",
+            kind=ItemKind.memory_fact,
+            text="secret",
+            sensitivity=Sensitivity.confidential,
+        )
+    )
+    log.append(ContextItem(id="budget", kind=ItemKind.agent_msg, text="large", token_estimate=100))
+    policy = ContextPolicy()
+    policy.max_items_per_kind[ItemKind.doc_snippet] = 1
+    hook = _RecordingHook()
+    mgr = ContextManager(
+        event_log=log,
+        budget=ContextBudget(answer=40),
+        policy=policy,
+        hook=hook,
+    )
+
+    pack = mgr.build_sync(phase=Phase.answer, query="keep")
+
+    assert pack.stats.included_count + pack.stats.dropped_count == pack.stats.total_candidates
+    assert pack.stats.total_candidates == 6
+    dropped = {item.item_id: item.reason for item in pack.stats.dropped_items}
+    assert dropped["secret"] == "sensitivity"
+    assert dropped["budget"] == "budget"
+    assert sorted(dropped.values()) == ["budget", "dedup", "kind_limit", "sensitivity"]
+    assert pack.stats.dropped_reasons == {
+        "budget": 1,
+        "dedup": 1,
+        "kind_limit": 1,
+        "sensitivity": 1,
+    }
+    assert sorted(reason for _ids, reason in hook.excluded) == sorted(pack.stats.dropped_reasons)
+    assert len(hook.budget_events) == 1
 
 
 def test_build_sync() -> None:
@@ -227,6 +302,64 @@ def test_add_fact_sync() -> None:
     mgr = ContextManager()
     mgr.add_fact_sync("key", "value")
     assert len(mgr.fact_store.all()) == 1
+
+
+def test_add_fact_no_overwrite_after_delete() -> None:
+    """Delete-then-add must not silently overwrite a surviving fact (#462)."""
+    mgr = ContextManager()
+    mgr.add_fact("k", "a")  # fact:k:0
+    mgr.add_fact("k", "b")  # fact:k:1
+    first_id = mgr.fact_store.get_by_key("k")[0].fact_id
+    mgr.fact_store.delete(first_id)  # remove fact:k:0 (value "a")
+    mgr.add_fact("k", "c")  # must mint fact:k:2, NOT reuse fact:k:1
+    survivors = {f.value for f in mgr.fact_store.get_by_key("k")}
+    assert survivors == {"b", "c"}  # "b" was not clobbered
+    assert len(mgr.fact_store.all()) == 2
+
+
+def test_add_fact_ids_are_deterministic() -> None:
+    """Identical call sequences yield identical fact IDs (#462 determinism)."""
+    runs = []
+    for _ in range(2):
+        mgr = ContextManager()
+        mgr.add_fact("x", "1")
+        mgr.add_fact("y", "2")
+        runs.append([f.fact_id for f in mgr.fact_store.all()])
+    assert runs[0] == runs[1]
+    assert runs[0] == ["fact:x:0", "fact:y:1"]
+
+
+def test_add_fact_seeds_counter_from_prepopulated_store() -> None:
+    """A pre-populated/persistent store (restart) seeds the counter past existing IDs (#462).
+
+    Regression for the case where a manager is built over a fact store that
+    already holds ``add_fact``-minted IDs: the counter must seed past them
+    instead of restarting at 0 and clobbering ``fact:{key}:0``.
+    """
+    mgr = ContextManager()
+    # Simulate a persistent store reloaded with prior facts across a restart.
+    mgr.fact_store.put(Fact(fact_id="fact:k:0", key="k", value="old"))
+    mgr.fact_store.put(Fact(fact_id="fact:k:1", key="k", value="older"))
+    mgr.add_fact("k", "new")  # seeds to 2 → fact:k:2, no collision/overwrite
+    values = {f.value for f in mgr.fact_store.get_by_key("k")}
+    assert values == {"old", "older", "new"}
+    assert len(mgr.fact_store.all()) == 3
+
+
+def test_add_fact_collision_guard_is_defensive_backstop() -> None:
+    """If the counter desyncs from the store, add_fact raises rather than overwriting (#462).
+
+    Seeding makes a single-threaded collision unreachable, so this drives the
+    guard directly by forcing a stale counter (e.g. a concurrent writer minted
+    the same ID after this manager seeded).
+    """
+    mgr = ContextManager()
+    mgr.fact_store.put(Fact(fact_id="fact:k:0", key="k", value="other"))
+    # Force a stale, already-seeded counter pointing at an existing ID.
+    mgr._fact_seq = 0
+    mgr._fact_seq_seeded = True
+    with pytest.raises(DuplicateItemError, match="already exists"):
+        mgr.add_fact("k", "new")
 
 
 def test_add_episode() -> None:
@@ -999,6 +1132,109 @@ def test_drilldown_unknown_selector_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Drilldown redaction enforcement (issue #451)
+# ---------------------------------------------------------------------------
+
+
+def _seed_sensitive_artifact(
+    mgr: ContextManager, handle: str, content: str, sensitivity: Sensitivity
+) -> None:
+    """Store *content* under *handle* with a source event-log item at *sensitivity*."""
+    ref = mgr.artifact_store.put(handle, content.encode("utf-8"), media_type="text/plain")
+    mgr.event_log.append(
+        ContextItem(
+            id=f"src:{handle}",
+            kind=ItemKind.tool_result,
+            text="summary",
+            artifact_ref=ref,
+            sensitivity=sensitivity,
+        )
+    )
+
+
+def test_drilldown_denied_for_confidential_source_by_default() -> None:
+    """drilldown() on a source item that meets the floor is denied (closed default)."""
+    mgr = ContextManager()
+    _seed_sensitive_artifact(
+        mgr, "artifact:secret-1", "TOP SECRET payload", Sensitivity.confidential
+    )
+    with pytest.raises(PolicyViolationError, match="denied"):
+        mgr.drilldown("artifact:secret-1", {"type": "head", "chars": 10})
+
+
+def test_drilldown_allowed_for_public_source() -> None:
+    """A non-sensitive source is never over-blocked."""
+    mgr = ContextManager()
+    _seed_sensitive_artifact(mgr, "artifact:ok-1", "plain text", Sensitivity.public)
+    assert mgr.drilldown("artifact:ok-1", {"type": "head", "chars": 5}) == "plain"
+
+
+def test_drilldown_allowed_for_confidential_source_with_optout() -> None:
+    """The documented opt-out re-enables recovery of filtered content."""
+    mgr = ContextManager(policy=ContextPolicy(allow_redacted_drilldown=True))
+    _seed_sensitive_artifact(mgr, "artifact:secret-2", "TOP SECRET", Sensitivity.confidential)
+    assert mgr.drilldown("artifact:secret-2", {"type": "head", "chars": 3}) == "TOP"
+
+
+def test_drilldown_inject_inherits_source_sensitivity() -> None:
+    """An injected slice inherits the source label, not the default public."""
+    mgr = ContextManager(policy=ContextPolicy(allow_redacted_drilldown=True))
+    _seed_sensitive_artifact(mgr, "artifact:secret-3", "alpha\nbeta\ngamma", Sensitivity.restricted)
+    count = mgr.event_log.count()
+    mgr.drilldown("artifact:secret-3", {"type": "lines", "start": 0, "end": 1}, inject=True)
+    injected = mgr.event_log.get(f"drilldown:artifact:secret-3:lines:{count}")
+    assert injected.sensitivity == Sensitivity.restricted
+
+
+def test_drilldown_unknown_handle_not_over_blocked() -> None:
+    """A handle with no matching source item is treated as public (injects as public)."""
+    mgr = ContextManager()
+    ref = mgr.artifact_store.put("artifact:orphan", b"orphan body", media_type="text/plain")
+    assert ref.handle == "artifact:orphan"
+    count = mgr.event_log.count()
+    mgr.drilldown("artifact:orphan", {"type": "head", "chars": 6}, inject=True)
+    injected = mgr.event_log.get(f"drilldown:artifact:orphan:head:{count}")
+    assert injected.sensitivity == Sensitivity.public
+
+
+# ---------------------------------------------------------------------------
+# Classifier audit metadata (issue #542)
+# ---------------------------------------------------------------------------
+
+
+class _AlwaysInternal:
+    """Test classifier that always votes ``internal``."""
+
+    def classify(self, item: ContextItem) -> Sensitivity:
+        _ = item
+        return Sensitivity.internal
+
+
+def test_classify_items_records_audit_metadata() -> None:
+    """A raised label records metadata["sensitivity_raised_by"] (issue #542 AC)."""
+    from contextweaver.context.build import _classify_items
+
+    items = [
+        ContextItem(id="a", kind=ItemKind.tool_result, text="x", sensitivity=Sensitivity.public)
+    ]
+    out = _classify_items(items, _AlwaysInternal())
+    assert out[0].sensitivity == Sensitivity.internal
+    assert out[0].metadata["sensitivity_raised_by"] == "_AlwaysInternal"
+
+
+def test_classify_items_no_metadata_when_label_not_raised() -> None:
+    """No audit metadata is written when the classifier does not raise the label."""
+    from contextweaver.context.build import _classify_items
+
+    items = [
+        ContextItem(id="a", kind=ItemKind.tool_result, text="x", sensitivity=Sensitivity.restricted)
+    ]
+    out = _classify_items(items, _AlwaysInternal())
+    assert out[0].sensitivity == Sensitivity.restricted
+    assert "sensitivity_raised_by" not in out[0].metadata
+
+
+# ---------------------------------------------------------------------------
 # Auto-generated views on ingest
 # ---------------------------------------------------------------------------
 
@@ -1105,3 +1341,92 @@ def test_profile_with_seeded_mode() -> None:
     profile = ProfileConfig(mode=Mode.seeded, seed=42)
     mgr = ContextManager(profile=profile)
     assert mgr.mode == Mode.seeded
+
+
+# ------------------------------------------------------------------
+# Header memory routed through sensitivity + phase policy (issue #450)
+# ------------------------------------------------------------------
+
+
+def test_header_facts_dropped_by_sensitivity_floor() -> None:
+    mgr = ContextManager()  # default floor confidential, action drop
+    mgr.add_fact("public_key", "public_value")
+    mgr.add_fact("secret_key", "secret_value", sensitivity=Sensitivity.restricted)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "public_value" in prompt
+    assert "secret_value" not in prompt
+
+
+def test_header_facts_redacted_when_action_redact() -> None:
+    policy = ContextPolicy(sensitivity_floor=Sensitivity.confidential, sensitivity_action="redact")
+    mgr = ContextManager(policy=policy)
+    mgr.add_fact("secret_key", "secret_value", sensitivity=Sensitivity.confidential)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "secret_value" not in prompt
+    assert "[REDACTED: confidential]" in prompt
+
+
+def test_header_facts_excluded_in_phase_without_memory_fact() -> None:
+    """A phase that excludes memory_fact must not receive fact text via the
+    header side-channel (issue #450)."""
+    mgr = ContextManager()
+    mgr.add_fact("k", "v")
+    assert "[FACTS]" in mgr.build_sync(phase=Phase.answer).prompt  # answer allows memory_fact
+    assert "[FACTS]" not in mgr.build_sync(phase=Phase.call).prompt  # call does not
+
+
+def test_header_episode_dropped_by_sensitivity() -> None:
+    mgr = ContextManager()
+    mgr.add_episode("e1", "benign summary")
+    mgr.add_episode("e2", "leaked secret summary", sensitivity=Sensitivity.restricted)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "benign summary" in prompt
+    assert "leaked secret summary" not in prompt
+
+
+# ------------------------------------------------------------------
+# Ingestion sensitivity classification (issue #542)
+# ------------------------------------------------------------------
+
+
+def _secret_log() -> InMemoryEventLog:
+    log = InMemoryEventLog()
+    log.append(
+        ContextItem(id="t1", kind=ItemKind.tool_result, text="leak key=AKIAIOSFODNN7EXAMPLE")
+    )
+    return log
+
+
+def test_unlabeled_secret_item_survives_without_classifier() -> None:
+    prompt = ContextManager(event_log=_secret_log()).build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" in prompt
+
+
+def test_classifier_raises_and_drops_unlabeled_secret_item() -> None:
+    mgr = ContextManager(
+        event_log=_secret_log(), sensitivity_classifier=HeuristicSensitivityClassifier()
+    )
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" not in prompt
+
+
+def test_classifier_applies_to_header_facts() -> None:
+    mgr = ContextManager(sensitivity_classifier=HeuristicSensitivityClassifier())
+    mgr.add_fact("creds", "key=AKIAIOSFODNN7EXAMPLE")
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" not in prompt
+
+
+# ------------------------------------------------------------------
+# Manager-level firewall secret scrubbing (issue #428)
+# ------------------------------------------------------------------
+
+
+def test_manager_redact_secrets_scrubs_built_prompt() -> None:
+    log = InMemoryEventLog()
+    log.append(
+        ContextItem(id="t1", kind=ItemKind.tool_result, text="config key=AKIAIOSFODNN7EXAMPLE")
+    )
+    mgr = ContextManager(event_log=log, redact_secrets=True)
+    prompt = mgr.build_sync(phase=Phase.answer).prompt
+    assert "AKIAIOSFODNN7EXAMPLE" not in prompt

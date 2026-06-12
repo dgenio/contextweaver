@@ -38,10 +38,21 @@ from typing import Annotated, Any
 import typer
 import yaml
 
+from contextweaver._version import __version__
+from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
+from contextweaver.context.manager import ContextManager
+from contextweaver.diagnostics import (
+    DiagnosticSink,
+    JsonlDiagnosticSink,
+    load_diagnostic_events,
+    render_diagnostic_report,
+    summarize_diagnostics,
+)
+from contextweaver.store import JsonFileArtifactStore, SqliteEventLog, StoreBundle
 
 logger = logging.getLogger("contextweaver.mcp_cli")
 
@@ -49,6 +60,11 @@ logger = logging.getLogger("contextweaver.mcp_cli")
 class _ServeMode(str, Enum):
     gateway = "gateway"
     proxy = "proxy"
+
+
+class _ReportFormat(str, Enum):
+    json = "json"
+    markdown = "markdown"
 
 
 mcp_app = typer.Typer(
@@ -66,13 +82,24 @@ mcp_app = typer.Typer(
 
 
 _CONFIG_KEYS: frozenset[str] = frozenset(
-    {"catalog", "mode", "top_k", "beam_width", "cache_stable", "name", "version"}
+    {
+        "catalog",
+        "mode",
+        "top_k",
+        "beam_width",
+        "cache_stable",
+        "name",
+        "version",
+        "diagnostics",
+        "quiet",
+        "state_dir",
+    }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
 _FALSE_STRINGS: frozenset[str] = frozenset({"false", "0", "no", "off"})
 
 
-def _coerce_config_bool(value: object) -> bool:
+def _coerce_config_bool(key: str, value: object) -> bool:
     """Coerce a config value to ``bool``, accepting common string spellings.
 
     Plain ``bool(value)`` is wrong for config files: ``bool("false")`` is
@@ -86,9 +113,7 @@ def _coerce_config_bool(value: object) -> bool:
             return True
         if norm in _FALSE_STRINGS:
             return False
-    raise typer.BadParameter(
-        f"cache_stable must be a boolean, got {value!r}", param_hint="--config"
-    )
+    raise typer.BadParameter(f"{key} must be a boolean, got {value!r}", param_hint="--config")
 
 
 def _coerce_config_int(key: str, value: object) -> int:
@@ -109,9 +134,11 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
 
     The config is a JSON/YAML mapping whose keys mirror the ``serve`` options:
     ``catalog`` (path, required), ``mode`` (``gateway`` | ``proxy``),
-    ``top_k``, ``beam_width``, ``cache_stable``, ``name``, ``version``. Explicit
-    CLI flags still win over config values; the file supplies everything else so
-    a drop-in proxy can be launched with ``mcp serve --config gateway.yaml``.
+    ``top_k``, ``beam_width``, ``cache_stable``, ``name``, ``version``,
+    ``diagnostics``, and ``quiet``. Explicit CLI flags still win over config
+    values; the file supplies everything else so a drop-in proxy can be launched
+    with ``mcp serve --config gateway.yaml``. Relative catalog and diagnostics
+    paths are resolved from the config file's directory.
 
     Args:
         config_path: Filesystem path to the config file (``.json``/``.yaml``/``.yml``).
@@ -156,6 +183,10 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         raise typer.BadParameter(
             f"config file {config_path} must set 'catalog'", param_hint="--config"
         )
+    catalog_path = Path(str(data["catalog"])).expanduser()
+    if not catalog_path.is_absolute():
+        catalog_path = config_path.parent / catalog_path
+    data["catalog"] = str(catalog_path.resolve())
     # Normalise + validate option types so `serve` can consume them directly
     # and `--config` parsing matches CLI flag semantics (e.g. a quoted
     # "false" must not become True).
@@ -166,8 +197,19 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
     for int_key in ("top_k", "beam_width"):
         if int_key in data:
             data[int_key] = _coerce_config_int(int_key, data[int_key])
-    if "cache_stable" in data:
-        data["cache_stable"] = _coerce_config_bool(data["cache_stable"])
+    for bool_key in ("cache_stable", "quiet"):
+        if bool_key in data:
+            data[bool_key] = _coerce_config_bool(bool_key, data[bool_key])
+    if "diagnostics" in data:
+        diagnostics_path = Path(str(data["diagnostics"])).expanduser()
+        if not diagnostics_path.is_absolute():
+            diagnostics_path = config_path.parent / diagnostics_path
+        data["diagnostics"] = str(diagnostics_path.resolve())
+    if "state_dir" in data:
+        state_dir_path = Path(str(data["state_dir"])).expanduser()
+        if not state_dir_path.is_absolute():
+            state_dir_path = config_path.parent / state_dir_path
+        data["state_dir"] = str(state_dir_path.resolve())
     return data
 
 
@@ -281,6 +323,35 @@ async def _stub_handler(name: str, args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": body}], "isError": False}
 
 
+def _build_state_stores(state_dir: Path) -> StoreBundle:
+    """Build persistent stores rooted at *state_dir* for ``mcp serve`` (issue #511).
+
+    Lays out ``{state_dir}/events.sqlite3`` (a :class:`SqliteEventLog`) and
+    ``{state_dir}/artifacts/`` (a :class:`JsonFileArtifactStore`).  Both
+    backends re-instantiate against existing files/directories, so pointing a
+    restarted server at the same *state_dir* rehydrates prior event history and
+    keeps previously-issued artifact handles resolvable via ``tool_view``.
+
+    Args:
+        state_dir: Directory to persist gateway state under (created if absent).
+
+    Returns:
+        A :class:`StoreBundle` wiring the persistent event log + artifact store.
+
+    Raises:
+        typer.BadParameter: If *state_dir* cannot be created or written.
+    """
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        event_log = SqliteEventLog(state_dir / "events.sqlite3")
+        artifact_store = JsonFileArtifactStore(state_dir / "artifacts")
+    except OSError as exc:
+        raise typer.BadParameter(
+            f"state_dir {state_dir} is not writable: {exc}", param_hint="--state-dir"
+        ) from exc
+    return StoreBundle(event_log=event_log, artifact_store=artifact_store)
+
+
 def _build_runtime(
     catalog_path: Path,
     *,
@@ -288,6 +359,8 @@ def _build_runtime(
     top_k: int,
     beam_width: int,
     cache_stable: bool,
+    diagnostic_sink: DiagnosticSink | None = None,
+    state_dir: Path | None = None,
 ) -> ProxyRuntime:
     """Construct a :class:`ProxyRuntime` populated from *catalog_path*.
 
@@ -297,23 +370,94 @@ def _build_runtime(
         top_k: Maximum number of cards returned by ``tool_browse``.
         beam_width: Router beam width.
         cache_stable: Toggle cache-stable browse ordering.
+        diagnostic_sink: Optional structured event destination.
+        state_dir: Optional directory for persistent gateway state (issue
+            #511).  When set, the runtime's :class:`ContextManager` is wired
+            with file-backed stores so artifact handles and event history
+            survive a restart; when ``None`` (default), in-memory stores are
+            used and state is lost on exit.
 
     Returns:
         A ready-to-serve :class:`ProxyRuntime`.
     """
     tool_defs = _load_tool_defs_from_catalog(catalog_path)
     exposure = ExposureMode.GATEWAY if mode == _ServeMode.gateway else ExposureMode.TRANSPARENT
+    context_manager = (
+        ContextManager(stores=_build_state_stores(state_dir)) if state_dir is not None else None
+    )
     runtime = ProxyRuntime(
         StubUpstream(tool_defs, handler=_stub_handler),
         mode=exposure,
         top_k=top_k,
         beam_width=beam_width,
         cache_stable=cache_stable,
+        diagnostic_sink=diagnostic_sink,
+        context_manager=context_manager,
     )
     runtime.register_tool_defs_sync(tool_defs)
     # Reuse the helper so test code can introspect the resulting catalog
     # without re-parsing the file.
     return runtime
+
+
+@mcp_app.command("inspect")
+def inspect_catalog(
+    catalog: Annotated[
+        Path, typer.Option(..., "--catalog", help="Path to a JSON/YAML tool catalog.")
+    ],
+    mode: Annotated[
+        _ServeMode, typer.Option("--mode", help="Exposure mode used for savings estimates.")
+    ] = _ServeMode.gateway,
+    format: Annotated[  # noqa: A002
+        _ReportFormat, typer.Option("--format", help="Output format.")
+    ] = _ReportFormat.markdown,
+) -> None:
+    """Inspect catalog size, namespaces, and static schema savings."""
+    tool_defs = _load_tool_defs_from_catalog(catalog)
+    runtime = ProxyRuntime(
+        StubUpstream(tool_defs, handler=_stub_handler),
+        mode=ExposureMode.GATEWAY if mode == _ServeMode.gateway else ExposureMode.TRANSPARENT,
+    )
+    runtime.register_tool_defs_sync(tool_defs)
+    items = runtime.catalog.all()
+    raw_defs = {item.id: raw for item, raw in zip(items, tool_defs, strict=True)}
+    summary = catalog_diagnostic_summary(items, raw_defs, mode=mode.value)
+    summary["catalog"] = str(catalog)
+    summary["tool_ids"] = runtime.list_tool_ids()
+    if format == _ReportFormat.json:
+        typer.echo(json.dumps(summary, indent=2, sort_keys=True))
+        return
+    lines = [
+        "# MCP Catalog Inspection",
+        "",
+        f"- Catalog: `{catalog}`",
+        f"- Mode: {mode.value}",
+        f"- Upstream tools: {summary['tool_count']}",
+        f"- Exposed tools: {summary['exposed_tool_count']}",
+        f"- Full schema tokens: {summary['full_schema_tokens']}",
+        f"- Exposed schema tokens: {summary['exposed_schema_tokens']}",
+        f"- Schema tokens avoided: {summary['schema_tokens_avoided']}",
+        "",
+        "## Namespaces",
+    ]
+    for namespace, count_value in summary["namespace_counts"].items():
+        lines.append(f"- `{namespace or '(default)'}`: {count_value}")
+    typer.echo("\n".join(lines))
+
+
+@mcp_app.command("stats")
+def diagnostic_stats(
+    events: Annotated[Path, typer.Option(..., "--events", help="Diagnostic JSONL file.")],
+    format: Annotated[  # noqa: A002
+        _ReportFormat, typer.Option("--format", help="Output format.")
+    ] = _ReportFormat.markdown,
+) -> None:
+    """Aggregate gateway event counts, savings, failures, and latency."""
+    summary = summarize_diagnostics(load_diagnostic_events(events))
+    if format == _ReportFormat.json:
+        typer.echo(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        typer.echo(render_diagnostic_report(summary), nl=False)
 
 
 def _install_sigint_handler(loop: asyncio.AbstractEventLoop) -> None:
@@ -394,13 +538,44 @@ def serve(
     ] = "contextweaver",
     version: Annotated[
         str | None,
-        typer.Option("--version", help="Optional MCP server version string."),
+        typer.Option(
+            "--version",
+            help=(
+                "MCP server version advertised on init. Defaults to the installed "
+                "contextweaver package version."
+            ),
+        ),
     ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
             "--dry-run",
             help="Validate catalog and print summary; do not bind stdio.",
+        ),
+    ] = False,
+    diagnostics: Annotated[
+        Path | None,
+        typer.Option(
+            "--diagnostics",
+            help="Append sanitized gateway events to this JSONL file.",
+        ),
+    ] = None,
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help=(
+                "Persist gateway state under this directory so artifact handles "
+                "and event history survive a restart (events.sqlite3 + artifacts/). "
+                "Omit for the zero-config in-memory default."
+            ),
+        ),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet/--no-quiet",
+            help="Suppress lifecycle messages on stderr.",
         ),
     ] = False,
 ) -> None:
@@ -441,6 +616,12 @@ def serve(
             name = str(cfg["name"])
         if not _from_cli("version") and "version" in cfg:
             version = str(cfg["version"])
+        if not _from_cli("diagnostics") and "diagnostics" in cfg:
+            diagnostics = Path(str(cfg["diagnostics"]))
+        if not _from_cli("state_dir") and "state_dir" in cfg:
+            state_dir = Path(str(cfg["state_dir"]))
+        if not _from_cli("quiet") and "quiet" in cfg:
+            quiet = cfg["quiet"]
 
     if catalog is None:
         raise typer.BadParameter(
@@ -449,24 +630,36 @@ def serve(
         )
     resolved_mode = _ServeMode.gateway if gateway else _ServeMode.proxy if proxy else mode
 
+    # Advertise the installed contextweaver version on MCP ``initialize`` unless
+    # an explicit version was supplied via ``--version`` or the config file.
+    if version is None:
+        version = __version__
+
+    diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
     runtime = _build_runtime(
         catalog,
         mode=resolved_mode,
         top_k=top_k,
         beam_width=beam_width,
         cache_stable=cache_stable,
+        diagnostic_sink=diagnostic_sink,
+        state_dir=state_dir,
     )
     tool_count = len(runtime.list_tool_ids())
 
-    typer.echo(
-        f"contextweaver mcp serve: mode={resolved_mode.value} "
-        f"catalog={catalog} tools={tool_count} top_k={top_k} "
-        f"beam_width={beam_width} cache_stable={cache_stable}",
-        err=True,
-    )
+    if not quiet:
+        typer.echo(
+            f"contextweaver mcp serve: mode={resolved_mode.value} "
+            f"catalog={catalog} tools={tool_count} top_k={top_k} "
+            f"beam_width={beam_width} cache_stable={cache_stable} "
+            f"version={version} diagnostics={diagnostics or 'off'} "
+            f"state_dir={state_dir or 'in-memory'}",
+            err=True,
+        )
 
     if dry_run:
-        typer.echo("dry-run: catalog validated; not binding stdio.", err=True)
+        if not quiet:
+            typer.echo("dry-run: catalog validated; not binding stdio.", err=True)
         raise typer.Exit(0)
 
     server: McpGatewayServer | McpProxyServer
@@ -487,7 +680,8 @@ def serve(
         _install_sigint_handler(loop)
         loop.run_until_complete(_serve())
     except (KeyboardInterrupt, asyncio.CancelledError):
-        typer.echo("contextweaver mcp serve: interrupted, shutting down.", err=True)
+        if not quiet:
+            typer.echo("contextweaver mcp serve: interrupted, shutting down.", err=True)
         raise typer.Exit(0) from None
     finally:
         loop.close()

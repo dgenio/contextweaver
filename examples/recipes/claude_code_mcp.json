@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "contextweaver-gateway": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "contextweaver",
+        "mcp",
+        "serve",
+        "--config",
+        "${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"
+      ]
+    }
+  }
+}

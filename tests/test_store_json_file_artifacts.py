@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
-from contextweaver.exceptions import ArtifactNotFoundError, ContextWeaverError
+from contextweaver.exceptions import (
+    ArtifactNotFoundError,
+    ArtifactStoreQuotaError,
+    ContextWeaverError,
+)
 from contextweaver.store.json_file_artifacts import JsonFileArtifactStore
 
 # ---------------------------------------------------------------------------
@@ -256,3 +261,166 @@ def test_drilldown_missing_raises(tmp_path: Path) -> None:
     store = JsonFileArtifactStore(tmp_path)
     with pytest.raises(ArtifactNotFoundError):
         store.drilldown("missing", {"type": "head"})
+
+
+# ---------------------------------------------------------------------------
+# content_hash persistence (#466)
+# ---------------------------------------------------------------------------
+
+
+def test_put_persists_content_hash(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path)
+    ref = store.put("h1", b"hello world")
+    expected = hashlib.sha256(b"hello world").hexdigest()
+    assert ref.content_hash == expected
+    # Persisted to disk and recovered by a fresh instance — this is what lets
+    # the firewall's #190 idempotency short-circuit survive a restart.
+    reopened = JsonFileArtifactStore(tmp_path)
+    assert reopened.ref("h1").content_hash == expected
+
+
+# ---------------------------------------------------------------------------
+# Filename encoding for hostile-but-legal handles (#466)
+# ---------------------------------------------------------------------------
+
+
+def test_colon_handle_round_trips_and_is_encoded(tmp_path: Path) -> None:
+    handle = "artifact:result:call_1"  # the shape the firewall emits
+    store = JsonFileArtifactStore(tmp_path)
+    store.put(handle, b"payload", media_type="text/plain")
+    assert store.get(handle) == b"payload"
+    assert store.ref(handle).handle == handle
+    # No raw ':' in any on-disk filename (NTFS alternate-data-stream safety).
+    names = [p.name for p in tmp_path.iterdir()]
+    assert names, "expected files on disk"
+    assert all(":" not in name for name in names)
+    # Recovered after re-instantiation by its original handle.
+    assert JsonFileArtifactStore(tmp_path).get(handle) == b"payload"
+
+
+def test_colon_handle_in_list_refs(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("artifact:a", b"a")
+    store.put("artifact:b", b"b")
+    assert [r.handle for r in store.list_refs()] == ["artifact:a", "artifact:b"]
+
+
+# ---------------------------------------------------------------------------
+# Atomic writes (#497)
+# ---------------------------------------------------------------------------
+
+
+def test_put_leaves_no_temp_files(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("h1", b"data")
+    assert [p.name for p in tmp_path.glob("._cw_tmp_*")] == []
+
+
+def test_overwrite_replaces_atomically(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("h1", b"v1")
+    store.put("h1", b"v2-longer")
+    assert store.get("h1") == b"v2-longer"
+    assert store.ref("h1").size_bytes == len(b"v2-longer")
+    assert [r.handle for r in store.list_refs()] == ["h1"]
+
+
+# ---------------------------------------------------------------------------
+# In-memory index (#497)
+# ---------------------------------------------------------------------------
+
+
+def test_list_refs_does_not_rescan_directory(tmp_path: Path) -> None:
+    """list_refs reads the in-memory index, not the filesystem (#497).
+
+    A metadata file dropped into the directory *after* construction is not
+    visible to ``list_refs`` until the store is re-instantiated.
+    """
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("h1", b"a")
+    # Drop a *complete* artifact pair (metadata + data) so it models the real
+    # on-disk invariant the loader requires; a metadata-only file would be
+    # skipped as inconsistent.
+    (tmp_path / "sneaky.json").write_text(
+        json.dumps({"handle": "sneaky", "media_type": "text/plain", "size_bytes": 1}),
+        encoding="utf-8",
+    )
+    (tmp_path / "sneaky.data").write_bytes(b"x")
+    assert [r.handle for r in store.list_refs()] == ["h1"]
+    # A fresh instance scans the directory once and picks it up.
+    assert {r.handle for r in JsonFileArtifactStore(tmp_path).list_refs()} == {"h1", "sneaky"}
+
+
+def test_reinstantiate_skips_orphan_and_mismatched_metadata(tmp_path: Path) -> None:
+    """_load_index only indexes self-consistent file pairs (#497 review).
+
+    Orphan metadata (no ``.data``) and metadata whose filename does not match
+    ``enc(handle)`` are skipped, so the rebuilt index never advertises a handle
+    ``get()`` cannot serve and the quota byte counter is not inflated.
+    """
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("real", b"12345")  # 5 bytes
+    # Orphan metadata: a .json with no sibling .data file.
+    (tmp_path / "orphan.json").write_text(
+        json.dumps({"handle": "orphan", "media_type": "text/plain", "size_bytes": 999}),
+        encoding="utf-8",
+    )
+    # Filename/handle mismatch: file is wrongname.json but claims handle "elsewhere".
+    (tmp_path / "wrongname.json").write_text(
+        json.dumps({"handle": "elsewhere", "media_type": "text/plain", "size_bytes": 4}),
+        encoding="utf-8",
+    )
+    (tmp_path / "wrongname.data").write_bytes(b"data")
+
+    reopened = JsonFileArtifactStore(tmp_path, max_bytes=10)
+    assert [r.handle for r in reopened.list_refs()] == ["real"]
+    assert reopened.exists("orphan") is False
+    assert reopened.exists("elsewhere") is False
+    # Byte counter reflects only the 5 real bytes, so a 5-byte write still fits
+    # under the 10-byte quota (the skipped 999/4 byte claims did not inflate it).
+    reopened.put("more", b"67890")
+    assert reopened.get("more") == b"67890"
+
+
+def test_delete_updates_index(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("h1", b"a")
+    store.put("h2", b"b")
+    store.delete("h1")
+    assert [r.handle for r in store.list_refs()] == ["h2"]
+    assert store.exists("h1") is False
+
+
+# ---------------------------------------------------------------------------
+# Size quotas (#497)
+# ---------------------------------------------------------------------------
+
+
+def test_max_artifacts_quota(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path, max_artifacts=2)
+    store.put("h1", b"a")
+    store.put("h2", b"b")
+    with pytest.raises(ArtifactStoreQuotaError, match="count limit"):
+        store.put("h3", b"c")
+    # Overwriting an existing handle does not count as a new artifact.
+    store.put("h1", b"aa")
+    assert store.get("h1") == b"aa"
+
+
+def test_max_bytes_quota(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path, max_bytes=10)
+    store.put("h1", b"12345")  # 5 bytes
+    with pytest.raises(ArtifactStoreQuotaError, match="byte limit"):
+        store.put("h2", b"123456")  # would total 11 > 10
+    # Replacing h1 with smaller content frees room.
+    store.put("h1", b"1")
+    store.put("h2", b"123456")
+    assert store.get("h2") == b"123456"
+
+
+def test_quota_failure_does_not_store_partial(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path, max_bytes=4)
+    with pytest.raises(ArtifactStoreQuotaError):
+        store.put("h1", b"12345")
+    assert store.exists("h1") is False
+    assert not (tmp_path / "h1.data").exists()

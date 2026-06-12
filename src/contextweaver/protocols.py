@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from contextweaver.context.memory_source import MemoryEntry
     from contextweaver.envelope import ChoiceCard, ContextPack
     from contextweaver.routing.graph import ChoiceGraph
-    from contextweaver.types import ContextItem, Phase, SelectableItem
+    from contextweaver.types import ContextItem, Phase, SelectableItem, Sensitivity
 
 
 _tiktoken_logger = _logging.getLogger("contextweaver.protocols")
@@ -48,11 +48,99 @@ class TokenEstimator(Protocol):
 
 
 class CharDivFourEstimator:
-    """Simple heuristic: token count ≈ len(text) // 4."""
+    """Simple heuristic: token count ≈ len(text) // 4.
+
+    This is the single ``len(text) // 4`` primitive in the codebase. It is a
+    good approximation for Latin-script English but under-counts dense scripts
+    (CJK, Kana, Hangul) by ~4×; :class:`HeuristicEstimator` corrects that while
+    reusing this rate for the remaining text. Prefer
+    :func:`contextweaver.tokens.heuristic_counter` (which returns the
+    script-aware :class:`HeuristicEstimator`) for new code; this class remains
+    available for callers that explicitly want the raw ``len // 4`` rate.
+    """
+
+    #: Stable identifier surfaced via :func:`contextweaver.tokens.estimator_name`
+    #: and recorded on :class:`~contextweaver.envelope.BuildStats` (issue #493).
+    name: str = "heuristic/chardiv4"
 
     def estimate(self, text: str) -> int:
         """Return ``len(text) // 4`` as a rough token estimate."""
         return len(text) // 4
+
+
+# Unicode code-point ranges that tokenise at roughly one token per character
+# under cl100k-family encodings (vs ~4 chars/token for Latin script). Counting
+# these at ≈1 token/char is a standard, deterministic, dependency-free
+# correction for the offline heuristic (issue #525). Ranges are inclusive.
+_WIDE_TOKEN_RANGES: tuple[tuple[int, int], ...] = (
+    (0x1100, 0x11FF),  # Hangul Jamo
+    (0x2600, 0x27BF),  # Miscellaneous symbols + Dingbats (emoji-adjacent)
+    (0x3000, 0x9FFF),  # CJK punctuation, Hiragana, Katakana, CJK Unified Ideographs
+    (0xAC00, 0xD7A3),  # Hangul syllables
+    (0xF900, 0xFAFF),  # CJK compatibility ideographs
+    (0xFF00, 0xFFEF),  # Halfwidth/fullwidth forms
+    (0x1F000, 0x1FAFF),  # Emoji, pictographs, symbols
+    (0x20000, 0x2FA1F),  # CJK Unified Ideographs Extension B–F
+)
+
+
+def _is_wide_token_char(cp: int) -> bool:
+    """Return ``True`` when code point *cp* tokenises at ≈1 token/char.
+
+    Pure integer range checks — no :mod:`unicodedata` lookup — so the estimate
+    stays a single linear scan with no per-character table cost (issue #525).
+    """
+    for lo, hi in _WIDE_TOKEN_RANGES:
+        if lo <= cp <= hi:
+            return True
+        if cp < lo:
+            break  # ranges are sorted ascending; no later range can match
+    return False
+
+
+class HeuristicEstimator:
+    """Deterministic, dependency-free, script-aware token heuristic (issue #525).
+
+    Counts code points in dense scripts (CJK, Kana, Hangul, fullwidth forms,
+    emoji/pictographs) at ≈1 token each and the remaining text at the
+    :class:`CharDivFourEstimator` ``len // 4`` rate. The result is a single
+    linear scan with no network or library dependency, so it is the default
+    estimator used by :class:`~contextweaver.context.manager.ContextManager`
+    and the offline fallback for :class:`TiktokenEstimator`.
+
+    For pure Latin/ASCII text the estimate is **identical** to
+    ``len(text) // 4`` (no behaviour change versus the old default); the
+    correction only applies once dense-script characters appear, where the
+    naive heuristic under-counts by roughly 4×. See
+    :mod:`contextweaver.tokens` and ``docs/token_calibration.md`` for the
+    measured accuracy bands.
+
+    Example::
+
+        HeuristicEstimator().estimate("hello world")   # == len // 4
+        HeuristicEstimator().estimate("こんにちは")       # ≈ 5, not 1
+    """
+
+    #: Stable identifier surfaced via :func:`contextweaver.tokens.estimator_name`
+    #: and recorded on :class:`~contextweaver.envelope.BuildStats` (issue #493).
+    name: str = "heuristic/v2"
+
+    def estimate(self, text: str) -> int:
+        """Return a script-aware token estimate for *text*.
+
+        Dense-script code points (see :data:`_WIDE_TOKEN_RANGES`) count as one
+        token each; all other characters accumulate at the ``len // 4`` rate.
+        """
+        if not text:
+            return 0
+        wide = 0
+        narrow = 0
+        for ch in text:
+            if _is_wide_token_char(ord(ch)):
+                wide += 1
+            else:
+                narrow += 1
+        return wide + narrow // 4
 
 
 class TiktokenEstimator:
@@ -66,36 +154,49 @@ class TiktokenEstimator:
     ``tiktoken`` is a core runtime dependency, so the import always succeeds.
     However, tiktoken downloads BPE encoding files on first use; in offline /
     air-gapped environments this download fails. When that happens the
-    estimator transparently falls back to :class:`CharDivFourEstimator` and
-    logs a warning so the operator can pre-cache encodings (set
-    ``TIKTOKEN_CACHE_DIR``) or use the heuristic estimator directly.
+    estimator transparently falls back to :class:`HeuristicEstimator` (the
+    script-aware heuristic) and logs a warning so the operator can pre-cache
+    encodings (set ``TIKTOKEN_CACHE_DIR``) or use the heuristic estimator
+    directly.
+
+    Attributes:
+        name: Stable identifier surfaced via
+            :func:`contextweaver.tokens.estimator_name` and recorded on
+            :class:`~contextweaver.envelope.BuildStats` (issue #493). Reads
+            ``"tiktoken/<encoding>"`` on the exact path and
+            ``"heuristic/v2"`` when the offline fallback is active.
     """
 
     def __init__(self, model: str = "cl100k_base") -> None:
-        self._fallback: CharDivFourEstimator | None = None
+        self._fallback: HeuristicEstimator | None = None
         try:
             self._enc = _tiktoken.encoding_for_model(model)
         except KeyError:
             try:
                 self._enc = _tiktoken.get_encoding(model)
             except Exception as exc:  # pragma: no cover - exercised in offline tests
-                self._fallback = CharDivFourEstimator()
-                _tiktoken_logger.warning(
-                    "tiktoken encoding %r unavailable (%s); falling back to "
-                    "CharDivFourEstimator. Pre-cache encodings via TIKTOKEN_CACHE_DIR "
-                    "for exact token counts.",
-                    model,
-                    exc,
-                )
+                self._activate_fallback(model, exc)
         except Exception as exc:  # pragma: no cover - exercised in offline tests
-            self._fallback = CharDivFourEstimator()
-            _tiktoken_logger.warning(
-                "tiktoken encoding %r unavailable (%s); falling back to "
-                "CharDivFourEstimator. Pre-cache encodings via TIKTOKEN_CACHE_DIR "
-                "for exact token counts.",
-                model,
-                exc,
-            )
+            self._activate_fallback(model, exc)
+        # ``name`` is the estimator-path identifier (issue #493): the resolved
+        # tiktoken encoding on the exact path, or the heuristic name when the
+        # offline fallback was activated above.
+        self.name: str = (
+            self._fallback.name
+            if self._fallback is not None
+            else f"tiktoken/{getattr(self._enc, 'name', model)}"
+        )
+
+    def _activate_fallback(self, model: str, exc: Exception) -> None:
+        """Switch to the heuristic fallback and record the offline warning."""
+        self._fallback = HeuristicEstimator()
+        _tiktoken_logger.warning(
+            "tiktoken encoding %r unavailable (%s); falling back to "
+            "HeuristicEstimator. Pre-cache encodings via TIKTOKEN_CACHE_DIR "
+            "for exact token counts.",
+            model,
+            exc,
+        )
 
     def estimate(self, text: str) -> int:
         """Return the exact token count using tiktoken (or fallback estimate)."""
@@ -191,6 +292,32 @@ class RedactionHook(Protocol):
 
     def redact(self, item: ContextItem) -> ContextItem:
         """Return a (possibly modified) copy of *item* with sensitive data removed."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# SensitivityClassifier (issue #542)
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class SensitivityClassifier(Protocol):
+    """Assign a :class:`~contextweaver.types.Sensitivity` label to an item.
+
+    Invoked during the build pipeline's sensitivity stage (before
+    :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter`) so that
+    content callers forgot to label is *raised* to an appropriate level before
+    enforcement runs — input-side defence in depth complementing output-side
+    redaction (issue #428).
+
+    Contract: an implementation MUST NOT *lower* an item's existing label; it
+    returns the level the item should carry, and the pipeline takes the maximum
+    of that and the item's current label as a safety net.  Classification must
+    be deterministic — no model, no randomness — so enforcement stays auditable.
+    """
+
+    def classify(self, item: ContextItem) -> Sensitivity:
+        """Return the sensitivity *item* should carry (never below its current label)."""
         ...
 
 

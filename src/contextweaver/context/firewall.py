@@ -8,7 +8,6 @@ containing a human-readable summary, extracted facts, and an
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from typing import Literal
@@ -17,12 +16,22 @@ from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import FirewallStats, ResultEnvelope
 from contextweaver.exceptions import DeterminismError
 from contextweaver.protocols import ArtifactStore, EventHook, Extractor, NoOpHook, Summarizer
+from contextweaver.secrets import scrub_secrets, scrub_secrets_in_list
 from contextweaver.summarize.extract import extract_facts
 from contextweaver.summarize.structured import StructuredFirewall
 from contextweaver.tokens import count as count_tokens
-from contextweaver.types import ArtifactRef, ContextItem, ItemKind
+from contextweaver.tokens import heuristic_counter
+from contextweaver.types import ContextItem, ItemKind
 
 logger = logging.getLogger("contextweaver.context")
+
+# Deterministic, env-independent counter for the firewalled item's budget
+# estimate.  The savings metrics on ``FirewallStats`` use the exact (tiktoken)
+# ``count_tokens`` above, but the item's ``token_estimate`` feeds budget
+# selection and the deterministic demo/scorecard artifacts, so it must not vary
+# with tiktoken-cache availability — the script-aware heuristic matches
+# ``len // 4`` for ASCII and stays reproducible offline (issues #530/#525).
+_HEURISTIC = heuristic_counter()
 
 
 def _default_summary(raw: str, max_chars: int = 500) -> str:
@@ -50,6 +59,19 @@ def _summarizer_is_llm(summarizer: Summarizer | None) -> bool:
     return summarizer is not None and bool(getattr(summarizer, "is_llm", False))
 
 
+def _extractor_is_llm(extractor: Extractor | None) -> bool:
+    """Return ``True`` when *extractor* declares itself LLM-backed (issue #461).
+
+    Mirrors :func:`_summarizer_is_llm`: LLM-backed extractors (e.g.
+    :class:`~contextweaver.extras.llm_summarizer.LlmExtractor`) set
+    ``is_llm = True``.  The firewall's ``deterministic=True`` mode must gate the
+    extractor too — otherwise a configured LLM-backed extractor would route every
+    tool result through a model even though the mode promises that no data was
+    passed through one.
+    """
+    return extractor is not None and bool(getattr(extractor, "is_llm", False))
+
+
 def apply_firewall(
     item: ContextItem,
     artifact_store: ArtifactStore,
@@ -61,6 +83,7 @@ def apply_firewall(
     deterministic: bool = False,
     keep: list[str] | None = None,
     threshold_chars: int = 0,
+    redact_secrets: bool = False,
 ) -> tuple[ContextItem, ResultEnvelope | None]:
     """Intercept a ``tool_result`` item and store its content out-of-band.
 
@@ -92,6 +115,12 @@ def apply_firewall(
             recorded on :class:`~contextweaver.envelope.FirewallStats` for
             diagnostics.  Does not gate execution (the caller already decided to
             fire); ``0`` means "not recorded".
+        redact_secrets: When ``True`` (issue #428) the prompt-bound summary and
+            extracted facts are passed through the deterministic
+            :func:`contextweaver.secrets.scrub_secrets` pass before they enter
+            the :class:`~contextweaver.types.ResultEnvelope` and the processed
+            item, so credential shapes copied from the raw payload never reach
+            the prompt.  The out-of-band raw artifact is unchanged.
 
     Returns:
         A 2-tuple ``(processed_item, envelope_or_none)``.  When the firewall
@@ -134,23 +163,18 @@ def apply_firewall(
         return item, None
 
     raw_bytes = item.text.encode("utf-8")
-    content_hash = hashlib.sha256(raw_bytes).hexdigest()
     handle = f"artifact:{item.id}"
     media = str(item.metadata.get("media_type", "text/plain"))
-    stored_ref = artifact_store.put(
+    # The store stamps ``content_hash`` (sha256 of the stored bytes) onto the
+    # returned ref (#466).  Subsequent firewall passes use it to detect an
+    # already-processed item and short-circuit (#190) — and because the store
+    # now *persists* the hash, that idempotency survives a process restart when
+    # the ref is reloaded from a ``JsonFileArtifactStore``.
+    ref = artifact_store.put(
         handle=handle,
         content=raw_bytes,
         media_type=media,
         label=f"raw tool result for {item.id}",
-    )
-    # Attach the content_hash so subsequent firewall passes can detect
-    # this item as already-processed (#190).
-    ref = ArtifactRef(
-        handle=stored_ref.handle,
-        media_type=stored_ref.media_type,
-        size_bytes=stored_ref.size_bytes,
-        label=stored_ref.label,
-        content_hash=content_hash,
     )
 
     # Choose a strategy.  Structured projection (issue #406) takes precedence
@@ -163,11 +187,13 @@ def apply_firewall(
     # ConfigError swallowed by the projection try/except below.
     use_structured = bool(keep) and _looks_like_json(item.text)
     summarized_by_llm = (not use_structured) and _summarizer_is_llm(summarizer)
-    if deterministic and summarized_by_llm:
+    extracted_by_llm = (not use_structured) and _extractor_is_llm(extractor)
+    if deterministic and (summarized_by_llm or extracted_by_llm):
+        plugin = "summarizer" if summarized_by_llm else "extractor"
         raise DeterminismError(
-            f"deterministic=True but an LLM-backed summarizer would process item "
+            f"deterministic=True but an LLM-backed {plugin} would process item "
             f"{item.id!r}; refusing to pass data through a model. Supply a "
-            f"structured `keep` allow-list or a rule-based summarizer instead."
+            f"structured `keep` allow-list or a rule-based summarizer/extractor instead."
         )
 
     status: Literal["ok", "partial", "error"] = "ok"
@@ -206,6 +232,14 @@ def apply_firewall(
             facts = []
             status = "error" if status == "error" else "partial"
 
+    # Issue #428 — scrub credential shapes from the prompt-bound surfaces
+    # (summary + facts) before they leave the firewall.  Deterministic and
+    # substring-level; the out-of-band raw artifact already stored above is
+    # intentionally untouched (it stays retrievable only via drilldown).
+    if redact_secrets:
+        summary = scrub_secrets(summary)
+        facts = scrub_secrets_in_list(facts)
+
     views = generate_views(ref, raw_bytes, registry=view_registry)
 
     firewall_stats = FirewallStats(
@@ -234,7 +268,7 @@ def apply_firewall(
         id=item.id,
         kind=item.kind,
         text=summary,
-        token_estimate=len(summary) // 4,
+        token_estimate=_HEURISTIC.estimate(summary),
         metadata=dict(item.metadata),
         parent_id=item.parent_id,
         artifact_ref=ref,
@@ -259,6 +293,7 @@ def apply_firewall_to_batch(
     extractor: Extractor | None = None,
     *,
     deterministic: bool = False,
+    redact_secrets: bool = False,
 ) -> tuple[list[ContextItem], list[ResultEnvelope]]:
     """Apply the firewall to a list of items.
 
@@ -274,6 +309,9 @@ def apply_firewall_to_batch(
         deterministic: Forwarded to each :func:`apply_firewall` call (issue
             #404).  When ``True`` the build fails closed rather than passing any
             item through an LLM-backed summariser.
+        redact_secrets: Forwarded to each :func:`apply_firewall` call (issue
+            #428).  When ``True`` summaries and facts are secret-scrubbed before
+            they reach the prompt.
 
     Returns:
         A 2-tuple of ``(processed_items, envelopes)``.
@@ -289,6 +327,7 @@ def apply_firewall_to_batch(
             summarizer,
             extractor,
             deterministic=deterministic,
+            redact_secrets=redact_secrets,
         )
         processed.append(p)
         if env is not None:

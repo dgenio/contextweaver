@@ -6,6 +6,8 @@ receives only :class:`~contextweaver.types.ArtifactRef` handles and summaries.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 from typing import Any
@@ -101,6 +103,7 @@ class InMemoryArtifactStore:
             media_type=media_type,
             size_bytes=len(content),
             label=label,
+            content_hash=hashlib.sha256(content).hexdigest(),
         )
         self._data[handle] = content
         self._meta[handle] = ref
@@ -207,18 +210,40 @@ class InMemoryArtifactStore:
         return _apply_selector(raw, selector)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialise the store's metadata index to a JSON-compatible dict."""
-        return {"refs": [ref.to_dict() for ref in self.list_refs()]}
+        """Serialise the store's metadata index *and* raw bytes to a JSON dict.
+
+        Both the :class:`~contextweaver.types.ArtifactRef` index and the raw
+        artifact bytes (base64-encoded under ``data``) are emitted, so a
+        round-trip through :meth:`from_dict` is lossless: ``get()`` and
+        ``drilldown()`` keep working on the restored store (issue #466).  This
+        is what lets a :class:`~contextweaver.store.bundle.StoreBundle` carry
+        firewalled artifacts across a process restart rather than handing back
+        a store whose handles resolve to nothing.
+        """
+        return {
+            "refs": [ref.to_dict() for ref in self.list_refs()],
+            "data": {
+                handle: base64.b64encode(self._data[handle]).decode("ascii")
+                for handle in sorted(self._data)
+            },
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> InMemoryArtifactStore:
         """Deserialise from a JSON-compatible dict produced by :meth:`to_dict`.
 
-        Only the metadata index (refs) is restored; raw artifact bytes are not
-        included in serialisation and will not be available after round-tripping.
+        Both the metadata index and the raw bytes are restored (issue #466), so
+        the round-tripped store is fully consistent: a handle present in
+        :meth:`list_refs` / :meth:`ref` also resolves through :meth:`get` and
+        :meth:`drilldown`.  Refs without a matching ``data`` entry (e.g. a
+        legacy payload serialised before #466) restore metadata-only and raise
+        :class:`~contextweaver.exceptions.ArtifactNotFoundError` on ``get()``.
         """
         store = cls()
+        encoded: dict[str, str] = data.get("data", {})
         for raw in data.get("refs", []):
             ref = ArtifactRef.from_dict(raw)
             store._meta[ref.handle] = ref
+            if ref.handle in encoded:
+                store._data[ref.handle] = base64.b64decode(encoded[ref.handle])
         return store

@@ -34,6 +34,10 @@ LLMS_FULL_FILES: list[str] = [
     "docs/architecture.md",
     "docs/concepts.md",
     "docs/quickstart.md",
+    "docs/daily_driver.md",
+    "docs/security_model.md",
+    "docs/recipes/index.md",
+    "docs/recipes/claude_code.md",
     "docs/integration_mcp.md",
     "docs/integration_a2a.md",
     "docs/agent-context/architecture.md",
@@ -92,6 +96,21 @@ LLMS_INDEX: list[tuple[str, list[tuple[str, str, str]]]] = [
                 "Quickstart",
                 "docs/quickstart.md",
                 "10-minute guide to context builds, firewall, and routing",
+            ),
+            (
+                "Daily Driver",
+                "docs/daily_driver.md",
+                "Operator workflow, client instructions, fit guidance, and debugging",
+            ),
+            (
+                "MCP Security Model",
+                "docs/security_model.md",
+                "Gateway data flow, trust boundaries, artifact exposure, and hardening",
+            ),
+            (
+                "MCP Client Recipes",
+                "docs/recipes/index.md",
+                "Claude Desktop, Claude Code, GitHub Copilot, and Cursor setup",
             ),
             (
                 "MCP Integration",

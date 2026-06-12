@@ -102,3 +102,32 @@ def test_fact_roundtrip() -> None:
     assert restored.fact_id == "f1"
     assert restored.tags == ["visual"]
     assert restored.metadata["src"] == "user"
+
+
+# ------------------------------------------------------------------
+# Sensitivity field (issue #450)
+# ------------------------------------------------------------------
+
+
+def test_fact_sensitivity_defaults_public() -> None:
+    from contextweaver.types import Sensitivity
+
+    assert Fact(fact_id="f1", key="k", value="v").sensitivity is Sensitivity.public
+
+
+def test_fact_sensitivity_roundtrip() -> None:
+    from contextweaver.types import Sensitivity
+
+    fact = Fact(fact_id="f1", key="k", value="v", sensitivity=Sensitivity.restricted)
+    payload = fact.to_dict()
+    assert payload["sensitivity"] == "restricted"
+    restored = Fact.from_dict(payload)
+    assert restored.sensitivity is Sensitivity.restricted
+
+
+def test_fact_from_dict_without_sensitivity_defaults_public() -> None:
+    from contextweaver.types import Sensitivity
+
+    # Legacy payload (pre-#450) has no sensitivity key.
+    restored = Fact.from_dict({"fact_id": "f1", "key": "k", "value": "v"})
+    assert restored.sensitivity is Sensitivity.public

@@ -41,6 +41,17 @@ firewall must run before scoring (summaries, not raw text, must be scored).
 - Do not wrap `_build()` in `asyncio.run()` — `build_sync()` calls it directly.
 - The same pattern applies to `_build_call_prompt()` → `build_call_prompt()` /
   `build_call_prompt_sync()`.
+- When the manager is *async-backed* (an async store was passed), the async
+  entry points `build()` and `build_call_prompt()` offload the synchronous
+  pipeline body to a worker thread (issue #495) so the awaited store I/O does
+  not block the caller's event loop. `_build()` holds `self._build_lock` so
+  concurrent builds on one manager serialize and never race on the thread-unsafe
+  in-memory stores. Keep the lock around the pipeline body if you touch
+  `_build()`, and offload any new async pipeline entry point the same way.
+- The private store loop thread is released via `weakref.finalize`, **not** a
+  `close()` method — do not add `ContextManager.close()` (or other public
+  lifecycle methods) until the #73/#69 decomposition lands. For deterministic
+  teardown call the finalizer (`mgr._store_loop_finalizer()`).
 
 ## Dependency closure
 

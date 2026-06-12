@@ -6,8 +6,13 @@ Only the latest patch release in the current minor series receives security upda
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | ✅ Yes    |
-| < 0.1   | ❌ No     |
+| 0.14.x  | Yes       |
+| < 0.14  | No        |
+
+For adopter-facing deployment boundaries, data flow, artifact exposure, and
+hardening guidance, see the
+[MCP Gateway Security Model](docs/security_model.md). This policy remains the
+canonical vulnerability-reporting channel.
 
 ## Reporting a Vulnerability
 

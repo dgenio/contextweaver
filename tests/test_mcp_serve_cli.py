@@ -8,6 +8,7 @@ the flag-parsing rules (mutual exclusion of ``--gateway``/``--proxy``).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -72,6 +73,8 @@ def test_mcp_help_lists_serve_subcommand() -> None:
     out = _strip_ansi(result.stdout)
     assert "serve" in out
     assert "MCP server entrypoints" in out or "MCP" in out
+    assert "inspect" in out
+    assert "stats" in out
 
 
 def test_mcp_serve_help_shows_required_catalog_flag() -> None:
@@ -85,6 +88,8 @@ def test_mcp_serve_help_shows_required_catalog_flag() -> None:
     assert "--gateway" in out
     assert "--proxy" in out
     assert "--dry-run" in out
+    assert "--diagnostics" in out
+    assert "--quiet" in out
 
 
 # ------------------------------------------------------------------
@@ -112,6 +117,26 @@ def test_serve_dry_run_with_packaged_gateway_catalog() -> None:
     assert "dry-run" in combined
 
 
+def test_serve_dry_run_advertises_installed_package_version() -> None:
+    """``serve`` advertises the installed contextweaver version by default."""
+    import contextweaver
+
+    catalog = gateway_catalog_path()
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--dry-run")
+    assert result.returncode == 0
+    combined = result.stderr + result.stdout
+    assert f"version={contextweaver.__version__}" in combined
+
+
+def test_serve_dry_run_explicit_version_overrides_default() -> None:
+    """An explicit ``--version`` wins over the package-version default."""
+    catalog = gateway_catalog_path()
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--version", "9.9.9-test", "--dry-run")
+    assert result.returncode == 0
+    combined = result.stderr + result.stdout
+    assert "version=9.9.9-test" in combined
+
+
 def test_serve_dry_run_proxy_mode_with_packaged_catalog() -> None:
     """Proxy mode also validates the catalog and exits 0."""
     catalog = gateway_catalog_path()
@@ -126,6 +151,27 @@ def test_serve_dry_run_proxy_mode_with_packaged_catalog() -> None:
     )
     assert result.returncode == 0
     assert "mode=proxy" in result.stderr + result.stdout
+
+
+def test_serve_dry_run_writes_catalog_diagnostic_event(tmp_path: Path) -> None:
+    events = tmp_path / "gateway.jsonl"
+    result = _run(
+        "mcp",
+        "serve",
+        "--catalog",
+        str(gateway_catalog_path()),
+        "--diagnostics",
+        str(events),
+        "--dry-run",
+        "--quiet",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert result.stderr == ""
+    payload = json.loads(events.read_text(encoding="utf-8"))
+    assert payload["event"] == "catalog.loaded"
+    assert payload["attributes"]["tool_count"] == 60
 
 
 def test_serve_gateway_flag_shortcut() -> None:
@@ -226,6 +272,24 @@ def test_serve_config_file_drives_dry_run(tmp_path: Path) -> None:
     assert "tools=60" in combined
 
 
+def test_serve_config_resolves_catalog_relative_to_config_file(tmp_path: Path) -> None:
+    """A config remains portable when the server starts from another directory."""
+    config_dir = tmp_path / "gateway"
+    config_dir.mkdir()
+    catalog = config_dir / "catalog.json"
+    catalog.write_text(
+        '[{"name": "demo", "description": "Demo tool", "inputSchema": {"type": "object"}}]',
+        encoding="utf-8",
+    )
+    config = config_dir / "gateway.yaml"
+    config.write_text("catalog: catalog.json\n", encoding="utf-8")
+
+    result = _run("mcp", "serve", "--config", str(config), "--dry-run")
+
+    assert result.returncode == 0, result.stderr
+    assert "tools=1" in (result.stderr + result.stdout)
+
+
 def test_serve_cli_flag_overrides_config(tmp_path: Path) -> None:
     """Explicit CLI flags win over config-file values."""
     config = tmp_path / "gateway.yaml"
@@ -267,7 +331,7 @@ def test_load_serve_config_valid_roundtrip(tmp_path: Path) -> None:
     cfg = tmp_path / "c.json"
     cfg.write_text('{"catalog": "x.json", "top_k": 9, "mode": "gateway"}', encoding="utf-8")
     loaded = _load_serve_config(cfg)
-    assert loaded["catalog"] == "x.json"
+    assert loaded["catalog"] == str((tmp_path / "x.json").resolve())
     assert loaded["top_k"] == 9
     assert loaded["mode"] == "gateway"
 
@@ -281,6 +345,17 @@ def test_load_serve_config_coerces_quoted_bool(tmp_path: Path) -> None:
 
     cfg.write_text('catalog: x.json\ncache_stable: "on"\n', encoding="utf-8")
     assert _load_serve_config(cfg)["cache_stable"] is True
+
+
+def test_load_serve_config_resolves_diagnostics_and_quiet(tmp_path: Path) -> None:
+    cfg = tmp_path / "gateway.yaml"
+    cfg.write_text(
+        "catalog: catalog.json\ndiagnostics: logs/events.jsonl\nquiet: true\n",
+        encoding="utf-8",
+    )
+    loaded = _load_serve_config(cfg)
+    assert loaded["diagnostics"] == str((tmp_path / "logs" / "events.jsonl").resolve())
+    assert loaded["quiet"] is True
 
 
 def test_load_serve_config_rejects_bad_types(tmp_path: Path) -> None:
@@ -382,3 +457,42 @@ def test_build_runtime_proxy_mode_registers_all_tools() -> None:
     )
     assert runtime.mode == ExposureMode.TRANSPARENT
     assert len(runtime.list_tool_ids()) == 60
+
+
+def test_mcp_inspect_reports_catalog_savings_json() -> None:
+    result = _run(
+        "mcp",
+        "inspect",
+        "--catalog",
+        str(gateway_catalog_path()),
+        "--format",
+        "json",
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["tool_count"] == 60
+    assert payload["exposed_tool_count"] == 3
+    assert payload["schema_tokens_avoided"] > 0
+
+
+def test_mcp_stats_aggregates_jsonl(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    events.write_text(
+        json.dumps(
+            {
+                "event": "execute.completed",
+                "timestamp": "2026-06-11T00:00:00+00:00",
+                "session_id": "s1",
+                "success": True,
+                "duration_ms": 12,
+                "attributes": {"raw_tokens": 100, "compact_tokens": 25},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = _run("mcp", "stats", "--events", str(events), "--format", "json")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["event_count"] == 1
+    assert payload["tokens_saved"] == 75

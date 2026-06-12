@@ -182,6 +182,29 @@ for step in result.debug_trace:
 # Shows each beam expansion, node scores, and why items were (de-)prioritised
 ```
 
+**Solution C′ — read the routing debug logs (issue #524):**
+
+`logging.DEBUG` on the `contextweaver.routing` logger traces the three decision
+points that most often explain a surprising route, without changing any code:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("contextweaver.routing").setLevel(logging.DEBUG)
+router.route("send an email", context_hints=["billing"])
+```
+
+- `augment_query: ... original=... augmented=...` — the scoring query after
+  context hints were appended.
+- `tree_builder.subtree: ... strategy=namespace|clustering|alphabetical` — which
+  grouping strategy built each subtree. A clustering/alphabetical **fallback**
+  is also logged at INFO, because a fallback (rather than namespace grouping)
+  frequently explains odd groupings.
+- `navigator.beam: depth=... kept=... pruned=... pruned_ids=[...]` — per level,
+  how many candidates the beam kept vs. pruned. If your expected tool appears
+  in `pruned_ids`, widen `beam_width`. Log messages are diagnostics, not API.
+
 **Solution D — render an explanation of the decision surface (`RouteResult.explanation()`):**
 
 `RouteResult.explanation()` (issue #226) produces a paste-friendly Markdown
@@ -371,9 +394,14 @@ print(allowed)  # e.g. [user_turn, plan_state, policy]
 The total estimated tokens in `pack.stats` are much lower or higher than the
 token count reported by LlamaIndex, LangChain, or another framework.
 
-**Cause:** contextweaver uses a `CharDivFour` estimator by default (1 token ≈
-4 characters). External frameworks often use `tiktoken` or a model-specific
-tokeniser.
+**Cause:** contextweaver uses a dependency-free, script-aware heuristic
+(`HeuristicEstimator`, reported as `heuristic/v2`) by default. For Latin text it
+matches `len // 4` (1 token ≈ 4 characters); for dense scripts (CJK, Kana,
+Hangul, emoji) it counts ≈1 token/character so offline budgets are not
+under-counted ~4×. External frameworks often use `tiktoken` or a model-specific
+tokeniser, so small differences are expected. The estimator a build used is
+recorded on `pack.stats.token_estimator`, and measured accuracy bands per
+corpus shape are in [`token_calibration.md`](token_calibration.md).
 
 **Solution — compute totals from `pack.stats` and, if needed, use `TiktokenEstimator`:**
 ```python
@@ -384,23 +412,35 @@ total_estimated_tokens = (
     sum(pack.stats.tokens_per_section.values())
     + pack.stats.header_footer_tokens
 )
+print(pack.stats.token_estimator)  # which counter produced the numbers
 
 # Plug in the built-in tiktoken-backed estimator (requires `tiktoken` package)
-mgr = ContextManager(token_estimator=TiktokenEstimator(model="gpt-4"))
+mgr = ContextManager(estimator=TiktokenEstimator(model="gpt-4"))
+```
+
+For non-OpenAI targets, register an accurate counter once and select it by
+name (issue #493); the choice is recorded on `BuildStats.token_estimator`:
+```python
+from contextweaver import tokens
+
+tokens.register_estimator("anthropic", my_anthropic_counter)
+mgr = ContextManager(estimator=tokens.get_token_counter("anthropic"))
 ```
 
 #### Offline / Air-gapped Tiktoken Warning
 
 **Symptom:**
 ```text
-tiktoken cl100k_base encoding unavailable (...); falling back to chars/4 token estimate
+tiktoken encoding 'cl100k_base' unavailable (...); falling back to HeuristicEstimator
 ```
 
 **Cause:** `tiktoken` is installed, but it downloads encoding data on first use.
 Sandboxes, corporate networks, and CI containers that block
 `openaipublic.blob.core.windows.net` cannot fetch `cl100k_base` on demand.
-contextweaver then falls back to `CharDivFourEstimator`, which preserves
-deterministic budget enforcement but is less exact than the real encoding.
+contextweaver then falls back to the script-aware `HeuristicEstimator`, which
+preserves deterministic budget enforcement and keeps CJK/emoji content within
+roughly ±30% of `tiktoken` (see [`token_calibration.md`](token_calibration.md)),
+though it is still less exact than the real encoding for Latin prose.
 
 **Solution — pre-warm a cache on a connected machine, then copy it:**
 
@@ -420,9 +460,10 @@ Copy that cache directory into the offline environment and set
 `TIKTOKEN_CACHE_DIR` to the copied path before running contextweaver.
 
 If exact `tiktoken` parity is not required, no action is needed. The committed
-scorecard's headline context metrics intentionally use `CharDivFourEstimator`
-for network-independent reproducibility; the separate token-estimator parity
-section reports or skips `cl100k_base` drift depending on cache availability.
+scorecard's headline context metrics intentionally use a dependency-free
+heuristic for network-independent reproducibility; the separate token-estimator
+parity section reports or skips `cl100k_base` drift depending on cache
+availability.
 
 **CI regression check:** after serialising a session with `contextweaver ingest`,
 pin a ceiling with `budget-check` so prompt-size regressions fail before they
@@ -468,6 +509,31 @@ graph = TreeBuilder(max_children=20).build(catalog.all())
 # If you're building the graph manually, edges that form cycles raise
 # GraphBuildError immediately — re-check your parent/child assignments.
 ```
+
+**Reading the diagnostics (issue #523):** `GraphBuildError` names the specific
+offenders and exposes them as structured attributes (stable contract; the
+message text is not). Catch the error and branch on the attribute instead of
+parsing the string:
+
+```python
+from contextweaver.exceptions import GraphBuildError
+
+try:
+    graph = ChoiceGraph.from_dict(payload)
+    graph._validate()  # load_graph() does this for you
+except GraphBuildError as exc:
+    if exc.cycle:          # e.g. ["a", "b", "c", "a"]
+        print("Cycle:", " -> ".join(exc.cycle))
+    elif exc.edge:         # e.g. ("group1", "phantom")
+        print("Dangling edge:", exc.edge)
+    elif exc.missing_root: # e.g. "ghost"
+        print("Missing root:", exc.missing_root)
+```
+
+A dangling `depends_on`/`requires` reference in a *catalog* (rather than a
+graph edge) surfaces earlier — run `contextweaver catalog lint <file>` or load
+with `on_invalid="raise"` to catch it before graph building (see
+[Tool Router](tool_router.md)).
 
 ---
 

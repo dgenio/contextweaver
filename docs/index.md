@@ -35,6 +35,7 @@ database, RAG system, or observability stack.
 ## Get started
 
 [10-Minute Quickstart](quickstart.md){ .md-button .md-button--primary }
+[Daily Driver](daily_driver.md){ .md-button }
 [API Reference](reference/){ .md-button }
 
 ![Animated demo recording](assets/demo.svg)
@@ -44,6 +45,9 @@ database, RAG system, or observability stack.
 | Section | What you'll find |
 |---|---|
 | [Quickstart](quickstart.md) | Install, first context build, firewall demo, routing demo |
+| [Daily Driver](daily_driver.md) | When to use the gateway, client instructions, and the operator debug loop |
+| [Security Model](security_model.md) | Gateway data flow, trust boundaries, artifact exposure, and hardening |
+| [MCP Client Recipes](recipes/index.md) | Claude Desktop, Claude Code, Copilot, and Cursor setup |
 | [Concepts](concepts.md) | Core type glossary: `ContextItem`, `Phase`, `ChoiceGraph`, … |
 | [Ecosystem Map](ecosystem.md) | How contextweaver compares with agent frameworks, MCP, memory, RAG, and observability |
 | [Adopter Benchmark Report](benchmark_report.md) | Cost, prompt-size, latency, routing-quality, and failure-mode framing |

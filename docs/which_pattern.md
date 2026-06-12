@@ -18,6 +18,8 @@ The three building blocks:
 
 If you're starting a brand-new agent, walk the [10-minute quickstart](quickstart.md)
 first, then come back here when a specific symptom shows up.
+If you operate the MCP gateway day to day, use the
+[Daily Driver guide](daily_driver.md) after choosing a pattern here.
 
 ---
 

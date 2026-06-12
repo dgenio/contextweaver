@@ -17,10 +17,10 @@ def test_select_within_budget() -> None:
     policy = ContextPolicy()
     estimator = CharDivFourEstimator()
     scored = [(1.0 - i * 0.1, _item(f"i{i}", tokens=100)) for i in range(3)]
-    selected, stats = select_and_pack(scored, Phase.answer, budget, policy, estimator)
-    total_tokens = sum(item.token_estimate for item in selected)
+    outcome = select_and_pack(scored, Phase.answer, budget, policy, estimator)
+    total_tokens = sum(item.token_estimate for item in outcome.selected)
     assert total_tokens <= 500
-    assert stats.included_count == len(selected)
+    assert outcome.dropped == []
 
 
 def test_select_respects_kind_limit() -> None:
@@ -29,17 +29,18 @@ def test_select_respects_kind_limit() -> None:
     policy.max_items_per_kind[ItemKind.user_turn] = 2
     estimator = CharDivFourEstimator()
     scored = [(1.0, _item(f"i{i}", ItemKind.user_turn, tokens=10)) for i in range(5)]
-    selected, stats = select_and_pack(scored, Phase.answer, budget, policy, estimator)
-    user_turns = [s for s in selected if s.kind == ItemKind.user_turn]
+    outcome = select_and_pack(scored, Phase.answer, budget, policy, estimator)
+    user_turns = [s for s in outcome.selected if s.kind == ItemKind.user_turn]
     assert len(user_turns) == 2
-    assert stats.dropped_reasons.get("kind_limit", 0) >= 3
+    assert [reason for _item, reason in outcome.dropped] == ["kind_limit"] * 3
 
 
-def test_build_stats_populated() -> None:
-    budget = ContextBudget(answer=1000)
+def test_select_reports_exact_budget_drops_and_overrun() -> None:
+    budget = ContextBudget(answer=150)
     policy = ContextPolicy()
     estimator = CharDivFourEstimator()
     scored = [(1.0, _item("i1", tokens=100)), (0.5, _item("i2", tokens=100))]
-    _, stats = select_and_pack(scored, Phase.answer, budget, policy, estimator)
-    assert stats.total_candidates == 2
-    assert stats.included_count + stats.dropped_count == 2
+    outcome = select_and_pack(scored, Phase.answer, budget, policy, estimator)
+    assert [item.id for item in outcome.selected] == ["i1"]
+    assert [(item.id, reason) for item, reason in outcome.dropped] == [("i2", "budget")]
+    assert outcome.budget_overruns == [(200, 150)]

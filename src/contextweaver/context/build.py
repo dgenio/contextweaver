@@ -16,9 +16,10 @@ private.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
-from contextweaver.config import ContextBudget
+from contextweaver.config import ContextBudget, ContextPolicy
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
 from contextweaver.context.explanation import build_explanation as _build_explanation
@@ -26,9 +27,12 @@ from contextweaver.context.firewall import apply_firewall_to_batch
 from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
-from contextweaver.context.sensitivity import apply_sensitivity_filter
-from contextweaver.envelope import ContextPack
-from contextweaver.types import Phase
+from contextweaver.context.sensitivity import _SENSITIVITY_ORDER, apply_sensitivity_filter
+from contextweaver.envelope import BuildStats, ContextPack, DroppedItem
+from contextweaver.exceptions import ContextWeaverError
+from contextweaver.protocols import SensitivityClassifier
+from contextweaver.tokens import estimator_name
+from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
 
 if TYPE_CHECKING:
     from contextweaver.context._manager_base import _ManagerState
@@ -79,16 +83,29 @@ def run_build_pipeline(
     if explain:
         pre_closure_ids = {c.id for c in candidates}
     candidates, closures = resolve_dependency_closure(candidates, manager._event_log)
+    total_candidates = len(candidates)
     closure_added_ids = {c.id for c in candidates} - pre_closure_ids if explain else set()
 
-    # 3. Sensitivity filter
+    # 3. Sensitivity classification (issue #542) + filter.  Classification runs
+    # first so unlabelled content is raised to an appropriate level *before*
+    # enforcement; the explanation then reflects the labels actually enforced.
+    if manager._sensitivity_classifier is not None:
+        candidates = _classify_items(candidates, manager._sensitivity_classifier)
+    pre_sensitivity = list(candidates)
     if explain:
-        pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in candidates}
-    candidates, sensitivity_drops = apply_sensitivity_filter(candidates, manager._policy)
+        pre_sens_ids = {(c.id, c.kind.value, c.sensitivity.value) for c in pre_sensitivity}
+    candidates, sensitivity_drops = apply_sensitivity_filter(
+        candidates, manager._policy, manager._estimator
+    )
+    post_sensitivity_ids = {item.id for item in candidates}
+    sensitivity_dropped_items = [
+        item for item in pre_sensitivity if item.id not in post_sensitivity_ids
+    ]
     if explain:
-        post_sens_ids = {c.id for c in candidates}
         sensitivity_dropped_records: list[tuple[str, str, str]] = sorted(
-            (cid, kind, sens) for (cid, kind, sens) in pre_sens_ids if cid not in post_sens_ids
+            (cid, kind, sens)
+            for (cid, kind, sens) in pre_sens_ids
+            if cid not in post_sensitivity_ids
         )
     else:
         sensitivity_dropped_records = []
@@ -98,24 +115,31 @@ def run_build_pipeline(
         candidates,
         manager._artifact_store,
         manager._hook,
+        view_registry=manager._view_registry,
         summarizer=manager._summarizer,
         extractor=manager._extractor,
         deterministic=manager._deterministic,
+        redact_secrets=manager._redact_secrets,
     )
 
     # 5. Score
     scored = score_candidates(candidates, query, _tags, manager._scoring)
 
     # 6. Dedup
+    pre_dedup_scored = list(scored)
     if explain:
         pre_dedup_view: list[tuple[str, str, str, float]] = [
-            (item.id, item.kind.value, item.sensitivity.value, score) for score, item in scored
+            (item.id, item.kind.value, item.sensitivity.value, score)
+            for score, item in pre_dedup_scored
         ]
     scored, dedup_removed = deduplicate_candidates(
         scored, similarity_threshold=manager._scoring.dedup_threshold
     )
+    post_dedup_ids = {item.id for _score, item in scored}
+    dedup_dropped_items = [
+        item for _score, item in pre_dedup_scored if item.id not in post_dedup_ids
+    ]
     if explain:
-        post_dedup_ids = {item.id for _score, item in scored}
         dedup_dropped_records: list[tuple[str, str, str, float]] = [
             (iid, kind, sens, sc)
             for (iid, kind, sens, sc) in pre_dedup_view
@@ -126,30 +150,60 @@ def run_build_pipeline(
 
     # Pre-build episodic + fact injection text so we can estimate its
     # token cost and subtract it from the budget *before* selection.
-    full_header, hf_tokens = _assemble_header(manager, header, footer)
+    full_header, hf_tokens = _assemble_header(manager, header, footer, phase)
 
     # Subtract header/footer overhead from the effective budget so that
     # select_and_pack only fills the remaining space.
     adjusted = _adjust_budget_for_header(effective_budget, phase, hf_tokens)
 
     # 7. Select (budget already accounts for header/footer overhead)
-    selected, stats = select_and_pack(scored, phase, adjusted, manager._policy, manager._estimator)
-    stats.dedup_removed = dedup_removed
-    stats.dependency_closures = closures
-    stats.header_footer_tokens = hf_tokens
+    selection = select_and_pack(scored, phase, adjusted, manager._policy, manager._estimator)
+    selected = selection.selected
+    dropped_records = [
+        *(DroppedItem(item.id, "sensitivity") for item in sensitivity_dropped_items),
+        *(DroppedItem(item.id, "dedup") for item in dedup_dropped_items),
+        *(DroppedItem(item.id, reason) for item, reason in selection.dropped),
+    ]
+    dropped_reasons: dict[str, int] = {}
+    for record in dropped_records:
+        dropped_reasons[record.reason] = dropped_reasons.get(record.reason, 0) + 1
+    stats = BuildStats(
+        tokens_per_section=selection.tokens_per_section,
+        total_candidates=total_candidates,
+        included_count=len(selected),
+        dropped_count=len(dropped_records),
+        dropped_reasons=dropped_reasons,
+        dropped_items=dropped_records,
+        dedup_removed=dedup_removed,
+        dependency_closures=closures,
+        header_footer_tokens=hf_tokens,
+        token_estimator=estimator_name(manager._estimator),
+    )
     # Surface per-item firewall diagnostics (issue #402): one FirewallStats per
     # offloaded tool result.  Read ``stats.firewall_summary()`` for the roll-up.
     stats.firewall_events = [
         env.firewall_stats for env in envelopes if env.firewall_stats is not None
     ]
-    if sensitivity_drops > 0:
-        # Account for items dropped by sensitivity filtering in both the
-        # total candidate count and the drop breakdown so that
-        # dropped_count + included_count <= total_candidates remains true.
-        stats.total_candidates += sensitivity_drops
-        stats.dropped_count += sensitivity_drops
-        stats.dropped_reasons["sensitivity"] = (
-            stats.dropped_reasons.get("sensitivity", 0) + sensitivity_drops
+    if sensitivity_dropped_items:
+        manager._hook.on_items_excluded(sensitivity_dropped_items, "sensitivity")
+    if dedup_dropped_items:
+        manager._hook.on_items_excluded(dedup_dropped_items, "dedup")
+    for reason in ("kind_limit", "budget"):
+        excluded = [item for item, drop_reason in selection.dropped if drop_reason == reason]
+        if excluded:
+            manager._hook.on_items_excluded(excluded, reason)
+    active_budget = effective_budget.for_phase(phase)
+    if hf_tokens > active_budget:
+        manager._hook.on_budget_exceeded(hf_tokens, active_budget)
+    elif selection.budget_overruns:
+        requested, limit = max(selection.budget_overruns)
+        manager._hook.on_budget_exceeded(requested, limit)
+
+    if stats.included_count + stats.dropped_count != stats.total_candidates:
+        raise ContextWeaverError(
+            "context build accounting invariant failed: "
+            f"included={stats.included_count} dropped={stats.dropped_count} "
+            f"total={stats.total_candidates}"
         )
 
     # 8. Render
@@ -186,39 +240,134 @@ def run_build_pipeline(
     return pack, explanation
 
 
-def _assemble_header(manager: _ManagerState, header: str, footer: str) -> tuple[str, int]:
+def _classify_items(
+    items: list[ContextItem], classifier: SensitivityClassifier
+) -> list[ContextItem]:
+    """Raise each item's sensitivity per *classifier* (issue #542); never lower it.
+
+    Returns a new list; an item is only copied when its label actually changes,
+    keeping the no-op case allocation-free.  The pipeline takes the maximum of
+    the classifier's result and the item's current label as a safety net so a
+    misbehaving classifier can never weaken enforcement.
+
+    Every raise records ``metadata["sensitivity_raised_by"]`` (the classifier's
+    type name) so the decision is auditable (issue #542 acceptance criterion):
+    enforcement can later show *why* an item carried a higher label than the
+    caller supplied.
+    """
+    raised_by = type(classifier).__name__
+    out: list[ContextItem] = []
+    for item in items:
+        level = classifier.classify(item)
+        if _SENSITIVITY_ORDER[level] > _SENSITIVITY_ORDER[item.sensitivity]:
+            metadata = dict(item.metadata)
+            metadata["sensitivity_raised_by"] = raised_by
+            out.append(replace(item, sensitivity=level, metadata=metadata))
+        else:
+            out.append(item)
+    return out
+
+
+def _enforce_header_memory(
+    entries: list[tuple[str, str, Sensitivity]],
+    manager: _ManagerState,
+) -> list[str]:
+    """Filter header memory *entries* through the sensitivity layer (issue #450).
+
+    Each entry is ``(item_id, rendered_text, sensitivity)``.  The entries are
+    wrapped as synthetic ``memory_fact`` :class:`ContextItem` objects, optionally
+    re-classified (issue #542), then passed through
+    :func:`~contextweaver.context.sensitivity.apply_sensitivity_filter` so header
+    content gets the *same* floor/redaction enforcement as pipeline-selected
+    items.  Returns the surviving rendered texts (redacted items render their
+    mask placeholder); dropped items are omitted entirely.
+    """
+    synthetic = [
+        ContextItem(id=item_id, kind=ItemKind.memory_fact, text=text, sensitivity=sensitivity)
+        for item_id, text, sensitivity in entries
+    ]
+    if manager._sensitivity_classifier is not None:
+        synthetic = _classify_items(synthetic, manager._sensitivity_classifier)
+    kept, _dropped = apply_sensitivity_filter(synthetic, manager._policy, manager._estimator)
+    return [item.text for item in kept]
+
+
+def _episode_sensitivity(manager: _ManagerState, episode_id: str) -> Sensitivity:
+    """Return the stored sensitivity for *episode_id* (issue #450).
+
+    ``EpisodicStore.latest`` yields ``(id, summary, metadata)`` tuples without the
+    sensitivity field, so the full :class:`~contextweaver.store.episodic.Episode`
+    is fetched via :meth:`EpisodicStore.get`; a missing episode (e.g. a concurrent
+    delete) conservatively falls back to ``public``.
+    """
+    episode = manager._episodic_store.get(episode_id)
+    return episode.sensitivity if episode is not None else Sensitivity.public
+
+
+def _memory_allowed_in_phase(policy: ContextPolicy, phase: Phase) -> bool:
+    """Return ``True`` when ``memory_fact`` content is permitted in *phase* (issue #450).
+
+    Header facts and episode summaries are memory content; gating them on the
+    ``memory_fact`` kind restores phase-policy consistency — a phase that
+    excludes ``memory_fact`` from the pipeline no longer receives the same
+    content through the header side-channel.
+    """
+    return ItemKind.memory_fact in policy.allowed_kinds_per_phase.get(phase, [])
+
+
+def _assemble_header(
+    manager: _ManagerState, header: str, footer: str, phase: Phase
+) -> tuple[str, int]:
     """Build the full prompt header (episodic + facts + caller header).
+
+    Episodic summaries and facts are routed through the sensitivity floor and
+    the per-phase kind policy (issue #450) so the header surface carries the same
+    guarantees as the pipeline surface.
 
     Returns ``(full_header, header_footer_token_estimate)``.
     """
     extra_sections: list[str] = []
+    memory_allowed = _memory_allowed_in_phase(manager._policy, phase)
 
-    # Episodic summaries (latest 3)
-    episodic_entries = manager._episodic_store.latest(3)
+    # Episodic summaries (latest 3) — gated on the memory_fact phase policy and
+    # filtered through the sensitivity layer.
+    episodic_entries = manager._episodic_store.latest(3) if memory_allowed else []
     if episodic_entries:
-        ep_lines = ["[EPISODIC MEMORY]"]
-        for _ep_id, ep_summary, _meta in episodic_entries:
-            ep_lines.append(f"- {ep_summary}")
-        extra_sections.append("\n".join(ep_lines))
+        kept_summaries = _enforce_header_memory(
+            [
+                (f"episode:{ep_id}", ep_summary, _episode_sensitivity(manager, ep_id))
+                for ep_id, ep_summary, _meta in episodic_entries
+            ],
+            manager,
+        )
+        if kept_summaries:
+            ep_lines = ["[EPISODIC MEMORY]", *(f"- {summary}" for summary in kept_summaries)]
+            extra_sections.append("\n".join(ep_lines))
 
-    # Facts snapshot — capped to avoid unbounded prompt growth.
-    all_facts = manager._fact_store.all()
+    # Facts snapshot — gated on the memory_fact phase policy, filtered through
+    # the sensitivity layer, then capped to avoid unbounded prompt growth.
+    all_facts = manager._fact_store.all() if memory_allowed else []
     if all_facts:
-        fact_lines: list[str] = ["[FACTS]"]
-        total_chars = len(fact_lines[0])
-        for idx, fact in enumerate(all_facts):
-            if idx >= _MAX_FACT_LINES:
-                remaining = len(all_facts) - idx
-                if remaining > 0:
-                    fact_lines.append(f"- ... ({remaining} more facts omitted)")
-                break
-            line = f"- {fact.key}: {fact.value}"
-            if total_chars + len(line) > _MAX_FACT_CHARS:
-                fact_lines.append("- ... (facts truncated to fit header budget)")
-                break
-            fact_lines.append(line)
-            total_chars += len(line)
-        extra_sections.append("\n".join(fact_lines))
+        kept_fact_texts = _enforce_header_memory(
+            [(fact.fact_id, f"{fact.key}: {fact.value}", fact.sensitivity) for fact in all_facts],
+            manager,
+        )
+        if kept_fact_texts:
+            fact_lines: list[str] = ["[FACTS]"]
+            total_chars = len(fact_lines[0])
+            for idx, text in enumerate(kept_fact_texts):
+                if idx >= _MAX_FACT_LINES:
+                    remaining = len(kept_fact_texts) - idx
+                    if remaining > 0:
+                        fact_lines.append(f"- ... ({remaining} more facts omitted)")
+                    break
+                line = f"- {text}"
+                if total_chars + len(line) > _MAX_FACT_CHARS:
+                    fact_lines.append("- ... (facts truncated to fit header budget)")
+                    break
+                fact_lines.append(line)
+                total_chars += len(line)
+            extra_sections.append("\n".join(fact_lines))
 
     full_header = header
     if extra_sections:

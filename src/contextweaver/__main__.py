@@ -11,6 +11,7 @@ ingest      Ingest a JSONL session into a serialised session file.
 replay      Replay a session and build context for a given phase.
 stats       Render a human-readable :class:`BuildStats` diagnostic report
             from an ingested session (issue #106).
+inspect     Render a payload-safe context/routing/artifact report (issue #398).
 budget-check
             Assert an ingested session's rendered prompt stays under a
             token ceiling for CI regression checks (issue #276).
@@ -36,19 +37,31 @@ from typing import Annotated, Any
 
 import typer
 from rich.console import Console
+from rich.table import Table
 from rich.tree import Tree as RichTree
 
 from contextweaver._mcp_cli import mcp_app
+from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
 from contextweaver.eval.dataset import EvalDataset
 from contextweaver.eval.routing import evaluate_routing
+from contextweaver.exceptions import CatalogError, ContextWeaverError
+from contextweaver.inspection import build_inspection_report, render_inspection_report
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
-from contextweaver.routing.catalog import generate_sample_catalog, load_catalog, load_catalog_json
+from contextweaver.routing.catalog import (
+    CatalogValidationReport,
+    generate_sample_catalog,
+    load_catalog,
+    load_catalog_dicts,
+    load_catalog_json,
+    validate_references,
+)
 from contextweaver.routing.graph_io import load_graph, save_graph
+from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
-from contextweaver.types import ContextItem, ItemKind, Phase
+from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem
 
 # ---------------------------------------------------------------------------
 # Typer app + global console
@@ -63,6 +76,16 @@ app = typer.Typer(
 )
 
 _console = Console()
+
+# ``catalog`` groups authoring-time catalog tooling (issue #538).  Kept as a
+# sub-app so future catalog commands (e.g. ``catalog diff``, issue #514) share
+# the namespace without crowding the top-level help.
+catalog_app = typer.Typer(
+    name="catalog",
+    help="Author-time tooling for tool catalogs (lint, ...).",
+    no_args_is_help=True,
+    add_completion=False,
+)
 
 
 # Typer prefers ``str`` Enums for ``--phase``-style choice flags over Click's
@@ -79,6 +102,11 @@ class _PhaseChoice(str, Enum):
 class _StatsFormatChoice(str, Enum):
     rich = "rich"
     text = "text"
+
+
+class _InspectFormatChoice(str, Enum):
+    json = "json"
+    markdown = "markdown"
 
 
 class _DemoScenario(str, Enum):
@@ -447,6 +475,68 @@ def stats(
         print(pack.stats.report(format="text", phase=phase.value, budget=budget))
 
 
+@app.command("inspect")
+def inspect_cmd(
+    session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
+    phase: Annotated[
+        _PhaseChoice, typer.Option(help="Context phase to inspect.")
+    ] = _PhaseChoice.answer,
+    budget: Annotated[int, typer.Option(help="Token budget for the context build.")] = 4000,
+    format: Annotated[  # noqa: A002
+        _InspectFormatChoice, typer.Option("--format", help="Output format.")
+    ] = _InspectFormatChoice.markdown,
+    graph: Annotated[Path | None, typer.Option(help="Optional routing graph to inspect.")] = None,
+    catalog: Annotated[Path | None, typer.Option(help="Catalog paired with --graph.")] = None,
+    route_query: Annotated[
+        str | None, typer.Option("--route-query", help="Query used with --graph and --catalog.")
+    ] = None,
+) -> None:
+    """Inspect context decisions, optional routing, and artifact metadata."""
+    routing_requested = any(value is not None for value in (graph, catalog, route_query))
+    if routing_requested and (graph is None or catalog is None or route_query is None):
+        raise typer.BadParameter(
+            "--graph, --catalog, and --route-query must be supplied together",
+            param_hint="--graph",
+        )
+
+    manager = _restore_manager_from_session(str(session), budget)
+    pack, explanation = manager.build_sync(
+        phase=Phase(phase.value),
+        query="inspect",
+        budget_tokens=budget,
+        explain=True,
+    )
+    raw_session: dict[str, Any] = json.loads(session.read_text(encoding="utf-8"))
+    artifacts: list[dict[str, Any]] = []
+    for handle, metadata in raw_session.get("artifacts", {}).items():
+        item = dict(metadata) if isinstance(metadata, dict) else {}
+        item["handle"] = handle
+        artifacts.append(item)
+
+    routing: dict[str, Any] | None = None
+    if graph is not None and catalog is not None and route_query is not None:
+        graph_obj = load_graph(str(graph))
+        items = load_catalog(str(catalog))
+        graph_ids = set(graph_obj.items())
+        router = Router(
+            graph_obj,
+            items=[item for item in items if item.id in graph_ids],
+        )
+        routing = router.route(route_query).to_dict(include_items=False)
+
+    report = build_inspection_report(
+        pack,
+        explanation=explanation,
+        artifacts=artifacts,
+        routing=routing,
+        budget=budget,
+    )
+    if format == _InspectFormatChoice.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(render_inspection_report(report), end="")
+
+
 @app.command("budget-check")
 def budget_check(
     session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
@@ -585,11 +675,147 @@ def eval_cmd(
 
 
 # ---------------------------------------------------------------------------
+# catalog lint (issue #538)
+# ---------------------------------------------------------------------------
+
+#: CLI exit codes for ``catalog lint`` (documented in docs/tool_router.md).
+_LINT_EXIT_CLEAN = 0
+_LINT_EXIT_FINDINGS = 1
+_LINT_EXIT_LOAD_ERROR = 3
+
+
+def _load_lint_items(path: Path) -> list[SelectableItem]:
+    """Load catalog items for linting from any accepted shape (issue #538).
+
+    Accepts the contextweaver-native JSON/YAML catalog, a raw MCP
+    ``tools/list`` array, and the ``{"tools": [...]}`` snapshot wrapper used
+    by the gateway recipes.  References are *not* validated here (the lint
+    command reports them separately), so loading uses ``on_invalid="ignore"``.
+
+    Raises:
+        CatalogError: If the file cannot be parsed or no tool entries are found.
+    """
+    suffix = path.suffix.lower()
+    text = path.read_text(encoding="utf-8")  # OSError handled by the caller
+    if suffix in (".yaml", ".yml"):
+        import yaml  # core dep — see pyproject.toml
+
+        try:
+            raw: Any = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise CatalogError(f"invalid YAML: {exc}") from exc
+    elif suffix == ".json":
+        try:
+            raw = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise CatalogError(f"invalid JSON: {exc}") from exc
+    else:
+        raise CatalogError(f"unsupported catalog format {suffix!r}; use .json, .yaml, or .yml")
+
+    if isinstance(raw, dict) and isinstance(raw.get("tools"), list):
+        raw = raw["tools"]
+    if not isinstance(raw, list) or not raw:
+        raise CatalogError(
+            "catalog must be a non-empty sequence of tool entries "
+            "(or a snapshot object with a non-empty 'tools' list)"
+        )
+
+    native_keys = {"id", "kind", "name", "description"}
+    is_native = all(isinstance(e, dict) and native_keys.issubset(e) for e in raw)
+    if is_native:
+        return load_catalog_dicts(raw, on_invalid="ignore")
+    # Otherwise treat each entry as an MCP tools/list definition.
+    return [mcp_tool_to_selectable(entry) for entry in raw]
+
+
+def _lint_payload(norm: NormalizationReport, refs: CatalogValidationReport) -> dict[str, Any]:
+    """Assemble the machine-readable ``catalog lint --json`` payload."""
+    ok = norm.changed_count == 0 and not norm.invalid_ids and refs.ok
+    return {
+        "ok": ok,
+        "normalization": norm.to_dict(),
+        "references": refs.to_dict(),
+    }
+
+
+@catalog_app.command("lint")
+def catalog_lint(
+    file: Annotated[Path, typer.Argument(help="Path to the catalog JSON/YAML file.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Lint a tool catalog for metadata hygiene and broken references (issue #538).
+
+    Surfaces the existing :class:`CatalogNormalizer` findings (missing
+    descriptions, duplicate/blank IDs, tag and whitespace issues) plus
+    cross-item reference findings (``depends_on`` / ``requires``).  Exits
+    ``0`` when clean, ``1`` when findings are present, and ``3`` on a load
+    error — suitable as a pre-deploy CI gate.  Input files are never modified.
+    """
+    try:
+        items = _load_lint_items(file)
+    except (CatalogError, OSError, json.JSONDecodeError) as exc:
+        print(f"Error: cannot lint {file}: {exc}", file=sys.stderr)
+        raise typer.Exit(_LINT_EXIT_LOAD_ERROR) from exc
+
+    norm = CatalogNormalizer().normalize(items)[1]
+    refs = validate_references(items)
+    payload = _lint_payload(norm, refs)
+
+    if json_output:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        _render_lint_report(file, norm, refs, ok=bool(payload["ok"]))
+
+    raise typer.Exit(_LINT_EXIT_CLEAN if payload["ok"] else _LINT_EXIT_FINDINGS)
+
+
+def _render_lint_report(
+    file: Path,
+    norm: NormalizationReport,
+    refs: CatalogValidationReport,
+    *,
+    ok: bool,
+) -> None:
+    """Print a human-readable ``catalog lint`` report (Rich)."""
+    _console.print(f"[bold]Catalog lint:[/bold] {file} ({norm.items_processed} items)")
+    if ok:
+        _console.print("[bold green]OK[/bold green] no findings")
+        return
+
+    findings: list[tuple[str, str, str]] = []
+    for item_id in norm.invalid_ids:
+        findings.append(("error", "blank/duplicate id", repr(item_id)))
+    if norm.description_filled_count:
+        findings.append(
+            ("warning", "missing description", f"{norm.description_filled_count} item(s)")
+        )
+    if norm.tag_dedup_count:
+        findings.append(("warning", "duplicate tags", f"{norm.tag_dedup_count} item(s)"))
+    if norm.whitespace_normalized_count:
+        findings.append(("warning", "whitespace", f"{norm.whitespace_normalized_count} item(s)"))
+    for finding in refs.findings:
+        findings.append(("error", f"broken {finding.field}", finding.message()))
+
+    table = Table(title=None, show_header=True, header_style="bold")
+    table.add_column("Severity")
+    table.add_column("Finding")
+    table.add_column("Detail")
+    for severity, kind, detail in findings:
+        colour = "red" if severity == "error" else "yellow"
+        table.add_row(f"[{colour}]{severity}[/{colour}]", kind, detail)
+    _console.print(table)
+    _console.print(f"[bold red]FAIL[/bold red] {len(findings)} finding(s)")
+
+
+# ---------------------------------------------------------------------------
 # Sub-apps
 # ---------------------------------------------------------------------------
 
 # ``mcp serve`` lives in its own module to keep this file lean (issue #243/#246).
 app.add_typer(mcp_app)
+app.add_typer(catalog_app, name="catalog")
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +833,7 @@ def main() -> None:
     except json.JSONDecodeError as exc:
         print(f"Error: invalid JSON — {exc}", file=sys.stderr)
         sys.exit(1)
-    except (ValueError, PermissionError) as exc:
+    except (ContextWeaverError, ValueError, PermissionError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 

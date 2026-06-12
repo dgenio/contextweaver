@@ -264,3 +264,109 @@ def test_apply_firewall_is_idempotent_on_already_processed_items() -> None:
     # Raw bytes preserved across the second pass.
     assert raw_after_first == raw_after_second
     assert raw_after_first.decode("utf-8") == raw
+
+
+# ---------------------------------------------------------------------------
+# Deterministic gate covers the extractor too (issue #461)
+# ---------------------------------------------------------------------------
+
+
+class _FakeLlmExtractor:
+    """Stand-in LLM extractor flagged via the ``is_llm`` provenance marker."""
+
+    is_llm = True
+
+    def extract(self, raw: str, metadata: dict) -> list[str]:
+        return ["llm fact"]
+
+
+def _large_tool_item() -> ContextItem:
+    return ContextItem(id="r1", kind=ItemKind.tool_result, text="x" * 5000)
+
+
+def test_deterministic_raises_on_llm_extractor() -> None:
+    import pytest
+
+    from contextweaver.exceptions import DeterminismError
+
+    store = InMemoryArtifactStore()
+    with pytest.raises(DeterminismError, match="extractor"):
+        apply_firewall(
+            _large_tool_item(),
+            store,
+            extractor=_FakeLlmExtractor(),
+            deterministic=True,
+        )
+
+
+def test_non_deterministic_allows_llm_extractor() -> None:
+    store = InMemoryArtifactStore()
+    _processed, env = apply_firewall(
+        _large_tool_item(),
+        store,
+        extractor=_FakeLlmExtractor(),
+        deterministic=False,
+    )
+    assert env is not None
+    assert env.facts == ["llm fact"]
+
+
+def test_deterministic_structured_path_unaffected_by_llm_extractor() -> None:
+    """Structured projection is model-free, so deterministic=True must not raise
+    even when an LLM extractor is configured (it is not used on that path)."""
+    store = InMemoryArtifactStore()
+    item = ContextItem(id="r1", kind=ItemKind.tool_result, text='{"a": 1, "b": 2}' + " " * 5000)
+    _processed, env = apply_firewall(
+        item,
+        store,
+        extractor=_FakeLlmExtractor(),
+        deterministic=True,
+        keep=["a"],
+    )
+    assert env is not None
+    assert env.firewall_stats is not None
+    assert env.firewall_stats.strategy == "structured"
+
+
+# ---------------------------------------------------------------------------
+# Opt-in secret scrubbing of summaries and facts (issue #428)
+# ---------------------------------------------------------------------------
+
+
+def test_redact_secrets_scrubs_summary() -> None:
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    item = ContextItem(
+        id="r1",
+        kind=ItemKind.tool_result,
+        text=f"config dump\n\naws_access_key={secret} and more text " + "y" * 600,
+    )
+    store = InMemoryArtifactStore()
+    processed, env = apply_firewall(item, store, redact_secrets=True)
+    assert secret not in processed.text
+    assert env is not None
+    assert secret not in env.summary
+
+
+def test_redact_secrets_off_by_default_keeps_text() -> None:
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    item = ContextItem(
+        id="r1",
+        kind=ItemKind.tool_result,
+        text=f"first paragraph mentions {secret}\n\nrest",
+    )
+    store = InMemoryArtifactStore()
+    _processed, env = apply_firewall(item, store)
+    assert env is not None
+    assert secret in env.summary
+
+
+def test_redact_secrets_preserves_raw_artifact() -> None:
+    """The out-of-band raw artifact is intentionally untouched by scrubbing."""
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    item = ContextItem(
+        id="r1", kind=ItemKind.tool_result, text=f"key={secret}\n\nbody " + "z" * 600
+    )
+    store = InMemoryArtifactStore()
+    apply_firewall(item, store, redact_secrets=True)
+    raw = store.get(f"artifact:{item.id}")
+    assert raw is not None and secret in raw.decode("utf-8")

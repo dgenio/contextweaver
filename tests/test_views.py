@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from contextweaver.context.manager import ContextManager
 from contextweaver.context.views import (
     ViewRegistry,
     _binary_views,
@@ -15,7 +16,53 @@ from contextweaver.context.views import (
     drilldown_tool_spec,
     generate_views,
 )
-from contextweaver.types import ArtifactRef, SelectableItem, ViewSpec
+from contextweaver.types import (
+    ArtifactRef,
+    ContextItem,
+    ItemKind,
+    Phase,
+    SelectableItem,
+    ViewSpec,
+)
+
+
+def _sentinel_views(ref: ArtifactRef, data: bytes) -> list[ViewSpec]:
+    """A recognizable custom generator for the all-paths wiring test (#460)."""
+    return [ViewSpec(view_id="sentinel", label="sentinel")]
+
+
+def test_custom_view_registry_fires_on_all_paths() -> None:
+    """A manager-registered generator fires on every ingestion/build path (#460).
+
+    Regression: previously only ``ingest_tool_result`` threaded the manager's
+    registry; the build-time firewall batch and ``ingest_mcp_result`` used a
+    fresh default registry, so custom generators silently no-op'd there.
+    """
+    big = "x" * 3000  # over the 2000-char firewall threshold
+
+    def _has_sentinel(views: list[ViewSpec]) -> bool:
+        return any(v.view_id == "sentinel" for v in views)
+
+    # (a) ingest_tool_result
+    mgr_a = ContextManager()
+    mgr_a.view_registry.register("text/plain", _sentinel_views)
+    _, env_a = mgr_a.ingest_tool_result_sync("c1", big, "tool", media_type="text/plain")
+    assert _has_sentinel(env_a.views)
+
+    # (b) build-time firewall batch
+    mgr_b = ContextManager()
+    mgr_b.view_registry.register("text/plain", _sentinel_views)
+    mgr_b.ingest_sync(ContextItem(id="result:c2", kind=ItemKind.tool_result, text=big))
+    pack = mgr_b.build_sync(phase=Phase.answer)
+    assert any(_has_sentinel(env.views) for env in pack.envelopes)
+
+    # (c) ingest_mcp_result
+    mgr_c = ContextManager()
+    mgr_c.view_registry.register("text/plain", _sentinel_views)
+    _, env_c = mgr_c.ingest_mcp_result_sync(
+        "c3", {"content": [{"type": "text", "text": big}]}, "tool"
+    )
+    assert _has_sentinel(env_c.views)
 
 
 def _ref(

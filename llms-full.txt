@@ -12,6 +12,10 @@
     docs/architecture.md
     docs/concepts.md
     docs/quickstart.md
+    docs/daily_driver.md
+    docs/security_model.md
+    docs/recipes/index.md
+    docs/recipes/claude_code.md
     docs/integration_mcp.md
     docs/integration_a2a.md
     docs/agent-context/architecture.md
@@ -27,6 +31,8 @@
 <!-- FILE: README.md -->
 
 # contextweaver
+
+<!-- mcp-name: io.github.dgenio/contextweaver -->
 
 [![CI](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml/badge.svg)](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/contextweaver.svg)](https://pypi.org/project/contextweaver/)
@@ -46,6 +52,9 @@ custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
 blew up my prompt."*
 
 ```bash
+uvx contextweaver demo --scenario killer  # zero-install trial
+
+# Or install it:
 pip install contextweaver
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
 ```
@@ -55,6 +64,8 @@ contextweaver demo --scenario killer   # 60-second taste — no API key, no netw
 [MCP Context Gateway architecture](docs/architectures/mcp_context_gateway.md).
 Already have a loop and not sure which piece you need? The two engines also work
 [routing-only or firewall-only](docs/which_pattern.md).
+For day-to-day operating guidance, see the [Daily Driver guide](docs/daily_driver.md);
+for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md).
 
 <p align="center">
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
@@ -298,6 +309,14 @@ is the smallest scenario where contextweaver clearly pays for itself.
 
 ### Install
 
+Try the CLI without installing it:
+
+```bash
+uvx contextweaver demo --scenario killer
+```
+
+Or install it persistently:
+
 ```bash
 pip install contextweaver
 ```
@@ -426,7 +445,7 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 
 | Framework | Guide | Use Case |
 |---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security note](docs/integration_mcp.md#security-considerations) |
+| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
 | FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
 | LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
@@ -632,7 +651,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.14.0**.
+Current package version: **0.14.1**.
 
 Recent milestones:
 
@@ -664,7 +683,7 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.14.0](https://pypi.org/project/contextweaver/0.14.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.14.1](https://pypi.org/project/contextweaver/0.14.1/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
@@ -697,6 +716,10 @@ contextweaver route --graph g.json --catalog c.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
+contextweaver inspect --session session.json --format markdown
+contextweaver mcp inspect --catalog c.json --format json
+contextweaver mcp serve --catalog c.json --diagnostics gateway.jsonl --quiet
+contextweaver mcp stats --events gateway.jsonl
 ```
 
 ## Examples
@@ -722,7 +745,7 @@ contextweaver replay --session session.json --phase answer
 | `architectures/eval_artifact_profile/` | Agent-safe context shaping for offline-evaluation reports — never surfaces `V_hat` without support diagnostics ([guide](docs/architectures/eval_artifact_profile.md)) |
 | `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
 | `architectures/mcp_context_gateway/main_real.py` | Same flow, run against verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (`server-time`, `server-filesystem`, `server-everything`) committed under `real_catalogs/` |
-| `recipes/serve_gateway.py` | Minimal stdio launcher used by the [Claude Desktop](docs/recipes/claude_desktop.md) and [GitHub Copilot](docs/recipes/github_copilot.md) recipes |
+| `recipes/` | Installed-CLI configs for [Claude Desktop](docs/recipes/claude_desktop.md), [Claude Code](docs/recipes/claude_code.md), [GitHub Copilot](docs/recipes/github_copilot.md), and [Cursor](docs/recipes/cursor.md); `serve_gateway.py` remains a legacy/custom-wiring example |
 | `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
 ```bash
@@ -744,7 +767,9 @@ Provide a custom `Summarizer` to control how the summary is generated.
 
 **Q: How do I debug what was kept or dropped?**
 Inspect `pack.stats` (a `BuildStats` object) after every `build_sync()` / `build()` call:
-`included_count`, `dropped_count`, `dropped_reasons`, `dedup_removed`.
+`included_count`, `dropped_count`, `dropped_reasons`, `dropped_items`,
+`dedup_removed`. Completed builds satisfy
+`included_count + dropped_count == total_candidates`.
 
 **Q: Does this work with [framework X]?**
 Yes, contextweaver is framework-agnostic — it compiles context; you send `pack.prompt`
@@ -878,6 +903,8 @@ term itself, see Atlan's
 |---|---|
 | `types.py` | Core dataclasses and enums (`SelectableItem`, `ContextItem`, `Phase`, `ItemKind`) |
 | `envelope.py` | Result types (`ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`) |
+| `diagnostics.py` | Versioned gateway event schema, JSONL/in-memory sinks, aggregate reports |
+| `inspection.py` | Payload-safe offline context/routing/artifact reports |
 | `config.py` | Configuration dataclasses (`ContextBudget`, `ContextPolicy`, `ScoringConfig`) |
 | `protocols.py` | Protocol interfaces (`TokenEstimator`, `EventHook`, `Summarizer`, …) |
 | `exceptions.py` | Custom exception hierarchy |
@@ -888,7 +915,7 @@ term itself, see Atlan's
 | `context/` | Full context compilation pipeline |
 | `routing/` | Catalog, DAG builder, beam-search router, card renderer |
 | `adapters/` | MCP, FastMCP, and A2A protocol adapters |
-| `__main__.py` | CLI entry point (7 subcommands) |
+| `__main__.py` | CLI entry point (`inspect` includes context/routing/artifact diagnostics) |
 
 ## Context Engine pipeline
 
@@ -912,6 +939,12 @@ the event log. The pipeline has eight stages:
    into the token budget for the current phase.
 8. **render_context** — assemble the final prompt string, grouped by
    section (facts, history, tool results), with `BuildStats` metadata.
+
+The pipeline owns `BuildStats` construction after selection. Candidate totals
+are captured before sensitivity filtering, while sensitivity, deduplication,
+kind-limit, and budget exclusions are attributed per item. This preserves the
+invariant `included_count + dropped_count == total_candidates` and keeps
+lifecycle hooks aligned with the returned statistics.
 
 ## Routing Engine pipeline
 
@@ -1061,8 +1094,12 @@ what happened:
 - How many candidates were generated.
 - How many were included, dropped, or deduplicated.
 - Token usage per section.
-- Which items were dropped and why.
+- Which items were dropped and why (`dropped_items` carries item ID + reason).
 - Dependency closures applied.
+
+`total_candidates` is measured after dependency closure and before sensitivity
+filtering. Every later exclusion is counted, so completed builds satisfy
+`included_count + dropped_count == total_candidates`.
 
 ## Choice Graph
 
@@ -1125,8 +1162,15 @@ what context was used.
 This guide gets you to a working context build, a firewall-protected tool result,
 and a routed tool shortlist in under 10 minutes.
 
-> **In a hurry?** After `pip install contextweaver`, the built-in demo
-> walks you through the same ideas in one command:
+> **In a hurry?** Run the built-in demo in an isolated environment with no
+> persistent install:
+>
+> ```bash
+> uvx contextweaver demo --scenario killer
+> ```
+>
+> After `pip install contextweaver`, the installed CLI exposes the same
+> scenarios:
 >
 > ```bash
 > contextweaver demo                                  # friendly walkthrough
@@ -1240,6 +1284,16 @@ If you see an error like `running scripts is disabled on this system`, either:
 
 ## 2. Install (30 seconds)
 
+For a zero-install trial:
+
+```bash
+uvx contextweaver demo --scenario killer
+```
+
+`uvx` creates an isolated temporary environment. Its first run may be slower
+while dependencies resolve. Pin a release with
+`uvx contextweaver@0.14.0 demo --scenario killer`.
+
 Install from PyPI:
 
 ```bash
@@ -1251,6 +1305,9 @@ If you are working from a repository checkout instead, install the package in ed
 ```bash
 pip install -e ".[dev]"
 ```
+
+`pipx run contextweaver demo --scenario killer` is the equivalent isolated
+path for pipx users.
 
 If your network blocks `openaipublic.blob.core.windows.net`, the demo or
 token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.
@@ -1519,6 +1576,717 @@ python -m contextweaver demo
 
 ---
 
+<!-- FILE: docs/daily_driver.md -->
+
+# Daily Driver Guide
+
+Use contextweaver as a pressure-relief layer for tool-heavy sessions, not as
+the default path for every chat message.
+
+```text
+User / IDE chat
+  |
+  +-- trivial question, tiny tool set, small result --> normal host-agent path
+  |
+  +-- large catalog, large result, long history ----> contextweaver gateway
+                                                        |
+                                                        +-- tool_browse
+                                                        +-- tool_execute
+                                                        +-- tool_view (only as needed)
+```
+
+contextweaver prepares bounded tool choices and compact result summaries. The
+host application still owns the model call, authorization, user approval, and
+execution policy. Upstream MCP servers remain the executors of record.
+
+## Recommended daily loop
+
+1. Start with the host client's normal chat path.
+2. Use the gateway when the catalog is difficult to navigate, a result is too
+   large for the prompt, or the active history needs deterministic budgeting.
+3. Ask the client to call `tool_browse` with a routing-oriented query.
+4. Execute only the selected `tool_id` through `tool_execute`.
+5. Use `tool_view` for a narrow slice only when the summary is insufficient.
+6. Inspect the route explanation, build statistics, and artifact reference
+   before increasing budgets or exposing more data.
+
+The gateway should usually replace duplicate direct registrations of the same
+upstream tools. Advertising both the raw servers and the gateway gives the
+model two competing paths and defeats the bounded-tool benefit.
+
+## Start the gateway
+
+The fastest trial requires no persistent installation:
+
+```bash
+uvx contextweaver mcp serve \
+  --config examples/recipes/gateway_config.yaml \
+  --dry-run
+```
+
+For regular use, install the CLI once:
+
+```bash
+pip install contextweaver
+contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+```
+
+Enable local, payload-safe diagnostics in a directory that already exists:
+
+```bash
+contextweaver mcp serve \
+  --config /path/to/gateway.yaml \
+  --diagnostics /path/to/logs/contextweaver.jsonl \
+  --quiet
+```
+
+Inspect the static catalog before launch and aggregate the event stream later:
+
+```bash
+contextweaver mcp inspect --catalog /path/to/catalog.yaml
+contextweaver mcp stats --events /path/to/logs/contextweaver.jsonl
+```
+
+The packaged CLI still represents one configured static catalog source. Its
+catalog report groups tools by namespace; it does not claim live health for
+multiple upstream MCP processes.
+
+`pipx run contextweaver ...` is another isolated option. The first `uvx` or
+`pipx run` launch resolves a temporary environment and is slower than later
+runs. Pin a deployment when reproducibility matters:
+
+```bash
+uvx contextweaver@0.14.0 mcp serve --config /path/to/gateway.yaml
+pipx run --spec contextweaver==0.14.0 contextweaver mcp serve \
+  --config /path/to/gateway.yaml
+```
+
+The packaged `mcp serve` command currently loads a static catalog and uses the
+stub upstream handler for deterministic local exercise. For live upstream MCP
+execution, compose `McpClientUpstream` or `MultiplexUpstream` in Python; see
+[MCP Integration](integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+
+## Client instruction
+
+Give the host agent a short operational rule. The same rule works in Cursor,
+Claude Desktop, Claude Code, VS Code Copilot agent mode, and generic MCP
+clients:
+
+```text
+Use the contextweaver MCP gateway when you need to browse or call tools from a
+large catalog. Call tool_browse first with a routing-oriented query, execute
+only the selected tool_id through tool_execute, and use tool_view only when the
+summary is insufficient. Prefer narrow tool_view selectors. The gateway does
+not grant authorization; follow the host application's approval and execution
+policy.
+```
+
+Client-specific placement:
+
+| Client | Where to put the rule |
+|---|---|
+| Cursor | Project rules or the task prompt |
+| Claude Desktop | Project/custom instructions |
+| Claude Code | `CLAUDE.md` or the current task prompt |
+| GitHub Copilot | `.github/copilot-instructions.md` or repository instructions |
+| Generic MCP client | System/developer prompt owned by the host application |
+
+## Use contextweaver when
+
+- The client sees dozens or hundreds of MCP, FastMCP, or Python tools.
+- Tool results include large JSON objects, logs, tables, CSV, resources, or
+  binary content.
+- Multi-turn tool sessions accumulate more history than should reach every
+  phase.
+- You need deterministic prompt budgets and an inspectable record of what was
+  included, dropped, or deduplicated.
+- You want schemas hidden until a tool has been selected and hydrated.
+
+For catalogs above roughly 300 tools, treat metadata quality as part of the
+deployment: capture/import the upstream `tools/list`, normalize names and
+descriptions, then validate routing against representative queries. The
+current static-catalog workflow is documented in the
+[MCP Context Gateway architecture](architectures/mcp_context_gateway.md).
+
+## Do not use it when
+
+- The agent has only three to five small tools.
+- The interaction is one-shot Q&A with no tool or history pressure.
+- Tool outputs are already small and the prompt comfortably fits its budget.
+- The actual problem is pure retrieval, long-term memory, or observability.
+- The host application has not defined who may invoke tools or approve side
+  effects.
+- You expect contextweaver to be an agent supervisor, model runtime, sandbox,
+  or authorization service.
+
+## Debug loop
+
+When a route or prompt looks wrong, inspect these in order:
+
+1. **Gateway configuration.** Confirm `mode`, `top_k`, `beam_width`,
+   `cache_stable`, and the catalog path with `mcp serve --dry-run`.
+2. **Route result.** Use `RouteResult.explanation()` for ranked candidates,
+   score gaps, filters, and ambiguity. Use `debug=True` when you need the
+   expansion trace.
+3. **Build statistics.** Check `included_count`, `dropped_count`,
+   `dropped_reasons`, per-item `dropped_items`, `dedup_removed`, and token
+   usage in `BuildStats`. For an ingested session, run
+   `contextweaver inspect --session session.json`.
+4. **Artifact reference.** Confirm the handle exists before calling
+   `tool_view`, then request a bounded `head`, `lines`, `rows`, or `json_keys`
+   selector.
+5. **Embedded runtime settings.** If you use `ContextManager` directly,
+   inspect phase budgets, the firewall threshold, sensitivity policy, and
+   scoring/retrieval backend. These are Python runtime settings, not fields in
+   the current `mcp serve` YAML.
+6. **Telemetry.** Use `mcp serve --diagnostics FILE` for local JSONL counts,
+   savings, failures, artifact-view usage, and latency. The built-in stream
+   records IDs, sizes, argument key names, and error codes, but not queries,
+   argument values, result text, prompt text, or artifact bytes. When the
+   `[otel]` extra is enabled, inspect context-build, firewall, and routing spans.
+
+Do not respond to a poor route by immediately increasing every budget or
+returning whole artifacts. Better descriptions, a sharper browse query, and a
+narrow view usually preserve more of the gateway's benefit.
+
+## Next steps
+
+- [Claude Desktop recipe](recipes/claude_desktop.md)
+- [Claude Code recipe](recipes/claude_code.md)
+- [Cursor recipe](recipes/cursor.md)
+- [GitHub Copilot recipe](recipes/github_copilot.md)
+- [MCP Integration](integration_mcp.md)
+- [Adopter Benchmark Report](benchmark_report.md)
+- [Troubleshooting](troubleshooting.md)
+- [Security Model](security_model.md)
+
+---
+
+<!-- FILE: docs/security_model.md -->
+
+# MCP Gateway Security Model
+
+contextweaver is a local context-compilation and MCP gateway layer. It does
+not call an LLM or implement upstream tool side effects, but it can process
+tool schemas, tool results, session history, and raw artifacts that contain
+sensitive data. Treat its artifact store and diagnostics as sensitive as the
+upstream outputs they summarize.
+
+This page describes deployment boundaries. Vulnerability reporting remains in
+the repository's
+[`SECURITY.md`](https://github.com/dgenio/contextweaver/blob/main/SECURITY.md).
+
+## Data flow
+
+```text
+                         schemas / calls
+MCP client  <------>  contextweaver gateway  <------>  upstream MCP server
+    |                    |          |
+    |                    |          +--> tool execution and authorization
+    |                    |               remain upstream / host concerns
+    |                    |
+    |                    +--> artifact store
+    |                         raw tool bytes, local and out-of-band by default
+    |
+    +--> model provider
+         bounded ChoiceCards, summaries, selected artifact slices
+```
+
+Prompt-visible by default:
+
+- Compact `ChoiceCard` fields, without full input schemas.
+- Firewalled summaries and extracted facts.
+- Artifact handles and metadata needed for progressive disclosure.
+- A selected slice returned by `tool_view` after the client requests it.
+
+Out-of-band by default:
+
+- Raw text, resource, image, and audio bytes stored as artifacts.
+- Full schemas until the selected tool is hydrated for execution.
+- Context items excluded by budget or sensitivity policy.
+
+Out-of-band does not mean harmless or encrypted. The default gateway uses an
+in-memory artifact store in the gateway process. Other adapters can use
+filesystem or caller-supplied stores.
+
+## Data contextweaver can touch
+
+- MCP tool names, descriptions, annotations, and input schemas.
+- MCP text, structured content, resources, images, and audio handled by the
+  adapter.
+- Session messages and tool history ingested through provider adapters.
+- Artifact bytes, labels, media types, sizes, and handles.
+- Catalog and gateway configuration files.
+- Routing queries, candidate identifiers, scores, and build statistics.
+- OpenTelemetry attributes and metrics when the optional integration is
+  enabled.
+- Local gateway JSONL diagnostics when `mcp serve --diagnostics FILE` is
+  enabled.
+
+MCP annotations such as `readOnlyHint` are untrusted metadata. They may improve
+presentation or routing, but must not grant permission or bypass approval.
+
+## Network and egress
+
+The context and routing algorithms do not make model calls and do not require
+network access. Data can still leave the machine through surrounding systems:
+
+- The MCP client sends the compiled prompt and tool responses to its configured
+  model provider.
+- Upstream MCP servers may call remote APIs or databases.
+- An enabled OpenTelemetry exporter sends spans and metrics to its configured
+  endpoint.
+- Package installation requires a package index unless artifacts are already
+  cached or installed.
+- An explicitly selected token estimator may fetch tokenizer data on first use
+  when its cache is cold; the documented fallback remains deterministic.
+
+The default OpenTelemetry emission excludes raw queries, full tool
+descriptions, schemas, and prompt content. Enabling
+`otel_emit_experimental=True` can add sensitive content and should be limited
+to a trusted, access-controlled backend.
+
+The built-in gateway JSONL stream excludes query text, argument values, result
+text, prompt text, and artifact bytes. It does include canonical tool and
+artifact handles, namespaces, argument key names, sizes, timings, and error
+codes. Treat those identifiers as operationally sensitive and restrict file
+permissions and retention accordingly.
+
+## Trust boundaries
+
+### Host MCP client
+
+The host decides which model receives context, which MCP server is available,
+and whether a user must approve a call. contextweaver does not replace those
+controls.
+
+### contextweaver gateway
+
+The gateway narrows discovery, validates selected arguments against the
+hydrated schema, dispatches calls to an `UpstreamCall`, and firewalls returned
+content. Routing is relevance selection, not authorization.
+
+### Upstream MCP server
+
+The upstream server implements the operation and its side effects. It must
+authenticate callers, authorize access, validate business rules, and protect
+its own credentials. contextweaver does not verify that a tool described as
+read-only is actually read-only.
+
+### Artifact store
+
+The artifact store contains the bytes deliberately kept out of the prompt.
+Anyone with process or storage access may be able to read them. A handle is an
+address, not a capability token.
+
+## Context firewall limits
+
+The context firewall reduces prompt exposure and token use. It is not a data
+loss prevention system or security sandbox.
+
+- Raw bytes can remain in the artifact store after a summary is rendered.
+- Summaries and extracted facts can still contain sensitive values unless a
+  sensitivity or redaction policy removes them.
+- `tool_view` deliberately re-exposes selected artifact content to the MCP
+  client and therefore potentially to the model provider.
+- The current in-memory gateway store has no TTL, total-size quota, or
+  per-handle authorization policy.
+- Current selectors accept caller-provided ranges; deployments should use
+  narrow selectors and should not assume a built-in maximum response size.
+- The gateway does not neutralize prompt injection contained in a tool result.
+  The host prompt and execution policy must treat tool content as untrusted.
+
+Artifact TTLs, size limits, bounded views, redaction, provenance, and a view
+policy hook are tracked in
+[#375](https://github.com/dgenio/contextweaver/issues/375). Until those
+controls ship, high-sensitivity deployments should wrap or disable raw view
+access in their host integration.
+
+## Non-goals
+
+contextweaver does not:
+
+- Authenticate users or authorize tool execution.
+- Call the model or control how it follows instructions.
+- Sandbox or attest upstream MCP server processes.
+- Guarantee that MCP annotations are truthful.
+- Replace secret scanning, DLP, endpoint security, or storage encryption.
+- Prevent a malicious or compromised upstream from returning prompt-injection
+  content.
+- Make an unsafe tool safe merely because it was selected by the router.
+
+## Hardening checklist
+
+- Use upstream MCP servers you trust and keep them patched.
+- Register a tool either directly or behind the gateway, not both.
+- Enforce user identity, authorization, and side-effect approval in the host or
+  upstream server.
+- Keep gateway configs, local state, and artifact directories out of version
+  control when they contain machine paths or credentials.
+- Put secrets in the client's environment/secret facility, not in committed
+  JSON or YAML.
+- Use sensitivity labels and redaction before prompt rendering; add
+  store-before-view redaction when handling regulated data.
+- Prefer `json_keys`, short line ranges, or a small `head` selector over whole
+  artifact retrieval.
+- Restrict filesystem permissions and process access around persistent
+  artifact stores.
+- Leave experimental OTel content emission disabled unless the exporter is
+  trusted for the data class involved.
+- Store gateway JSONL diagnostics in an access-controlled path and define a
+  retention policy; use `--quiet` only to suppress lifecycle stderr, not as a
+  substitute for diagnostics access control.
+- Review tool descriptions and results as untrusted input; do not rely on
+  `readOnlyHint`, `destructiveHint`, or similar annotations as policy.
+- Pin the contextweaver version in managed deployments and review release notes
+  before upgrading.
+
+## Deployment questions
+
+Before exposing a gateway to users, answer:
+
+1. Which identities may use each upstream tool?
+2. Where are raw artifacts stored, and who can read that location or process?
+3. How long may artifacts remain available?
+4. Which content is allowed to reach the model provider?
+5. Who approves destructive or externally visible calls?
+6. Where do OTel spans go, and can that backend hold the same data class?
+7. What is the incident path if a summary or view exposes a secret?
+
+If these answers are undefined, the deployment is not made safe by adding a
+context firewall.
+
+---
+
+<!-- FILE: docs/recipes/index.md -->
+
+# MCP Client Recipes
+
+These recipes put the installed `contextweaver mcp serve` command in front of
+an MCP client. The default examples use `uvx`, so the client receives an
+isolated current release without requiring a persistent Python environment.
+
+| Client | Recipe | Shipped config |
+|---|---|---|
+| Claude Desktop | [Claude Desktop](claude_desktop.md) | [`claude_desktop_config.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_desktop_config.json) |
+| Claude Code | [Claude Code](claude_code.md) | [`claude_code_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_code_mcp.json) |
+| GitHub Copilot in VS Code | [GitHub Copilot](github_copilot.md) | [`copilot_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/copilot_mcp.json) |
+| Cursor | [Cursor](cursor.md) | [`cursor_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/cursor_mcp.json) |
+
+## Choose an invocation
+
+Zero-install trial:
+
+```bash
+uvx contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+```
+
+Persistent installation:
+
+```bash
+pip install contextweaver
+contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+```
+
+Isolated pipx run:
+
+```bash
+pipx run contextweaver mcp serve --config /path/to/gateway.yaml --dry-run
+```
+
+The first `uvx` or `pipx run` invocation resolves an environment and may take
+longer. Pin the package in managed environments:
+
+```bash
+uvx contextweaver@0.14.0 mcp serve --config /path/to/gateway.yaml
+pipx run --spec contextweaver==0.14.0 contextweaver mcp serve \
+  --config /path/to/gateway.yaml
+```
+
+## Shared gateway config
+
+The shipped [`gateway_config.yaml`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/gateway_config.yaml)
+loads the committed 11-tool filesystem snapshot:
+
+```yaml
+catalog: ../architectures/mcp_context_gateway/real_catalogs/filesystem.json
+mode: gateway
+top_k: 10
+beam_width: 3
+cache_stable: false
+name: contextweaver
+```
+
+Relative catalog paths are resolved from the gateway config file's directory.
+This keeps project-scoped client configs portable even when the client starts
+the server from a different working directory.
+
+## What the client sees
+
+```text
+MCP client
+    |
+    +-- tool_browse  -> bounded ChoiceCards
+    +-- tool_execute -> hydrated, validated selected call
+    +-- tool_view    -> selected artifact slice
+```
+
+The client sees three meta-tools instead of every full upstream schema. Large
+results become summaries plus artifact handles.
+
+## Current runtime boundary
+
+The packaged CLI loads a static JSON/YAML catalog and uses a deterministic
+stub upstream handler. It is suitable for client wiring, tool shortlisting,
+argument validation, and firewall-shape checks. Live upstream execution
+requires a Python composition using `McpClientUpstream` or
+`MultiplexUpstream`; see
+[MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+
+[`examples/recipes/serve_gateway.py`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/serve_gateway.py)
+remains a legacy/development example for custom `ProxyRuntime` wiring. It is
+no longer the default client entry point.
+
+## Large catalogs
+
+For 300+ tools, capture/import the upstream `tools/list`, normalize weak names
+and descriptions, and test representative `tool_browse` queries before
+deployment. The static snapshot workflow and real catalog fixtures are in the
+[MCP Context Gateway architecture](../architectures/mcp_context_gateway.md).
+
+## Next reading
+
+- [Daily Driver Guide](../daily_driver.md)
+- [MCP Gateway Security Model](../security_model.md)
+- [MCP Integration](../integration_mcp.md)
+- [Troubleshooting](../troubleshooting.md)
+
+---
+
+<!-- FILE: docs/recipes/claude_code.md -->
+
+# Claude Code + contextweaver gateway
+
+Use contextweaver as one project-scoped MCP server so Claude Code sees three
+gateway meta-tools instead of a large set of full upstream schemas.
+
+This recipe's registration syntax and project config were verified on
+**Claude Code 2.1.165 on June 10, 2026**. The deterministic gateway surface is
+covered by the repository's MCP tests; live model-driven tool selection
+remains a manual client check.
+
+## Prerequisites
+
+1. Claude Code installed and signed in.
+2. Python 3.10 or newer.
+3. `uv` for the zero-install command, or an installed `contextweaver` CLI.
+4. A JSON/YAML tool catalog or MCP `tools/list` snapshot.
+
+The worked example uses the committed 11-tool filesystem snapshot and the
+gateway config at `examples/recipes/gateway_config.yaml`.
+
+## Validate before registration
+
+From the contextweaver repository root:
+
+```bash
+uvx contextweaver mcp serve \
+  --config examples/recipes/gateway_config.yaml \
+  --dry-run
+```
+
+Expected stderr includes:
+
+```text
+mode=gateway ... tools=11 top_k=10 beam_width=3 ...
+dry-run: catalog validated; not binding stdio.
+```
+
+The first `uvx` invocation may take longer while it resolves an isolated
+environment. For a persistent installation, use:
+
+```bash
+pip install contextweaver
+contextweaver mcp serve --config examples/recipes/gateway_config.yaml --dry-run
+```
+
+## Option A: commit `.mcp.json`
+
+The shipped
+[`examples/recipes/claude_code_mcp.json`](https://github.com/dgenio/contextweaver/blob/main/examples/recipes/claude_code_mcp.json)
+contains:
+
+```json
+{
+  "mcpServers": {
+    "contextweaver-gateway": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "contextweaver",
+        "mcp",
+        "serve",
+        "--config",
+        "${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"
+      ]
+    }
+  }
+}
+```
+
+Copy that structure to `.mcp.json` at the project root and adjust the config
+path. Claude Code supports `${VAR}` and `${VAR:-default}` expansion in project
+MCP configuration. Keep credentials in environment variables rather than the
+committed file.
+
+To pin the package:
+
+```json
+"args": [
+  "contextweaver@0.14.0",
+  "mcp",
+  "serve",
+  "--config",
+  "${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"
+]
+```
+
+Claude Code asks each user to approve a project-scoped server before
+connecting.
+
+## Option B: register the JSON with the Claude CLI
+
+`claude mcp add-json` accepts the server object and writes it to the selected
+scope:
+
+PowerShell:
+
+```powershell
+claude mcp add-json --scope project contextweaver-gateway `
+  '{"type":"stdio","command":"uvx","args":["contextweaver","mcp","serve","--config","${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"]}'
+```
+
+macOS/Linux:
+
+```bash
+claude mcp add-json --scope project contextweaver-gateway \
+  '{"type":"stdio","command":"uvx","args":["contextweaver","mcp","serve","--config","${CLAUDE_PROJECT_DIR:-.}/examples/recipes/gateway_config.yaml"]}'
+```
+
+Use `--scope local` for a private entry in the current project or
+`--scope user` with an absolute config path for all projects.
+
+Claude Code also documents `claude mcp add <name> -- <command> [args...]`.
+On the verified 2.1.165 Windows PowerShell build, a nested server flag such as
+`--config` was still parsed as a Claude option. `add-json` and a committed
+`.mcp.json` both preserved the arguments correctly, so they are the verified
+paths in this recipe.
+
+## Confirm the connection
+
+Run:
+
+```bash
+claude mcp list
+claude mcp get contextweaver-gateway
+```
+
+Then open Claude Code and use `/mcp`. A project-scoped entry may initially
+show `Pending approval`; approve it in the interactive session. Once
+connected, the server should advertise:
+
+- `tool_browse`
+- `tool_execute`
+- `tool_view`
+
+It should not advertise the 11 raw filesystem tools from the snapshot.
+
+## Give Claude an operating rule
+
+Add this to the project's `CLAUDE.md` or provide it in the task:
+
+```text
+Use contextweaver-gateway for large tool catalogs. Call tool_browse first with
+a routing-oriented query, execute only the selected tool_id through
+tool_execute, and call tool_view with a narrow selector only when the summary
+is insufficient. Do not treat routing as authorization; follow normal approval
+rules for tool side effects.
+```
+
+Do not keep the same upstream MCP servers registered directly under other
+names. Otherwise Claude sees both the raw tools and the gateway.
+
+## Guided first session
+
+1. Open `/mcp` and confirm the three meta-tools.
+2. Ask: `Use contextweaver-gateway to find the filesystem tool for listing a directory.`
+3. Confirm Claude calls `tool_browse` before `tool_execute`.
+4. For a large result, confirm the response is a summary plus an artifact
+   handle.
+5. Ask for one small slice and confirm Claude uses `tool_view` with `head`,
+   `lines`, `rows`, or `json_keys`.
+
+The packaged CLI currently uses a static catalog and deterministic stub
+upstream, so this checks client wiring, routing, validation, and firewall
+shape. For real upstream calls, wire `McpClientUpstream` or
+`MultiplexUpstream` as described in
+[MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+
+## Troubleshooting
+
+### Gateway is not listed
+
+- Run the dry-run command outside Claude Code first.
+- Check `claude mcp get contextweaver-gateway`.
+- Approve a project-scoped server in `/mcp`.
+- Use an absolute config path for user scope.
+- Increase Claude Code's MCP startup timeout if the first cold `uvx` resolve
+  exceeds the default.
+
+### Tool names are rejected or missing
+
+The client should see only the gateway's underscore-separated meta-tool names.
+If raw upstream names appear, the direct upstream server is still registered.
+Remove the duplicate registration and restart the session.
+
+### Server fails after the first call
+
+Stdio servers are not automatically reconnected by Claude Code. Fix the
+startup or catalog error, then reconnect from `/mcp` or restart the session.
+
+### Where diagnostics go
+
+`contextweaver mcp serve` writes diagnostics to stderr. Stdout is reserved for
+the MCP wire protocol; redirecting application logs to stdout can corrupt the
+connection.
+
+### `uvx` is slow or unavailable
+
+Install contextweaver persistently and change the entry to:
+
+```json
+"command": "contextweaver",
+"args": ["mcp", "serve", "--config", "/absolute/path/to/gateway.yaml"]
+```
+
+`pipx run contextweaver mcp serve ...` is also supported for an isolated
+invocation.
+
+## Security note
+
+Raw outputs can remain in the artifact store and `tool_view` re-exposes
+selected content. Review the [MCP Gateway Security Model](../security_model.md)
+before connecting sensitive upstreams.
+
+## See also
+
+- [Daily Driver Guide](../daily_driver.md)
+- [Recipes overview](index.md)
+- [MCP Integration](../integration_mcp.md)
+- [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp)
+
+---
+
 <!-- FILE: docs/integration_mcp.md -->
 
 # MCP Integration
@@ -1777,6 +2545,10 @@ client.messages.create(
 
 ## Security Considerations
 
+For the full gateway data flow, artifact-store boundary, egress model, and
+deployment checklist, read the
+[MCP Gateway Security Model](security_model.md).
+
 ### MCP annotations are untrusted hints
 
 MCP tool annotations — `readOnlyHint`, `destructiveHint`, `costHint` — are
@@ -1906,6 +2678,10 @@ delivered as `isError=true` `CallToolResult` payloads.
   contextweaver gateway in front of Claude Desktop's MCP client.
 - [Recipes > GitHub Copilot](recipes/github_copilot.md) — put a
   contextweaver gateway in front of VS Code Copilot Chat (agent mode).
+- [Recipes > Claude Code](recipes/claude_code.md) — project-scoped gateway
+  registration for Claude Code.
+- [MCP Gateway Security Model](security_model.md) — data flow, trust
+  boundaries, artifact exposure, and hardening.
 - [`examples/architectures/mcp_context_gateway/main_real.py`](../examples/architectures/mcp_context_gateway/main_real.py)
   — the reference architecture run against verbatim `tools/list`
   snapshots of MIT-licensed reference MCP servers.
@@ -2079,6 +2855,39 @@ All stores use `typing.Protocol` interfaces with in-memory defaults. This enable
 - **ArtifactStore** — raw tool outputs stored by the firewall. Supports drilldown via `ViewRegistry`.
 - **EpisodicStore** — short episodic memory entries.
 - **FactStore** — key-value facts persisted across turns.
+
+Any backend can prove it honours these protocols with the shipped conformance
+kit (`contextweaver.store.testing`, issue #520): each `check_*_conformance`
+function takes a factory for an empty backend and asserts the round-trip,
+ordering, and not-found semantics the Context Engine relies on. For the
+`ArtifactStore` it also asserts that `put()` stamps a sha256 `content_hash`
+on the returned ref — the firewall's content-addressed idempotency
+short-circuit (#190) depends on it, so it is a protocol contract, not a
+backend detail. The bundled in-memory, JSON-file, and SQLite backends are all
+run through it in `tests/test_store_conformance.py`.
+
+#### Thread-safety contract (issue #458)
+
+The store protocols make **no concurrency guarantee** in their interface; each
+backend documents its own. The bundled backends:
+
+- **`InMemory*` stores** are *not* thread-safe. They are for single-threaded
+  use and tests; guard them with your own lock for concurrent access.
+- **`JsonFileArtifactStore`** is single-process. Within one process it is
+  thread-safe: `put` / `delete` / `list_refs` on a shared instance are
+  serialised by an internal lock, and each individual file write is **atomic**
+  (temp file + `os.replace`), so a reader never observes a torn or truncated
+  artifact and a crash mid-write leaves the previous version intact. There is
+  no cross-process advisory locking, so two processes writing the same
+  `base_dir` are still unsupported.
+- **`SqliteEventLog`** opens its connection in WAL mode for single-process use;
+  it is not shared across threads.
+
+The gateway runtime (`ProxyRuntime`) inherits these guarantees through the
+store it is given: its read-only `tool_view` (drilldown) is safe to call
+concurrently against a `JsonFileArtifactStore`. A gateway that fans out to
+real concurrent clients should pick (or wrap) a backend whose contract matches
+its load — this is exactly what the protocol seam and conformance kit are for.
 
 ### Sensitivity Enforcement
 

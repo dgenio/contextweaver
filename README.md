@@ -1,5 +1,7 @@
 # contextweaver
 
+<!-- mcp-name: io.github.dgenio/contextweaver -->
+
 [![CI](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml/badge.svg)](https://github.com/dgenio/contextweaver/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/contextweaver.svg)](https://pypi.org/project/contextweaver/)
 [![Python versions](https://img.shields.io/pypi/pyversions/contextweaver.svg)](https://pypi.org/project/contextweaver/)
@@ -18,6 +20,9 @@ custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
 blew up my prompt."*
 
 ```bash
+uvx contextweaver demo --scenario killer  # zero-install trial
+
+# Or install it:
 pip install contextweaver
 python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
@@ -28,6 +33,8 @@ contextweaver demo --scenario killer   # 60-second taste — no API key, no netw
 [MCP Context Gateway architecture](docs/architectures/mcp_context_gateway.md).
 Already have a loop and not sure which piece you need? The two engines also work
 [routing-only or firewall-only](docs/which_pattern.md).
+For day-to-day operating guidance, see the [Daily Driver guide](docs/daily_driver.md);
+for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md).
 
 <p align="center">
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
@@ -271,6 +278,14 @@ is the smallest scenario where contextweaver clearly pays for itself.
 
 ### Install
 
+Try the CLI without installing it:
+
+```bash
+uvx contextweaver demo --scenario killer
+```
+
+Or install it persistently:
+
 ```bash
 pip install contextweaver
 ```
@@ -399,7 +414,7 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 
 | Framework | Guide | Use Case |
 |---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security note](docs/integration_mcp.md#security-considerations) |
+| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
 | A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
 | FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
 | LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
@@ -605,7 +620,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.14.0**.
+Current package version: **0.14.1**.
 
 Recent milestones:
 
@@ -637,7 +652,7 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.14.0](https://pypi.org/project/contextweaver/0.14.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.14.1](https://pypi.org/project/contextweaver/0.14.1/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
@@ -670,6 +685,10 @@ contextweaver route --graph g.json --catalog c.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
 contextweaver replay --session session.json --phase answer
+contextweaver inspect --session session.json --format markdown
+contextweaver mcp inspect --catalog c.json --format json
+contextweaver mcp serve --catalog c.json --diagnostics gateway.jsonl --quiet
+contextweaver mcp stats --events gateway.jsonl
 ```
 
 ## Examples
@@ -695,7 +714,7 @@ contextweaver replay --session session.json --phase answer
 | `architectures/eval_artifact_profile/` | Agent-safe context shaping for offline-evaluation reports — never surfaces `V_hat` without support diagnostics ([guide](docs/architectures/eval_artifact_profile.md)) |
 | `architectures/mcp_context_gateway/` | Launch reference architecture — 60-tool MCP-style gateway end-to-end: ChoiceCards, lazy schema hydration, context firewall on a 16 KB result, artifact-backed answer prompt ([guide](docs/architectures/mcp_context_gateway.md)) |
 | `architectures/mcp_context_gateway/main_real.py` | Same flow, run against verbatim `tools/list` snapshots of MIT-licensed reference MCP servers (`server-time`, `server-filesystem`, `server-everything`) committed under `real_catalogs/` |
-| `recipes/serve_gateway.py` | Minimal stdio launcher used by the [Claude Desktop](docs/recipes/claude_desktop.md) and [GitHub Copilot](docs/recipes/github_copilot.md) recipes |
+| `recipes/` | Installed-CLI configs for [Claude Desktop](docs/recipes/claude_desktop.md), [Claude Code](docs/recipes/claude_code.md), [GitHub Copilot](docs/recipes/github_copilot.md), and [Cursor](docs/recipes/cursor.md); `serve_gateway.py` remains a legacy/custom-wiring example |
 | `architectures/slack_ops_bot/` | Production reference architecture — internal Slack ops bot with ~50 tools, firewall on log/grep outputs, persistent facts ([guide](docs/architectures/slack_ops_bot.md)) |
 
 ```bash
@@ -717,7 +736,9 @@ Provide a custom `Summarizer` to control how the summary is generated.
 
 **Q: How do I debug what was kept or dropped?**
 Inspect `pack.stats` (a `BuildStats` object) after every `build_sync()` / `build()` call:
-`included_count`, `dropped_count`, `dropped_reasons`, `dedup_removed`.
+`included_count`, `dropped_count`, `dropped_reasons`, `dropped_items`,
+`dedup_removed`. Completed builds satisfy
+`included_count + dropped_count == total_candidates`.
 
 **Q: Does this work with [framework X]?**
 Yes, contextweaver is framework-agnostic — it compiles context; you send `pack.prompt`

@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from contextweaver.envelope import FirewallStats
-from contextweaver.exceptions import ConfigError
+from contextweaver.exceptions import ConfigError, ContextWeaverError
 from contextweaver.protocols import ArtifactStore, Extractor, Summarizer
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.tokens import count as count_tokens
@@ -139,8 +139,15 @@ def compact_tool_result(
     extractor: Extractor | None = None,
     deterministic: bool = True,
     token_model: str | None = None,
+    overwrite_sidecar: bool = False,
 ) -> CompactResult:
     """Compact a single tool result in one call (firewall-only pattern).
+
+    .. note::
+       This facade defaults ``deterministic=True`` (fail-closed), whereas
+       :class:`~contextweaver.context.manager.ContextManager` defaults
+       ``deterministic=False``.  The facade targets one-shot regulated callers;
+       the manager targets long-running agent loops that opt in explicitly.
 
     Args:
         data: The tool result — a dict, list, or string.
@@ -161,16 +168,30 @@ def compact_tool_result(
         deterministic: When ``True`` (default) the call fails closed rather than
             invoking an LLM-backed *summarizer* (issue #404).
         token_model: Optional model/encoding name for token counting (#405).
+        overwrite_sidecar: When the input *data* is a dict that already contains
+            the reserved :data:`CW_SIDECAR_KEY` (``"_cw"``), the call raises
+            ``ConfigError`` by default rather than silently clobbering it
+            (reserved-namespace rule, issue #467).  Set ``True`` to opt into
+            overwriting — useful when round-tripping prior contextweaver output
+            back through the facade.
 
     Returns:
         A :class:`CompactResult`.
 
     Raises:
-        ConfigError: If ``strategy="structured"`` without a non-empty *keep*,
-            or if ``strategy="structured"`` is given non-JSON data.
+        ConfigError: If ``strategy="structured"`` without a non-empty *keep*;
+            if ``strategy="structured"`` is given non-JSON data; or if *data*
+            already carries the reserved ``_cw`` key and *overwrite_sidecar* is
+            ``False``.
         DeterminismError: If ``deterministic=True`` and the text strategy would
             invoke an LLM-backed summariser.
     """
+    if isinstance(data, dict) and CW_SIDECAR_KEY in data and not overwrite_sidecar:
+        raise ConfigError(
+            f"input payload already contains the reserved {CW_SIDECAR_KEY!r} sidecar key; "
+            f"refusing to overwrite caller data (issue #467). Strip the key first, or pass "
+            f"overwrite_sidecar=True to replace it."
+        )
     if strategy == "structured" and not keep:
         raise ConfigError("strategy='structured' requires a non-empty `keep` allow-list")
 
@@ -241,7 +262,11 @@ def compact_tool_result(
         keep=keep_for_call,
         threshold_chars=threshold_chars,
     )
-    assert envelope is not None  # tool_result always produces an envelope here
+    if envelope is None:  # tool_result always produces an envelope here
+        raise ContextWeaverError(
+            "internal invariant violated: apply_firewall returned no envelope for a "
+            "tool_result item"
+        )
     stats = envelope.firewall_stats or FirewallStats(triggered=True, strategy="summary")
     handle = stats.artifact_ref
     summary = envelope.summary

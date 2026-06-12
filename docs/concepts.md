@@ -98,8 +98,12 @@ what happened:
 - How many candidates were generated.
 - How many were included, dropped, or deduplicated.
 - Token usage per section.
-- Which items were dropped and why.
+- Which items were dropped and why (`dropped_items` carries item ID + reason).
 - Dependency closures applied.
+
+`total_candidates` is measured after dependency closure and before sensitivity
+filtering. Every later exclusion is counted, so completed builds satisfy
+`included_count + dropped_count == total_candidates`.
 
 ## Choice Graph
 

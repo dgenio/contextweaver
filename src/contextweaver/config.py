@@ -7,9 +7,15 @@ they care about.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, cast
 
+from contextweaver.exceptions import ConfigError
 from contextweaver.types import ItemKind, Phase, Sensitivity
+
+#: Valid values for :attr:`ContextPolicy.sensitivity_action`.  Single source of
+#: truth, imported by ``context/sensitivity.py`` so the dataclass validator and
+#: the runtime enforcement agree (issue #463).
+SENSITIVITY_ACTIONS: tuple[str, ...] = ("drop", "redact")
 
 # ---------------------------------------------------------------------------
 # Scoring
@@ -147,6 +153,13 @@ class ContextPolicy:
             the floor; ``"redact"`` replaces their text via redaction hooks.
         redaction_hooks: Names of redaction hook implementations to apply,
             in order.  Resolved at runtime by the context manager.
+        allow_redacted_drilldown: When ``False`` (default, closed) a
+            :meth:`~contextweaver.context.manager.ContextManager.drilldown` whose
+            source item meets the sensitivity floor (or was already redacted)
+            raises :class:`~contextweaver.exceptions.PolicyViolationError`,
+            so ``redact``/``drop`` cannot be bypassed by re-fetching the raw
+            artifact bytes (issue #451).  Set ``True`` only for deployments that
+            intentionally rely on drilldown to recover filtered content.
     """
 
     allowed_kinds_per_phase: dict[Phase, list[ItemKind]] = field(
@@ -158,9 +171,25 @@ class ContextPolicy:
         default_factory=lambda: {k: 50 for k in ItemKind}
     )
     sensitivity_floor: Sensitivity = Sensitivity.confidential
-    sensitivity_action: str = "drop"
+    sensitivity_action: Literal["drop", "redact"] = "drop"
     redaction_hooks: list[str] = field(default_factory=list)
+    allow_redacted_drilldown: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate ``sensitivity_action`` at construction time (issue #463).
+
+        Raises:
+            ConfigError: If ``sensitivity_action`` is not one of
+                :data:`SENSITIVITY_ACTIONS`.  Validating here turns a config
+                typo into an immediate, well-classified error instead of one
+                that surfaces only at the first build's sensitivity stage.
+        """
+        if self.sensitivity_action not in SENSITIVITY_ACTIONS:
+            raise ConfigError(
+                f"ContextPolicy.sensitivity_action must be one of {SENSITIVITY_ACTIONS}, "
+                f"got {self.sensitivity_action!r}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -173,6 +202,7 @@ class ContextPolicy:
             "sensitivity_floor": self.sensitivity_floor.value,
             "sensitivity_action": self.sensitivity_action,
             "redaction_hooks": list(self.redaction_hooks),
+            "allow_redacted_drilldown": self.allow_redacted_drilldown,
             "extra": dict(self.extra),
         }
 
@@ -199,8 +229,16 @@ class ContextPolicy:
             sensitivity_floor=Sensitivity(data["sensitivity_floor"])
             if "sensitivity_floor" in data
             else _d.sensitivity_floor,
-            sensitivity_action=str(data.get("sensitivity_action", _d.sensitivity_action)),
+            # Cast for the type checker; ``__post_init__`` validates the value
+            # at runtime and raises ConfigError on anything outside the literals.
+            sensitivity_action=cast(
+                "Literal['drop', 'redact']",
+                data.get("sensitivity_action", _d.sensitivity_action),
+            ),
             redaction_hooks=list(data.get("redaction_hooks", _d.redaction_hooks)),
+            allow_redacted_drilldown=bool(
+                data.get("allow_redacted_drilldown", _d.allow_redacted_drilldown)
+            ),
             extra=dict(data.get("extra", _d.extra)),
         )
 

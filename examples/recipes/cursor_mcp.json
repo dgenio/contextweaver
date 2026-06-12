@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "contextweaver-gateway": {
-      "command": "contextweaver",
+      "command": "uvx",
       "args": [
+        "contextweaver",
         "mcp",
         "serve",
         "--config",

@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Publish to PyPI and MCP Registry
 
 on:
   release:
@@ -29,3 +29,34 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-mcp-registry:
+    name: Publish to MCP Registry
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Required for MCP Registry GitHub OIDC authentication
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json (retry while PyPI metadata propagates)
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if ./mcp-publisher publish; then
+              echo "Published to the MCP Registry."
+              exit 0
+            fi
+            echo "Attempt $attempt failed (PyPI metadata may still be propagating); retrying in 30s..."
+            sleep 30
+          done
+          echo "::error::mcp-publisher publish failed after 6 attempts." >&2
+          exit 1

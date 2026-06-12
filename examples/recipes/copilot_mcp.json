@@ -3,11 +3,13 @@
   "servers": {
     "contextweaver-gateway": {
       "type": "stdio",
-      "command": "python",
+      "command": "uvx",
       "args": [
-        "${workspaceFolder}/examples/recipes/serve_gateway.py",
-        "--catalog",
-        "${workspaceFolder}/examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json"
+        "contextweaver",
+        "mcp",
+        "serve",
+        "--config",
+        "${workspaceFolder}/examples/recipes/gateway_config.yaml"
       ]
     }
   }

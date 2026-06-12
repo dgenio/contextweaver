@@ -12,6 +12,9 @@ Python ≥ 3.10.
 - [Architecture](docs/architecture.md): Package layout, pipeline stages, design principles
 - [Concepts](docs/concepts.md): ContextItem, phases, firewall, ChoiceGraph, sensitivity enforcement
 - [Quickstart](docs/quickstart.md): 10-minute guide to context builds, firewall, and routing
+- [Daily Driver](docs/daily_driver.md): Operator workflow, client instructions, fit guidance, and debugging
+- [MCP Security Model](docs/security_model.md): Gateway data flow, trust boundaries, artifact exposure, and hardening
+- [MCP Client Recipes](docs/recipes/index.md): Claude Desktop, Claude Code, GitHub Copilot, and Cursor setup
 - [MCP Integration](docs/integration_mcp.md): MCP adapter functions, JSONL format, end-to-end example
 - [A2A Integration](docs/integration_a2a.md): A2A adapter functions, multi-agent sessions
 - [Agent Loop Guide](docs/guide_agent_loop.md): Flow diagram and phase guidance for building a complete agent loop

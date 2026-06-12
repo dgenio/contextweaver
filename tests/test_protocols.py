@@ -11,6 +11,7 @@ from contextweaver.protocols import (
     EventHook,
     EventLog,
     Extractor,
+    HeuristicEstimator,
     Labeler,
     NoOpHook,
     RedactionHook,
@@ -41,6 +42,59 @@ def test_char_div_four_estimator_long_text() -> None:
 def test_char_div_four_satisfies_protocol() -> None:
     est = CharDivFourEstimator()
     assert isinstance(est, TokenEstimator)
+
+
+def test_char_div_four_has_stable_name() -> None:
+    assert CharDivFourEstimator().name == "heuristic/chardiv4"
+
+
+# ---------------------------------------------------------------------------
+# HeuristicEstimator (script-aware, dependency-free) — issue #525
+# ---------------------------------------------------------------------------
+
+
+def test_heuristic_estimator_satisfies_protocol() -> None:
+    assert isinstance(HeuristicEstimator(), TokenEstimator)
+
+
+def test_heuristic_estimator_empty_and_name() -> None:
+    est = HeuristicEstimator()
+    assert est.estimate("") == 0
+    assert est.name == "heuristic/v2"
+
+
+def test_heuristic_estimator_matches_chardiv_for_ascii() -> None:
+    """Latin/ASCII estimates must not change versus the old len // 4 default."""
+    est = HeuristicEstimator()
+    chardiv = CharDivFourEstimator()
+    for text in ["", "abcd", "hello world!", "a" * 400, "The quick brown fox."]:
+        assert est.estimate(text) == chardiv.estimate(text)
+
+
+def test_heuristic_estimator_counts_cjk_near_one_per_char() -> None:
+    """CJK/Kana/Hangul count at ~1 token/char, fixing the ~4x under-count (#525).
+
+    External fact: under cl100k-family encodings CJK text runs ~1+ token per
+    character. The committed band below encodes that without needing a live
+    tiktoken download (offline-deterministic).
+    """
+    est = HeuristicEstimator()
+    for text in ["世界" * 30, "こんにちは" * 12, "안녕하세요" * 12]:
+        nchars = len(text)
+        est_tokens = est.estimate(text)
+        # ~1 token/char band (the documented CJK ratio) ...
+        assert 0.7 * nchars <= est_tokens <= 1.5 * nchars
+        # ... and a large improvement over the ~0.25/char naive heuristic.
+        assert est_tokens >= 3 * CharDivFourEstimator().estimate(text)
+
+
+def test_heuristic_estimator_handles_emoji_and_mixed_script() -> None:
+    est = HeuristicEstimator()
+    # Emoji count as wide characters (≈1 token) rather than ~0.25.
+    assert est.estimate("😀😀😀😀") >= 4
+    # Mixed Latin + CJK: Latin at len//4, CJK at ~1/char.
+    mixed = "hello " + "世界"  # 6 narrow chars -> 1, 2 wide -> 2
+    assert est.estimate(mixed) == len("hello ") // 4 + 2
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +156,9 @@ def test_tiktoken_fallback_when_encoding_unavailable(
 
     est = TiktokenEstimator()
     assert est._fallback is not None
-    # Falls back to char/4 estimate without raising.
+    # The estimator-path name reflects the heuristic fallback (issue #493).
+    assert est.name == "heuristic/v2"
+    # Falls back to the script-aware heuristic; ASCII stays len // 4.
     text = "abcd" * 10  # 40 chars -> 10 tokens via char/4
     assert est.estimate(text) == 10
 

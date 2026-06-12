@@ -223,14 +223,12 @@ async def test_view_drilldown_returns_slice() -> None:
     tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
     envelope = await runtime.execute(tool_id, {"title": "x"})
     assert isinstance(envelope, ResultEnvelope)
-    # The runtime persists either a structured artifact or a text:
-    # artifact under a deterministic handle when the response has no
-    # binaries.  Pick whichever exists.
-    handles = list(runtime.context_manager.artifact_store.list_refs())
-    assert handles, "execute must store the upstream response somewhere"
-    handle = handles[0].handle
-    sliced = runtime.view(handle, {"type": "head", "n_chars": 8})
-    assert isinstance(sliced, str)
+    assert len(envelope.artifacts) == 1
+    handle = envelope.artifacts[0].handle
+    assert handle.startswith(f"text:{tool_id}:")
+    assert runtime.context_manager.artifact_store.exists(handle)
+    sliced = runtime.view(handle, {"type": "head", "chars": 8})
+    assert sliced == "line one"
 
 
 def test_view_unknown_handle_returns_view_failed() -> None:
@@ -506,3 +504,247 @@ def test_cache_stable_browse_propagates_gateway_errors() -> None:
     err = runtime.browse()
     assert isinstance(err, GatewayError)
     assert err.code == "ARGS_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# Secret-scrub coverage warning (issue #428 / #451 audit follow-up)
+# ---------------------------------------------------------------------------
+
+
+def test_proxy_warns_when_supplied_manager_does_not_scrub(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A supplied manager without redact_secrets yields partial scrub — warn."""
+    import logging
+
+    from contextweaver.context.manager import ContextManager
+
+    mgr = ContextManager()  # redact_secrets defaults to False
+    with caplog.at_level(logging.WARNING, logger="contextweaver.adapters.proxy_runtime"):
+        ProxyRuntime(StubUpstream(_tool_defs()), context_manager=mgr, redact_secrets=True)
+    assert any("firewall summaries will not" in r.message for r in caplog.records)
+
+
+def test_proxy_no_warn_when_supplied_manager_scrubs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A manager built with redact_secrets=True gives full coverage — no warning."""
+    import logging
+
+    from contextweaver.context.manager import ContextManager
+
+    mgr = ContextManager(redact_secrets=True)
+    with caplog.at_level(logging.WARNING, logger="contextweaver.adapters.proxy_runtime"):
+        ProxyRuntime(StubUpstream(_tool_defs()), context_manager=mgr, redact_secrets=True)
+    assert not any("firewall summaries will not" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Defensive tool-definition registration (#464)
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_def_among_valid_registers_the_valid_ones() -> None:
+    """One garbage def must not abort registration of the healthy tools."""
+    defs: list[Any] = [
+        _tool_defs()[0],
+        {"description": "no name field"},  # missing required name
+        "not-even-a-dict",
+        {"name": "", "description": "blank name"},  # blank name
+        _tool_defs()[2],
+    ]
+    runtime = ProxyRuntime(StubUpstream(_tool_defs()))
+    registered = runtime.register_tool_defs_sync(defs)
+    assert registered == 2
+    report = runtime.last_refresh_report
+    assert report.registered == 2
+    assert len(report.skipped) == 3
+    # Indices are preserved so operators can locate the offending entries.
+    assert sorted(s.index for s in report.skipped) == [1, 2, 3]
+
+
+def test_fully_malformed_response_yields_empty_catalog_not_exception() -> None:
+    runtime = ProxyRuntime(StubUpstream(_tool_defs()))
+    registered = runtime.register_tool_defs_sync([{"bad": 1}, 42, None])
+    assert registered == 0
+    assert runtime.list_tool_ids() == []
+    assert len(runtime.last_refresh_report.skipped) == 3
+
+
+def test_valid_catalog_report_is_clean() -> None:
+    runtime = _make_runtime()
+    report = runtime.last_refresh_report
+    assert report.registered == 3
+    assert report.ok is True
+
+
+def test_on_invalid_raise_mode_propagates() -> None:
+    from contextweaver.exceptions import CatalogError
+
+    runtime = ProxyRuntime(StubUpstream(_tool_defs()), on_invalid="raise")
+    with pytest.raises(CatalogError):
+        runtime.register_tool_defs_sync([{"description": "no name"}])
+
+
+# ---------------------------------------------------------------------------
+# Untrusted schema hardening (#484)
+# ---------------------------------------------------------------------------
+
+
+def _deep_schema(depth: int) -> dict[str, Any]:
+    schema: dict[str, Any] = {"type": "object"}
+    node = schema
+    for _ in range(depth):
+        child: dict[str, Any] = {"type": "object"}
+        node["properties"] = {"x": child}
+        node = child
+    return schema
+
+
+def test_pathological_schema_flagged_in_report_but_tool_registered() -> None:
+    """Lenient mode flags an over-deep schema yet still registers the tool."""
+    from contextweaver.adapters.gateway_validation import SchemaLimits
+
+    bad = {"name": "svc.deep", "description": "deep tool", "inputSchema": _deep_schema(40)}
+    runtime = ProxyRuntime(StubUpstream([]), schema_limits=SchemaLimits(max_depth=8))
+    registered = runtime.register_tool_defs_sync([bad])
+    assert registered == 1  # flag-and-continue
+    findings = runtime.last_refresh_report.schema_findings
+    assert any(f.kind == "depth_exceeded" for f in findings)
+
+
+async def test_validator_is_cached_across_executes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The compiled validator is built once per tool, then reused (#484)."""
+    import contextweaver.adapters.proxy_runtime as pr
+
+    calls: list[str] = []
+    real_build = pr.build_validator
+
+    def counting_build(schema: dict[str, Any]) -> object:
+        calls.append("build")
+        return real_build(schema)
+
+    monkeypatch.setattr(pr, "build_validator", counting_build)
+    runtime = _make_runtime()
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    await runtime.execute(tool_id, {"title": "a"})
+    await runtime.execute(tool_id, {"title": "b"})
+    await runtime.execute(tool_id, {"title": "c"})
+    assert len(calls) == 1, "validator should compile once and be cached thereafter"
+
+
+async def test_refresh_clears_validator_cache() -> None:
+    runtime = _make_runtime()
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    await runtime.execute(tool_id, {"title": "a"})
+    assert runtime._validator_cache  # populated
+    runtime.register_tool_defs_sync(_tool_defs())
+    assert runtime._validator_cache == {}
+
+
+async def test_malformed_schema_maps_to_schema_invalid_at_execute() -> None:
+    """A registered-but-malformed schema surfaces SCHEMA_INVALID, not a crash."""
+    bad = {"name": "svc.broken", "description": "broken schema", "inputSchema": {"type": "strnig"}}
+    runtime = ProxyRuntime(StubUpstream([bad]))
+    runtime.register_tool_defs_sync([bad])
+    tool_id = runtime.list_tool_ids()[0]
+    result = await runtime.execute(tool_id, {"anything": 1})
+    assert isinstance(result, GatewayError)
+    assert result.code == "SCHEMA_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# Structured upstream-error taxonomy (#485)
+# ---------------------------------------------------------------------------
+
+
+async def _runtime_with_failing_upstream(exc: BaseException) -> ProxyRuntime:
+    async def boom(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        raise exc
+
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=boom))
+    runtime.register_tool_defs_sync(_tool_defs())
+    return runtime
+
+
+async def test_timeout_maps_to_retryable_upstream_timeout() -> None:
+    runtime = await _runtime_with_failing_upstream(TimeoutError("slow upstream"))
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    err = await runtime.execute(tool_id, {"title": "x"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "UPSTREAM_TIMEOUT"
+    assert err.retryable is True
+
+
+async def test_auth_failure_maps_to_auth_failed_not_retryable() -> None:
+    runtime = await _runtime_with_failing_upstream(
+        RuntimeError("401 Unauthorized: invalid api key")
+    )
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    err = await runtime.execute(tool_id, {"title": "x"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "AUTH_FAILED"
+    assert err.retryable is False
+
+
+async def test_generic_failure_still_falls_back_to_upstream_error() -> None:
+    runtime = await _runtime_with_failing_upstream(RuntimeError("transport collapsed"))
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    err = await runtime.execute(tool_id, {"title": "x"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "UPSTREAM_ERROR"
+    assert "transport collapsed" in err.message
+
+
+async def test_upstream_error_detail_is_redacted() -> None:
+    runtime = await _runtime_with_failing_upstream(RuntimeError("boom\nat host secret-host\x1b[0m"))
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    err = await runtime.execute(tool_id, {"title": "x"})
+    assert isinstance(err, GatewayError)
+    # Control characters / newlines never reach the model-visible message.
+    assert "\n" not in err.message
+    assert "\x1b" not in err.message
+
+
+# ---------------------------------------------------------------------------
+# Tolerant argument normalization (#488)
+# ---------------------------------------------------------------------------
+
+
+def _close_issue_id(runtime: ProxyRuntime) -> str:
+    return next(i for i in runtime.list_tool_ids() if i.startswith("github:close_issue"))
+
+
+async def test_tolerant_args_off_by_default_rejects_string_int() -> None:
+    """Default behaviour is byte-identical to strict validation."""
+    runtime = _make_runtime()
+    err = await runtime.execute(_close_issue_id(runtime), {"issue_id": "42"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "ARGS_INVALID"
+
+
+async def test_tolerant_args_coerces_and_records_repairs() -> None:
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), tolerant_args=True)
+    runtime.register_tool_defs_sync(_tool_defs())
+    result = await runtime.execute(_close_issue_id(runtime), {"issue_id": "42"})
+    assert isinstance(result, ResultEnvelope)
+    repairs = result.provenance.get("arg_repairs")
+    assert repairs == [{"path": "$.issue_id", "rule": "str_to_integer"}]
+
+
+async def test_tolerant_args_undocumented_malformation_still_fails() -> None:
+    """A coercion the rules do not cover still hard-fails ARGS_INVALID."""
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), tolerant_args=True)
+    runtime.register_tool_defs_sync(_tool_defs())
+    err = await runtime.execute(_close_issue_id(runtime), {"issue_id": "not-a-number"})
+    assert isinstance(err, GatewayError)
+    assert err.code == "ARGS_INVALID"
+
+
+async def test_tolerant_args_no_repairs_leaves_provenance_clean() -> None:
+    runtime = ProxyRuntime(StubUpstream(_tool_defs(), handler=_ok_handler), tolerant_args=True)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    result = await runtime.execute(tool_id, {"title": "already valid"})
+    assert isinstance(result, ResultEnvelope)
+    assert "arg_repairs" not in result.provenance

@@ -425,3 +425,74 @@ def test_stats_namespaces() -> None:
 
     s = g.stats()
     assert set(s["namespaces"]) == {"billing", "crm", "search"}
+
+
+# ------------------------------------------------------------------
+# Validation diagnostics (issue #523)
+# ------------------------------------------------------------------
+
+
+def test_add_edge_cycle_reports_path() -> None:
+    g = ChoiceGraph()
+    g.add_edge("a", "b")
+    g.add_edge("b", "c")
+    with pytest.raises(GraphBuildError) as excinfo:
+        g.add_edge("c", "a")
+    assert excinfo.value.cycle == ["c", "a", "b", "c"]
+    assert "c -> a -> b -> c" in str(excinfo.value)
+
+
+def test_add_edge_self_loop_reports_cycle() -> None:
+    g = ChoiceGraph()
+    g.add_node("a")
+    with pytest.raises(GraphBuildError) as excinfo:
+        g.add_edge("a", "a")
+    assert excinfo.value.cycle == ["a", "a"]
+
+
+def test_cycle_report_is_deterministic() -> None:
+    cycles = []
+    for _ in range(2):
+        g = ChoiceGraph()
+        g.add_edge("a", "b")
+        g.add_edge("a", "c")
+        g.add_edge("b", "d")
+        g.add_edge("c", "d")
+        with pytest.raises(GraphBuildError) as excinfo:
+            g.add_edge("d", "a")
+        cycles.append(excinfo.value.cycle)
+    assert cycles[0] == cycles[1]
+
+
+def test_topological_order_cycle_names_nodes() -> None:
+    g = ChoiceGraph()
+    # Build a clean DAG, then inject a back-edge directly into the
+    # adjacency so add_edge's guard is bypassed and topological_order trips.
+    g.add_edge("root", "a")
+    g.add_edge("a", "b")
+    g._edges["b"].add("a")  # noqa: SLF001 - simulate a corrupt persisted graph
+    with pytest.raises(GraphBuildError) as excinfo:
+        g.topological_order()
+    assert excinfo.value.cycle is not None
+    assert excinfo.value.cycle[0] == excinfo.value.cycle[-1]
+    assert set(excinfo.value.cycle) >= {"a", "b"}
+
+
+def test_validate_missing_root_sets_attr_and_hint() -> None:
+    g = ChoiceGraph()
+    g.add_node("present")
+    g.root_id = "ghost"
+    with pytest.raises(GraphBuildError) as excinfo:
+        g._validate()  # noqa: SLF001
+    assert excinfo.value.missing_root == "ghost"
+    assert "present" in str(excinfo.value)
+
+
+def test_validate_dangling_edge_sets_edge_attr() -> None:
+    g = ChoiceGraph()
+    g.add_node("root")
+    g.root_id = "root"
+    g._edges["root"].add("phantom")  # noqa: SLF001 - dangling child ref
+    with pytest.raises(GraphBuildError) as excinfo:
+        g._validate()  # noqa: SLF001
+    assert excinfo.value.edge == ("root", "phantom")

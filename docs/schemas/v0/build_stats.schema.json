@@ -1,5 +1,22 @@
 {
   "$defs": {
+    "DroppedItem": {
+      "additionalProperties": false,
+      "description": "Lightweight attribution for one item excluded from a context build.",
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "reason"
+      ],
+      "type": "object"
+    },
     "FirewallStats": {
       "additionalProperties": false,
       "description": "First-class diagnostics for a single context-firewall decision (issue #402).",
@@ -60,6 +77,12 @@
     "dropped_count": {
       "type": "integer"
     },
+    "dropped_items": {
+      "items": {
+        "$ref": "#/$defs/DroppedItem"
+      },
+      "type": "array"
+    },
     "dropped_reasons": {
       "additionalProperties": {
         "type": "integer"
@@ -77,6 +100,9 @@
     },
     "included_count": {
       "type": "integer"
+    },
+    "token_estimator": {
+      "type": "string"
     },
     "tokens_per_section": {
       "additionalProperties": {

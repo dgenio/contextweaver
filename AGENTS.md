@@ -20,25 +20,38 @@ It prepares context and routes tools but never calls models or executes tools.
 | Path | Responsibility |
 |---|---|
 | `types.py` | Core dataclasses and enums: `SelectableItem`, `ContextItem`, `Phase`, `ItemKind`, `Sensitivity` |
-| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
+| `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `DroppedItem`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
+| `diagnostics.py` | Versioned, payload-safe gateway events and sinks (`DiagnosticEvent`, `DiagnosticSink`, JSONL/in-memory sinks) plus deterministic aggregate reports (issues #370/#378). |
+| `inspection.py` | Pure JSON/Markdown report construction for offline context, routing, and artifact inspection without raw payload content (issue #398). |
 | `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
-| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`) |
+| `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `SensitivityClassifier` (ingestion-time labelling, issue #542), `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`). Bundled estimators: `HeuristicEstimator` (default, script-aware, dependency-free — counts CJK/Kana/Hangul/emoji ≈1 token/char, issue #525), `CharDivFourEstimator` (raw `len // 4` primitive), `TiktokenEstimator` (exact, falls back to `HeuristicEstimator` offline). Each carries a stable `name` for `BuildStats.token_estimator`. |
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
+| `store/async_protocols.py` | Async counterparts `AsyncEventLog` / `AsyncArtifactStore` / `AsyncEpisodicStore` / `AsyncFactStore` (issue #495) — same surface, `async def`. Consumed only by the async `context/` path; backend-agnostic. |
+| `store/async_bridge.py` | `to_async(sync_store)` — wraps a *thread-safe* sync backend as the matching async protocol via `asyncio.to_thread`. Thread-affine backends (`SqliteEventLog`, `check_same_thread=True`) are not valid targets (issue #495). |
+| `store/_async_to_sync.py` | Inverse bridges + `to_sync(async_store, loop)` + `is_async_store()` (issue #495). Drives async stores on a private `_LoopThread` so the existing sync pipeline can consume them; `ContextManager` offloads `build` to a worker thread when async-backed. Not public API. |
 | `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
+| `secrets.py` | Pure, deterministic secret detection/scrubbing primitives: `scrub_secrets()`, `scrub_secrets_in_list()`, `contains_secret()`, `SecretPattern` (issue #428). Shared by the firewall secret-scrub, the `SecretRedactor` hook, the sensitivity classifier, and ChoiceCard scrubbing. No I/O; never weakens a surface (only removes characters). |
 | `_version.py` | Single-source version derived from `importlib.metadata`; fallback `"0.0.0+local"` |
 | `_demos.py` | Demo logic for the CLI `demo` subcommand (exempt from `print()` rule) |
 | `serde.py` | Serialisation helpers for `to_dict` / `from_dict` |
-| `tokens.py` | Built-in token counter (`count()`, `get_token_counter()`, `heuristic_counter()`, `TokenCounter` alias). Owns the `tiktoken` dependency so callers never wire it directly; firewall / `FirewallStats` numbers are computed through the same counter (issue #405). |
+| `tokens.py` | Built-in token counter (`count()`, `get_token_counter()`, `heuristic_counter()`, `TokenCounter` alias) plus the provider-estimator registry (`register_estimator()`, `registered_estimators()`, `estimator_name()`, issue #493). The **single source of truth** for token counts — firewall, sensitivity-redaction placeholders, card budgeting (`routing/cards.count_tokens`), and `FirewallStats`/`BuildStats` numbers all route through it (issues #405/#493/#530); no stray `len // 4` literals elsewhere. Owns the `tiktoken` dependency; offline it falls back to the script-aware `HeuristicEstimator`. |
 | `store/` | In-memory data stores: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore`, `StoreBundle` |
 | `store/_sqlite_base.py` | Shared SQLite connection + migration scaffolding (WAL, `foreign_keys=ON`, `_contextweaver_schema_version` table). Reused by every SQLite-backed store (issue #174). |
 | `store/sqlite_event_log.py` | `SqliteEventLog` — first persistent `EventLog` backend; single-process, sync, append-only, schema-versioned (issue #223). |
-| `store/json_file_artifacts.py` | `JsonFileArtifactStore` — filesystem `ArtifactStore` backend; `{handle}.data` + `{handle}.json` per artifact, re-instantiable against an existing directory (issue #42). |
+| `store/sqlite_episodic.py` | `SqliteEpisodicStore` — persistent `EpisodicStore` on `_sqlite_base` (issue #496). Append-only, ordered by `ordinal`; `search` delegates to a transient `InMemoryEpisodicStore` for byte-identical ranking. Own version table (`VERSION_TABLE`) so it can share a DB file with the event log / facts. |
+| `store/sqlite_facts.py` | `SqliteFactStore` — persistent `FactStore` on `_sqlite_base` (issue #496). `put` upserts on `fact_id`; `get_by_key`/`all` sorted by `fact_id`. Own version table; shareable DB file. |
+| `store/redis_artifacts.py` | `RedisArtifactStore` — Redis `ArtifactStore` for multi-process gateways (issue #426). Namespaced keys, optional per-artifact TTL, `list_refs` via `SCAN`. Lazy `redis` import (`[redis]` extra). |
+| `store/redis_event_log.py` | `RedisEventLog` — Redis `EventLog` (issue #426). Items in a hash keyed by id + parallel order list; append-only ordering across processes. Lazy `redis` import (`[redis]` extra). |
+| `store/s3_artifacts.py` | `S3ArtifactStore` — S3-compatible `ArtifactStore` (issue #426; AWS/MinIO/R2/GCS). `{prefix}/{handle}.data` + `.json` objects. Lazy `boto3` import (`[s3]` extra). |
+| `store/json_file_artifacts.py` | `JsonFileArtifactStore` — filesystem `ArtifactStore` backend; `{enc(handle)}.data` + `{enc(handle)}.json` per artifact, re-instantiable against an existing directory (issue #42). Hardened (issue #497): **atomic** writes (temp file + `os.replace`), an in-memory handle→ref index built once on init so `list_refs` never rescans the directory, and optional `max_bytes` / `max_artifacts` quotas raising `ArtifactStoreQuotaError`. Persists `content_hash` and percent-encodes handles into filenames so the firewall's `artifact:result:…` handles are Windows-safe (issue #466). |
+| `store/_json_file_io.py` | Private filesystem helpers for `json_file_artifacts.py` (keeps it ≤300 lines): on-disk suffix constants, `validate_handle` (path-traversal defense), `encode_handle` (percent-encoding), and the `atomic_write` primitive (issues #466/#497). Not public API. |
+| `store/testing.py` | Store-protocol conformance kit (issue #520): framework-agnostic `check_event_log_conformance` / `check_artifact_store_conformance` / `check_episodic_store_conformance` / `check_fact_store_conformance`, each taking a factory for an empty backend and asserting the round-trip / ordering / not-found contract. No test-framework import; ships in the core wheel. `tests/test_store_conformance.py` runs every bundled backend through it. |
 | `summarize/` | `SummarizationRule`, `RuleEngine`, `extract_facts()` |
 | `summarize/structured.py` | Lossless JSON field projection for the firewall: `parse_path` / `project` + `StructuredFirewall(keep=[...])`. Deterministic, no LLM — keeps an allow-list of JSON paths inline and offloads the rest (issue #406). |
 | `context/` | Full context pipeline, sensitivity enforcement, view registry, `ContextManager` |
-| `context/firewall_api.py` | Single-call firewall facade: `compact_tool_result` / `firewalled_tool_result` → `CompactResult`. Composes structured/text strategies, schema-preserving pass-through (reserved `_cw` sidecar), the built-in token counter, and fail-closed `deterministic` mode (issues #399, #402, #403, #404, #405, #406). |
+| `context/firewall_api.py` | Single-call firewall facade: `compact_tool_result` / `firewalled_tool_result` → `CompactResult`. Composes structured/text strategies, schema-preserving pass-through (reserved `_cw` sidecar — a caller payload already using `_cw` raises `ConfigError` unless `overwrite_sidecar=True`, #467), the built-in token counter, and fail-closed `deterministic` mode (issues #399, #402, #403, #404, #405, #406, #467). |
 | `context/manager.py` | `ContextManager` — thin orchestrator (`__init__`, properties, `drilldown`, mixin composition). Public method stubs live in flat partial-class mixins; pipeline logic lives in the delegate modules below (issue #101). |
 | `context/_manager_base.py` | `_ManagerState` — private-attribute + `_build` contract the manager mixins inherit and the delegate pipeline modules type their `manager` parameter against (`ContextManager` inherits it via the mixins). Not public API (issue #101). |
 | `context/_manager_ingest.py` / `_manager_build.py` / `_manager_routing.py` | `_IngestMixin` / `_BuildMixin` / `_RoutingMixin` — partial-class mixins holding `ContextManager`'s ingestion, build, and route/call-prompt method surface as thin delegations; keep `manager.py` ≤300 lines (issue #101). Not public API. |
@@ -49,10 +62,13 @@ It prepares context and routes tools but never calls models or executes tools.
 | `context/handoff_types.py` | `HandoffEntry` + `SessionHandoffPack` dataclasses and canonical handoff category constants (issue #294). |
 | `context/handoff.py` | `build_session_handoff_pack` / `render_handoff_pack` — deterministic, budget-aware, sensitivity- and firewall-respecting session continuity snapshot (issue #294). |
 | `context/explanation.py` | `ContextBuildExplanation` + `CandidateExplanation` opt-in debug surface returned by `ContextManager.build(..., explain=True)` (issue #291). Sister to `routing/explanation.py` on the routing side. |
+| `context/classify.py` | Opt-in deterministic ingestion-time sensitivity classification (issue #542): `HeuristicSensitivityClassifier` (implements the `SensitivityClassifier` protocol) + `detect_sensitivity()`. Runs at the start of the pipeline's sensitivity stage and over fact/episode header content; may only **raise** a label, never lower it. Reuses `secrets.contains_secret` plus PII markers. |
+| `context/secret_redaction.py` | Opt-in `SecretRedactor` `RedactionHook` (issue #428): substring-scrubs secret shapes from an item's text via `secrets.scrub_secrets`. Registered under the name `"secret"` for `ContextPolicy.redaction_hooks`; complements (does not replace) `MaskRedactionHook`. |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
 | `routing/filters.py` | Pre-scoring helpers: `filter_items()`, `augment_query()`, `suggest_clarifying_question()` (issues #14, #22, #112, #116) |
 | `routing/manifest.py` | `GraphManifest` + `compute_catalog_hash()` for graph metadata and cache invalidation (issue #48, #15) |
 | `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
+| `routing/catalog.py` (validation) | `validate_references` / `Catalog.validate_references` → `CatalogValidationReport` of dangling `depends_on`/`requires` refs; loaders take `on_invalid` (`"warn"`/`"raise"`/`"ignore"`) and raise `CatalogValidationError` in raise mode (issue #519) |
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
 | `routing/explanation.py` | `RouteResult.explanation()` Markdown / dict rendering (issue #226) |
@@ -74,12 +90,15 @@ It prepares context and routes tools but never calls models or executes tools.
 | `adapters/smolagents.py` | Hugging Face smolagents `Tool` ↔ `SelectableItem` and `MultiStepAgent.memory.steps` → `ContextItem`s (`smolagents_tool_to_selectable`, `smolagents_tools_to_catalog`, `load_smolagents_catalog`, `from_smolagents_agent`, issue #274) |
 | `adapters/agno.py` | Agno (formerly Phidata) `Function` / `Toolkit` ↔ `SelectableItem` and `AgentSession` → `ContextItem`s (`agno_tool_to_selectable`, `agno_tools_to_catalog`, `load_agno_catalog`, `from_agno_session`, issue #275) |
 | `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
+| `adapters/gateway_diagnostics.py` / `gateway_catalog_diagnostics.py` | Sanitized `ProxyRuntime` instrumentation plus exact gateway/proxy static-schema exposure calculations: catalog, browse/hydrate/execute/view events, savings, artifact-view usage, and latency (issues #370/#378). |
 | `adapters/mcp_gateway.py` | Two-tool gateway dispatch (`tool_browse` + `tool_execute` + `tool_view`, issues #28 / #34) |
 | `adapters/mcp_proxy.py` | Transparent proxy dispatch (stripped `tools/list` + `tool_hydrate` + `tool_execute`, issue #13) |
 | `adapters/mcp_upstream.py` | Concrete `UpstreamCall` adapters (`StubUpstream`, `McpClientUpstream`, `MultiplexUpstream`) |
 | `adapters/mcp_gateway_server.py` | Bind `mcp_gateway` onto `mcp.server.Server` over stdio (issue #28) |
 | `adapters/mcp_proxy_server.py` | Bind `mcp_proxy` onto `mcp.server.Server` over stdio (issue #13) |
-| `adapters/gateway_error.py` | Structured `GatewayError` (codes + §3.4 wire shape) |
+| `adapters/gateway_error.py` | Structured `GatewayError` (codes + §3.4 wire shape) + `retryable` hint. Upstream-error taxonomy: `classify_upstream_exception` maps timeouts/connection/auth/permission/rate failures to `UPSTREAM_TIMEOUT`/`UPSTREAM_UNAVAILABLE`/`AUTH_FAILED`/`PERMISSION_DENIED`/`RATE_LIMITED` (fallback `UPSTREAM_ERROR`); `redact_upstream_detail` strips control chars + caps length on model-visible detail (issue #485). |
+| `adapters/gateway_validation.py` | Untrusted-schema hardening for the gateway ingest path (issues #464/#484): `SchemaLimits`/`SchemaFinding`/`SkippedTool`/`CatalogRefreshReport`, `check_schema_health` (meta-validation + iterative size/depth/property bounds), `build_validator` (cached per `tool_id`). Pure, deterministic; iterative traversal avoids stack exhaustion on hostile schemas. |
+| `adapters/gateway_args.py` | Opt-in deterministic tool-call argument repair (issue #488): `normalize_args` (stringified-object parse + schema-demanded `str→int/number/boolean/null` coercion) + `Repair`. Gated behind `ProxyRuntime(tolerant_args=True)`; never renames keys, drops keys, or fuzzy-matches. |
 | `adapters/openai_messages.py` | OpenAI Chat Completions `messages` ↔ `ContextItem` round-trip (`from_/to_openai_messages`, issue #219) |
 | `adapters/anthropic_messages.py` | Anthropic Messages API `messages` ↔ `ContextItem` round-trip (`from_/to_anthropic_messages`, issue #222) |
 | `adapters/gemini_contents.py` | Google Gemini `contents[]` ↔ `ContextItem` round-trip (`from_/to_gemini_contents`, issue #222) |
@@ -92,10 +111,10 @@ It prepares context and routes tools but never calls models or executes tools.
 | `extras/memory/langmem.py` | `LangMemEpisodicStore` + `LangMemFactStore` — wrap any LangGraph `BaseStore` scoped by a `namespace` tuple; canonical ID is the store key, value is the dataclass `to_dict()` payload (direct, lossless KV). `search` delegates to `BaseStore.search`. Gated behind the `[langmem]` extra (issue #195). |
 | `eval/` | Evaluation harness (issue #12): `EvalCase` / `EvalDataset` (gold datasets), `evaluate_routing` → `RoutingEvalReport` (top-k recall, MRR, confidence gap, beam steps), `evaluate_context` → `ContextEvalReport` (budget utilisation + token savings vs naive concat). Pure-stdlib, deterministic; backs the `eval` CLI subcommand. |
 | `eval/metrics.py` | Canonical rank-based routing metrics — `recall_at_k` (classic fractional recall@k), `precision_at_k`, `reciprocal_rank` (issue #354). Single source of truth imported by both `eval/routing.py` and `benchmarks/benchmark.py` so the harness and the benchmark script can no longer define the same names with different semantics. |
-| `__main__.py` | CLI: 10 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `budget-check`, `eval`) plus the `mcp` Typer sub-app (`mcp serve`, [experimental] stdio MCP gateway/proxy entrypoint; issues #243/#246). Typer + Rich (both core deps as of v0.5, issue #221). |
-| `_mcp_cli.py` | Backs the `mcp` Typer sub-app mounted from `__main__.py`. Hosts `mcp serve` (stdio MCP gateway or transparent proxy) and the catalog loader that accepts native contextweaver, raw MCP `tools/list`, and `{tools:[...]}` snapshot shapes. `mcp serve --config FILE` loads catalog + serve options from one JSON/YAML file (zero-Python drop-in launch, issue #346); explicit CLI flags win. Marked `[experimental]` in `--help` for v0.9. Uses `typer.echo(..., err=True)` for stderr output (library-code `print()` is forbidden). |
+| `__main__.py` | CLI: 11 subcommands (`demo`, `build`, `route`, `print-tree`, `init`, `ingest`, `replay`, `stats`, `inspect`, `budget-check`, `eval`) plus the `mcp` and `catalog` Typer sub-apps. `inspect` renders payload-safe context/routing/artifact JSON or Markdown (issue #398); `catalog lint` surfaces `NormalizationReport` + reference findings with `--json` and CI exit codes (issue #538). |
+| `_mcp_cli.py` | Backs the `mcp` Typer sub-app. Hosts `mcp serve`, `mcp inspect`, and `mcp stats`; accepts native contextweaver, raw MCP `tools/list`, and `{tools:[...]}` catalog shapes. `mcp serve --diagnostics FILE` appends sanitized JSONL and `--quiet` suppresses lifecycle stderr; both are config-file keys. `mcp serve --state-dir DIR` (config key `state_dir`) persists gateway state — `events.sqlite3` + `artifacts/` — so artifact handles and event history survive a restart (issue #511); omit it for the in-memory default. The packaged serve path remains a static catalog + stub upstream. |
 | `data/` | Packaged data files shipped inside the wheel via `[tool.setuptools.package-data]`. Exposes `gateway_catalog_path()` (resolves `mcp_gateway_catalog.yaml` to a concrete `Path` for both editable installs and zipped wheels — falls back to a persistent cache under `tempfile.gettempdir()/contextweaver/` for zipimport). Issue #264. |
-| `examples/recipes/` | MCP-client integration recipes: `serve_gateway.py` launcher + `claude_desktop_config.json` / `copilot_mcp.json` / `cursor_mcp.json` client configs + `gateway_config.yaml` (single-file config for the zero-Python `mcp serve --config` launch) referenced from `docs/recipes/` (issues #278, #279, #346). |
+| `examples/recipes/` | MCP-client integration recipes: installed-CLI configs for Claude Desktop, Claude Code, GitHub Copilot, and Cursor plus `gateway_config.yaml`; `serve_gateway.py` remains a legacy/custom-runtime launcher (issues #278, #279, #346, #371, #429, #437). |
 
 ## Pipelines (summary)
 
@@ -127,7 +146,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ContextItem` | Event log entry with `parent_id` for dependency closure |
 | `ResultEnvelope` | Processed tool output: summary + facts + artifacts + views |
 | `ContextPack` | Rendered prompt + stats from a context build |
-| `BuildStats` | What was kept, dropped, and why — diagnostic output of every build. Carries `firewall_events: list[FirewallStats]` + `firewall_summary()` (issue #402) |
+| `BuildStats` | What was kept, dropped, and why. `total_candidates` is pre-sensitivity; `dropped_items` attributes every exclusion; completed builds satisfy included + dropped = total. Carries `firewall_events` + `firewall_summary()` (issues #402/#414/#459) and `token_estimator` — the estimator-path identifier that produced the build's token numbers (issue #493). |
 | `FirewallStats` | Per-firewall diagnostics: `triggered`, `strategy`, original/summary chars+tokens, `artifact_ref`, `summarized_by_llm` (issues #402 / #404) |
 | `CompactResult` | Output of the single-call `compact_tool_result` facade: `firewalled`, `payload`, `summary`, `facts`, `artifact_ref`, `stats` (issue #399) |
 | `StructuredFirewall` | Non-summarising firewall strategy — keep an allow-list of JSON paths inline, offload the rest (issue #406) |
@@ -141,10 +160,10 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `MaskRedactionHook` | Built-in redaction hook for sensitivity enforcement |
 | `HydrationResult` | Result of hydrating a tool call with context |
 | `ViewRegistry` | Maps content-type patterns to view generators for progressive disclosure |
-| `ProxyRuntime` | Shared core for MCP proxy (#13) and gateway (#28) modes — owns upstream catalog, per-session `ContextManager`, browse / execute / view dispatch |
+| `ProxyRuntime` | Shared core for MCP proxy (#13) and gateway (#28) modes — owns upstream catalog, per-session `ContextManager`, browse / execute / view dispatch; persisted text results are returned as envelope artifact refs for `tool_view`. Hardens the untrusted-input boundary (issues #464/#484/#485/#488): `on_invalid` (skip/raise) + `schema_limits` + `last_refresh_report` at ingest, cached per-`tool_id` validators, classified+redacted upstream errors, and opt-in `tolerant_args`. |
 | `ExposureMode` | `TRANSPARENT` (#13) vs `GATEWAY` (#28) for `ProxyRuntime` |
 | `UpstreamCall` | Transport-agnostic Protocol over upstream MCP fan-out (used by `ProxyRuntime`) |
-| `GatewayError` | Structured error payload (§3.4) returned from every gateway/proxy meta-tool |
+| `GatewayError` | Structured error payload (§3.4) returned from every gateway/proxy meta-tool. Carries a `retryable` hint and a classified upstream-error taxonomy (issue #485) plus the `SCHEMA_INVALID` ingest code (issue #484) |
 | `ToolIdParts` | Destructured canonical `tool_id` (namespace / name / version / hash8) |
 
 **Vocabulary notes:**
@@ -238,7 +257,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 
 **`routing/`** — Sync-only. Pure computation (DAG traversal, beam search). Do not make async.
 
-**Sensitivity (`context/sensitivity.py`)** — Security-grade code. Extra review scrutiny required. Never weaken defaults. Treat changes like security-sensitive code.
+**Sensitivity (`context/sensitivity.py`)** — Security-grade code. Extra review scrutiny required. Never weaken defaults. Treat changes like security-sensitive code. Redaction is effective end-to-end: `MaskRedactionHook` drops the item's `artifact_ref` and stamps `metadata["redacted"]=True` so the rendered prompt never advertises a handle that `drilldown` could dereference back to the original (issue #451). Enforcement is also applied on the prompt **header** (facts + episode summaries are routed through the floor and the `memory_fact` phase policy, issue #450) and an opt-in `SensitivityClassifier` may raise labels before enforcement (issue #542).
 
 ## Things That Must Not Be "Simplified"
 

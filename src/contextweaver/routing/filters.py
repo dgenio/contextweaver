@@ -16,7 +16,11 @@ beam-search algorithm and within the ≤ 300 line per-module guideline.
 
 from __future__ import annotations
 
+import logging
+
 from contextweaver.types import SelectableItem
+
+logger = logging.getLogger("contextweaver.routing")
 
 
 def augment_query(query: str, hints: list[str] | None) -> str:
@@ -37,7 +41,14 @@ def augment_query(query: str, hints: list[str] | None) -> str:
     cleaned = [h.strip() for h in hints if h and h.strip()]
     if not cleaned:
         return query
-    return f"{query} {' '.join(cleaned)}"
+    augmented = f"{query} {' '.join(cleaned)}"
+    logger.debug(
+        "augment_query: hints=%d, original=%r, augmented=%r",
+        len(cleaned),
+        query,
+        augmented,
+    )
+    return augmented
 
 
 def filter_items(

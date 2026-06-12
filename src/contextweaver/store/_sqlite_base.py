@@ -62,7 +62,11 @@ def connect(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
-def apply_migrations(conn: sqlite3.Connection, migrations: list[Migration]) -> int:
+def apply_migrations(
+    conn: sqlite3.Connection,
+    migrations: list[Migration],
+    version_table: str = _VERSION_TABLE,
+) -> int:
     """Apply any *migrations* whose index is greater than the recorded version.
 
     Migration ``i`` (zero-indexed in *migrations*) is replayed if the version
@@ -74,6 +78,11 @@ def apply_migrations(conn: sqlite3.Connection, migrations: list[Migration]) -> i
         conn: Connection from :func:`connect`.
         migrations: Ordered list of migration functions.  The list index is
             the schema version each migration leaves the database at.
+        version_table: Name of the per-store schema-version table.  Each store
+            type that may share a database file (event log, episodic, facts)
+            tracks its own migrations under a distinct table, so their
+            independent version sequences do not collide.  Internal constant,
+            never caller/untrusted input.
 
     Returns:
         The schema version after the call (``len(migrations) - 1`` on success,
@@ -83,22 +92,22 @@ def apply_migrations(conn: sqlite3.Connection, migrations: list[Migration]) -> i
         sqlite3.DatabaseError: If a migration's SQL fails.
     """
     conn.execute(
-        f"CREATE TABLE IF NOT EXISTS {_VERSION_TABLE} ("
+        f"CREATE TABLE IF NOT EXISTS {version_table} ("
         "version INTEGER PRIMARY KEY,"
         "applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
         ")"
     )
-    row = conn.execute(f"SELECT MAX(version) AS v FROM {_VERSION_TABLE}").fetchone()
+    row = conn.execute(f"SELECT MAX(version) AS v FROM {version_table}").fetchone()
     current = -1 if row is None or row["v"] is None else int(row["v"])
     for version, migration in enumerate(migrations):
         if version <= current:
             continue
-        logger.debug("sqlite.migrate: applying version=%d", version)
+        logger.debug("sqlite.migrate: table=%s applying version=%d", version_table, version)
         try:
             conn.execute("BEGIN")
             migration(conn)
             conn.execute(
-                f"INSERT INTO {_VERSION_TABLE} (version) VALUES (?)",
+                f"INSERT INTO {version_table} (version) VALUES (?)",
                 (version,),
             )
             conn.execute("COMMIT")
@@ -110,10 +119,10 @@ def apply_migrations(conn: sqlite3.Connection, migrations: list[Migration]) -> i
     return current
 
 
-def schema_version(conn: sqlite3.Connection) -> int:
-    """Return the highest applied migration version, or ``-1`` if none."""
+def schema_version(conn: sqlite3.Connection, version_table: str = _VERSION_TABLE) -> int:
+    """Return the highest applied migration version for *version_table*, or ``-1``."""
     try:
-        row = conn.execute(f"SELECT MAX(version) AS v FROM {_VERSION_TABLE}").fetchone()
+        row = conn.execute(f"SELECT MAX(version) AS v FROM {version_table}").fetchone()
     except sqlite3.OperationalError:
         return -1
     if row is None or row["v"] is None:

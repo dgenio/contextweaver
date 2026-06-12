@@ -12,8 +12,9 @@ from contextweaver.context.sensitivity import (
     MaskRedactionHook,
     apply_sensitivity_filter,
     register_redaction_hook,
+    unregister_redaction_hook,
 )
-from contextweaver.exceptions import ConfigError, PolicyViolationError
+from contextweaver.exceptions import ConfigError, ItemNotFoundError
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
 
@@ -125,7 +126,9 @@ def test_redact_mode_replaces_text() -> None:
     assert filtered[1].text == "[REDACTED: confidential]"
 
 
-def test_redact_mode_preserves_metadata() -> None:
+def test_redact_mode_preserves_structure_and_marks_redacted() -> None:
+    """Redaction preserves structural fields, keeps original metadata keys, and
+    adds the ``redacted`` marker while dropping the artifact handle (issue #451)."""
     policy = ContextPolicy(
         sensitivity_floor=Sensitivity.confidential,
         sensitivity_action="redact",
@@ -144,7 +147,8 @@ def test_redact_mode_preserves_metadata() -> None:
     assert redacted.id == "s1"
     assert redacted.kind == ItemKind.doc_snippet
     assert redacted.text == "[REDACTED: restricted]"
-    assert redacted.metadata == {"source": "vault"}
+    # Original metadata is preserved; the redaction marker is added (issue #451).
+    assert redacted.metadata == {"source": "vault", "redacted": True}
     assert redacted.parent_id == "parent1"
     assert redacted.sensitivity == Sensitivity.restricted
 
@@ -179,7 +183,45 @@ def test_mask_hook_updates_token_estimate() -> None:
     hook = MaskRedactionHook()
     item = _item("x", Sensitivity.restricted, "very long text " * 100)
     redacted = hook.redact(item)
+    # Default counter is the script-aware heuristic; for the ASCII placeholder
+    # it equals len // 4, so the estimate is unchanged from prior behaviour.
     assert redacted.token_estimate == len("[REDACTED: restricted]") // 4
+
+
+def test_mask_hook_honours_configured_estimator() -> None:
+    """The redaction placeholder estimate comes from the configured counter (#530)."""
+
+    class _Const:
+        name = "const-7"
+
+        def estimate(self, text: str) -> int:
+            return 7
+
+    hook = MaskRedactionHook(estimator=_Const())
+    redacted = hook.redact(_item("x", Sensitivity.restricted, "secret"))
+    assert redacted.text == "[REDACTED: restricted]"
+    assert redacted.token_estimate == 7
+
+
+def test_redaction_path_uses_manager_estimator() -> None:
+    """A custom estimator passed to the manager is honoured on redaction paths (#530)."""
+
+    class _Const:
+        name = "const-99"
+
+        def estimate(self, text: str) -> int:
+            return 99
+
+    policy = ContextPolicy(sensitivity_floor=Sensitivity.confidential, sensitivity_action="redact")
+    filtered, dropped = apply_sensitivity_filter(
+        [_item("a", Sensitivity.restricted, "top secret payload")],
+        policy,
+        estimator=_Const(),
+    )
+    assert dropped == 0
+    assert len(filtered) == 1
+    assert filtered[0].text == "[REDACTED: restricted]"
+    assert filtered[0].token_estimate == 99
 
 
 # ------------------------------------------------------------------
@@ -213,11 +255,19 @@ def test_unknown_hook_name_raises() -> None:
         apply_sensitivity_filter([item], policy)
 
 
-def test_unknown_sensitivity_action_raises() -> None:
-    policy = ContextPolicy(
-        sensitivity_floor=Sensitivity.confidential,
-        sensitivity_action="dorp",
-    )
+def test_unknown_sensitivity_action_raises_at_construction() -> None:
+    """An invalid action is rejected when the policy is built (issue #463)."""
+    with pytest.raises(ConfigError, match="sensitivity_action must be one of"):
+        ContextPolicy(
+            sensitivity_floor=Sensitivity.confidential,
+            sensitivity_action="dorp",  # type: ignore[arg-type]
+        )
+
+
+def test_sensitivity_filter_guards_post_construction_mutation() -> None:
+    """The runtime filter still rejects an action mutated after construction."""
+    policy = ContextPolicy(sensitivity_floor=Sensitivity.confidential)
+    policy.sensitivity_action = "dorp"  # type: ignore[assignment]
     item = _item("x", Sensitivity.confidential)
     with pytest.raises(ConfigError, match="Unknown sensitivity_action"):
         apply_sensitivity_filter([item], policy)
@@ -337,6 +387,124 @@ def test_register_custom_hook_and_use_in_redact_mode() -> None:
 
 
 def test_register_duplicate_hook_raises() -> None:
-    """Registering a hook with an existing name raises PolicyViolationError."""
-    with pytest.raises(PolicyViolationError, match="already registered"):
+    """Registering a hook with an existing name raises ConfigError (issue #463)."""
+    with pytest.raises(ConfigError, match="already registered"):
         register_redaction_hook("mask", MaskRedactionHook())
+
+
+def test_unregister_redaction_hook_roundtrip() -> None:
+    """A hook can be unregistered and re-registered (test hygiene, issue #463)."""
+    register_redaction_hook("temp_hook", MaskRedactionHook())
+    unregister_redaction_hook("temp_hook")
+    # Re-registering under the same name now succeeds (no lingering entry).
+    register_redaction_hook("temp_hook", MaskRedactionHook())
+    unregister_redaction_hook("temp_hook")
+
+
+def test_unregister_unknown_hook_raises() -> None:
+    """Unregistering a name that was never registered raises ItemNotFoundError."""
+    with pytest.raises(ItemNotFoundError, match="not registered"):
+        unregister_redaction_hook("never_registered_hook")
+
+
+# ------------------------------------------------------------------
+# Redaction is effective end-to-end (issue #451)
+# ------------------------------------------------------------------
+
+
+def test_redaction_drops_artifact_ref() -> None:
+    """A redacted item must not retain an artifact handle that the prompt would
+    advertise and drilldown could dereference back to the original (issue #451)."""
+    from contextweaver.types import ArtifactRef
+
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.confidential,
+        sensitivity_action="redact",
+    )
+    item = ContextItem(
+        id="r1",
+        kind=ItemKind.tool_result,
+        text="secret payload",
+        sensitivity=Sensitivity.restricted,
+        artifact_ref=ArtifactRef(handle="artifact:r1", media_type="text/plain", size_bytes=14),
+    )
+    filtered, _ = apply_sensitivity_filter([item], policy)
+    assert filtered[0].text == "[REDACTED: restricted]"
+    assert filtered[0].artifact_ref is None
+    assert filtered[0].metadata.get("redacted") is True
+
+
+def test_redacted_item_renders_without_handle() -> None:
+    """The rendered prompt for a redacted item exposes no artifact handle (issue #451)."""
+    from contextweaver.context.prompt import render_item
+    from contextweaver.types import ArtifactRef
+
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.confidential,
+        sensitivity_action="redact",
+    )
+    item = ContextItem(
+        id="r2",
+        kind=ItemKind.tool_result,
+        text="AKIAIOSFODNN7EXAMPLE",
+        sensitivity=Sensitivity.restricted,
+        artifact_ref=ArtifactRef(handle="artifact:r2", media_type="text/plain", size_bytes=20),
+    )
+    filtered, _ = apply_sensitivity_filter([item], policy)
+    rendered = render_item(filtered[0])
+    assert "artifact:r2" not in rendered
+    assert "AKIAIOSFODNN7EXAMPLE" not in rendered
+
+
+# ------------------------------------------------------------------
+# SecretRedactor hook (issue #428)
+# ------------------------------------------------------------------
+
+
+def test_secret_redactor_registered_under_name() -> None:
+    """Importing the package registers the built-in "secret" hook (issue #428)."""
+    import contextweaver  # noqa: F401  (ensures registration side effect)
+
+    assert "secret" in _HOOK_REGISTRY
+
+
+def test_secret_redactor_scrubs_substring_keeps_rest() -> None:
+    from contextweaver.context.secret_redaction import SecretRedactor
+
+    item = ContextItem(
+        id="s1",
+        kind=ItemKind.tool_result,
+        text="connecting with key=AKIAIOSFODNN7EXAMPLE now",
+        sensitivity=Sensitivity.public,
+    )
+    redacted = SecretRedactor().redact(item)
+    assert "AKIAIOSFODNN7EXAMPLE" not in redacted.text
+    assert redacted.text.startswith("connecting with key=")
+    assert redacted.text.endswith(" now")
+
+
+def test_secret_redactor_noop_when_clean_returns_same_item() -> None:
+    from contextweaver.context.secret_redaction import SecretRedactor
+
+    item = ContextItem(id="c1", kind=ItemKind.tool_result, text="no secrets here")
+    assert SecretRedactor().redact(item) is item
+
+
+def test_secret_hook_via_policy() -> None:
+    """The "secret" hook works through ContextPolicy.redaction_hooks (issue #428)."""
+    import contextweaver  # noqa: F401
+
+    policy = ContextPolicy(
+        sensitivity_floor=Sensitivity.confidential,
+        sensitivity_action="redact",
+        redaction_hooks=["secret"],
+    )
+    item = ContextItem(
+        id="h1",
+        kind=ItemKind.tool_result,
+        text="db: postgres://u:p4ssword@host/db",
+        sensitivity=Sensitivity.confidential,
+    )
+    filtered, dropped = apply_sensitivity_filter([item], policy)
+    assert dropped == 0
+    assert "p4ssword" not in filtered[0].text

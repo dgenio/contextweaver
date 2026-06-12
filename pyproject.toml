@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.14.0"
+version = "0.14.1"
 description = "Context firewall + tool router for MCP and tool-heavy AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -120,6 +120,14 @@ dev = [
     # ``langgraph.store.memory.InMemoryStore``, which first appears in 0.2.32;
     # ``>=0.2`` resolved to 0.2.17 and failed collection at lowest-direct.
     "langgraph>=0.2.32",
+    # Remote-store backends (#426) are exercised in-process on every CI cell:
+    # fakeredis stands in for a Redis server and moto mocks the S3 API, so the
+    # conformance suite runs the Redis/S3 stores without a service container.
+    # ``redis`` / ``boto3`` are the real client libraries the backends import.
+    "redis>=5.0",
+    "fakeredis>=2.20",
+    "boto3>=1.34",
+    "moto[s3]>=5.0",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -242,6 +250,18 @@ embeddings = [
 # purpose — the contract is "if you want the SQLite stores, install this
 # extra" even though it currently adds no third-party deps.
 sqlite = []
+# Redis-backed remote stores (issue #426): RedisEventLog + RedisArtifactStore
+# for multi-process / long-lived gateways. Implementations import ``redis``
+# lazily and raise a clear ConfigError if the extra is missing.
+redis = [
+    "redis>=5.0",
+]
+# S3-compatible remote artifact store (issue #426): S3ArtifactStore over the
+# S3 API (MinIO / R2 / GCS-interop). Imports ``boto3`` lazily; raises a clear
+# ConfigError if the extra is missing.
+s3 = [
+    "boto3>=1.34",
+]
 # External-memory backend interop (issue #195).  Each backend implements the
 # existing ``EpisodicStore`` / ``FactStore`` protocols from
 # ``contextweaver.store.protocols`` without widening them.  Adapters live
@@ -300,6 +320,8 @@ all = [
     "contextweaver[voice]",
     "contextweaver[langgraph]",
     "contextweaver[e2e-eval]",
+    "contextweaver[redis]",
+    "contextweaver[s3]",
 ]
 
 [project.scripts]
@@ -412,6 +434,26 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "jsonschema.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "redis.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "boto3.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "botocore.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fakeredis.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "moto.*"
 ignore_missing_imports = true
 
 [tool.coverage.run]

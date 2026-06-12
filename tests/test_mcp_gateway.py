@@ -103,6 +103,16 @@ async def test_dispatch_tool_execute_happy_path() -> None:
         runtime, TOOL_EXECUTE, {"tool_id": tool_id, "args": {"title": "x"}}
     )
     assert result["isError"] is False
+    body = json.loads(result["content"][0]["text"])
+    assert len(body["artifacts"]) == 1
+    handle = body["artifacts"][0]["handle"]
+    viewed = await dispatch_meta_tool(
+        runtime,
+        TOOL_VIEW,
+        {"handle": handle, "selector": {"type": "head", "chars": 6}},
+    )
+    assert viewed["isError"] is False
+    assert viewed["content"][0]["text"] == "called"
 
 
 async def test_dispatch_tool_execute_requires_string_tool_id() -> None:

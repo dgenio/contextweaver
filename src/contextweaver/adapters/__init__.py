@@ -61,7 +61,19 @@ from contextweaver.adapters.fastmcp import (
     make_context_hook,
     make_discovery_tool,
 )
-from contextweaver.adapters.gateway_error import GatewayError
+from contextweaver.adapters.gateway_args import Repair, normalize_args
+from contextweaver.adapters.gateway_error import (
+    GatewayError,
+    classify_upstream_exception,
+    redact_upstream_detail,
+)
+from contextweaver.adapters.gateway_validation import (
+    CatalogRefreshReport,
+    SchemaFinding,
+    SchemaLimits,
+    SkippedTool,
+    check_schema_health,
+)
 from contextweaver.adapters.gemini_contents import (
     from_gemini_contents,
     to_gemini_contents,
@@ -124,6 +136,7 @@ from contextweaver.adapters.weaver_contracts import (
 )
 
 __all__ = [
+    "CatalogRefreshReport",
     "ExposureMode",
     "GATEWAY_TOOL_NAMES",
     "GatewayError",
@@ -131,6 +144,10 @@ __all__ = [
     "MultiplexUpstream",
     "PROXY_META_TOOL_NAMES",
     "ProxyRuntime",
+    "Repair",
+    "SchemaFinding",
+    "SchemaLimits",
+    "SkippedTool",
     "StubUpstream",
     "UpstreamCall",
     "a2a_agent_to_selectable",
@@ -139,6 +156,8 @@ __all__ = [
     "agno_tools_to_catalog",
     "chainweaver_flow_to_selectable",
     "chainweaver_flows_to_catalog",
+    "check_schema_health",
+    "classify_upstream_exception",
     "crewai_tool_to_selectable",
     "crewai_tools_to_catalog",
     "dispatch_meta_tool",
@@ -178,8 +197,10 @@ __all__ = [
     "make_stripped_tools_list",
     "mcp_result_to_envelope",
     "mcp_tool_to_selectable",
+    "normalize_args",
     "pydantic_ai_tool_to_selectable",
     "pydantic_ai_tools_to_catalog",
+    "redact_upstream_detail",
     "selectable_from_agno_tool",
     "selectable_from_pydantic_tool",
     "selectable_from_smolagents_tool",

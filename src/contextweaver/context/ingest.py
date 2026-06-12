@@ -12,9 +12,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
-from contextweaver.context.firewall import apply_firewall
+from contextweaver.config import ContextPolicy
+from contextweaver.context.firewall import _extractor_is_llm, apply_firewall
+from contextweaver.context.sensitivity import _SENSITIVITY_ORDER
 from contextweaver.context.views import ViewRegistry, generate_views
 from contextweaver.envelope import FirewallStats, ResultEnvelope
+from contextweaver.exceptions import DeterminismError, PolicyViolationError
 from contextweaver.protocols import (
     ArtifactStore,
     EventHook,
@@ -23,9 +26,10 @@ from contextweaver.protocols import (
     Summarizer,
     TokenEstimator,
 )
+from contextweaver.secrets import scrub_secrets, scrub_secrets_in_list
 from contextweaver.summarize.structured import StructuredFirewall
 from contextweaver.tokens import count as count_tokens
-from contextweaver.types import ArtifactRef, ContextItem, ItemKind
+from contextweaver.types import ArtifactRef, ContextItem, ItemKind, Sensitivity
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,21 @@ def ingest_item(event_log: EventLog, item: ContextItem) -> None:
     """Append *item* to *event_log* and emit a debug log line."""
     event_log.append(item)
     logger.debug("ingest: item_id=%s, kind=%s", item.id, item.kind.value)
+
+
+def _find_source_item(event_log: EventLog, handle: str) -> ContextItem | None:
+    """Return the event-log item that owns artifact *handle*, or ``None`` (issue #451).
+
+    Used to recover the sensitivity of the item a drilldown handle came from so
+    redaction/drop cannot be bypassed by re-fetching the raw bytes, and so an
+    injected slice inherits the source's label instead of defaulting to
+    ``public``.  The lookup is a deterministic linear scan; the first owner wins.
+    """
+    for item in event_log.all():
+        ref = item.artifact_ref
+        if ref is not None and ref.handle == handle:
+            return item
+    return None
 
 
 def drilldown(
@@ -45,12 +64,39 @@ def drilldown(
     selector: dict[str, Any],
     inject: bool = False,
     parent_id: str | None = None,
+    policy: ContextPolicy | None = None,
 ) -> str:
     """Fetch a slice of a stored artifact, optionally injecting it (issue #101).
 
     Implements :meth:`ContextManager.drilldown`; when *inject* is ``True`` the
     slice is appended to *event_log* as a ``tool_result`` for later builds.
+
+    Redaction is enforced end-to-end (issue #451): when *policy* is supplied and
+    the artifact's source item meets the sensitivity floor (or was already
+    redacted), the drilldown is denied with
+    :class:`~contextweaver.exceptions.PolicyViolationError` unless
+    :attr:`~contextweaver.config.ContextPolicy.allow_redacted_drilldown` is set.
+    This closes the bypass where the raw, pre-redaction bytes could be re-fetched
+    and re-injected.  An injected slice inherits the source item's sensitivity so
+    it cannot launder content back in as ``public``; an unknown handle (no
+    matching source) is treated as ``public`` and is never over-blocked.
     """
+    source = _find_source_item(event_log, handle)
+    source_sensitivity = source.sensitivity if source is not None else Sensitivity.public
+
+    if policy is not None and source is not None and not policy.allow_redacted_drilldown:
+        meets_floor = (
+            _SENSITIVITY_ORDER[source_sensitivity] >= _SENSITIVITY_ORDER[policy.sensitivity_floor]
+        )
+        if meets_floor or source.metadata.get("redacted"):
+            raise PolicyViolationError(
+                f"drilldown on {handle!r} is denied: its source item is "
+                f"{source_sensitivity.value} (>= floor "
+                f"{policy.sensitivity_floor.value}) or redacted. Set "
+                f"ContextPolicy.allow_redacted_drilldown=True to permit recovering "
+                f"filtered content."
+            )
+
     result = artifact_store.drilldown(handle, selector)
     if inject:
         sel_type = selector.get("type", "unknown")
@@ -63,6 +109,7 @@ def drilldown(
                 token_estimate=estimator.estimate(result),
                 metadata={"drilldown_handle": handle, "selector": selector},
                 parent_id=parent_id,
+                sensitivity=source_sensitivity,
             )
         )
     return result
@@ -121,6 +168,7 @@ def ingest_tool_result(
     media_type: str = "text/plain",
     firewall_threshold: int = 2000,
     deterministic: bool = False,
+    redact_secrets: bool = False,
     firewall: StructuredFirewall | None = None,
 ) -> tuple[ContextItem, ResultEnvelope]:
     """Ingest a raw tool result via :meth:`ContextManager.ingest_tool_result` logic."""
@@ -144,6 +192,7 @@ def ingest_tool_result(
             deterministic=deterministic,
             keep=firewall.keep if firewall is not None else None,
             threshold_chars=firewall_threshold,
+            redact_secrets=redact_secrets,
         )
         if envelope is None:
             # Shouldn't happen for tool_result items, but be safe
@@ -159,6 +208,16 @@ def ingest_tool_result(
     # Small output: extract facts and store in artifact store to enable drilldown
     from contextweaver.summarize.extract import extract_facts
 
+    # Issue #461 — the deterministic guarantee must hold on the small-output
+    # path too: an LLM-backed extractor would otherwise route this result
+    # through a model even though no firewall summarisation fires here.
+    if deterministic and _extractor_is_llm(extractor):
+        raise DeterminismError(
+            f"deterministic=True but an LLM-backed extractor would process item "
+            f"{item.id!r}; refusing to pass data through a model. Supply a "
+            f"rule-based extractor instead."
+        )
+
     status: Literal["ok", "partial"] = "ok"
     try:
         facts = (
@@ -169,6 +228,15 @@ def ingest_tool_result(
     except Exception:  # noqa: BLE001
         facts = []
         status = "partial"
+    # Issue #428 — for a sub-threshold result the raw text *is* the prompt-bound
+    # surface (the firewall does not fire), so scrub the summary, facts, and the
+    # item text itself.  The out-of-band raw artifact below is left intact.
+    summary_text = raw_output
+    item_text = item.text
+    if redact_secrets:
+        summary_text = scrub_secrets(summary_text)
+        facts = scrub_secrets_in_list(facts)
+        item_text = scrub_secrets(item_text)
     # For small outputs, store in artifact store to enable drilldown
     raw_bytes = raw_output.encode("utf-8")
     handle = f"artifact:{item.id}"
@@ -179,10 +247,14 @@ def ingest_tool_result(
         label=f"raw tool result for {item.id}",
     )
     views = generate_views(ref, raw_bytes, registry=view_registry)
-    _tokens = count_tokens(raw_output)
+    # ``original_*`` reflect the raw tool output; ``summary_*`` reflect the
+    # prompt-bound surface, which differs from the raw output only when
+    # ``redact_secrets`` scrubbed it.  When scrubbing is off the two are equal.
+    original_tokens = count_tokens(raw_output)
+    summary_tokens = count_tokens(summary_text)
     envelope = ResultEnvelope(
         status=status,
-        summary=raw_output,
+        summary=summary_text,
         facts=facts,
         artifacts=[ref],
         views=views,
@@ -192,17 +264,17 @@ def ingest_tool_result(
             strategy="passthrough",
             threshold_chars=firewall_threshold,
             original_chars=len(raw_output),
-            original_tokens=_tokens,
-            summary_chars=len(raw_output),
-            summary_tokens=_tokens,
+            original_tokens=original_tokens,
+            summary_chars=len(summary_text),
+            summary_tokens=summary_tokens,
             artifact_ref=ref.handle,
         ),
     )
     item = ContextItem(
         id=item.id,
         kind=item.kind,
-        text=item.text,
-        token_estimate=item.token_estimate,
+        text=item_text,
+        token_estimate=estimator.estimate(item_text) if redact_secrets else item.token_estimate,
         metadata=dict(item.metadata),
         parent_id=item.parent_id,
         artifact_ref=ref,
@@ -229,9 +301,16 @@ def ingest_mcp_result(
     tool_name: str,
     firewall_threshold: int = 2000,
     deterministic: bool = False,
+    redact_secrets: bool = False,
     firewall: StructuredFirewall | None = None,
+    view_registry: ViewRegistry | None = None,
 ) -> tuple[ContextItem, ResultEnvelope]:
-    """Ingest an MCP result via :meth:`ContextManager.ingest_mcp_result` logic."""
+    """Ingest an MCP result via :meth:`ContextManager.ingest_mcp_result` logic.
+
+    *view_registry* is threaded into the firewall so custom view generators
+    registered on the manager fire on this path too (issue #460); ``None`` uses
+    the default registry.
+    """
     from contextweaver.adapters.mcp import mcp_result_to_envelope
 
     envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, tool_name)
@@ -264,12 +343,13 @@ def ingest_mcp_result(
             item,
             artifact_store,
             hook=hook,
-            view_registry=None,
+            view_registry=view_registry,
             summarizer=summarizer,
             extractor=extractor,
             deterministic=deterministic,
             keep=firewall.keep if firewall is not None else None,
             threshold_chars=firewall_threshold,
+            redact_secrets=redact_secrets,
         )
         if fw_envelope is not None:
             # Merge: keep MCP artifacts, use firewall summary/facts, preserve views

@@ -10,6 +10,26 @@ from contextweaver.profiles import Mode, ProfileConfig, RoutingConfig
 from contextweaver.types import ItemKind, Phase, Sensitivity
 
 
+def test_context_policy_rejects_invalid_sensitivity_action() -> None:
+    """Invalid sensitivity_action fails at construction, not at first build (#463)."""
+    with pytest.raises(ConfigError, match="sensitivity_action must be one of"):
+        ContextPolicy(sensitivity_action="nope")  # type: ignore[arg-type]
+
+
+def test_context_policy_valid_sensitivity_actions_round_trip() -> None:
+    """Both valid actions construct and survive a to_dict/from_dict round-trip (#463)."""
+    for action in ("drop", "redact"):
+        policy = ContextPolicy(sensitivity_action=action)  # type: ignore[arg-type]
+        restored = ContextPolicy.from_dict(policy.to_dict())
+        assert restored.sensitivity_action == action
+
+
+def test_context_policy_from_dict_rejects_invalid_action() -> None:
+    """from_dict also routes through __post_init__ validation (#463)."""
+    with pytest.raises(ConfigError, match="sensitivity_action must be one of"):
+        ContextPolicy.from_dict({"sensitivity_action": "bogus"})
+
+
 def test_context_budget_defaults() -> None:
     b = ContextBudget()
     assert b.route == 2000
@@ -225,6 +245,37 @@ def test_mode_string_compatibility() -> None:
 
 def test_profile_default_mode_is_strict() -> None:
     assert ProfileConfig().mode == Mode.strict
+
+
+# ---------------------------------------------------------------------------
+# Mode.adaptive no-op warning (issue #521)
+# ---------------------------------------------------------------------------
+
+
+def test_profile_adaptive_mode_warns() -> None:
+    """Selecting the inert Mode.adaptive must warn rather than silently no-op."""
+    with pytest.warns(UserWarning, match="no effect"):
+        ProfileConfig(mode=Mode.adaptive)
+
+
+def test_profile_strict_and_seeded_do_not_warn() -> None:
+    import warnings
+
+    for mode in (Mode.strict, Mode.seeded):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ProfileConfig(mode=mode)
+
+
+def test_profile_adaptive_roundtrips_with_warning() -> None:
+    """A persisted 'adaptive' profile round-trips but re-warns on load (issue #521)."""
+    with pytest.warns(UserWarning):
+        original = ProfileConfig(mode=Mode.adaptive)
+    payload = original.to_dict()
+    assert payload["mode"] == "adaptive"
+    with pytest.warns(UserWarning, match="no effect"):
+        restored = ProfileConfig.from_dict(payload)
+    assert restored.mode is Mode.adaptive
 
 
 def test_profile_explicit_mode() -> None:

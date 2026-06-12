@@ -9,6 +9,319 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Persistent gateway sessions: `mcp serve --state-dir` (#511).**
+  `contextweaver mcp serve` accepts `--state-dir DIR` (and a `state_dir` config
+  key) to wire the gateway's `ContextManager` with file-backed stores —
+  `{DIR}/events.sqlite3` (`SqliteEventLog`) and `{DIR}/artifacts/`
+  (`JsonFileArtifactStore`). Restarting against the same directory rehydrates
+  prior event history and keeps previously issued artifact handles resolvable
+  via `tool_view`; an unwritable directory fails fast with a clear startup
+  error. Without the flag the gateway keeps its zero-config in-memory behaviour.
+  Fixes a latent store-resolution bug where an *empty* persistent backend
+  (which is falsy because it defines `__len__`) was silently replaced by an
+  in-memory default; `ContextManager` now resolves stores with explicit
+  `is None` checks.
+- **Remote store backends: Redis & S3 (#426).** New `RedisEventLog` and
+  `RedisArtifactStore` (behind `pip install 'contextweaver[redis]'`) and
+  `S3ArtifactStore` (`contextweaver[s3]`, works with AWS S3 / MinIO / R2 / GCS
+  interop) give multi-process and long-lived gateways durable event/artifact
+  storage beyond one process or disk. All three import their client library
+  lazily — importing `contextweaver.store` never requires the extra — and are
+  run through the #520 conformance kit (against `fakeredis` and `moto` in CI,
+  no service container required). `RedisArtifactStore` supports an optional
+  per-artifact TTL and namespace isolation; `S3ArtifactStore` supports a key
+  prefix and a custom `endpoint_url`.
+- **Stdlib SQLite episodic & fact stores (#496).** New `SqliteEpisodicStore`
+  and `SqliteFactStore` (`contextweaver.store`) give long-lived agents durable
+  episodic/fact memory with zero external services, built on the same
+  `_sqlite_base` scaffolding as `SqliteEventLog`. They are schema-versioned,
+  re-instantiable against an existing file, and can share one database file
+  with the event log (each store type tracks its own migrations under a
+  distinct version table). `SqliteEpisodicStore.search` delegates ranking to a
+  transient in-memory store, and `SqliteFactStore` keeps `fact_id` ordering, so
+  swapping either backend for its in-memory counterpart leaves context-build
+  output byte-identical. (`apply_migrations` / `schema_version` gained an
+  optional `version_table` argument to support the shared-file layout.)
+- **Async store protocol variants (#495).** New `AsyncEventLog`,
+  `AsyncArtifactStore`, `AsyncEpisodicStore`, and `AsyncFactStore` protocols
+  (`contextweaver.store.async_protocols`) mirror the sync surface so
+  network-backed backends can avoid blocking the async-first context pipeline.
+  `to_async(store)` wraps any sync backend as the matching async protocol via
+  `asyncio.to_thread` (each bridge serializes concurrent awaits on itself with a
+  per-bridge lock, since the in-memory backends are not thread-safe);
+  `to_sync(async_store, loop)` does the inverse. `ContextManager` now accepts
+  async store backends (via `StoreBundle`) and keeps the event loop responsive
+  during `await build(...)` and `await build_call_prompt(...)` by offloading the
+  synchronous pipeline body to a worker thread while the async store I/O runs on
+  a private loop thread; the loop thread is released automatically when the
+  manager is garbage-collected (via `weakref.finalize`, so no new public
+  `close()` method is added to `ContextManager`). Concurrent build calls on one
+  manager serialize on an internal lock so the offloaded pipeline runs never
+  race on the thread-unsafe in-memory stores.
+  Async conformance checks (`check_async_*_conformance`) ship in
+  `contextweaver.store.testing`. (Thread-affine backends such as `SqliteEventLog`
+  are not valid `to_async` targets; their async story is a future native
+  `aiosqlite` backend.)
+- **Store-protocol conformance kit (#520).** New framework-agnostic
+  `contextweaver.store.testing` module — `check_event_log_conformance`,
+  `check_artifact_store_conformance`, `check_episodic_store_conformance`,
+  `check_fact_store_conformance` — each takes a factory for an empty backend
+  and asserts the round-trip, ordering, and not-found contract the Context
+  Engine relies on — including that `ArtifactStore.put()` stamps a sha256
+  `content_hash` on the returned ref, now documented as a protocol contract
+  because the firewall's idempotency short-circuit (#190) depends on it. It
+  imports no test framework, so it ships in the core wheel and runs under
+  pytest, `unittest`, or a plain script. The bundled in-memory, JSON-file,
+  and SQLite backends are all run through it.
+- **`JsonFileArtifactStore` durability hardening (#497).** Writes are now
+  **atomic** (temp file + `os.replace`), so a crash mid-write never leaves a
+  truncated artifact; `list_refs()` reads an in-memory handle→ref index built
+  once on construction instead of rescanning the directory on every call (only
+  self-consistent metadata+data pairs are indexed, so the index never lists a
+  handle `get()` cannot serve); and optional `max_bytes` / `max_artifacts`
+  constructor limits bound disk growth, raising the new `ArtifactStoreQuotaError`
+  when a write would breach them. `put` / `delete` / `list_refs` are serialised
+  by an internal lock, making a single instance safe to share across threads in
+  one process.
+- **`ArtifactStoreQuotaError`** exception (subclass of `ContextWeaverError`),
+  exported from the package root.
+- **Documented store thread-safety contract (#458)** in
+  `docs/agent-context/architecture.md`, with concurrency tests covering atomic
+  overwrites, concurrent distinct-handle reads/writes, and concurrent gateway
+  `tool_view` drilldown.
+
+### Changed
+
+- **Artifact stores now persist a `content_hash` (#466).** Both
+  `InMemoryArtifactStore.put` and `JsonFileArtifactStore.put` compute and store
+  the sha256 of the content on the returned `ArtifactRef`. This makes the
+  firewall's re-processing idempotency short-circuit (#190) survive a process
+  restart when the ref is reloaded from disk. The firewall no longer recomputes
+  the hash separately.
+- **`JsonFileArtifactStore` percent-encodes handles into filenames (#466).**
+  Handles containing characters that are legal in a handle but hostile in a
+  filename — notably `:` (the firewall's `artifact:result:…` shape, which
+  opens an NTFS alternate data stream on Windows) — are now stored portably.
+  On-disk filenames change accordingly (`handle.data` → `enc(handle).data`).
+- **`InMemoryArtifactStore.to_dict`/`from_dict` round-trip is now lossless
+  (#466).** Raw bytes are serialised (base64) alongside the metadata index, so
+  a restored store resolves `get()`/`drilldown()` instead of returning refs
+  whose handles dereference to nothing — this is what lets a `StoreBundle`
+  carry firewalled artifacts across a restart.
+- **The gateway no longer assumes a concrete artifact-store backend (#472).**
+  `drilldown` is part of the `ArtifactStore` protocol, so `ProxyRuntime.view`
+  (`tool_view`) dropped its `cast`/`type: ignore` to `InMemoryArtifactStore`
+  and works against any conformant store (e.g. `JsonFileArtifactStore`).
+
+- **Opt-in deterministic secret-redaction pass (#428).** A new pure
+  `contextweaver.secrets` module (`scrub_secrets()`, `contains_secret()`,
+  `SecretPattern`) detects well-known secret shapes (cloud access keys, provider
+  tokens, private-key blocks, JWTs, credential-bearing URLs, `key=value`
+  credential assignments). `ContextManager(redact_secrets=True)` scrubs firewall
+  summaries and extracted facts before they reach the prompt; `ProxyRuntime(...,
+  redact_secrets=True)` additionally scrubs `ChoiceCard` text. A `SecretRedactor`
+  `RedactionHook` (registered as `"secret"`) is available for
+  `ContextPolicy.redaction_hooks`. Off by default; only ever tightens a surface.
+- **Opt-in ingestion-time sensitivity classification (#542).** New
+  `SensitivityClassifier` protocol + built-in `HeuristicSensitivityClassifier`
+  (and `detect_sensitivity()`) raise an item's sensitivity label before
+  enforcement so content callers forgot to label (e.g. tool results carrying
+  credentials/PII) no longer defaults silently to `public`. Wired via
+  `ContextManager(sensitivity_classifier=...)`; runs at the start of the
+  sensitivity stage and over fact/episode header content. A classifier may only
+  raise a label, never lower it. Every raise records
+  `metadata["sensitivity_raised_by"]` (the classifier's type name) so the
+  decision is auditable.
+- **Gateway untrusted-input hardening (#464, #484, #485, #488).** The
+  proxy/gateway ingest, validation, and dispatch boundary now defends against
+  malformed or hostile upstream input:
+  - **Defensive tool-def registration (#464).** A malformed upstream tool
+    definition (non-dict, or missing a non-empty string `name`) no longer
+    aborts catalog refresh; the offending tool is skipped and recorded on the
+    new `ProxyRuntime.last_refresh_report` (`CatalogRefreshReport`). A new
+    `on_invalid="raise"` mode fails loudly for development catalogs.
+  - **Untrusted-schema validation + validator caching (#484).** Upstream
+    `inputSchema`/`outputSchema` are meta-validated (`check_schema`) and bounded
+    for serialized size, nesting depth, and property count (configurable via
+    `SchemaLimits`) at ingest, surfacing `SchemaFinding`s on the refresh report.
+    Compiled `jsonschema` validators are cached per `tool_id`, removing
+    per-call recompilation from the hot `tool_execute` path. A malformed schema
+    surfaces as the new `SCHEMA_INVALID` error code.
+  - **Structured upstream-error taxonomy (#485).** `GatewayError` gains a
+    `retryable` hint and the codes `UPSTREAM_TIMEOUT`, `UPSTREAM_UNAVAILABLE`,
+    `AUTH_FAILED`, `PERMISSION_DENIED`, and `RATE_LIMITED`
+    (`classify_upstream_exception`), with `UPSTREAM_ERROR` kept as the fallback.
+    Model-visible upstream detail is now control-character-stripped and
+    length-capped (`redact_upstream_detail`); operators keep full detail via
+    logging.
+  - **Opt-in tolerant argument normalization (#488).**
+    `ProxyRuntime(tolerant_args=True)` runs a deterministic, rule-based repair
+    pass (`normalize_args`) before strict validation — stringified JSON objects
+    and string→`int`/`number`/`boolean`/`null` coercions, only when the schema
+    type demands it. Off by default (byte-identical behaviour); every repair is
+    recorded under the result envelope's `provenance["arg_repairs"]`.
+
+### Changed
+
+- **Header memory is now enforced (#450).** Facts (`add_fact`) and episode
+  summaries (`add_episode`) injected into the prompt header are routed through
+  the sensitivity floor/redaction action **and** the per-phase `memory_fact`
+  kind policy — closing a side-channel where header content bypassed stage-3
+  enforcement. `Fact` and `Episode` gained an optional `sensitivity` field
+  (defaults `public`, round-trips in `to_dict`/`from_dict`); `add_fact` /
+  `add_episode` accept a keyword-only `sensitivity`. A phase that excludes
+  `memory_fact` no longer receives fact/episode text via the header.
+- **Redaction is effective end-to-end (#451).** A redacted item now drops its
+  `artifact_ref` and is stamped `metadata["redacted"]=True`, so the rendered
+  prompt no longer advertises an artifact handle that `drilldown` could
+  dereference back to the original, pre-redaction bytes. `drilldown` is now also
+  policy-aware: a drilldown whose source item meets the sensitivity floor (or was
+  redacted) raises `PolicyViolationError` unless the new
+  `ContextPolicy.allow_redacted_drilldown=True` opt-out (default `False`, closed)
+  is set, and an injected drilldown slice inherits its source item's sensitivity
+  instead of defaulting to `public` — so filtered content cannot be laundered back
+  in via the drilldown path.
+- **`deterministic=True` now also gates LLM-backed extractors (#461).** The
+  firewall's fail-closed determinism guarantee previously covered only the
+  summarizer; an LLM-backed `Extractor` (e.g. `LlmExtractor`) would still run.
+  Both the large-output firewall path and the small-output ingest path now raise
+  `DeterminismError` rather than passing data through a model.
+
+- **`contextweaver catalog lint` (#538).** A new `catalog` CLI sub-app exposes
+  `catalog lint FILE`, which runs the existing `CatalogNormalizer` plus
+  cross-item reference validation over a catalog and reports findings (missing
+  descriptions, duplicate/blank IDs, tag/whitespace hygiene, dangling
+  `depends_on`/`requires`). Accepts the native JSON/YAML catalog, a raw MCP
+  `tools/list` array, and the `{"tools": [...]}` snapshot shape. Supports
+  `--json` and exits `0` (clean) / `1` (findings) / `3` (load error) for CI
+  gating; never mutates the input file.
+- **Typed cross-item reference validation on catalog load (#519).** New
+  `routing.validate_references()` + `Catalog.validate_references()` return a
+  `CatalogValidationReport` of dangling `depends_on` (item IDs) and unsatisfied
+  `requires` (capabilities) references. The `load_catalog*` loaders gained an
+  additive `on_invalid` kwarg (`"warn"` default → log per finding, `"raise"` →
+  `CatalogValidationError` carrying the report, `"ignore"`). Per-item
+  deserialization failures now name the offending item by `id` (or index).
+- **Structured DEBUG/INFO routing diagnostics (#524).** `logging.DEBUG` on
+  `contextweaver.routing` now traces the previously silent decision points:
+  the tree-building strategy per subtree (INFO when a clustering/alphabetical
+  *fallback* is taken), per-step beam pruning counts and pruned IDs, and the
+  original-vs-augmented scoring query. Log messages are diagnostics, not API.
+- **Script-aware offline token heuristic — `HeuristicEstimator` (#525).** The
+  default estimator (and the `tiktoken` offline fallback) now counts dense
+  scripts (CJK, Kana, Hangul, emoji) at ≈1 token/character instead of
+  `len // 4`, fixing a ~4× budget under-count on non-Latin content. Latin/ASCII
+  estimates are unchanged. Dependency-free (stdlib range checks); exposed via
+  `tokens.heuristic_counter()` and `contextweaver.HeuristicEstimator`.
+- **Provider-calibrated token estimation (#493).** Register accurate counters by
+  name (`tokens.register_estimator(name, counter)`) and select them via
+  `tokens.get_token_counter(provider)`; `tiktoken` stays the default. The
+  estimator path that produced a build's numbers is recorded on the new
+  additive `BuildStats.token_estimator` field (e.g. `"tiktoken/cl100k_base"`,
+  `"heuristic/v2"`, or a registered provider name). New
+  `benchmarks/token_calibration.py` (+ `make token-calibration`) renders the
+  divergence table at `docs/token_calibration.md` across ≥4 corpus shapes;
+  provider `count_tokens` legs are opt-in via `CW_TOKEN_CALIBRATION_PROVIDERS`
+  and never run in CI.
+- **Non-ASCII regression suite (#525).** `tests/test_unicode_regression.py`
+  pins CJK/emoji/RTL behaviour across tokenization, budgeting, dedup, card
+  rendering, serialization, and an in-process build.
+- **Dockerfile for the MCP gateway.** A top-level `Dockerfile` (+ `.dockerignore`)
+  boots `contextweaver mcp serve --gateway` over stdio against the packaged
+  reference catalog, so an MCP client or automated scanner (e.g. Glama) can
+  build, start, and introspect the gateway with no extra configuration. The
+  image build validates the catalog with `--dry-run`.
+- **`unregister_redaction_hook(name)` (#463).** Companion to
+  `register_redaction_hook` for test hygiene and long-lived processes that need
+  to replace a hook; raises `ItemNotFoundError` for an unknown name.
+- **`ValidationError` exception (#463).** New
+  `contextweaver.exceptions.ValidationError`, raised by the pure-data layer
+  (`ChoiceCard` construction, `RoutingDecision.from_dict`). It derives from both
+  `ContextWeaverError` and the builtin `ValueError`, so the custom hierarchy is
+  catchable while existing `except ValueError` call sites keep working.
+- **`compact_tool_result(..., overwrite_sidecar=True)` (#467).** Opt-in escape
+  hatch to replace an existing reserved `_cw` sidecar when round-tripping prior
+  contextweaver output back through the facade (default refuses — see below).
+
+### Changed
+
+- **Custom view generators now fire on every ingestion/build path (#460).** A
+  generator registered on `ContextManager.view_registry` previously only ran on
+  `ingest_tool_result`; it now also runs on the build-time firewall batch and
+  `ingest_mcp_result`. Users with custom generators will start seeing them fire
+  on the previously-unwired paths (the intended behavior); default-registry
+  output is unchanged.
+- **Collision-proof fact IDs (#462).** `ContextManager.add_fact` now mints IDs
+  from a monotonic per-manager counter (`fact:{key}:{seq}`) instead of the
+  store's current size. A delete followed by a new `add_fact` can no longer
+  re-mint an existing fact's ID and silently overwrite it; IDs stay
+  deterministic for a fixed call sequence, and the call no longer scans the
+  full store. A pre-populated store that collides with the counter now raises
+  `DuplicateItemError` loudly rather than overwriting.
+- **Construction-time validation in core data types (#463).**
+  `ContextPolicy.sensitivity_action` is now typed `Literal["drop", "redact"]`
+  and validated in `__post_init__` (raises `ConfigError` immediately instead of
+  at the first build). `ChoiceCard` bounds violations now raise `ValidationError`
+  (still a `ValueError` subclass). `register_redaction_hook` raises `ConfigError`
+  (was `PolicyViolationError`) on a duplicate name — a configuration mistake, not
+  a policy violation.
+- **Actionable graph-validation diagnostics (#523).** `GraphBuildError` now
+  carries structured `cycle` / `edge` / `missing_root` attributes and names the
+  specifics in its message: cycle failures report the full path
+  (`a -> b -> c -> a`, deterministically), dangling edges name both ends, and a
+  missing root lists known-node hints. The structured attributes are the stable
+  contract; message text is not.
+- **`Mode.adaptive` no longer fails silently (#521).** Constructing a
+  `ProfileConfig(mode=Mode.adaptive)` now emits a `UserWarning` stating the mode
+  is inert (no pipeline stage honours it; output equals `Mode.strict`).
+  `strict`/`seeded` are unaffected and persisted `"adaptive"` profiles still
+  round-trip (re-warning on load).
+- **`contextweaver mcp serve` advertises the installed package version.**
+  `--version` now defaults to the contextweaver package version (was `None`)
+  when neither the flag nor the config file sets it, and the resolved version
+  is shown in the serve lifecycle line.
+
+### Fixed
+
+- **`compact_tool_result` honours the reserved `_cw` namespace (#467).** A
+  payload that already carries the reserved `_cw` sidecar key now raises
+  `ConfigError` instead of being silently clobbered (matching the
+  `metadata['_contextweaver']` reserved-namespace rule). Pass
+  `overwrite_sidecar=True` to opt into replacing it.
+- **`RoutingDecision.from_dict` no longer fabricates timestamps (#463).** A
+  missing or unparseable `timestamp` now raises `ValidationError` instead of
+  substituting `datetime.now()`, keeping the pure-data layer deterministic and
+  its round-trips lossless.
+- **Removed load-bearing `assert`s from library code (#467).** Correctness
+  checks in `firewall_api.py`, `build.py`, and `_manager_build.py` are now
+  explicit raises (`ContextWeaverError`-family) so they are not silently
+  stripped under `python -O`. Type-narrowing asserts are retained where
+  annotated. Two new guard tests (`tests/test_source_invariants.py`) enforce
+  this and the custom-exception rule going forward.
+
+## [0.14.1] - 2026-06-11
+
+### Added
+
+- **MCP Registry listing + PyPI ownership marker (#348).** Adds a
+  registry-publishable `server.json` describing the gateway as a
+  `uvx contextweaver mcp serve --config <gateway.yaml>` stdio server (linking
+  to the gateway quickstart, not the raw API docs), an
+  `mcp-name: io.github.dgenio/contextweaver` marker in the README for PyPI
+  ownership verification, and a release-triggered GitHub Actions job that
+  publishes to the official MCP Registry via GitHub OIDC (no interactive
+  login required).
+- **Trustworthy diagnostics across context builds and the MCP gateway
+  (#370, #378, #398, #414, #459).** `BuildStats.dropped_items` attributes
+  every excluded item to `sensitivity`, `dedup`, `kind_limit`, or `budget`;
+  the production context pipeline now fires exclusion and budget lifecycle
+  hooks. New versioned `DiagnosticEvent` / `DiagnosticSink` APIs include
+  thread-safe in-memory and append-only JSONL sinks. `ProxyRuntime` emits
+  sanitized catalog, browse, hydrate, execute, and artifact-view events with
+  counts, token/schema savings, failures, and latency. Operators can use
+  `contextweaver mcp inspect`, `contextweaver mcp stats`, and
+  `contextweaver inspect` for JSON or Markdown reports without exposing raw
+  queries, argument values, result text, prompt text, or artifact bytes.
 - **Single-call firewall facade — `compact_tool_result()` /
   `firewalled_tool_result()` (#399).** Shrink one large tool result before it
   enters the prompt without standing up a `ContextManager`. Returns a
@@ -36,13 +349,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alias) so callers never wire `tiktoken` directly; firewall/`FirewallStats`
   numbers use the same counter. New no-op `contextweaver[tokenizers]` extra
   documents the contract (`tiktoken` is already core, with offline fallback).
+- **Daily Driver guide for MCP gateway operators (#394).** New
+  `docs/daily_driver.md` explains when to use or bypass contextweaver,
+  copy-paste operating instructions for common MCP clients, and a practical
+  debug loop using route explanations, `BuildStats`, artifact views, and OTel.
+- **MCP gateway security and data-flow model (#396).** New
+  `docs/security_model.md` distinguishes prompt exposure from raw artifact
+  storage, documents trust and egress boundaries, and records the current
+  `tool_view` / artifact-lifecycle limits tracked by #375.
+- **Verified Claude Code MCP recipe (#429).** Adds project/local registration
+  commands, a committed `.mcp.json` example, operating instructions, and
+  troubleshooting verified against Claude Code 2.1.165.
+- **Zero-install CLI smoke coverage (#437).** Linux and macOS CI now build the
+  wheel and run its `contextweaver` entry point through isolated `uvx` and
+  `pipx` environments.
 
 ### Changed
 
+- **Token estimates flow through one source of truth (#530).** The
+  sensitivity-redaction placeholder, the firewall summary item, card budgeting
+  (`routing/cards.count_tokens`, `routing/packer`), and memory-source costing
+  no longer carry inline `len // 4` literals — they route through the
+  configured estimator / `contextweaver.tokens`. The sensitivity stage receives
+  the manager's estimator, so a custom counter is honoured on redaction paths.
+  ASCII placeholder estimates are unchanged; offline non-Latin estimates become
+  more accurate (and generally higher), which can shift selection outcomes in
+  offline mode by design. The default `ContextManager` estimator is now
+  `HeuristicEstimator` (was `CharDivFourEstimator`); `heuristic_counter()`
+  returns it.
+- **`BuildStats` accounting now has one pipeline owner (#459).**
+  `total_candidates` is measured after dependency closure and before
+  sensitivity filtering; `dropped_count` includes every later exclusion, so
+  completed builds satisfy `included_count + dropped_count ==
+  total_candidates`. The report schema is version 2.
 - **CI now exercises every committed generated-artifact drift check
   (#389–#393).** `llms.txt` / `llms-full.txt`, recorded demo casts, and the
   gateway scorecard are gating checks on the Python 3.12 matrix cell; the
   deterministic smoke evaluation also runs there as a non-gating signal.
+- **MCP client recipes now use the installed CLI (#371, #437).** Claude
+  Desktop, Claude Code, GitHub Copilot, and Cursor configs launch
+  `uvx contextweaver mcp serve`; docs no longer describe the dedicated CLI as
+  future work. `examples/recipes/serve_gateway.py` remains a labelled
+  legacy/custom-runtime example, while config tests reject references to that
+  launcher across relative, absolute, POSIX, and Windows path forms. Relative
+  catalog paths now resolve from the config file, and text results expose their
+  stored artifact handle so clients can call `tool_view`.
 
 ## [0.14.0] – 2026-06-07
 

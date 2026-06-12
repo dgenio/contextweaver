@@ -15,11 +15,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from contextweaver.exceptions import ValidationError
 from contextweaver.types import ArtifactRef, Phase, SelectableItem, ViewSpec
 
-#: Schema version for :meth:`BuildStats.report_dict` payloads.  Bumped on
-#: backwards-incompatible field changes.
-BUILD_STATS_REPORT_VERSION: int = 1
+#: Schema version for :meth:`BuildStats.report_dict` payloads.  Version 2
+#: adds per-item drop attribution and gives candidate counts one consistent
+#: pre-sensitivity meaning (issues #414 / #459).
+BUILD_STATS_REPORT_VERSION: int = 2
 
 #: Canonical firewall strategy labels recorded on :class:`FirewallStats`
 #: (issues #402 / #404 / #406).
@@ -164,17 +166,59 @@ class ResultEnvelope:
 
 
 @dataclass
+class DroppedItem:
+    """Lightweight attribution for one item excluded from a context build.
+
+    Attributes:
+        item_id: The excluded :class:`~contextweaver.types.ContextItem` id.
+        reason: The recorded exclusion reason. Built-in values commonly
+            include ``"sensitivity"``, ``"dedup"``, ``"kind_limit"``,
+            and ``"budget"``, but the set is not exhaustive: callers may
+            also persist policy- or integration-specific reasons such as
+            ``"policy"``.
+    """
+
+    item_id: str
+    reason: str
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialise to a JSON-compatible dict."""
+        return {"item_id": self.item_id, "reason": self.reason}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DroppedItem:
+        """Deserialise from a JSON-compatible dict."""
+        return cls(item_id=str(data["item_id"]), reason=str(data["reason"]))
+
+
+@dataclass
 class BuildStats:
-    """Diagnostic statistics produced by a context build pass."""
+    """Diagnostic statistics produced by a context build pass.
+
+    ``total_candidates`` is the number of phase candidates after dependency
+    closure and before sensitivity filtering. ``included_count`` is the final
+    number rendered into the prompt. ``dropped_count`` includes every later
+    exclusion (sensitivity, deduplication, kind limit, and token budget), so a
+    completed build satisfies ``included_count + dropped_count ==
+    total_candidates``. ``dropped_items`` carries the matching lightweight
+    per-item attribution without requiring ``explain=True``.
+
+    ``token_estimator`` records *which* counter produced the build's token
+    numbers (e.g. ``"tiktoken/cl100k_base"``, ``"heuristic/v2"``, or a
+    registered provider name), so a budget overshoot can be attributed to an
+    estimator path (issue #493). Empty when not stamped by the pipeline.
+    """
 
     tokens_per_section: dict[str, int] = field(default_factory=dict)
     total_candidates: int = 0
     included_count: int = 0
     dropped_count: int = 0
     dropped_reasons: dict[str, int] = field(default_factory=dict)
+    dropped_items: list[DroppedItem] = field(default_factory=list)
     dedup_removed: int = 0
     dependency_closures: int = 0
     header_footer_tokens: int = 0
+    token_estimator: str = ""
     #: One :class:`FirewallStats` per item the firewall offloaded during the
     #: build (issue #402).  Empty when nothing was firewalled.  Always-on and
     #: cheap — populated from the build's :class:`ResultEnvelope` list.
@@ -233,9 +277,11 @@ class BuildStats:
             "included_count": self.included_count,
             "dropped_count": self.dropped_count,
             "dropped_reasons": dict(self.dropped_reasons),
+            "dropped_items": [item.to_dict() for item in self.dropped_items],
             "dedup_removed": self.dedup_removed,
             "dependency_closures": self.dependency_closures,
             "header_footer_tokens": self.header_footer_tokens,
+            "token_estimator": self.token_estimator,
             "firewall_events": [e.to_dict() for e in self.firewall_events],
         }
 
@@ -248,9 +294,11 @@ class BuildStats:
             included_count=int(data.get("included_count", 0)),
             dropped_count=int(data.get("dropped_count", 0)),
             dropped_reasons=dict(data.get("dropped_reasons", {})),
+            dropped_items=[DroppedItem.from_dict(item) for item in data.get("dropped_items", [])],
             dedup_removed=int(data.get("dedup_removed", 0)),
             dependency_closures=int(data.get("dependency_closures", 0)),
             header_footer_tokens=int(data.get("header_footer_tokens", 0)),
+            token_estimator=str(data.get("token_estimator", "")),
             firewall_events=[FirewallStats.from_dict(e) for e in data.get("firewall_events", [])],
         )
 
@@ -328,7 +376,7 @@ def _build_stats_report_dict(
             )
 
     return {
-        "version": 1,
+        "version": BUILD_STATS_REPORT_VERSION,
         "phase": phase,
         "budget": budget,
         "prompt_tokens": prompt_tokens,
@@ -341,6 +389,7 @@ def _build_stats_report_dict(
             "dependency_closures": stats.dependency_closures,
         },
         "dropped_reasons": dict(reasons),
+        "dropped_items": [item.to_dict() for item in stats.dropped_items],
         "recommendations": recommendations,
     }
 
@@ -554,9 +603,10 @@ class ChoiceCard:
       each ≤ :data:`CHOICE_CARD_TAG_MAX_LEN` (24) characters.
     - ``kind`` ∈ :data:`CHOICE_CARD_KINDS`.
 
-    Violations raise :class:`ValueError` at construction time so the
-    invariants hold for every code path (including
-    :meth:`ChoiceCard.from_dict`).
+    Violations raise :class:`~contextweaver.exceptions.ValidationError` at
+    construction time so the invariants hold for every code path (including
+    :meth:`ChoiceCard.from_dict`).  ``ValidationError`` derives from the
+    builtin ``ValueError``, so ``except ValueError`` call sites still catch it.
     """
 
     id: str
@@ -573,23 +623,23 @@ class ChoiceCard:
     def __post_init__(self) -> None:
         """Enforce the gateway-spec §2 size bounds (issue #225)."""
         if self.kind not in CHOICE_CARD_KINDS:
-            raise ValueError(
+            raise ValidationError(
                 f"ChoiceCard.kind must be one of {CHOICE_CARD_KINDS}, "
                 f"got {self.kind!r}; see docs/gateway_spec.md §2"
             )
         if len(self.name) > CHOICE_CARD_NAME_MAX_LEN:
-            raise ValueError(
+            raise ValidationError(
                 f"ChoiceCard.name exceeds {CHOICE_CARD_NAME_MAX_LEN} chars "
                 f"({len(self.name)}); see docs/gateway_spec.md §2"
             )
         if len(self.tags) > CHOICE_CARD_TAGS_MAX_COUNT:
-            raise ValueError(
+            raise ValidationError(
                 f"ChoiceCard.tags exceeds {CHOICE_CARD_TAGS_MAX_COUNT} entries "
                 f"({len(self.tags)}); see docs/gateway_spec.md §2"
             )
         for tag in self.tags:
             if len(tag) > CHOICE_CARD_TAG_MAX_LEN:
-                raise ValueError(
+                raise ValidationError(
                     f"ChoiceCard.tags entry {tag!r} exceeds "
                     f"{CHOICE_CARD_TAG_MAX_LEN} chars; see docs/gateway_spec.md §2"
                 )
@@ -748,6 +798,16 @@ class RoutingDecision:
         payloads validated against the spec's ``date-time`` format parse on
         Python 3.10 (the stdlib ``datetime.fromisoformat`` only learned to
         accept ``Z`` in 3.11).  Naive timestamps are assumed to be UTC.
+
+        ``timestamp`` is required (it is a non-optional field).  A missing or
+        unparseable value raises :class:`~contextweaver.exceptions.ValidationError`
+        rather than fabricating ``datetime.now()`` — the data layer must
+        round-trip losslessly and stay deterministic, so it never invents a
+        value a malformed payload did not carry (issue #463).
+
+        Raises:
+            ValidationError: If ``timestamp`` is absent or not a ``datetime`` /
+                parseable ISO 8601 string.
         """
         raw_ts = data.get("timestamp")
         ts: datetime
@@ -755,9 +815,17 @@ class RoutingDecision:
             ts = raw_ts
         elif isinstance(raw_ts, str):
             normalised = raw_ts[:-1] + "+00:00" if raw_ts.endswith("Z") else raw_ts
-            ts = datetime.fromisoformat(normalised)
+            try:
+                ts = datetime.fromisoformat(normalised)
+            except ValueError as exc:
+                raise ValidationError(
+                    f"RoutingDecision.timestamp is not a valid ISO 8601 string: {raw_ts!r}"
+                ) from exc
         else:
-            ts = datetime.now(timezone.utc)
+            raise ValidationError(
+                "RoutingDecision.from_dict requires a 'timestamp' (datetime or ISO "
+                f"8601 string); got {raw_ts!r}"
+            )
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
         return cls(

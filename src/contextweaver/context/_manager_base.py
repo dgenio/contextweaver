@@ -19,6 +19,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import threading
+    import weakref
+
     from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
     from contextweaver.context.explanation import ContextBuildExplanation
     from contextweaver.context.views import ViewRegistry
@@ -32,9 +35,11 @@ if TYPE_CHECKING:
         EventLog,
         Extractor,
         FactStore,
+        SensitivityClassifier,
         Summarizer,
         TokenEstimator,
     )
+    from contextweaver.store._async_to_sync import _LoopThread
     from contextweaver.types import Phase
 
 
@@ -59,6 +64,38 @@ class _ManagerState:
     #: When ``True`` the context firewall fails closed instead of invoking an
     #: LLM-backed summariser (issue #404).
     _deterministic: bool
+    #: Opt-in classifier that raises item sensitivity labels at the start of the
+    #: pipeline's sensitivity stage so unlabelled content is enforced (issue
+    #: #542).  ``None`` disables classification (the default).
+    _sensitivity_classifier: SensitivityClassifier | None
+    #: When ``True`` the firewall scrubs credential shapes from summaries and
+    #: extracted facts before they reach the prompt (issue #428).  Off by default.
+    _redact_secrets: bool
+    #: Monotonic counter backing collision-proof fact IDs (issue #462).  Only
+    #: ever increases, so a delete followed by a new ``add_fact`` can never
+    #: re-mint an existing fact's ID and silently overwrite it.  Seeded lazily
+    #: on the first ``add_fact`` past any IDs already in the (possibly
+    #: persistent/pre-populated) fact store.
+    _fact_seq: int
+    #: Whether ``_fact_seq`` has been seeded from the fact store yet (issue #462).
+    _fact_seq_seeded: bool
+    #: ``True`` when any store passed at construction was an *async* backend
+    #: wrapped into the sync pipeline via an async-to-sync bridge (issue #495).
+    #: When set, :meth:`build` offloads the synchronous pipeline body to a worker
+    #: thread so the awaited store I/O does not block the caller's event loop.
+    _async_backed: bool
+    #: Private loop thread driving any async-to-sync store bridges, or ``None``
+    #: when every store is synchronous (issue #495).
+    _store_loop: _LoopThread | None
+    #: Ties the private loop thread's teardown to this manager's lifetime
+    #: (``weakref.finalize``) instead of a public ``close()`` method, which
+    #: ``context.instructions.md`` forbids until the manager decomposition lands.
+    #: ``None`` when every store is synchronous (issue #495).
+    _store_loop_finalizer: weakref.finalize[[], Any] | None
+    #: Serializes pipeline runs per manager so concurrent ``build()`` calls
+    #: offloaded to worker threads (``_async_backed``) cannot race on the
+    #: thread-unsafe in-memory stores (issue #495).  ``_build`` holds it.
+    _build_lock: threading.Lock
 
     if TYPE_CHECKING:
         # Implemented by ``_BuildMixin``; declared here (type-only, no runtime

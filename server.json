@@ -1,0 +1,41 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.dgenio/contextweaver",
+  "title": "contextweaver",
+  "description": "MCP gateway: bounded tool shortlists + artifact-backed result firewall. Deterministic, no model.",
+  "websiteUrl": "https://dgenio.github.io/contextweaver/recipes/",
+  "repository": {
+    "url": "https://github.com/dgenio/contextweaver",
+    "source": "github"
+  },
+  "version": "0.14.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "contextweaver",
+      "version": "0.14.1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        },
+        {
+          "type": "positional",
+          "value": "serve"
+        },
+        {
+          "type": "named",
+          "name": "--config",
+          "description": "Path to a gateway config (YAML/JSON) declaring the upstream tool catalog and serve options (mode, top_k, beam_width). See the gateway quickstart at https://dgenio.github.io/contextweaver/recipes/.",
+          "format": "filepath",
+          "isRequired": true
+        }
+      ]
+    }
+  ]
+}
