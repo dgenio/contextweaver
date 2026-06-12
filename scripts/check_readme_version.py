@@ -7,10 +7,11 @@ release and made an otherwise polished project read as unmaintained. This guard
 makes the package version in ``pyproject.toml`` the single source of truth and
 fails CI whenever a tracked README reference disagrees with it.
 
-Two references are checked:
+Three references are checked:
 
 1. The ``Current package version: **X.Y.Z**`` line in the Roadmap section.
 2. The comparison-table self-reference ``(this repo, [vX.Y.Z](...))``.
+3. Roadmap rows marked ``✅ current (vX.Y.Z)``.
 
 Usage::
 
@@ -43,6 +44,11 @@ _VERSION_RE = re.compile(r'^version = "([^"]+)"', re.MULTILINE)
 _README_CURRENT_RE = re.compile(r"Current package version: \*\*([^*]+)\*\*")
 # Comparison-table self-reference: ``(this repo, [vX.Y.Z]``.
 _README_COMPARE_RE = re.compile(r"this repo,\s*\[v([0-9][^\]]*)\]")
+# Roadmap status row: ``| **v0.14.1 — ...** | ✅ current (v0.14.1) | ... |``.
+_ROADMAP_CURRENT_RE = re.compile(
+    r"^\|\s*\*\*([^|]+?)\*\*\s*\|\s*✅ current(?: \(([^)]+)\))?\s*\|",
+    re.MULTILINE,
+)
 
 
 def read_pyproject_version(pyproject: Path) -> str:
@@ -80,6 +86,21 @@ def find_drift(version: str, readme_text: str) -> list[str]:
         problems.append(
             f"README comparison self-reference is 'v{compare.group(1)}', expected 'v{version}'."
         )
+
+    expected_marker = f"v{version}"
+    current_rows = _ROADMAP_CURRENT_RE.findall(readme_text)
+    if not current_rows:
+        problems.append("README roadmap is missing a '✅ current (vX)' marker row.")
+    for milestone, marker in current_rows:
+        if marker != expected_marker:
+            problems.append(
+                "README roadmap current marker for "
+                f"{milestone!r} is {marker!r}, expected {expected_marker!r}."
+            )
+        if expected_marker not in milestone:
+            problems.append(
+                f"README roadmap current row {milestone!r} does not name {expected_marker!r}."
+            )
 
     return problems
 
