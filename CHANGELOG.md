@@ -51,7 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inverse. `ContextManager` now accepts async store backends (via `StoreBundle`)
   and keeps the event loop responsive during `await build(...)` by offloading
   the synchronous pipeline body to a worker thread while the async store I/O
-  runs on a private loop thread — call `ContextManager.close()` to release it.
+  runs on a private loop thread; the loop thread is released automatically when
+  the manager is garbage-collected (via `weakref.finalize`, so no new public
+  `close()` method is added to `ContextManager`). Concurrent `build()` calls on
+  one manager serialize on an internal lock so the offloaded pipeline runs never
+  race on the thread-unsafe in-memory stores.
   Async conformance checks (`check_async_*_conformance`) ship in
   `contextweaver.store.testing`. (Thread-affine backends such as `SqliteEventLog`
   are not valid `to_async` targets; their async story is a future native

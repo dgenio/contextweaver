@@ -129,18 +129,21 @@ async def test_manager_with_async_stores_matches_sync() -> None:
     )
     try:
         assert async_mgr._async_backed is True
+        assert async_mgr._store_loop_finalizer is not None
         _seed(async_mgr.event_log)
         async_pack = await async_mgr.build(query="deploy")
         assert async_pack.prompt == sync_pack.prompt
     finally:
-        async_mgr.close()
+        # No public ``close()`` (see context.instructions.md); the loop thread's
+        # teardown is the weakref finalizer, callable for deterministic cleanup.
+        async_mgr._store_loop_finalizer()
 
 
 def test_manager_with_sync_stores_is_not_async_backed() -> None:
     mgr = ContextManager()
     assert mgr._async_backed is False
     assert mgr._store_loop is None
-    mgr.close()  # no-op, must not raise
+    assert mgr._store_loop_finalizer is None  # nothing to finalize when fully sync
 
 
 async def test_manager_async_episodic_and_facts_round_trip() -> None:
@@ -156,7 +159,7 @@ async def test_manager_async_episodic_and_facts_round_trip() -> None:
         assert mgr.episodic_store.get("e1") is not None
         assert mgr.fact_store.get("f1").value == "prod"
     finally:
-        mgr.close()
+        mgr._store_loop_finalizer()
 
 
 # ---------------------------------------------------------------------------
@@ -232,4 +235,28 @@ async def test_async_build_does_not_block_event_loop() -> None:
         assert elapsed >= 0.2
         assert ticks >= 5
     finally:
-        mgr.close()
+        mgr._store_loop_finalizer()
+
+
+async def test_concurrent_async_builds_serialize_per_manager() -> None:
+    """Overlapping ``build()`` calls must not race on the shared stores.
+
+    When ``_async_backed``, ``build()`` offloads the synchronous pipeline to a
+    worker thread. Several concurrent builds therefore run in parallel threads
+    and the firewall writes to the thread-unsafe ``InMemoryArtifactStore``;
+    ``_build_lock`` must serialize them so every build sees a consistent store
+    (issue #495 review). The slow async event log guarantees the builds overlap
+    in time, which is when the unserialized version would corrupt state.
+    """
+    reference = ContextManager()
+    _seed(reference.event_log)
+    expected = (await reference.build(query="deploy")).prompt
+
+    mgr = ContextManager(stores=StoreBundle(event_log=_SlowAsyncEventLog(delay=0.05)))
+    try:
+        _seed(mgr.event_log)
+        packs = await asyncio.gather(*(mgr.build(query="deploy") for _ in range(8)))
+        # Every concurrent build produced the same, uncorrupted prompt.
+        assert {pack.prompt for pack in packs} == {expected}
+    finally:
+        mgr._store_loop_finalizer()

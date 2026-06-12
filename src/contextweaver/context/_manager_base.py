@@ -19,6 +19,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import threading
+    import weakref
+
     from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
     from contextweaver.context.explanation import ContextBuildExplanation
     from contextweaver.context.views import ViewRegistry
@@ -84,6 +87,15 @@ class _ManagerState:
     #: Private loop thread driving any async-to-sync store bridges, or ``None``
     #: when every store is synchronous (issue #495).
     _store_loop: _LoopThread | None
+    #: Ties the private loop thread's teardown to this manager's lifetime
+    #: (``weakref.finalize``) instead of a public ``close()`` method, which
+    #: ``context.instructions.md`` forbids until the manager decomposition lands.
+    #: ``None`` when every store is synchronous (issue #495).
+    _store_loop_finalizer: weakref.finalize[[], Any] | None
+    #: Serializes pipeline runs per manager so concurrent ``build()`` calls
+    #: offloaded to worker threads (``_async_backed``) cannot race on the
+    #: thread-unsafe in-memory stores (issue #495).  ``_build`` holds it.
+    _build_lock: threading.Lock
 
     if TYPE_CHECKING:
         # Implemented by ``_BuildMixin``; declared here (type-only, no runtime

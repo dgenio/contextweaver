@@ -23,6 +23,8 @@ part of the public API; the heavy logic they delegate to lives in
 
 from __future__ import annotations
 
+import threading
+import weakref
 from typing import Any, cast
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
@@ -176,6 +178,7 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         # thread; ``build`` then offloads the pipeline body so the awaited I/O
         # never blocks the caller's event loop. Sync stores are used as-is.
         self._store_loop: _LoopThread | None = None
+        self._store_loop_finalizer: weakref.finalize[[], Any] | None = None
         self._async_backed: bool = any(
             is_async_store(s)
             for s in (
@@ -185,8 +188,27 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
                 resolved_fact_store,
             )
         )
+        # Serialize pipeline runs per manager. When ``_async_backed``, ``build``
+        # offloads the synchronous ``_build`` body to a worker thread, so two
+        # concurrent ``build()`` calls (e.g. via ``asyncio.gather``) would
+        # otherwise run the pipeline in parallel threads and race on the
+        # thread-unsafe in-memory stores (the firewall writes to
+        # ``artifact_store``). ``_build`` holds this lock so runs stay
+        # one-at-a-time per manager even when executed off the caller's loop
+        # (issue #495). Uncontended (sub-microsecond) on the common sync path.
+        self._build_lock = threading.Lock()
         if self._async_backed:
             self._store_loop = _LoopThread()
+            # context.instructions.md forbids growing ``ContextManager``'s method
+            # surface until the #73/#69 decomposition lands, so the loop thread's
+            # teardown is tied to this manager's lifetime via ``weakref.finalize``
+            # rather than a hand-written ``close()``. The daemon loop thread leaks
+            # nothing at interpreter exit; the finalizer gives deterministic,
+            # idempotent cleanup when the manager is collected, and can be called
+            # directly (``mgr._store_loop_finalizer()``) for prompt teardown in
+            # tests. The callback binds the loop, never ``self``, so it never
+            # keeps the manager alive (issue #495).
+            self._store_loop_finalizer = weakref.finalize(self, self._store_loop.close)
         self._event_log = cast("EventLog", _to_sync_if_async(resolved_event_log, self._store_loop))
         self._artifact_store = cast(
             "ArtifactStore", _to_sync_if_async(resolved_artifact_store, self._store_loop)
@@ -285,19 +307,6 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
     def deterministic(self) -> bool:
         """Whether the firewall fails closed on LLM summarisation (issue #404)."""
         return self._deterministic
-
-    def close(self) -> None:
-        """Release resources held for async store backends (issue #495).
-
-        Stops the private loop thread that drives any async-to-sync store
-        bridge.  A no-op when every store is synchronous.  Idempotent; safe to
-        call even if the manager was never used.  The loop thread is a daemon,
-        so failing to call :meth:`close` leaks nothing at process exit — this is
-        for prompt, deterministic cleanup (e.g. in tests).
-        """
-        if self._store_loop is not None:
-            self._store_loop.close()
-            self._store_loop = None
 
     # ------------------------------------------------------------------
     # Drilldown

@@ -64,19 +64,30 @@ class _BuildMixin(_ManagerState):
         Returns:
             A 2-tuple ``(pack, explanation)``.  *explanation* is
             ``None`` when *explain* is ``False``.
+
+        Note:
+            Holds ``self._build_lock`` for the duration of the pipeline so that
+            concurrent runs serialize per manager.  This matters when
+            ``_async_backed`` is set: :meth:`build` offloads this body to a
+            worker thread, so two overlapping ``build()`` calls would otherwise
+            run the pipeline in parallel threads and race on the thread-unsafe
+            in-memory stores (the firewall writes to ``artifact_store``).  The
+            lock is uncontended on the common single-build / sync path (issue
+            #495).
         """
-        return run_build_pipeline(
-            self,
-            phase=phase,
-            query=query,
-            query_tags=query_tags,
-            header=header,
-            footer=footer,
-            budget_tokens=budget_tokens,
-            hints=hints,
-            extra=extra,
-            explain=explain,
-        )
+        with self._build_lock:
+            return run_build_pipeline(
+                self,
+                phase=phase,
+                query=query,
+                query_tags=query_tags,
+                header=header,
+                footer=footer,
+                budget_tokens=budget_tokens,
+                hints=hints,
+                extra=extra,
+                explain=explain,
+            )
 
     @overload
     async def build(

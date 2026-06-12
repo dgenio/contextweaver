@@ -250,6 +250,7 @@ async def check_async_event_log_conformance(make_log: Callable[[], AsyncEventLog
     _assert([i.id for i in await log.children("i1")] == ["i2"], "children must follow parent_id")
     parent = await log.parent("i2")
     _assert(parent is not None and parent.id == "i1", "parent must resolve parent_id")
+    _assert((await log.parent("i1")) is None, "parent of a root item must be None")
 
     await _aexpect_raises(ItemNotFoundError, lambda: log.get("missing"), "get(missing)")
     await _aexpect_raises(
