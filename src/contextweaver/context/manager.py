@@ -23,7 +23,7 @@ part of the public API; the heavy logic they delegate to lives in
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context import ingest as _ingest
@@ -47,10 +47,24 @@ from contextweaver.protocols import (
     TokenEstimator,
 )
 from contextweaver.store import StoreBundle
+from contextweaver.store._async_to_sync import _LoopThread, is_async_store, to_sync
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
+
+
+def _to_sync_if_async(store: object, loop: _LoopThread | None) -> object:
+    """Return *store* unchanged, or its sync bridge if it is an async backend.
+
+    Async store backends (issue #495) are wrapped so the synchronous pipeline
+    can consume them; *loop* drives the bridge and must be set whenever any
+    async store is present.
+    """
+    if is_async_store(store):
+        assert loop is not None  # set by ContextManager when any store is async
+        return to_sync(cast(Any, store), loop)
+    return store
 
 
 class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
@@ -133,12 +147,38 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
         redact_secrets: bool = False,
     ) -> None:
         _stores = stores or StoreBundle()
-        self._event_log: EventLog = event_log or _stores.event_log or InMemoryEventLog()
-        self._artifact_store: ArtifactStore = (
+        resolved_event_log = event_log or _stores.event_log or InMemoryEventLog()
+        resolved_artifact_store = (
             artifact_store or _stores.artifact_store or InMemoryArtifactStore()
         )
-        self._episodic_store: EpisodicStore = _stores.episodic_store or InMemoryEpisodicStore()
-        self._fact_store: FactStore = _stores.fact_store or InMemoryFactStore()
+        resolved_episodic_store = _stores.episodic_store or InMemoryEpisodicStore()
+        resolved_fact_store = _stores.fact_store or InMemoryFactStore()
+        # Issue #495: accept async store backends. The synchronous pipeline
+        # consumes them through an async-to-sync bridge driven by a private loop
+        # thread; ``build`` then offloads the pipeline body so the awaited I/O
+        # never blocks the caller's event loop. Sync stores are used as-is.
+        self._store_loop: _LoopThread | None = None
+        self._async_backed: bool = any(
+            is_async_store(s)
+            for s in (
+                resolved_event_log,
+                resolved_artifact_store,
+                resolved_episodic_store,
+                resolved_fact_store,
+            )
+        )
+        if self._async_backed:
+            self._store_loop = _LoopThread()
+        self._event_log = cast("EventLog", _to_sync_if_async(resolved_event_log, self._store_loop))
+        self._artifact_store = cast(
+            "ArtifactStore", _to_sync_if_async(resolved_artifact_store, self._store_loop)
+        )
+        self._episodic_store = cast(
+            "EpisodicStore", _to_sync_if_async(resolved_episodic_store, self._store_loop)
+        )
+        self._fact_store = cast(
+            "FactStore", _to_sync_if_async(resolved_fact_store, self._store_loop)
+        )
         # Profile fills any unset config; per-arg overrides win.
         if profile is not None:
             budget = budget if budget is not None else profile.budget
@@ -227,6 +267,19 @@ class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin):
     def deterministic(self) -> bool:
         """Whether the firewall fails closed on LLM summarisation (issue #404)."""
         return self._deterministic
+
+    def close(self) -> None:
+        """Release resources held for async store backends (issue #495).
+
+        Stops the private loop thread that drives any async-to-sync store
+        bridge.  A no-op when every store is synchronous.  Idempotent; safe to
+        call even if the manager was never used.  The loop thread is a daemon,
+        so failing to call :meth:`close` leaks nothing at process exit — this is
+        for prompt, deterministic cleanup (e.g. in tests).
+        """
+        if self._store_loop is not None:
+            self._store_loop.close()
+            self._store_loop = None
 
     # ------------------------------------------------------------------
     # Drilldown

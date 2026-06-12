@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Async store protocol variants (#495).** New `AsyncEventLog`,
+  `AsyncArtifactStore`, `AsyncEpisodicStore`, and `AsyncFactStore` protocols
+  (`contextweaver.store.async_protocols`) mirror the sync surface so
+  network-backed backends can avoid blocking the async-first context pipeline.
+  `to_async(store)` wraps any *thread-safe* sync backend as the matching async
+  protocol via `asyncio.to_thread`; `to_sync(async_store, loop)` does the
+  inverse. `ContextManager` now accepts async store backends (via `StoreBundle`)
+  and keeps the event loop responsive during `await build(...)` by offloading
+  the synchronous pipeline body to a worker thread while the async store I/O
+  runs on a private loop thread — call `ContextManager.close()` to release it.
+  Async conformance checks (`check_async_*_conformance`) ship in
+  `contextweaver.store.testing`. (Thread-affine backends such as `SqliteEventLog`
+  are not valid `to_async` targets; their async story is a future native
+  `aiosqlite` backend.)
 - **Store-protocol conformance kit (#520).** New framework-agnostic
   `contextweaver.store.testing` module — `check_event_log_conformance`,
   `check_artifact_store_conformance`, `check_episodic_store_conformance`,

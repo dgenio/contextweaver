@@ -1,13 +1,17 @@
 """Store sub-package for contextweaver.
 
 Exports the in-memory store implementations, the persistent
-:class:`SqliteEventLog` / :class:`JsonFileArtifactStore` backends, and the
-:class:`StoreBundle` convenience wrapper.
+:class:`SqliteEventLog` / :class:`JsonFileArtifactStore` backends, the
+:class:`StoreBundle` convenience wrapper, and the async-protocol bridges
+(:func:`to_async` / :func:`to_sync`, issue #495) for using a store under the
+opposite (async/sync) interface.
 """
 
 from __future__ import annotations
 
+from contextweaver.store._async_to_sync import is_async_store, to_sync
 from contextweaver.store.artifacts import InMemoryArtifactStore
+from contextweaver.store.async_bridge import to_async
 from contextweaver.store.bundle import StoreBundle
 from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
@@ -23,4 +27,7 @@ __all__ = [
     "JsonFileArtifactStore",
     "SqliteEventLog",
     "StoreBundle",
+    "is_async_store",
+    "to_async",
+    "to_sync",
 ]

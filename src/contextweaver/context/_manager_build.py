@@ -12,6 +12,7 @@ logic lives in :mod:`contextweaver.context.build`.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from contextweaver.context._manager_base import _ManagerState
@@ -148,17 +149,35 @@ class _BuildMixin(_ManagerState):
             the LLM, or a ``(pack, explanation)`` tuple when
             ``explain=True``.
         """
-        pack, explanation = self._build(
-            phase=phase,
-            query=query,
-            query_tags=query_tags,
-            header=header,
-            footer=footer,
-            budget_tokens=budget_tokens,
-            hints=hints,
-            extra=extra,
-            explain=explain,
-        )
+        if self._async_backed:
+            # Issue #495: the pipeline reads/writes async stores through
+            # blocking async-to-sync bridges. Run the synchronous body in a
+            # worker thread so those blocking waits happen off the caller's
+            # event loop, which stays free to service other tasks.
+            pack, explanation = await asyncio.to_thread(
+                self._build,
+                phase=phase,
+                query=query,
+                query_tags=query_tags,
+                header=header,
+                footer=footer,
+                budget_tokens=budget_tokens,
+                hints=hints,
+                extra=extra,
+                explain=explain,
+            )
+        else:
+            pack, explanation = self._build(
+                phase=phase,
+                query=query,
+                query_tags=query_tags,
+                header=header,
+                footer=footer,
+                budget_tokens=budget_tokens,
+                hints=hints,
+                extra=extra,
+                explain=explain,
+            )
         if explain:
             if explanation is None:  # invariant: _build populates it when explain=True
                 raise ContextWeaverError(

@@ -36,6 +36,12 @@ from contextweaver.exceptions import (
     DuplicateItemError,
     ItemNotFoundError,
 )
+from contextweaver.store.async_protocols import (
+    AsyncArtifactStore,
+    AsyncEpisodicStore,
+    AsyncEventLog,
+    AsyncFactStore,
+)
 from contextweaver.store.episodic import Episode
 from contextweaver.store.facts import Fact
 from contextweaver.store.protocols import ArtifactStore, EpisodicStore, EventLog, FactStore
@@ -202,3 +208,133 @@ def check_fact_store_conformance(make_store: Callable[[], FactStore]) -> None:
     store.delete("f1")
     _expect_raises(ItemNotFoundError, lambda: store.get("f1"), "get(deleted)")
     _expect_raises(ItemNotFoundError, lambda: store.delete("missing"), "delete(missing)")
+
+
+# ---------------------------------------------------------------------------
+# Async variants (issue #495)
+# ---------------------------------------------------------------------------
+
+
+async def _aexpect_raises(exc: type[BaseException], coro: Callable[[], object], what: str) -> None:
+    """Assert that awaiting *coro()* raises *exc*."""
+    try:
+        await coro()  # type: ignore[misc]
+    except exc:
+        return
+    except BaseException as other:  # noqa: BLE001 - re-raise as a conformance failure
+        raise AssertionError(
+            f"store conformance: {what} raised {type(other).__name__}, expected {exc.__name__}"
+        ) from other
+    raise AssertionError(f"store conformance: {what} did not raise {exc.__name__}")
+
+
+async def check_async_event_log_conformance(make_log: Callable[[], AsyncEventLog]) -> None:
+    """Assert that *make_log* produces a conformant :class:`AsyncEventLog`."""
+    log = make_log()
+    _assert(isinstance(log, AsyncEventLog), "factory does not satisfy the AsyncEventLog protocol")
+    _assert(await log.count() == 0, "a fresh log must be empty")
+
+    first = ContextItem(id="i1", kind=ItemKind.user_turn, text="hello")
+    second = ContextItem(id="i2", kind=ItemKind.tool_call, text="call", parent_id="i1")
+    await log.append(first)
+    await log.append(second)
+
+    _assert(await log.count() == 2, "count must reflect appended items")
+    _assert((await log.get("i1")).text == "hello", "get must return the appended item")
+    _assert([i.id for i in await log.all()] == ["i1", "i2"], "all() must preserve insertion order")
+    _assert([i.id for i in await log.tail(1)] == ["i2"], "tail(n) must return the last n items")
+    _assert(
+        [i.id for i in await log.filter_by_kind(ItemKind.tool_call)] == ["i2"],
+        "filter_by_kind must select by kind",
+    )
+    _assert([i.id for i in await log.children("i1")] == ["i2"], "children must follow parent_id")
+    parent = await log.parent("i2")
+    _assert(parent is not None and parent.id == "i1", "parent must resolve parent_id")
+
+    await _aexpect_raises(ItemNotFoundError, lambda: log.get("missing"), "get(missing)")
+    await _aexpect_raises(
+        DuplicateItemError,
+        lambda: log.append(ContextItem(id="i1", kind=ItemKind.user_turn, text="dup")),
+        "append(duplicate id)",
+    )
+
+
+async def check_async_artifact_store_conformance(
+    make_store: Callable[[], AsyncArtifactStore],
+) -> None:
+    """Assert that *make_store* produces a conformant :class:`AsyncArtifactStore`."""
+    store = make_store()
+    _assert(
+        isinstance(store, AsyncArtifactStore),
+        "factory does not satisfy the AsyncArtifactStore protocol",
+    )
+    _assert(await store.list_refs() == [], "a fresh store must have no refs")
+    _assert(await store.exists("nope") is False, "exists must be False for an unknown handle")
+
+    ref = await store.put("h1", b"hello world", media_type="text/plain", label="greeting")
+    _assert(ref.handle == "h1", "put must return a ref for the stored handle")
+    _assert(
+        ref.content_hash == hashlib.sha256(b"hello world").hexdigest(),
+        "put must stamp a sha256 content_hash on the returned ref (firewall #190 relies on it)",
+    )
+    _assert(await store.get("h1") == b"hello world", "get must return the stored bytes")
+    _assert(await store.exists("h1") is True, "exists must be True after put")
+    _assert([r.handle for r in await store.list_refs()] == ["h1"], "list_refs must include it")
+    _assert(await store.drilldown("h1", {"type": "head", "chars": 5}) == "hello", "drilldown head")
+
+    await store.delete("h1")
+    _assert(await store.exists("h1") is False, "exists must be False after delete")
+    await _aexpect_raises(ArtifactNotFoundError, lambda: store.get("h1"), "get(deleted)")
+    await _aexpect_raises(ArtifactNotFoundError, lambda: store.ref("missing"), "ref(missing)")
+
+
+async def check_async_episodic_store_conformance(
+    make_store: Callable[[], AsyncEpisodicStore],
+) -> None:
+    """Assert that *make_store* produces a conformant :class:`AsyncEpisodicStore`."""
+    store = make_store()
+    _assert(
+        isinstance(store, AsyncEpisodicStore),
+        "factory does not satisfy the AsyncEpisodicStore protocol",
+    )
+    _assert(await store.all() == [], "a fresh episodic store must be empty")
+    _assert(await store.get("missing") is None, "get of an unknown episode must return None")
+
+    await store.add(Episode(episode_id="e1", summary="deployed the service", tags=["ops"]))
+    await store.add(Episode(episode_id="e2", summary="rotated the database credentials"))
+
+    fetched = await store.get("e1")
+    _assert(fetched is not None and fetched.summary == "deployed the service", "get round-trip")
+    _assert({e.episode_id for e in await store.all()} == {"e1", "e2"}, "all must return every one")
+    latest = await store.latest(1)
+    _assert(len(latest) == 1 and latest[0][0] == "e2", "latest must be most-recent first")
+    hits = await store.search("database credentials", top_k=1)
+    _assert(len(hits) <= 1, "search must respect top_k")
+
+    await store.delete("e1")
+    _assert(await store.get("e1") is None, "delete must remove the episode")
+    await _aexpect_raises(ItemNotFoundError, lambda: store.delete("missing"), "delete(missing)")
+
+
+async def check_async_fact_store_conformance(make_store: Callable[[], AsyncFactStore]) -> None:
+    """Assert that *make_store* produces a conformant :class:`AsyncFactStore`."""
+    store = make_store()
+    _assert(
+        isinstance(store, AsyncFactStore), "factory does not satisfy the AsyncFactStore protocol"
+    )
+    _assert(await store.all() == [], "a fresh fact store must be empty")
+
+    await store.put(Fact(fact_id="f1", key="env", value="prod"))
+    await store.put(Fact(fact_id="f2", key="region", value="eu-west-1"))
+
+    _assert((await store.get("f1")).value == "prod", "get must round-trip the value")
+    _assert([f.fact_id for f in await store.all()] == ["f1", "f2"], "all must be sorted by fact_id")
+    _assert([f.value for f in await store.get_by_key("env")] == ["prod"], "get_by_key selects")
+    _assert(await store.list_keys() == ["env", "region"], "list_keys lists distinct keys sorted")
+
+    await store.put(Fact(fact_id="f1", key="env", value="staging"))
+    _assert((await store.get("f1")).value == "staging", "put must upsert on an existing fact_id")
+
+    await store.delete("f1")
+    await _aexpect_raises(ItemNotFoundError, lambda: store.get("f1"), "get(deleted)")
+    await _aexpect_raises(ItemNotFoundError, lambda: store.delete("missing"), "delete(missing)")
