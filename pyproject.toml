@@ -175,9 +175,30 @@ smolagents = [
 agno = [
     "agno>=1.0",
 ]
-# LangChain integration examples.
+# LangChain integration (issue #502).  Pulls ``langchain-core`` so user
+# applications can import the live-discovery helper
+# ``contextweaver.adapters.langchain.load_langchain_catalog`` and convert real
+# ``BaseTool`` instances.  The plain-dict conversion path
+# (``langchain_tool_to_selectable`` / ``langchain_tools_to_catalog``) works
+# without this extra installed.
 langchain = [
     "langchain-core>=0.3",
+]
+# OpenAI Agents SDK adapter integration (issue #501).  Pulls the
+# ``openai-agents`` runtime (import package ``agents``) so user applications can
+# import ``contextweaver.adapters.openai_agents.load_openai_agents_catalog`` and
+# convert live ``FunctionTool`` instances / run items.  The plain-dict and
+# item-dict paths work without this extra installed.
+openai-agents = [
+    "openai-agents>=0.1",
+]
+# Google ADK adapter integration (issue #547).  Pulls the ``google-adk``
+# runtime (import package ``google.adk``) so user applications can import
+# ``contextweaver.adapters.google_adk.load_google_adk_catalog`` and convert live
+# tools / session events.  The plain-dict and event-dict paths work without this
+# extra installed.
+google-adk = [
+    "google-adk>=1.0",
 ]
 # LangGraph agent-loop reference architecture (issue #326).  Pulls the
 # LangGraph runtime so ``examples/architectures/langgraph_agent_loop`` can
@@ -319,6 +340,9 @@ all = [
     "contextweaver[weaver-spec]",
     "contextweaver[voice]",
     "contextweaver[langgraph]",
+    "contextweaver[langchain]",
+    "contextweaver[openai-agents]",
+    "contextweaver[google-adk]",
     "contextweaver[e2e-eval]",
     "contextweaver[redis]",
     "contextweaver[s3]",

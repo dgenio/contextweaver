@@ -7,7 +7,10 @@ Provides thin, pure stateless adapters across three responsibility groups:
    FastMCP (:mod:`.fastmcp`), A2A (:mod:`.a2a`), weaver-spec
    (:mod:`.weaver_contracts`), CrewAI (:mod:`.crewai`),
    Pydantic AI (:mod:`.pydantic_ai`), smolagents (:mod:`.smolagents`),
-   and Agno (:mod:`.agno`).
+   Agno (:mod:`.agno`), LangChain (:mod:`.langchain`),
+   OpenAI Agents SDK (:mod:`.openai_agents`), and Google ADK
+   (:mod:`.google_adk`).  Shared conversion mechanics live in the private
+   :mod:`._framework_common` helper (issue #454).
 2. **Runtime modes** — front upstream MCP servers as a transparent
    proxy or two-tool gateway: :mod:`.proxy_runtime`, :mod:`.mcp_proxy`,
    :mod:`.mcp_gateway`, :mod:`.mcp_proxy_server`,
@@ -89,6 +92,21 @@ from contextweaver.adapters.gemini_contents import (
     from_gemini_contents,
     to_gemini_contents,
 )
+from contextweaver.adapters.google_adk import (
+    from_google_adk_session,
+    google_adk_tool_to_selectable,
+    google_adk_tools_to_catalog,
+    infer_google_adk_namespace,
+    load_google_adk_catalog,
+    selectable_from_google_adk_tool,
+)
+from contextweaver.adapters.langchain import (
+    infer_langchain_namespace,
+    langchain_tool_to_selectable,
+    langchain_tools_to_catalog,
+    load_langchain_catalog,
+    selectable_from_langchain_tool,
+)
 from contextweaver.adapters.mcp import (
     infer_namespace,
     load_mcp_session_jsonl,
@@ -110,6 +128,14 @@ from contextweaver.adapters.mcp_upstream import (
     McpClientUpstream,
     MultiplexUpstream,
     StubUpstream,
+)
+from contextweaver.adapters.openai_agents import (
+    from_openai_agents_run,
+    infer_openai_agents_namespace,
+    load_openai_agents_catalog,
+    openai_agents_tool_to_selectable,
+    openai_agents_tools_to_catalog,
+    selectable_from_openai_agents_tool,
 )
 from contextweaver.adapters.openai_messages import (
     from_openai_messages,
@@ -186,6 +212,8 @@ __all__ = [
     "from_agno_session",
     "from_anthropic_messages",
     "from_gemini_contents",
+    "from_google_adk_session",
+    "from_openai_agents_run",
     "from_openai_messages",
     "from_pydantic_ai_messages",
     "from_smolagents_agent",
@@ -197,15 +225,25 @@ __all__ = [
     "infer_agno_namespace",
     "infer_crewai_namespace",
     "infer_fastmcp_namespace",
+    "infer_google_adk_namespace",
+    "infer_langchain_namespace",
     "infer_namespace",
+    "infer_openai_agents_namespace",
     "infer_pydantic_ai_namespace",
     "infer_smolagents_namespace",
+    "google_adk_tool_to_selectable",
+    "google_adk_tools_to_catalog",
+    "langchain_tool_to_selectable",
+    "langchain_tools_to_catalog",
     "load_a2a_session_jsonl",
     "load_agno_catalog",
     "load_chainweaver_export",
     "load_crewai_catalog",
     "load_fastmcp_catalog",
+    "load_google_adk_catalog",
+    "load_langchain_catalog",
     "load_mcp_session_jsonl",
+    "load_openai_agents_catalog",
     "load_pydantic_ai_catalog",
     "load_smolagents_catalog",
     "make_context_hook",
@@ -216,10 +254,15 @@ __all__ = [
     "mcp_result_to_envelope",
     "mcp_tool_to_selectable",
     "normalize_args",
+    "openai_agents_tool_to_selectable",
+    "openai_agents_tools_to_catalog",
     "pydantic_ai_tool_to_selectable",
     "pydantic_ai_tools_to_catalog",
     "redact_upstream_detail",
     "selectable_from_agno_tool",
+    "selectable_from_google_adk_tool",
+    "selectable_from_langchain_tool",
+    "selectable_from_openai_agents_tool",
     "selectable_from_pydantic_tool",
     "selectable_from_smolagents_tool",
     "smolagents_tool_to_selectable",

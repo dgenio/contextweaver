@@ -35,6 +35,12 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any
 
+from contextweaver.adapters._framework_common import (
+    collect_tags,
+    infer_namespace,
+    require_name_description,
+    strip_namespace_prefix,
+)
 from contextweaver.adapters._messages_common import (
     expect_dict,
     expect_list,
@@ -72,25 +78,7 @@ def infer_smolagents_namespace(tool_name: str) -> str:
     Returns:
         The inferred namespace string.
     """
-    if not tool_name:
-        return _FALLBACK_NS
-    for sep in (".", "/"):
-        if sep in tool_name:
-            prefix = tool_name.split(sep, 1)[0]
-            if prefix:
-                return prefix
-    parts = tool_name.split("_")
-    if len(parts) >= 2 and parts[0] and not parts[0].startswith("_"):
-        return parts[0]
-    return _FALLBACK_NS
-
-
-def _strip_namespace_prefix(tool_name: str, namespace: str) -> str:
-    """Return the short tool name with the namespace prefix removed."""
-    for prefix in (f"{namespace}_", f"{namespace}.", f"{namespace}/"):
-        if tool_name.startswith(prefix) and len(tool_name) > len(prefix):
-            return tool_name[len(prefix) :]
-    return tool_name
+    return infer_namespace(tool_name, fallback=_FALLBACK_NS)
 
 
 def _build_args_schema(inputs: object, output_type: object) -> dict[str, Any]:
@@ -165,26 +153,14 @@ def smolagents_tool_to_selectable(
         CatalogError: If required fields (``name``, ``description``) are
             missing or non-string.
     """
-    raw_name = tool_def.get("name")
-    if not isinstance(raw_name, str) or not raw_name:
-        raise CatalogError("smolagents tool definition is missing a non-empty 'name' field.")
-    raw_description = tool_def.get("description")
-    if not isinstance(raw_description, str) or not raw_description:
-        raise CatalogError(
-            f"smolagents tool {raw_name!r} is missing a non-empty 'description' field."
-        )
+    raw_name, raw_description = require_name_description(tool_def, label="smolagents")
 
     ns = namespace if namespace is not None else infer_smolagents_namespace(raw_name)
-    short_name = _strip_namespace_prefix(raw_name, ns)
+    short_name = strip_namespace_prefix(raw_name, ns)
 
     args_schema = _build_args_schema(tool_def.get("inputs"), tool_def.get("output_type"))
 
-    raw_tags = tool_def.get("tags")
-    tags: set[str] = {_FALLBACK_NS}
-    if isinstance(raw_tags, (list, set, tuple)):
-        for tag in raw_tags:
-            if isinstance(tag, str) and tag:
-                tags.add(tag)
+    tags = collect_tags(tool_def.get("tags"), fallback=_FALLBACK_NS)
 
     metadata: dict[str, Any] = {}
     if "output_type" in tool_def and isinstance(tool_def["output_type"], str):
