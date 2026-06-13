@@ -140,9 +140,20 @@ def test_render_item_section_override() -> None:
 
 
 def test_render_item_blank_section_override_falls_back() -> None:
-    """An empty section override falls back to the kind label (#411)."""
-    item = ContextItem(id="i1", kind=ItemKind.user_turn, text="hi", metadata={"section": ""})
-    assert render_item(item).startswith("[USER]")
+    """An empty or whitespace-only section override falls back to the kind label (#411)."""
+    for blank in ("", "   "):
+        item = ContextItem(
+            id="i1", kind=ItemKind.user_turn, text="hi", metadata={"section": blank}
+        )
+        assert render_item(item).startswith("[USER]")
+
+
+def test_render_item_section_override_is_stripped() -> None:
+    """A padded section override is trimmed so the header is clean (#411)."""
+    item = ContextItem(
+        id="i1", kind=ItemKind.doc_snippet, text="body", metadata={"section": "  CLUSTER  "}
+    )
+    assert render_item(item).startswith("[CLUSTER]")
 
 
 def test_passthrough_renderer_joins_raw_text() -> None:

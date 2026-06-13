@@ -51,7 +51,9 @@ class BudgetOverflowError(ContextWeaverError):
     ) -> None:
         super().__init__(message)
         self.stats = stats
-        self.dropped_kinds = dropped_kinds or []
+        # Normalise to the documented "sorted distinct" form regardless of what
+        # the caller passes, so the attribute is consistent.
+        self.dropped_kinds = sorted(set(dropped_kinds)) if dropped_kinds else []
 
 
 class ArtifactNotFoundError(ContextWeaverError):

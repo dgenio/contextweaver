@@ -55,8 +55,8 @@ def render_item(item: ContextItem) -> str:
         A formatted string suitable for inclusion in a prompt.
     """
     section_override = item.metadata.get("section")
-    if isinstance(section_override, str) and section_override:
-        label = section_override
+    if isinstance(section_override, str) and section_override.strip():
+        label = section_override.strip()
     else:
         label = _SECTION_LABELS.get(item.kind, item.kind.value.upper())
     artifact_note = ""

@@ -61,3 +61,11 @@ def test_budget_overflow_error_carries_stats_and_kinds() -> None:
 def test_budget_overflow_error_defaults_empty_kinds() -> None:
     err = BudgetOverflowError("overflowed", stats=BuildStats())
     assert err.dropped_kinds == []
+
+
+def test_budget_overflow_error_normalizes_dropped_kinds() -> None:
+    """dropped_kinds is stored sorted + de-duplicated, per its docstring (#510)."""
+    err = BudgetOverflowError(
+        "overflowed", stats=BuildStats(), dropped_kinds=["policy", "doc_snippet", "policy"]
+    )
+    assert err.dropped_kinds == ["doc_snippet", "policy"]
