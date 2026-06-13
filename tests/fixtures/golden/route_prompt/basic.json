@@ -8,6 +8,7 @@
       "kind": "tool",
       "name": "read_db",
       "namespace": "db",
+      "safety": "",
       "score": 0.5644,
       "side_effects": false,
       "tags": [
@@ -23,6 +24,7 @@
       "kind": "tool",
       "name": "write_db",
       "namespace": "db",
+      "safety": "",
       "score": 0.5644,
       "side_effects": false,
       "tags": [
@@ -38,6 +40,7 @@
       "kind": "tool",
       "name": "search_docs",
       "namespace": "search",
+      "safety": "",
       "score": 0.0,
       "side_effects": false,
       "tags": [
@@ -105,6 +108,7 @@
       "gated_count": 0,
       "is_ambiguous": true,
       "query": "find customer in database",
+      "retriever_engine": "tfidf",
       "runner_up_score": 0.5644,
       "steps": [],
       "top_score": 0.5644,

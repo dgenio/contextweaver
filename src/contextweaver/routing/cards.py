@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 
 from contextweaver import tokens
-from contextweaver.envelope import ChoiceCard
+from contextweaver.envelope import CHOICE_CARD_TAGS_MAX_COUNT, ChoiceCard
 from contextweaver.exceptions import CatalogError, ItemNotFoundError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.secrets import scrub_secrets
@@ -43,6 +43,33 @@ from contextweaver.types import SelectableItem
 DEFAULT_CARD_TARGET_TOKENS = 60
 DEFAULT_CARD_HARD_CAP_TOKENS = 80
 DEFAULT_BROWSE_PREAMBLE_TOKENS = 32
+
+# Item tags that encode a safety class.  These are kept exempt from the §2.1
+# five-tag cap so a ``destructive`` / ``read-only`` marker can never be
+# alphabetically evicted from the model-facing text surface (issue #516).
+# Matched case-insensitively; the underscore spelling mirrors the OpenAPI
+# adapter's tags while ``read-only`` mirrors the MCP adapter's.
+_DESTRUCTIVE_TAGS = frozenset({"destructive"})
+_READ_ONLY_TAGS = frozenset({"read-only", "read_only"})
+_SAFETY_TAGS = _DESTRUCTIVE_TAGS | _READ_ONLY_TAGS
+
+
+def _derive_safety(item: SelectableItem) -> str:
+    """Classify an item's safety from its tags (issue #516).
+
+    Returns one of :data:`~contextweaver.envelope.CHOICE_CARD_SAFETY_LEVELS`.
+    ``destructive`` wins over ``read_only`` when both are present, since the
+    more dangerous class is the one a model and policy layer must not miss.
+    A bare ``side_effects`` flag with no explicit annotation stays ``""`` —
+    that nuance is already carried by :attr:`ChoiceCard.side_effects`.
+    """
+    tags_lower = {t.lower() for t in item.tags}
+    if tags_lower & _DESTRUCTIVE_TAGS:
+        return "destructive"
+    if tags_lower & _READ_ONLY_TAGS:
+        return "read_only"
+    return ""
+
 
 # §2.4 sentence terminators considered when truncating descriptions.
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?](?:\s|$)")
@@ -141,7 +168,7 @@ def item_to_card(
     tags = [scrub_secrets(t) for t in item.tags] if redact_secrets else item.tags
     # §2.1 caps: name ≤ 64 chars, tags ≤ 5 entries (each ≤ 24 chars).
     capped_name = name[:64]
-    capped_tags = sorted({t[:24] for t in tags})[:5]
+    capped_tags = _cap_tags(tags)
     return ChoiceCard(
         id=item.id,
         name=capped_name,
@@ -153,7 +180,23 @@ def item_to_card(
         score=score,
         cost_hint=item.cost_hint,
         side_effects=item.side_effects,
+        safety=_derive_safety(item),  # type: ignore[arg-type]
     )
+
+
+def _cap_tags(tags: list[str]) -> list[str]:
+    """Apply the §2.1 five-tag cap while keeping safety tags (issue #516).
+
+    The previous implementation sorted all tags alphabetically and kept the
+    first five, so a ``destructive`` marker on a tag-rich item could be
+    evicted by lexicographically earlier tags.  Safety tags are now reserved
+    first; the remaining slots are filled with the other tags in sorted order.
+    The returned list is still sorted and deduplicated per §2.1.
+    """
+    deduped = {t[:24] for t in tags}
+    safety = sorted(t for t in deduped if t.lower() in _SAFETY_TAGS)
+    other = sorted(t for t in deduped if t.lower() not in _SAFETY_TAGS)
+    return sorted((safety + other)[:CHOICE_CARD_TAGS_MAX_COUNT])
 
 
 def render_cards(items: list[SelectableItem], *, redact_secrets: bool = False) -> list[ChoiceCard]:
@@ -213,6 +256,7 @@ def _enforce_card_budget(
             score=card.score,
             cost_hint=card.cost_hint,
             side_effects=card.side_effects,
+            safety=card.safety,
         )
     )
     description_budget = max(target_tokens - fixed_overhead, 1)
@@ -228,6 +272,7 @@ def _enforce_card_budget(
         score=card.score,
         cost_hint=card.cost_hint,
         side_effects=card.side_effects,
+        safety=card.safety,
     )
     final_tokens = _card_token_count(truncated)
     if final_tokens > hard_cap_tokens:
@@ -417,8 +462,12 @@ def format_card_for_prompt(card: ChoiceCard) -> str:
     ]
     if card.tags:
         lines.append(f"  tags: {', '.join(sorted(card.tags))}")
-    if card.side_effects:
+    if card.safety == "destructive":
+        lines.append("  ⚠ destructive")
+    elif card.side_effects:
         lines.append("  ! has side effects")
+    if card.safety == "read_only":
+        lines.append("  read-only")
     if card.cost_hint:
         lines.append(f"  cost: {card.cost_hint:.2f}")
     return "\n".join(lines)

@@ -944,3 +944,127 @@ def test_route_history_is_byte_identical_to_no_history_when_history_empty() -> N
     assert a.candidate_ids == b.candidate_ids
     assert a.scores == b.scores
     assert b.history_adjustments == {}
+
+
+# ------------------------------------------------------------------
+# Shortlist composition: pinning + diversity quotas (issue #509)
+# ------------------------------------------------------------------
+
+
+def _ns_items() -> list[SelectableItem]:
+    return [
+        _item("a:1", namespace="a", tags=["x"]),
+        _item("a:2", namespace="a", tags=["x"]),
+        _item("a:3", namespace="a", tags=["x"]),
+        _item("b:1", namespace="b", tags=["x"]),
+        _item("esc", namespace="safety", tags=["escalate"]),
+    ]
+
+
+def _ns_router(top_k: int = 3) -> Router:
+    items = _ns_items()
+    graph = TreeBuilder(max_children=20).build(items)
+    return Router(graph, items=items, top_k=top_k)
+
+
+def test_compose_is_noop_when_unconfigured() -> None:
+    router = _ns_router()
+    a = router.route("tool")
+    b = router.route("tool")
+    assert a.candidate_ids == b.candidate_ids
+    # Unconfigured composition keeps the result within top_k.
+    assert len(a.candidate_ids) <= 3
+
+
+def test_pin_forces_unranked_item_into_shortlist() -> None:
+    router = _ns_router()
+    pinned = router.route("tool", pin_ids={"esc"})
+    assert "esc" in pinned.candidate_ids
+    # Pinned item occupies the first slot and carries a forced 0.0 score.
+    assert pinned.candidate_ids[0] == "esc"
+    assert pinned.scores[0] == 0.0
+
+
+def test_pin_keeps_score_for_ranked_item() -> None:
+    router = _ns_router()
+    base = router.route("tool")
+    # An item already in the ranked shortlist keeps its real score when pinned.
+    top_ranked = base.candidate_ids[0]
+    base_score = base.scores[0]
+    pinned = router.route("tool", pin_ids={top_ranked})
+    idx = pinned.candidate_ids.index(top_ranked)
+    assert pinned.scores[idx] == base_score
+
+
+def test_pin_is_recorded_in_trace() -> None:
+    router = _ns_router()
+    result = router.route("tool", pin_ids={"esc"})
+    assert result.trace.extra.get("pinned") == ["esc"]
+
+
+def test_pin_ignores_unknown_ids() -> None:
+    router = _ns_router()
+    result = router.route("tool", pin_ids={"does-not-exist"})
+    assert "does-not-exist" not in result.candidate_ids
+
+
+def test_namespace_quota_caps_per_namespace() -> None:
+    router = _ns_router(top_k=20)
+    result = router.route("tool", namespace_quota=1)
+    namespaces = [item.namespace for item in result.candidate_items]
+    assert namespaces.count("a") <= 1
+    assert result.trace.extra.get("namespace_quota") == 1
+
+
+def test_namespace_quota_below_one_raises() -> None:
+    router = _ns_router()
+    with pytest.raises(ConfigError):
+        router.route("tool", namespace_quota=0)
+
+
+def test_pin_bypasses_namespace_quota() -> None:
+    router = _ns_router(top_k=20)
+    # Quota of 1 for namespace "a", but two "a" items are pinned: both survive.
+    result = router.route("tool", pin_ids={"a:1", "a:2"}, namespace_quota=1)
+    assert "a:1" in result.candidate_ids
+    assert "a:2" in result.candidate_ids
+
+
+# ------------------------------------------------------------------
+# Selection contract wiring on RouteResult (#479 / #515)
+# ------------------------------------------------------------------
+
+
+def test_route_result_selection_schema_uses_candidates() -> None:
+    router = _ns_router()
+    result = router.route("tool")
+    schema = result.selection_schema()
+    assert schema["properties"]["tool_id"]["enum"] == result.candidate_ids
+
+
+def test_route_result_validate_selection_accepts_candidate() -> None:
+    router = _ns_router()
+    result = router.route("tool")
+    out = result.validate_selection(result.candidate_ids[0])
+    assert out.status == "accepted"
+
+
+def test_to_routing_decision_repairs_and_records_selection() -> None:
+    router = _ns_router()
+    result = router.route("tool")
+    chosen = result.candidate_ids[0]
+    decision = result.to_routing_decision(selected_item_id=f"  {chosen}  ")
+    # Repaired to the canonical id and resolved to the matching card.
+    assert decision.selected_item_id == chosen
+    assert decision.selected_card_id == chosen
+    selection = decision.metadata["contextweaver"]["selection"]
+    assert selection["status"] == "repaired"
+    assert selection["repair"] == "strip"
+
+
+def test_to_routing_decision_records_rejected_selection() -> None:
+    router = _ns_router()
+    result = router.route("tool")
+    decision = result.to_routing_decision(selected_item_id="not:a_candidate@1#zzzz")
+    assert decision.selected_card_id is None
+    assert decision.metadata["contextweaver"]["selection"]["status"] == "rejected"

@@ -22,6 +22,10 @@ from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
 
+#: A ranked candidate as produced by the navigator/rerank stages:
+#: ``(item_id, (score, beam_path))``.
+RankedEntry = tuple[str, tuple[float, list[str]]]
+
 
 def augment_query(query: str, hints: list[str] | None) -> str:
     """Return *query* with whitespace-joined *hints* appended.
@@ -133,8 +137,89 @@ def suggest_clarifying_question(
     return f"Multiple tools could handle {query!r}: {joined}. Which did you mean?"
 
 
+def compose_shortlist(
+    ranked: list[RankedEntry],
+    items: dict[str, SelectableItem],
+    *,
+    top_k: int,
+    pin_ids: set[str] | None = None,
+    namespace_quota: int | None = None,
+) -> list[RankedEntry]:
+    """Compose the final shortlist with pinning and diversity quotas (issue #509).
+
+    Operates on the fully ranked ``(item_id, (score, path))`` list *after* all
+    scoring stages, replacing a plain ``ranked[:top_k]`` slice.  When neither
+    *pin_ids* nor *namespace_quota* is supplied the result is byte-identical to
+    that slice, so unconfigured routing is unchanged.
+
+    Composition rules:
+
+    * **Pinned items** (those in *pin_ids* that survived filtering and exist in
+      *items*) always appear and occupy the first slots, bypassing the
+      namespace quota.  A pinned item that the navigator scored keeps that
+      score and ranked position; a pinned item the navigator never reached is
+      still force-included with score ``0.0`` and an empty path, in sorted-id
+      order, so pinning holds *regardless of query relevance*.  Pinning may push
+      the shortlist beyond *top_k* when more than *top_k* items are pinned — an
+      explicit operator choice.
+    * **Diversity quota** caps how many *non-pinned* items a single namespace
+      may contribute, so one large upstream cannot monopolise the remaining
+      slots.  Items beyond a namespace's quota are skipped, not reordered.
+
+    Args:
+        ranked: Candidates sorted by descending score, ties broken by id.
+        items: The active (post-filter) catalog items keyed by id.
+        top_k: Target shortlist size for the non-pinned fill.
+        pin_ids: Item IDs to always include.  ``None`` / empty disables pinning.
+        namespace_quota: Max non-pinned items per namespace (must be ≥ 1).
+            ``None`` disables the quota.
+
+    Returns:
+        The composed shortlist, preserving the ranked ordering within the
+        pinned block and within the fill block.
+    """
+    if not pin_ids and namespace_quota is None:
+        return ranked[: max(0, top_k)]
+
+    pins = pin_ids or set()
+    selected: list[RankedEntry] = []
+    selected_ids: set[str] = set()
+
+    # Pinned items the navigator scored: keep their score and ranked order.
+    for entry in ranked:
+        item_id = entry[0]
+        if item_id in pins and item_id in items and item_id not in selected_ids:
+            selected.append(entry)
+            selected_ids.add(item_id)
+
+    # Pinned items the navigator never reached: force-include them so pinning
+    # holds regardless of query relevance.  Sorted id order keeps it deterministic.
+    for item_id in sorted(pins):
+        if item_id in items and item_id not in selected_ids:
+            selected.append((item_id, (0.0, [])))
+            selected_ids.add(item_id)
+
+    namespace_counts: dict[str, int] = {}
+    for entry in ranked:
+        if len(selected) >= top_k:
+            break
+        item_id = entry[0]
+        if item_id in selected_ids:
+            continue
+        namespace = items[item_id].namespace if item_id in items else ""
+        if namespace_quota is not None and namespace_counts.get(namespace, 0) >= namespace_quota:
+            continue
+        selected.append(entry)
+        selected_ids.add(item_id)
+        namespace_counts[namespace] = namespace_counts.get(namespace, 0) + 1
+
+    return selected
+
+
 __all__ = [
+    "RankedEntry",
     "augment_query",
+    "compose_shortlist",
     "filter_items",
     "suggest_clarifying_question",
 ]

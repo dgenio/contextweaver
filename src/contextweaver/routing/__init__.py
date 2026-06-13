@@ -43,6 +43,12 @@ from contextweaver.routing.navigator import rank_collected
 from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
 from contextweaver.routing.path import parse_path, resolve_path
 from contextweaver.routing.router import Router, RouteResult
+from contextweaver.routing.selection import (
+    SELECTION_SCHEMA_PROVIDERS,
+    SelectionValidation,
+    selection_schema,
+    validate_selection,
+)
 from contextweaver.routing.tool_id import (
     ToolIdParts,
     canonical_tool_id,
@@ -68,7 +74,9 @@ __all__ = [
     "ReferenceFinding",
     "RouteResult",
     "Router",
+    "SELECTION_SCHEMA_PROVIDERS",
     "SchemaSource",
+    "SelectionValidation",
     "ToolIdParts",
     "TreeBuilder",
     "aggregate_feedback",
@@ -91,6 +99,8 @@ __all__ = [
     "render_cards_text",
     "resolve_path",
     "save_graph",
+    "selection_schema",
     "truncate_description_to_tokens",
     "validate_references",
+    "validate_selection",
 ]

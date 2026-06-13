@@ -339,3 +339,67 @@ def test_cards_for_route_threads_redaction() -> None:
     catalog.register(_item("t1", description=f"key {secret}"))
     cards = cards_for_route(["t1"], catalog, redact_secrets=True)
     assert cards and secret not in cards[0].description
+
+
+# ------------------------------------------------------------------
+# Safety hints: first-class field + capping immunity (issue #516)
+# ------------------------------------------------------------------
+
+
+def test_card_safety_derived_from_destructive_tag() -> None:
+    card = item_to_card(_item("t1", tags=["destructive", "write"]))
+    assert card.safety == "destructive"
+
+
+def test_card_safety_derived_from_read_only_tag() -> None:
+    assert item_to_card(_item("t1", tags=["read-only"])).safety == "read_only"
+    # OpenAPI-adapter underscore spelling is recognised too.
+    assert item_to_card(_item("t2", tags=["read_only"])).safety == "read_only"
+
+
+def test_card_safety_destructive_wins_over_read_only() -> None:
+    card = item_to_card(_item("t1", tags=["read-only", "destructive"]))
+    assert card.safety == "destructive"
+
+
+def test_card_safety_unspecified_without_annotation() -> None:
+    assert item_to_card(_item("t1", tags=["data", "search"])).safety == ""
+
+
+def test_destructive_tag_survives_five_tag_cap() -> None:
+    # Five tags alphabetically before "destructive" would evict it under the
+    # old alphabetical cap; the safety-aware cap must keep it (issue #516).
+    card = item_to_card(_item("t1", tags=["aaa", "bbb", "ccc", "ddd", "eee", "destructive"]))
+    assert len(card.tags) == 5
+    assert "destructive" in card.tags
+    assert card.safety == "destructive"
+
+
+def test_safety_tags_take_priority_in_cap() -> None:
+    card = item_to_card(_item("t1", tags=["zzz", "read-only", "yyy", "xxx", "www", "vvv"]))
+    assert "read-only" in card.tags
+    assert len(card.tags) == 5
+
+
+def test_card_safety_round_trips() -> None:
+    card = item_to_card(_item("t1", tags=["destructive"]))
+    assert ChoiceCard.from_dict(card.to_dict()).safety == "destructive"
+
+
+def test_format_card_marks_destructive() -> None:
+    card = item_to_card(_item("t1", tags=["destructive"]))
+    assert "destructive" in format_card_for_prompt(card)
+
+
+def test_format_card_marks_read_only() -> None:
+    card = item_to_card(_item("t1", tags=["read-only"]))
+    assert "read-only" in format_card_for_prompt(card)
+
+
+def test_invalid_safety_value_rejected() -> None:
+    import pytest
+
+    from contextweaver.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        ChoiceCard(id="t1", name="t", description="d", safety="dangerous")  # type: ignore[arg-type]
