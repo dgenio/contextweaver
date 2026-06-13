@@ -189,7 +189,8 @@ def compose_args_schema(
         name = param.get("name")
         if not isinstance(name, str) or not name:
             continue
-        schema = dict(param.get("schema") or {})
+        raw_schema = param.get("schema")
+        schema = dict(raw_schema) if isinstance(raw_schema, dict) else {}
         description = param.get("description")
         if isinstance(description, str) and description and "description" not in schema:
             schema["description"] = description

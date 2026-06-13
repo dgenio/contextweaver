@@ -23,6 +23,14 @@ from contextweaver.types import ItemKind
 
 
 def test_adapter_import_does_not_pull_the_sdk() -> None:
+    # Clear both the adapter module and the optional SDK, then re-import the
+    # adapter from scratch so the assertion holds regardless of what an earlier
+    # test (or a third-party plugin) already imported into the session.
+    import importlib
+
+    for name in ("contextweaver.adapters.agent_framework", "agent_framework"):
+        sys.modules.pop(name, None)
+    importlib.import_module("contextweaver.adapters.agent_framework")
     assert "agent_framework" not in sys.modules
 
 

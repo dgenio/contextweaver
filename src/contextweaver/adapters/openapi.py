@@ -145,7 +145,8 @@ def openapi_operation_to_selectable(
     description = _operation_description(operation, method, path)
 
     safety_tags, side_effects = operation_safety(method)
-    raw_tags = list(operation.get("tags") or []) + safety_tags
+    operation_tags = operation.get("tags")
+    raw_tags = (operation_tags if isinstance(operation_tags, list) else []) + safety_tags
     tags = collect_tags(raw_tags, fallback=_FALLBACK_NS)
 
     args_schema = compose_args_schema(operation, base, shared_parameters=shared_parameters)

@@ -154,6 +154,25 @@ def test_operation_request_body_nested_on_collision() -> None:
     assert "body" in item.args_schema["required"]
 
 
+def test_operation_non_dict_parameter_schema_coerced_to_empty() -> None:
+    # A malformed spec where ``schema`` is a string must not raise a bare
+    # TypeError/ValueError — it coerces to {} so invalid specs fail (or pass)
+    # deterministically through the typed CatalogError contract.
+    op = {
+        "operationId": "x",
+        "parameters": [{"name": "q", "in": "query", "schema": "not-a-mapping"}],
+    }
+    item = openapi_operation_to_selectable(op, path="/x", method="get", root={})
+    assert item.args_schema["properties"]["q"] == {}
+
+
+def test_operation_non_list_tags_ignored() -> None:
+    # A string ``tags`` must not be exploded into per-character tags.
+    op = {"operationId": "x", "tags": "pets"}
+    item = openapi_operation_to_selectable(op, path="/x", method="get", root={})
+    assert item.tags == ["openapi", "read-only"]
+
+
 def test_operation_id_fallback_is_deterministic() -> None:
     op = {"summary": "no id here"}
     item = openapi_operation_to_selectable(op, path="/foo/{bar}/baz", method="get", root={})
