@@ -14,6 +14,7 @@ via ``to_dict`` / ``model_dump`` / attribute access first.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +41,21 @@ _TOOL_CALL_TYPES = frozenset({"tool_call", "tool_call_item"})
 _TOOL_OUTPUT_TYPES = frozenset({"tool_call_output", "tool_call_output_item", "tool_output"})
 _HANDOFF_TYPES = frozenset({"handoff", "handoff_call_item", "handoff_output_item"})
 _REASONING_TYPES = frozenset({"reasoning", "reasoning_item"})
+# Known SDK item types that carry no conversational text worth ingesting
+# (approval prompts, MCP catalog/approval control items, history compaction
+# markers).  They are skipped rather than raised on so ingestion stays robust
+# across SDK versions; genuinely unknown types still raise (a likely caller
+# mistake or a new family we should map deliberately).
+_SKIP_TYPES = frozenset(
+    {
+        "tool_approval_item",
+        "mcp_list_tools_item",
+        "mcp_approval_request_item",
+        "mcp_approval_response_item",
+        "compaction",
+        "compaction_item",
+    }
+)
 
 
 def _item_to_dict(item: object) -> dict[str, Any]:
@@ -84,11 +100,37 @@ def _normalise_type(item: dict[str, Any]) -> str:
 
 
 def _text_of(item: dict[str, Any]) -> str:
-    for key in ("content", "text", "output_text"):
+    """Best-effort extraction of human-readable text from a run item.
+
+    Checks the common flat string fields first, then digs into a ``content``
+    block list (the message shape the SDK emits). Returns ``""`` when no
+    readable text is present.
+    """
+    for key in ("text", "output_text", "content"):
         value = item.get(key)
-        if isinstance(value, str):
+        if isinstance(value, str) and value:
             return value
+    content = item.get("content")
+    if isinstance(content, list):
+        parts = [
+            block.get("text") or block.get("output_text")
+            for block in content
+            if isinstance(block, dict)
+        ]
+        joined = "".join(part for part in parts if isinstance(part, str) and part)
+        if joined:
+            return joined
     return ""
+
+
+def _payload_dump(data: dict[str, Any]) -> str:
+    """Deterministic JSON dump used when an item carries no readable text.
+
+    ``default=str`` keeps it total: a non-JSON-native value (e.g. a leftover
+    SDK object from ``vars()``) is stringified rather than raising, so
+    ingestion never fails on an otherwise-usable run.
+    """
+    return json.dumps(data, sort_keys=True, default=str)
 
 
 def decode_run_items(
@@ -122,6 +164,8 @@ def decode_run_items(
                 items.append(reasoning)
         elif kind in _MESSAGE_TYPES:
             items.append(_decode_message(idx, data))
+        elif kind in _SKIP_TYPES:
+            logger.debug("from_openai_agents_run: skipping control item type %r", kind)
         else:
             raise CatalogError(f"OpenAI Agents run item at index {idx} has unknown type {kind!r}.")
 
@@ -137,10 +181,13 @@ def _call_id_of(data: dict[str, Any], idx: int) -> str:
 
 
 def _decode_message(idx: int, data: dict[str, Any]) -> ContextItem:
+    # Fall back to a deterministic JSON dump when the item carries no readable
+    # text, so the ingested turn never has an empty body.
+    text = _text_of(data) or _payload_dump(data)
     return ContextItem(
         id=f"{_ID_PREFIX}:message:{idx}",
         kind=ItemKind.agent_msg,
-        text=_text_of(data),
+        text=text,
         metadata={"item_index": idx, "provider": _ID_PREFIX},
     )
 

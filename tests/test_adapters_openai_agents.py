@@ -145,3 +145,38 @@ def test_from_run_unknown_type_raises() -> None:
 def test_from_run_no_items_attr_raises() -> None:
     with pytest.raises(CatalogError, match="new_items"):
         from_openai_agents_run(object())
+
+
+def test_from_run_skips_known_control_items() -> None:
+    # Approval / MCP / compaction control items carry no conversational text
+    # and are skipped (not raised on) so ingestion stays robust on real runs.
+    items = from_openai_agents_run(
+        [
+            {"type": "mcp_list_tools_item"},
+            {"type": "tool_approval_item", "name": "refund"},
+            {"type": "mcp_approval_request_item"},
+            {"type": "message_output", "content": "done"},
+        ]
+    )
+    assert [i.kind for i in items] == [ItemKind.agent_msg]
+    assert items[0].text == "done"
+
+
+def test_from_run_message_without_text_falls_back_to_json() -> None:
+    items = from_openai_agents_run([{"type": "message_output", "role": "assistant"}])
+    assert items[0].kind is ItemKind.agent_msg
+    # No readable text → deterministic JSON dump of the payload, never empty.
+    assert items[0].text
+    assert '"type": "message_output"' in items[0].text
+
+
+def test_from_run_message_extracts_nested_content_blocks() -> None:
+    items = from_openai_agents_run(
+        [
+            {
+                "type": "message_output",
+                "content": [{"type": "output_text", "text": "hello "}, {"text": "world"}],
+            }
+        ]
+    )
+    assert items[0].text == "hello world"

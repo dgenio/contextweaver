@@ -219,13 +219,16 @@ def from_openai_agents_run(
     Accepts a run/result object exposing ``new_items`` / ``items`` or a plain
     list of run-item dicts/objects.  Mapping rules:
 
-    - message output → :data:`ItemKind.agent_msg`.
+    - message output → :data:`ItemKind.agent_msg` (text falls back to a
+      deterministic JSON dump of the item when it carries no readable text).
     - tool call → :data:`ItemKind.tool_call` (text is the JSON-encoded args);
       ``tool_call_id`` is preserved in metadata.
     - tool-call output → :data:`ItemKind.tool_result` with ``parent_id`` set to
       the originating tool call so dependency closure links the pair.
     - handoff → :data:`ItemKind.agent_msg` with ``metadata["handoff"]=True``.
     - reasoning → :data:`ItemKind.agent_msg` (skipped when it carries no text).
+    - approval / MCP / compaction control items → skipped (no conversational
+      content). Genuinely unknown item types still raise.
 
     Args:
         run_or_items: A run/result object or a list of run items.
