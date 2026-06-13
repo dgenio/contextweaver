@@ -6,6 +6,7 @@ import pytest
 
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
+from contextweaver.routing.filters import compose_shortlist
 from contextweaver.routing.graph import ChoiceGraph
 from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.tree import TreeBuilder
@@ -1022,6 +1023,14 @@ def test_namespace_quota_below_one_raises() -> None:
         router.route("tool", namespace_quota=0)
 
 
+def test_compose_shortlist_rejects_quota_below_one_direct() -> None:
+    # ``compose_shortlist`` is exported and may be called without going through
+    # ``Router.route``; it must enforce the documented ``namespace_quota >= 1``
+    # invariant itself rather than relying on the router guard (PR #585 review).
+    with pytest.raises(ConfigError):
+        compose_shortlist([], {}, top_k=3, namespace_quota=0)
+
+
 def test_pin_bypasses_namespace_quota() -> None:
     router = _ns_router(top_k=20)
     # Quota of 1 for namespace "a", but two "a" items are pinned: both survive.
@@ -1066,5 +1075,20 @@ def test_to_routing_decision_records_rejected_selection() -> None:
     router = _ns_router()
     result = router.route("tool")
     decision = result.to_routing_decision(selected_item_id="not:a_candidate@1#zzzz")
+    assert decision.selected_card_id is None
+    assert decision.metadata["contextweaver"]["selection"]["status"] == "rejected"
+
+
+def test_to_routing_decision_clears_card_id_when_selection_rejected() -> None:
+    # A caller-supplied ``selected_card_id`` must be dropped when the
+    # accompanying ``selected_item_id`` is rejected, so a rejected selection can
+    # never carry a non-null card id (documented contract; PR #585 review).
+    router = _ns_router()
+    result = router.route("tool")
+    decision = result.to_routing_decision(
+        selected_item_id="not:a_candidate@1#zzzz",
+        selected_card_id=result.candidate_ids[0],
+    )
+    assert decision.selected_item_id == "not:a_candidate@1#zzzz"
     assert decision.selected_card_id is None
     assert decision.metadata["contextweaver"]["selection"]["status"] == "rejected"

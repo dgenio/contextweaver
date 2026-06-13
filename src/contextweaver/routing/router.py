@@ -349,7 +349,12 @@ class RouteResult:
             selection_outcome = _validate_selection(
                 selected_item_id, self.candidate_ids, repair=repair_selection
             )
-            if selection_outcome.ok and selection_outcome.selected_id is not None:
+            if not selection_outcome.ok:
+                # Rejected: keep ``selected_item_id`` verbatim but drop any
+                # caller card id so a rejected selection can't carry a non-null
+                # ``selected_card_id`` (documented contract; PR #585 review).
+                resolved_card_id = None
+            elif selection_outcome.selected_id is not None:
                 resolved_item_id = selection_outcome.selected_id
             if resolved_card_id is None and selection_outcome.ok:
                 for card in cards:

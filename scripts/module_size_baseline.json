@@ -24,7 +24,7 @@
   "routing/graph.py": 509,
   "routing/hydration.py": 316,
   "routing/navigator.py": 347,
-  "routing/router.py": 895,
+  "routing/router.py": 900,
   "routing/tree.py": 406,
   "store/testing.py": 341
 }

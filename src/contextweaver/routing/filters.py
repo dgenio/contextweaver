@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 
+from contextweaver.exceptions import ConfigError
 from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
@@ -169,7 +170,10 @@ def compose_shortlist(
     Args:
         ranked: Candidates sorted by descending score, ties broken by id.
         items: The active (post-filter) catalog items keyed by id.
-        top_k: Target shortlist size for the non-pinned fill.
+        top_k: Target overall shortlist size.  Pinned items count toward it;
+            the non-pinned fill stops once the shortlist (pins + fill) reaches
+            *top_k*.  Supplying more than *top_k* pinned items is the only case
+            that exceeds it.
         pin_ids: Item IDs to always include.  ``None`` / empty disables pinning.
         namespace_quota: Max non-pinned items per namespace (must be ≥ 1).
             ``None`` disables the quota.
@@ -177,7 +181,14 @@ def compose_shortlist(
     Returns:
         The composed shortlist, preserving the ranked ordering within the
         pinned block and within the fill block.
+
+    Raises:
+        ConfigError: If *namespace_quota* is supplied and is < 1.  ``Router.route``
+            guards this too, but the guard is repeated here so direct callers of
+            this exported helper cannot silently pass an invalid quota.
     """
+    if namespace_quota is not None and namespace_quota < 1:
+        raise ConfigError(f"namespace_quota must be >= 1 when supplied, got {namespace_quota}")
     if not pin_ids and namespace_quota is None:
         return ranked[: max(0, top_k)]
 
