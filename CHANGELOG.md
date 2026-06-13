@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Phase-aware scoring weights + kind priority (#487).** `ScoringConfig`
     gains `kind_priority` (override the built-in item-kind priority table,
     validated to `[0, 1]`) and `phase_overrides` (per-`Phase` weight configs;
-    resolution: phase override → base config → built-ins). `explain=True`
+    resolution: phase override → base config → built-ins, resolved one level
+    deep — a per-phase override that itself defines `phase_overrides` is
+    rejected with `ConfigError`). `explain=True`
     surfaces the resolved weights via `ContextBuildExplanation.resolved_weights`.
   - **Budget-overflow policy (#510).** `ContextPolicy.overflow_action`
     (`"drop"` default / `"warn"` / `"raise"`) plus an optional

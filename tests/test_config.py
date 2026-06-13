@@ -463,6 +463,20 @@ def test_scoring_config_default_to_dict_omits_new_keys() -> None:
     assert "phase_overrides" not in payload
 
 
+def test_scoring_config_rejects_nested_phase_overrides() -> None:
+    """A phase override may not itself carry phase_overrides (#487).
+
+    Resolution is one level deep, so nesting is silently ignored — reject it at
+    construction instead of letting it look effective.
+    """
+    nested = ScoringConfig(phase_overrides={Phase.answer: ScoringConfig()})
+    with pytest.raises(
+        ConfigError,
+        match=r"phase_overrides\['route'\] must not itself define phase_overrides",
+    ):
+        ScoringConfig(phase_overrides={Phase.route: nested})
+
+
 # ---------------------------------------------------------------------------
 # ContextPolicy — overflow policy (#510)
 # ---------------------------------------------------------------------------

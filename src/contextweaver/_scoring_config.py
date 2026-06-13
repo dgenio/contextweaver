@@ -33,7 +33,9 @@ class ScoringConfig:
             its own ``ScoringConfig`` (resolution order: phase override →
             this config → built-ins); absent phases use this config unchanged.
             ``dedup_threshold`` is always taken from the base config, never the
-            per-phase override.  ``None`` (default) keeps scoring phase-agnostic
+            per-phase override.  Resolution is one level deep, so a per-phase
+            override must not itself define ``phase_overrides`` (rejected with
+            ``ConfigError``).  ``None`` (default) keeps scoring phase-agnostic
             so default builds are byte-identical to prior releases.
     """
 
@@ -46,16 +48,28 @@ class ScoringConfig:
     phase_overrides: dict[Phase, ScoringConfig] | None = None
 
     def __post_init__(self) -> None:
-        """Validate ``kind_priority`` values into ``[0, 1]`` (issue #487).
+        """Validate ``kind_priority`` and reject nested ``phase_overrides`` (#487).
+
+        :meth:`resolved_for_phase` only resolves one level of override, so a
+        per-phase config that itself carries ``phase_overrides`` is silently
+        ignored — almost always a config mistake.  Rejecting it here turns that
+        into an immediate, well-classified error (same fail-early posture as the
+        ``kind_priority`` / ``overflow_action`` validation).
 
         Raises:
-            ConfigError: If any ``kind_priority`` value is outside ``[0, 1]``.
-                Phase overrides validate themselves at their own construction.
+            ConfigError: If any ``kind_priority`` value is outside ``[0, 1]``, or
+                if a registered phase override itself defines ``phase_overrides``.
         """
         for kind, value in (self.kind_priority or {}).items():
             if not 0.0 <= value <= 1.0:
                 raise ConfigError(
                     f"ScoringConfig.kind_priority[{kind.value!r}] must be in [0, 1], got {value!r}"
+                )
+        for phase, cfg in (self.phase_overrides or {}).items():
+            if cfg.phase_overrides is not None:
+                raise ConfigError(
+                    f"ScoringConfig.phase_overrides[{phase.value!r}] must not itself define "
+                    "phase_overrides; nested per-phase overrides are not resolved"
                 )
 
     def resolved_for_phase(self, phase: Phase) -> ScoringConfig:

@@ -14,13 +14,14 @@ from typing import TYPE_CHECKING
 
 from contextweaver.config import ContextBudget
 from contextweaver.exceptions import BudgetOverflowError
+from contextweaver.types import Phase
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from contextweaver.config import ContextPolicy
     from contextweaver.envelope import BuildStats
-    from contextweaver.types import ContextItem, Phase
+    from contextweaver.types import ContextItem
 
 logger = logging.getLogger("contextweaver.context")
 
@@ -36,10 +37,10 @@ def override_phase_budget(
     if budget_tokens is None:
         return base
     return ContextBudget(
-        route=budget_tokens if phase.value == "route" else base.route,
-        call=budget_tokens if phase.value == "call" else base.call,
-        interpret=budget_tokens if phase.value == "interpret" else base.interpret,
-        answer=budget_tokens if phase.value == "answer" else base.answer,
+        route=budget_tokens if phase == Phase.route else base.route,
+        call=budget_tokens if phase == Phase.call else base.call,
+        interpret=budget_tokens if phase == Phase.interpret else base.interpret,
+        answer=budget_tokens if phase == Phase.answer else base.answer,
     )
 
 
@@ -51,16 +52,16 @@ def adjust_budget_for_header(
         return effective_budget
     return ContextBudget(
         route=max(effective_budget.route - hf_tokens, 0)
-        if phase.value == "route"
+        if phase == Phase.route
         else effective_budget.route,
         call=max(effective_budget.call - hf_tokens, 0)
-        if phase.value == "call"
+        if phase == Phase.call
         else effective_budget.call,
         interpret=max(effective_budget.interpret - hf_tokens, 0)
-        if phase.value == "interpret"
+        if phase == Phase.interpret
         else effective_budget.interpret,
         answer=max(effective_budget.answer - hf_tokens, 0)
-        if phase.value == "answer"
+        if phase == Phase.answer
         else effective_budget.answer,
     )
 
