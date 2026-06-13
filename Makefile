@@ -27,6 +27,9 @@ example:
 	python examples/pydantic_ai_adapter_demo.py
 	python examples/smolagents_adapter_demo.py
 	python examples/agno_adapter_demo.py
+	python examples/agent_framework_adapter_demo.py
+	python examples/openapi_routing_demo.py
+	python examples/skills_routing_demo.py
 	python examples/fastmcp_discovery_demo.py
 	python examples/langchain_memory_demo.py
 	python examples/cookbook/byot_recipe.py

@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Source-to-catalog adapters: OpenAPI, Agent Skills, and Microsoft Agent
+  Framework (#546, #545, #430).** Three new adapters built on the shared
+  conversion toolkit (`adapters/_framework_common.py`), extending routing to
+  capability sources beyond agent-framework tools:
+  - **OpenAPI adapter (#546).** `adapters.openapi` converts an OpenAPI 3.0/3.1
+    document (dict, JSON, or YAML) into a `SelectableItem` catalog — one item
+    per operation (`openapi_operation_to_selectable`, `openapi_spec_to_catalog`,
+    `load_openapi_catalog`). `parameters` + `requestBody` compose into a single
+    `args_schema`; local `$ref`s resolve (external refs raise); HTTP methods map
+    to read-only / destructive safety tags mirroring the MCP adapter.
+    contextweaver routes — it never makes the HTTP call. No extra required.
+  - **Agent Skills adapter (#545).** `adapters.agent_skills` loads `SKILL.md`
+    skill directories into the catalog as `kind="skill"` items using only their
+    frontmatter (`skill_to_selectable`, `load_skills_catalog`); `SkillBodySource`
+    hydrates the full Markdown body and bundled resources lazily on selection,
+    mirroring `routing.hydration.SchemaSource`. No extra required.
+  - **Microsoft Agent Framework adapter (#430).** `adapters.agent_framework`
+    converts `AIFunction` tools to a catalog and thread `ChatMessage`s to
+    `ContextItem`s with function-call → result parentage
+    (`agent_framework_tools_to_catalog`, `from_agent_framework_thread`);
+    `[agent-framework]` extra for live loading.
 - **Framework adapter expansion + shared conversion toolkit (#454, #502, #501,
   #547, #401).** A coherent pass over the `adapters/` tool-catalog layer:
   - **Shared conversion toolkit (#454).** New private

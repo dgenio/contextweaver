@@ -106,6 +106,9 @@ nav:
       - Pydantic AI: integration_pydantic_ai.md
       - smolagents: integration_smolagents.md
       - Agno: integration_agno.md
+      - Microsoft Agent Framework: integration_agent_framework.md
+      - OpenAPI: integration_openapi.md
+      - Agent Skills: integration_agent_skills.md
       - External Memory: integration_memory.md
       - Persistent & Remote Stores: persistent_stores.md
   - Architecture: architecture.md

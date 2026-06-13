@@ -200,6 +200,17 @@ openai-agents = [
 google-adk = [
     "google-adk>=1.0",
 ]
+# Microsoft Agent Framework adapter integration (issue #430).  Pulls the
+# ``agent-framework`` runtime (import package ``agent_framework``; successor to
+# AutoGen / Semantic Kernel) so user applications can import
+# ``contextweaver.adapters.agent_framework.load_agent_framework_catalog`` and
+# convert live ``AIFunction`` tools / thread messages.  The plain-dict and
+# message-dict paths work without this extra installed; the OpenAPI
+# (``adapters.openapi``) and Agent Skills (``adapters.agent_skills``) adapters
+# need no extra at all — PyYAML and jsonschema are core dependencies.
+agent-framework = [
+    "agent-framework>=1.0",
+]
 # LangGraph agent-loop reference architecture (issue #326).  Pulls the
 # LangGraph runtime so ``examples/architectures/langgraph_agent_loop`` can
 # drive its route -> execute -> answer loop through a real ``StateGraph``.
@@ -343,6 +354,7 @@ all = [
     "contextweaver[langchain]",
     "contextweaver[openai-agents]",
     "contextweaver[google-adk]",
+    "contextweaver[agent-framework]",
     "contextweaver[e2e-eval]",
     "contextweaver[redis]",
     "contextweaver[s3]",

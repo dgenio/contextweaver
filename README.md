@@ -432,6 +432,9 @@ installed. _Guide only_ rows ship a written integration guide but no dedicated
 | Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
 | smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
 | Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
+| Microsoft Agent Framework | [Guide](docs/integration_agent_framework.md) | `adapters.agent_framework` · `[agent-framework]` | AutoGen / Semantic Kernel tools + thread history |
+| OpenAPI | [Guide](docs/integration_openapi.md) | `adapters.openapi` | Route over REST API operations (no extra) |
+| Agent Skills | [Guide](docs/integration_agent_skills.md) | `adapters.agent_skills` | Route over SKILL.md libraries with lazy body hydration |
 
 ---
 
@@ -568,6 +571,9 @@ contextweaver works with any LLM provider and any agent framework:
 | Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
 | smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
 | Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
+| Microsoft Agent Framework | [Guide](docs/integration_agent_framework.md) | `adapters.agent_framework` · `[agent-framework]` | AutoGen / Semantic Kernel tools + thread history |
+| OpenAPI | [Guide](docs/integration_openapi.md) | `adapters.openapi` | Route over REST API operations (no extra) |
+| Agent Skills | [Guide](docs/integration_agent_skills.md) | `adapters.agent_skills` | Route over SKILL.md libraries with lazy body hydration |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -758,8 +764,11 @@ to any LLM or framework. See dedicated guides for
 [Pipecat](docs/integration_pipecat.md),
 [CrewAI](docs/integration_crewai.md),
 [Pydantic AI](docs/integration_pydantic_ai.md),
-[smolagents](docs/integration_smolagents.md), and
-[Agno](docs/integration_agno.md).  If your runtime isn't listed, the
+[smolagents](docs/integration_smolagents.md),
+[Agno](docs/integration_agno.md),
+[Microsoft Agent Framework](docs/integration_agent_framework.md),
+[OpenAPI](docs/integration_openapi.md), and
+[Agent Skills](docs/integration_agent_skills.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 
