@@ -1,581 +1,193 @@
-ovider.md` if the adapter needs user-facing docs.
-+6. Add any optional dependency wiring requested by maintainers.
-+
-+## Required adapter properties
-+
-+- Importing the adapter must not require provider credentials.
-+- Importing the adapter should not require the provider SDK unless unavoidable and documented.
-+- Tests must not make live network calls.
-+- Provider objects should be translated at the adapter boundary into contextweaver-native types or plain Python data.
-+- Public error messages should tell users which optional package or extra to install.
-\ No newline at end of file
-diff --git a/scaffolds/adapter/adapter.py.tmpl b/scaffolds/adapter/adapter.py.tmpl
+  print(f\"    Full text length: {len(full_text)}\")\n    print(f\"    Facts: {envelope.facts}\")\n    print(f\"    Provenance: {envelope.provenance}\")\n    print(f\"    Binary artifacts: {len(binaries)}\")\n\n    # 3. Ingest MCP session from JSONL\n    session_path = Path(__file__).parent / \"data\" / \"mcp_session.jsonl\"\n    items = load_mcp_session_jsonl(session_path)\n    print(f\"\\n[3] Loaded MCP session: {len(items)} events\")\n    for it in items:\n        preview = it.text[:60].replace(\"\\n\", \" \")\n        print(f\"    {it.id} ({it.kind.value}): {preview}...\")\n\n    # 4. Ingest into ContextManager and build with firewall\n    mgr = ContextManager()\n    firewall_count = 0\n    for it in items:\n        if it.kind == ItemKind.tool_result and len(it.text) > 500:\n            _, env = mgr.ingest_tool_result(\n                tool_call_id=it.parent_id or it.id,\n                raw_output=it.text,\n                tool_name=str(it.metadata.get(\"tool_name\", \"\")),\n                firewall_threshold=500,\n            )\n            firewall_count += 1\n            print(f\"\\n[4] Firewall triggered for {it.id}: {env.status}\")\n            print(f\"    Summary: {env.summary[:80]}...\")\n            print(f\"    Facts extracted: {len(env.facts)}\")\n            if env.artifacts:\n                print(f\"    Artifact stored: {env.artifacts[0].handle}\")\n        else:\n            mgr.ingest(it)\n\n    # 5. Drilldown into stored artifact\n    refs = mgr.artifact_store.list_refs()\n    if refs:\n        ref = refs[0]\n        head = mgr.artifact_store.drilldown(ref.handle, {\"type\": \"head\", \"chars\": 120})\n        print(f\"\\n[5] Drilldown (first 120 chars of {ref.handle}):\")\n        print(f\"    {head}\")\n\n    # 6. Build context\n    pack = mgr.build_sync(phase=Phase.answer, query=\"invoices\")\n    print(\n        f\"\\n[6] Context build: {pack.stats.included_count} items included, \"\n        f\"{pack.stats.dropped_count} dropped\"\n    )\n    print(f\"    Firewall triggers: {firewall_count}\")\n    print(f\"    Prompt length: {len(pack.prompt)} chars\")\n\n    # 7. Happy-path: ingest_mcp_result (one-call artifact persistence)\n    mgr2 = ContextManager()\n    mcp_with_image = {\n        \"content\": [\n            {\"type\": \"text\", \"text\": \"Screenshot captured\"},\n            {\"type\": \"image\", \"data\": \"iVBORw0KGgo=\", \"mimeType\": \"image/png\"},\n        ],\n    }\n    item2, env2 = mgr2.ingest_mcp_result(\"call-img\", mcp_with_image, \"screenshot\")\n    print(f\"\\n[7] ingest_mcp_result: {item2.id}\")\n    print(f\"    Artifacts in envelope: {len(env2.artifacts)}\")\n    print(f\"    Artifact persisted: {mgr2.artifact_store.exists('mcp:screenshot:image:1')}\")\n    print(f\"    Event log count: {mgr2.event_log.count()}\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
++-    },
++-    {
++-      "file": "examples/fastmcp_discovery_demo.py",
++-      "excerpt": "\"\"\"FastMCP CodeMode custom-discovery-tool demo (issue #87).\n\nWraps contextweaver's :class:`~contextweaver.routing.router.Router` as a plain\ncallable suitable for FastMCP CodeMode's custom discovery hook, then\ndemonstrates how to use it to shrink a 22-tool catalog down to a 3-tool\nshortlist that the downstream LLM actually sees.\n\nThe two helpers used here \u2014\n:func:`~contextweaver.adapters.fastmcp.make_discovery_tool` and\n:func:`~contextweaver.adapters.fastmcp.make_context_hook` \u2014 return pure\ncallables.  Neither imports ``fastmcp`` at runtime, so this demo works on a\nstock ``pip install contextweaver`` install.  The same callables can be\nhanded to a real FastMCP server's ``custom_discovery_tool`` parameter; the\nadapter is the bridge, not the runtime.\n\nReferences:\n- FastMCP CodeMode discussion: https://github.com/PrefectHQ/fastmcp/discussions/3365\n- Issue: https://github.com/dgenio/contextweaver/issues/87\n\nRun standalone::\n\n    python examples/fastmcp_discovery_demo.py\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom contextweaver.adapters.fastmcp import make_context_hook, make_discovery_tool\nfrom contextweaver.context.manager import ContextManager\nfrom contextweaver.routing.cards import count_tokens\nfrom contextweaver.routing.catalog import Catalog\nfrom contextweaver.routing.router import Router\nfrom contextweaver.routing.tree import TreeBuilder\nfrom contextweaver.types import SelectableItem\n\n# 22 tools across 5 namespaces \u2014 realistic mid-size catalog.  Same shape as\n# what a FastMCP-composed server would expose after pulling in a couple of\n# third-party MCP servers (GitHub, Slack, Linear, Postgres, search).\n_TOOLS: list[tuple[str, str, str, list[str]]] = [\n    # (id, name, description, tags)\n    (\n        \"github.search_repos\",\n        \"search_repos\",\n        \"Search GitHub repositories by keyword\",\n        [\"search\", \"vcs\"],\n    ),\n    (\n        \"github.create_issue\",\n        \"create_issue\",\n        \"Create a new GitHub issue in a repository\",\n        [\"vcs\", \"write\"],\n    ),\n    (\n        \"github.get_pull_request\",\n        \"get_pull_request\",\n        \"Fetch a GitHub pull request by number\",\n        [\"vcs\", \"pull request\"],\n    ),\n    (\"github.list_commits\", \"list_commits\", \"List git commits on a branch\", [\"vcs\"]),\n    (\n        \"github.merge_pull_request\",\n        \"merge_pull_request\",\n        \"Merge an approved GitHub pull request\",\n        [\"vcs\", \"pull request\", \"write\"],\n    ),\n    (\n        \"slack.send_channel_message\",\n        \"send_channel_message\",\n        \"Post a message update to a Slack channel\",\n        [\"messaging\", \"channel\", \"write\"],\n    ),\n    (\n        \"slack.search_messages\",\n        \"search_messages\",\n        \"Search Slack channel messages by query\",\n        [\"search\", \"messaging\"],\n    ),\n    (\"slack.list_channels\", \"list_channels\", \"List Slack channels the bot can see\", [\"messaging\"]),\n    (\"slack.set_topic\", \"set_topic\", \"Set the topic of a Slack channel\", [\"messaging\", \"write\"]),\n    (\n        \"linear.create_ticket\",\n        \"create_ticket\",\n        \"Open a new Linear ticket for an incident or task\",\n        [\"tickets\", \"incident\", \"write\"],\n    ),\n    (\n        \"linear.update_ticket\",\n        \"update_ticket\",\n        \"Update an existing Linear ticket\",\n        [\"tickets\", \"write\"],\n    ),\n    (\n        \"linear.search_tickets\",\n        \"search_tickets\",\n        \"Search Linear tickets by keyword\",\n        [\"search\", \"tickets\"],\n    ),\n    (\"linear.close_ticket\", \"close_ticket\", \"Close a resolved Linear ticket\", [\"tickets\", \"write\"]),\n    (\n        \"db.query\",\n        \"db_query\",\n        \"Run a read-only SQL query against the data warehouse\",\n        [\"database\", \"sql\"],\n    ),\n    (\"db.explain\", \"db_explain\", \"Show the query plan for a SQL statement\", [\"database\", \"sql\"]),\n    (\"db.list_tables\", \"db_list_tables\", \"List warehouse tables and views\", [\"database\"]),\n    (\n        \"db.row_count\",\n        \"db_row_count\",\n        \"Get an approximate row count for a warehouse table\",\n        [\"database\"],\n    ),\n    (\"search.web\", \"web_search\", \"Search the public web\", [\"search\", \"web\"]),\n    (\n        \"search.docs\",\n        \"docs_search\",\n        \"Search internal engineering documentation pages\",\n        [\"search\", \"docs\", \"documentation\"],\n    ),\n    (\"search.code\", \"code_search\", \"Search the codebase by symbol or text\", [\"search\", \"code\"]),\n    (\n        \"search.tickets_global\",\n        \"tickets_global\",\n        \"Search incident tickets across Linear and GitHub\",\n        [\"search\", \"tickets\", \"incident\"],\n    ),\n    (\"search.everything\", \"search_everything\", \"Federated search across all backends\", [\"search\"]),\n]\n\n\ndef _build_catalog() -> Catalog:\n    \"\"\"Build a 22-item catalog with consistent metadata.\"\"\"\n    catalog = Catalog()\n    for tid, name, desc, tags in _TOOLS:\n        namespace = tid.split(\".\", 1)[0]\n        catalog.register(\n            SelectableItem(\n                id=tid,\n                kind=\"tool\",\n                name=name,\n                description=desc,\n                namespace=namespace,\n                tags=tags,\n                side_effects=\"write\" in tags,\n                # Stable args_schema so the discovery hook returns deterministic shapes.\n                args_schema={\n                    \"type\": \"object\",\n                    \"properties\": {\"query\": {\"type\": \"string\"}},\n                    \"required\": [\"query\"],\n                },\n            )\n        )\n    return catalog\n\n\ndef _approx_tokens_for_full_catalog(catalog: Catalog) -> int:\n    \"\"\"Approximate token cost of dumping the whole catalog into the LLM prompt.\n\n    Uses the same token estimator the library uses (tiktoken) so the\n    before / after numbers are an apples-to-apples comparison rather than\n    a hand-waved average.\n    \"\"\"\n    total = 0\n    for item in catalog.all():\n        # Approximate the schema-with-description payload the LLM would see.\n        blob = f\"{item.name}: {item.description}\\nschema: {item.args_schema}\"\n        total += count_tokens(blob)\n    return total\n\n\ndef _approx_tokens_for_shortlist(shortlist: list[dict[str, object]]) -> int:\n    total = 0\n    for tool in shortlist:\n        blob = f\"{tool['name']}: {tool['description']}\\nschema: {tool['input_schema']}\"\n        total += count_tokens(blob)\n    return total\n\n\ndef main() -> None:\n    \"\"\"Run the discovery-hook demo end-to-end.\"\"\"\n    print(\"=\" * 72)\n    print(\"contextweaver -- FastMCP CodeMode discovery-tool demo (issue #87)\")\n    print(\"=\" * 72)\n\n    # 1. Build the catalog and the routing graph.\n    catalog = _build_catalog()\n    items = catalog.all()\n    graph = TreeBuilder(max_children=8).build(items)\n    router = Router(graph, items=items, top_k=3)\n    print(f\"\\nCatalog: {len(items)} tools across {len({i.namespace for i in items})} namespaces\")\n\n    # 2. Wrap the router as a plain Callable[[str], list[dict]].\n    discover = make_discovery_tool(router, catalog)\n    print(\"Wrapped router as a plain Callable[[str], list[dict]].\")\n    print(\"No fastmcp import, no captured runtime references.\")\n\n    # 3. A handful of representative queries.  Each shows the catalog -> shortlist\n    #    compression that contextweaver buys you.\n    queries = [\n        \"find pull requests touching the payments service\",\n        \"open a ticket for the api-gateway outage\",\n        \"search documentation about retry semantics\",\n        \"send a slack channel message about the rollback\",\n    ]\n\n    full_catalog_tokens = _approx_tokens_for_full_catalog(catalog)\n    print(f\"\\nFull-catalog prompt size: ~{full_catalog_tokens} tokens\")\n\n    total_shortlist_tokens = 0\n    for q in queries:\n        print()\n        print(f\"  query: {q!r}\")\n        shortlist = discover(q)\n        names = [t[\"name\"] for t in shortlist]\n        print(f\"  shortlist ({len(shortlist)}): {names}\")\n        toks = _approx_tokens_for_shortlist(shortlist)\n        total_shortlist_tokens += toks\n        print(f\"  prompt size: ~{toks} tokens (saved ~{full_catalog_tokens - toks})\")\n\n    # 4. The context hook \u2014 wraps the firewall as a (q"
++     }
++   ],
++   "executor_note": "Local workspace is ready. Tests/install have been attempted where possible. Next build should add AI patch generation against these inspected files, then rerun tests."
++diff --git a/BOUNTY_HUNTER_FIX_PLAN.json b/BOUNTY_HUNTER_FIX_PLAN.json
++index d28605b..0d626cc 100644
++--- a/BOUNTY_HUNTER_FIX_PLAN.json
+++++ b/BOUNTY_HUNTER_FIX_PLAN.json
++@@ -6,6 +6,7 @@
++   "likely_work_type": "security-sensitive fix",
++   "recommended_next_action": "Run Fix Executor v2 after human approval gate is added.",
++   "likely_files_to_inspect": [
+++    "BOUNTY_HUNTER_EXECUTION_REPORT.json",
++     "mkdocs.yml",
++     "examples/architectures/mcp_context_gateway/real_catalogs/everything.json"
++   ],
++@@ -23,5 +24,5 @@
++     "Prepare a PR/claim package.",
++     "Ask for approval before external submission."
++   ],
++-  "created_at": "2026-06-13T00:33:59.991421+00:00"
+++  "created_at": "2026-06-13T00:57:28.049838+00:00"
++ }
++\ No newline at end of file
+diff --git a/docs/label_taxonomy.md b/docs/label_taxonomy.md
 new file mode 100644
-index 0000000..d9015c1
+index 0000000..6b613e0
 --- /dev/null
-+++ b/scaffolds/adapter/adapter.py.tmpl
-@@ -0,0 +1,88 @@
-+"""{{Adapter Display Name}} adapter.
++++ b/docs/label_taxonomy.md
+@@ -0,0 +1,82 @@
++# Label taxonomy
 +
-+This scaffold shows the expected shape for a contextweaver adapter. Replace
-+placeholders and delete sections that do not apply to the provider.
++This repository uses a small, composable label scheme so humans and coding agents can find work without reading the whole backlog.
 +
-+Design rules:
-+- Keep provider imports optional and guarded.
-+- Do not make network calls from conversion functions.
-+- Return contextweaver-native types or plain Python data.
-+- Translate provider-specific objects at the adapter boundary.
-+"""
++## Required dimensions
++
++Apply at least one label from each dimension when triaging an issue.
++
++### Area labels
++
++| Label | Use for |
++| --- | --- |
++| `area/context` | Context packing, selection, firewall, memory, handoff, prompt assembly. |
++| `area/routing` | Catalogs, graph building, route scoring, cards, manifests, hydration. |
++| `area/gateway` | MCP gateway, proxy runtime, gateway policy, validation, diagnostics. |
++| `area/adapters` | Framework/provider adapters and integration guides. |
++| `area/docs` | Documentation, examples, recipes, onboarding. |
++| `area/benchmarks` | Benchmarks, eval fixtures, scorecards, calibration. |
++
++### Complexity labels
++
++| Label | Use for |
++| --- | --- |
++| `complexity/xs` | One file, documentation or very small code change, no architectural decisions. |
++| `complexity/s` | One focused module plus tests, clear acceptance criteria. |
++| `complexity/m` | Cross-module work or non-trivial API/design considerations. |
++| `complexity/l` | Larger project work; maintainers should break these down before external contribution. |
++
++### Type labels
++
++| Label | Use for |
++| --- | --- |
++| `bug` | Incorrect behavior or regression. |
++| `enhancement` | New behavior in an existing area. |
++| `documentation` | Docs-only or mostly-docs work. |
++| `integration` | New adapter, provider, framework, or external interface support. |
++| `performance` | Runtime, token, memory, benchmark, or scaling work. |
++| `security` | Secret handling, sandboxing, validation, supply-chain, or data exposure risk. |
++| `testing` | Test coverage, fixtures, CI checks, smoke tests. |
++| `developer-experience` | Contributor tooling, templates, local workflow, maintainability. |
++
++## Discovery labels
++
++Use these labels to advertise work that is ready for contributors.
++
++| Label | Criteria |
++| --- | --- |
++| `good first issue` | One file/module, explicit acceptance criteria, no deep architecture required, tests/docs path named. |
++| `help wanted` | Maintainers want outside help and the work is scoped enough to start. |
++| `agent-friendly` | Issue is deterministic enough for coding agents: exact files, acceptance criteria, and test commands are listed. |
++
++## Suggested colors and descriptions
++
++These are maintainer-facing suggestions for GitHub label creation.
++
++| Label | Color | Description |
++| --- | --- | --- |
++| `area/context` | `1f77b4` | Context engine, firewall, memory, prompt building. |
++| `area/routing` | `9467bd` | Router, catalogs, cards, graph, hydration. |
++| `area/gateway` | `17becf` | MCP gateway/proxy runtime and diagnostics. |
++| `area/adapters` | `ff7f0e` | Framework/provider adapters and integration surfaces. |
++| `area/docs` | `2ca02c` | Documentation, examples, recipes, onboarding. |
++| `area/benchmarks` | `8c564b` | Benchmarks, evals, scorecards, fixtures. |
++| `complexity/xs` | `c7e9c0` | Very small, isolated change. |
++| `complexity/s` | `a1d99b` | Focused small change with tests. |
++| `complexity/m` | `74c476` | Medium scoped change. |
++| `complexity/l` | `31a354` | Large or needs decomposition. |
++| `agent-friendly` | `bfdadc` | Suitable for coding agents with clear files/tests. |
++| `developer-experience` | `d4c5f9` | Contributor and maintainer workflow improvements. |
++| `integration` | `fdae6b` | Adapter/provider/framework integration work. |
++| `testing` | `fdd0a2` | Test coverage, fixtures, smoke checks. |
++| `security` | `fb6a4a` | Security-sensitive behavior or hardening. |
++| `performance` | `9ecae1` | Runtime/token/benchmark performance. |
++
++## Triage checklist
++
++1. Add one `area/*` label.
++2. Add one `complexity/*` label.
++3. Add one type label.
++4. Add `good first issue` only if the issue names exact files/modules and has acceptance criteria.
++5. Add `agent-friendly` only if a coding agent can validate the work locally without credentials or network access.
++6. Prefer breaking `complexity/l` issues into smaller `complexity/xs` or `complexity/s` issues before adding `good first issue`.
+diff --git a/tests/test_new_adapter_scaffold.py b/tests/test_new_adapter_scaffold.py
+new file mode 100644
+index 0000000..1b8c858
+--- /dev/null
++++ b/tests/test_new_adapter_scaffold.py
+@@ -0,0 +1,71 @@
++"""Tests for the adapter scaffold generator."""
 +
 +from __future__ import annotations
 +
-+from collections.abc import Iterable, Mapping
-+from typing import Any
-+
-+from contextweaver.types import ContextItem, ItemKind, SelectableItem
-+
-+_PROVIDER_IMPORT_ERROR = (
-+    "{{Adapter Display Name}} support requires the optional provider package "
-+    "'{{provider_package}}'. Install it with the project extra documented for "
-+    "this adapter, for example: pip install 'contextweaver[{{extra_name}}]'."
-+)
-+
-+
-+def _require_provider() -> Any:
-+    """Import the optional provider SDK only when provider-specific code needs it."""
-+    try:
-+        import {{provider_import_name}}  # type: ignore[import-not-found]
-+    except ImportError as exc:  # pragma: no cover - depends on optional SDK
-+        raise ImportError(_PROVIDER_IMPORT_ERROR) from exc
-+    return {{provider_import_name}}
-+
-+
-+def from_{{adapter_name}}_tools(tools: Iterable[Any], *, namespace: str = "{{adapter_name}}") -> list[SelectableItem]:
-+    """Convert provider-like tool objects into contextweaver `SelectableItem`s.
-+
-+    The input may be real provider tool objects or local fakes used in tests.
-+    Prefer duck-typing or mapping access over importing provider classes at
-+    module import time.
-+    """
-+    converted: list[SelectableItem] = []
-+    for tool in tools:
-+        name = _read_field(tool, "name")
-+        description = _read_field(tool, "description", default="")
-+        if not name:
-+            raise ValueError("{{adapter_name}} tool is missing a name")
-+        converted.append(
-+            SelectableItem(
-+                id=f"{namespace}.{name}",
-+                kind="tool",
-+                name=str(name),
-+                description=str(description or name),
-+                namespace=namespace,
-+                metadata={"adapter": "{{adapter_name}}"},
-+            )
-+        )
-+    return converted
-+
-+
-+def from_{{adapter_name}}_history(messages: Iterable[Any]) -> list[ContextItem]:
-+    """Convert provider-like message/history objects into `ContextItem`s.
-+
-+    Delete this function if the provider does not expose a useful history or
-+    message representation.
-+    """
-+    items: list[ContextItem] = []
-+    for idx, message in enumerate(messages):
-+        role = str(_read_field(message, "role", default="user"))
-+        text = str(_read_field(message, "content", default=""))
-+        kind = ItemKind.user_turn if role == "user" else ItemKind.assistant_turn
-+        items.append(
-+            ContextItem(
-+                id=f"{{adapter_name}}-msg-{idx}",
-+                kind=kind,
-+                text=text,
-+                metadata={"adapter": "{{adapter_name}}", "role": role},
-+            )
-+        )
-+    return items
-+
-+
-+def _read_field(obj: Any, name: str, *, default: Any = None) -> Any:
-+    """Read *name* from a mapping or object without depending on provider classes."""
-+    if isinstance(obj, Mapping):
-+        return obj.get(name, default)
-+    return getattr(obj, name, default)
-diff --git a/scaffolds/adapter/checklist.md b/scaffolds/adapter/checklist.md
-new file mode 100644
-index 0000000..490df54
---- /dev/null
-+++ b/scaffolds/adapter/checklist.md
-@@ -0,0 +1,38 @@
-+# Adapter PR Checklist
-+
-+Copy this checklist into adapter PR descriptions.
-+
-+## Scope
-+
-+- [ ] Adapter is limited to provider/framework translation.
-+- [ ] No live network calls are made by adapter conversion functions.
-+- [ ] No credentials, tokens, or provider secrets are required for tests.
-+- [ ] Public functions return contextweaver-native types or plain Python data.
-+
-+## Optional dependencies
-+
-+- [ ] Provider imports are guarded or delayed until needed.
-+- [ ] Importing `contextweaver.adapters.<name>` works without provider credentials.
-+- [ ] Import errors mention the provider package or optional extra to install.
-+- [ ] Optional dependency naming is documented if new packaging wiring is needed.
-+
-+## API shape
-+
-+- [ ] Tool conversion function is named `from_<name>_tools` when tools are supported.
-+- [ ] History/message conversion function is named `from_<name>_history` when history is supported.
-+- [ ] Unsupported provider inputs raise clear `TypeError` or `ValueError` messages.
-+- [ ] Provider-specific objects do not leak into contextweaver core types.
-+
-+## Tests
-+
-+- [ ] Tests use local fake provider objects or mappings.
-+- [ ] Tests cover at least one successful tool conversion.
-+- [ ] Tests cover history/message conversion if implemented.
-+- [ ] Tests cover missing or invalid input.
-+- [ ] Tests can run offline with no provider account.
-+
-+## Docs
-+
-+- [ ] Integration docs or README notes show install and basic usage.
-+- [ ] Docs state that contextweaver routes/compiles context but does not execute provider tools.
-+- [ ] Any provider-specific limitations are documented.
-\ No newline at end of file
-diff --git a/scaffolds/adapter/integration_doc.md.tmpl b/scaffolds/adapter/integration_doc.md.tmpl
-new file mode 100644
-index 0000000..42d400e
---- /dev/null
-+++ b/scaffolds/adapter/integration_doc.md.tmpl
-@@ -0,0 +1,42 @@
-+# {{Adapter Display Name}} Integration
-+
-+This page documents the `contextweaver.adapters.{{adapter_name}}` adapter.
-+
-+## Install
-+
-+```bash
-+pip install 'contextweaver[{{extra_name}}]'
-+```
-+
-+If the provider SDK is already installed by your application, the adapter conversion functions can also be used directly from a core contextweaver install as long as you pass provider-like objects and do not call provider-specific helpers.
-+
-+## Convert tools
-+
-+```python
-+from contextweaver.adapters.{{adapter_name}} import from_{{adapter_name}}_tools
-+
-+selectable_items = from_{{adapter_name}}_tools(provider_tools, namespace="{{adapter_name}}")
-+```
-+
-+The returned objects are contextweaver `SelectableItem`s and can be registered in a catalog or routed like any other tools.
-+
-+## Convert history
-+
-+```python
-+from contextweaver.adapters.{{adapter_name}} import from_{{adapter_name}}_history
-+
-+context_items = from_{{adapter_name}}_history(provider_messages)
-+```
-+
-+Delete this section if the provider does not expose a message/history shape.
-+
-+## Boundaries
-+
-+- The adapter converts provider objects; it does not execute provider tools.
-+- Tests use local fakes and do not call live APIs.
-+- Provider SDK imports are optional and guarded.
-+- Provider-specific objects should not leak beyond the adapter boundary.
-+
-+## Troubleshooting
-+
-+If you see an import error for `{{provider_package}}`, install the optional extra shown above or install the provider SDK in your application environment.
-\ No newline at end of file
-diff --git a/scaffolds/adapter/test_adapter.py.tmpl b/scaffolds/adapter/test_adapter.py.tmpl
-new file mode 100644
-index 0000000..1bac281
---- /dev/null
-+++ b/scaffolds/adapter/test_adapter.py.tmpl
-@@ -0,0 +1,70 @@
-+"""Tests for the {{Adapter Display Name}} adapter.
-+
-+These tests should use local fakes and must not call a live provider API.
-+"""
-+
-+from __future__ import annotations
-+
-+from dataclasses import dataclass
-+
-+from contextweaver.adapters.{{adapter_name}} import (
-+    from_{{adapter_name}}_history,
-+    from_{{adapter_name}}_tools,
-+)
-+from contextweaver.types import ItemKind
-+
-+
-+@dataclass
-+class FakeTool:
-+    name: str
-+    description: str
-+
-+
-+@dataclass
-+class FakeMessage:
-+    role: str
-+    content: str
-+
-+
-+def test_from_{{adapter_name}}_tools_converts_fake_tool() -> None:
-+    items = from_{{adapter_name}}_tools(
-+        [FakeTool(name="search", description="Search local documents")],
-+        namespace="fake",
-+    )
-+
-+    assert len(items) == 1
-+    assert items[0].id == "fake.search"
-+    assert items[0].kind == "tool"
-+    assert items[0].name == "search"
-+    assert items[0].description == "Search local documents"
-+    assert items[0].metadata["adapter"] == "{{adapter_name}}"
-+
-+
-+def test_from_{{adapter_name}}_tools_accepts_mapping() -> None:
-+    items = from_{{adapter_name}}_tools([
-+        {"name": "lookup", "description": "Look up a local record"},
-+    ])
-+
-+    assert items[0].id == "{{adapter_name}}.lookup"
-+
-+
-+def test_from_{{adapter_name}}_tools_rejects_missing_name() -> None:
-+    try:
-+        from_{{adapter_name}}_tools([{"description": "missing name"}])
-+    except ValueError as exc:
-+        assert "missing a name" in str(exc)
-+    else:  # pragma: no cover - clearer failure message
-+        raise AssertionError("expected missing tool name to raise ValueError")
-+
-+
-+def test_from_{{adapter_name}}_history_converts_fake_messages() -> None:
-+    items = from_{{adapter_name}}_history(
-+        [
-+            FakeMessage(role="user", content="hello"),
-+            FakeMessage(role="assistant", content="hi"),
-+        ]
-+    )
-+
-+    assert [item.kind for item in items] == [ItemKind.user_turn, ItemKind.assistant_turn]
-+    assert [item.text for item in items] == ["hello", "hi"]
-+    assert items[0].metadata["adapter"] == "{{adapter_name}}"
-diff --git a/scaffolds/new_adapter.py b/scaffolds/new_adapter.py
-new file mode 100644
-index 0000000..8654829
---- /dev/null
-+++ b/scaffolds/new_adapter.py
-@@ -0,0 +1,300 @@
-+"""Generate a small contextweaver adapter scaffold.
-+
-+This script is intentionally local-only: it performs no network calls, does
-+not install packages, and refuses to overwrite files unless --force is used.
-+
-+Usage:
-+
-+    python scaffolds/new_adapter.py my_provider --dry-run
-+    python scaffolds/new_adapter.py my_provider
-+"""
-+
-+from __future__ import annotations
-+
-+import argparse
-+import re
-+from dataclasses import dataclass
++import importlib.util
++import tempfile
++import unittest
 +from pathlib import Path
 +
-+_REPO_ROOT = Path(__file__).resolve().parents[1]
-+_VALID_MODULE = re.compile(r"^[a-z][a-z0-9_]*$")
++
++ROOT = Path(__file__).resolve().parents[1]
++SCAFFOLD_PATH = ROOT / "scaffolds" / "new_adapter.py"
 +
 +
-+@dataclass(frozen=True)
-+class ScaffoldFile:
-+    """A file emitted by the scaffold generator."""
-+
-+    path: Path
-+    content: str
-+
-+
-+def _module_name(raw: str) -> str:
-+    """Normalize *raw* to a safe Python module name."""
-+    name = raw.strip().lower().replace("-", "_")
-+    name = re.sub(r"[^a-z0-9_]", "_", name)
-+    name = re.sub(r"_+", "_", name).strip("_")
-+    if not _VALID_MODULE.fullmatch(name):
-+        raise SystemExit(
-+            "Adapter name must normalize to a Python module name like "
-+            "'my_provider' or 'provider_sdk'."
-+        )
-+    return name
++def _load_scaffold_module():
++    spec = importlib.util.spec_from_file_location("new_adapter_scaffold", SCAFFOLD_PATH)
++    if spec is None or spec.loader is None:
++        raise RuntimeError(f"could not load {SCAFFOLD_PATH}")
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
 +
 +
-+def _title(name: str) -> str:
-+    return " ".join(part.capitalize() for part in name.split("_"))
++class NewAdapterScaffoldTest(unittest.TestCase):
++    def test_plan_files_uses_expected_paths(self) -> None:
++        scaffold = _load_scaffold_module()
++        files = scaffold.plan_files("demo_provider", ROOT)
++        paths = {generated.path.relative_to(ROOT).as_posix() for generated in files}
++        self.assertIn("src/contextweaver/adapters/demo_provider.py", paths)
++        self.assertIn("tests/test_adapters_demo_provider.py", paths)
++        self.assertIn("docs/integration_demo_provider.md", paths)
++        self.assertIn("examples/demo_provider_adapter_demo.py", paths)
++        self.assertIn("docs/adapter_checklists/demo_provider.md", paths)
 +
++    def test_generated_content_documents_adapter_invariants(self) -> None:
++        scaffold = _load_scaffold_module()
++        files = scaffold.plan_files("demo_provider", ROOT)
++        joined = "\n".join(generated.content for generated in files)
++        self.assertIn("Provider SDK imports must stay optional", joined)
++        self.assertIn("do not leak", joined.lower())
++        self.assertIn("from_demo_provider_tools", joined)
++        self.assertIn("from_demo_provider_history", joined)
++        self.assertIn("Install", joined)
 +
-+def _adapter_py(name: str) -> str:
-+    title = _title(name)
-+    return f'''"""{title} adapter scaffold.
++    def test_write_files_refuses_to_overwrite_without_force(self) -> None:
++        scaffold = _load_scaffold_module()
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            files = scaffold.plan_files("demo_provider", root)
++            scaffold.write_files(files)
++            with self.assertRaises(FileExistsError):
++                scaffold.write_files(files)
 +
-+Replace the TODO sections with provider-specific conversions. Keep provider
-+SDK imports guarded so importing ``contextweaver.adapters.{name}`` does not
-+require optional dependencies in a base install.
-+"""
++    def test_main_dry_run_does_not_write_files(self) -> None:
++        scaffold = _load_scaffold_module()
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            rc = scaffold.main(["demo_provider", "--root", str(root), "--dry-run"])
++            self.assertEqual(rc, 0)
++            self.assertFalse((root / "src" / "contextweaver" / "adapters" / "demo_provider.py").exists())
 +
-+from __future__ import annotations
-+
-+from collections.abc import Iterable, Mapping, Sequence
-+from typing import Any
-+
-+from contextweaver.types import ContextItem, ItemKind, SelectableItem
-+
-+
-+class {title.replace(" ", "")}AdapterError(RuntimeError):
-+    """Raised when {title} objects cannot be converted safely."""
-+
-+
-+def _require_provider_sdk() -> Any:
-+    """Import the optional provider SDK lazily.
-+
-+    Replace ``{name}_sdk`` with the real package name. This helper keeps the
-+    base contextweaver install free of provider-specific dependencies.
-+    """
-+    try:
-+        import {name}_sdk  # type: ignore[import-not-found]
-+    except ImportError as exc:  # pragma: no cover - depends on optional SDK
-+        raise {title.replace(" ", "")}AdapterError(
-+            "Install the provider SDK extra before using the {title} adapter."
-+        ) from exc
-+    return {name}_sdk
-+
-+
-+def from_{name}_tools(tools: Iterable[Mapping[str, Any]]) -> list[SelectableItem]:
-+    """Convert {title} tool descriptions into contextweaver SelectableItems.
-+
-+    Public return values must be contextweaver primitives, not provider SDK
-+    objects. Keep only serialisable metadata needed for routing/hydration.
-+    """
-+    items: list[SelectableItem] = []
-+    for raw in tools:
-+        tool_id = str(raw.get("id") or raw.get("name") or "").strip()
-+        if not tool_id:
-+            raise {title.replace(" ", "")}AdapterError("Tool is missing an id/name")
-+        name_value = str(raw.get("name") or tool_id)
-+        description = str(raw.get("description") or name_value)
-+        namespace = str(raw.get("namespace") or "{name}")
-+        tags = [str(tag) for tag in raw.get("tags", [])]
-+        items.append(
-+            SelectableItem(
-+                id=tool_id,
-+                kind="tool",
-+                name=name_value,
-+                description=description,
-+                namespace=namespace,
-+                tags=tags,
-+                metadata={{"adapter": "{name}"}},
-+            )
-+        )
-+    return items
-+
-+
-+def from_{name}_history(messages: Sequence[Mapping[str, Any]]) -> list[ContextItem]:
-+    """Convert {title} conversation history into ContextItems.
-+
-+    TODO: Map provider-specific roles to ItemKind values. This starter maps
-+    ``role == 'user'`` to ``ItemKind.user_turn`` and everything else to
-+    ``ItemKind.assistant_turn``.
-+    """
-+    items: list[ContextItem] = []
-+    for index, message in enumerate(messages):
-+        role = str(message.get("role") or "assistant")
-+        text = str(message.get("content") or "")
-+        kind = ItemKind.user_turn if role == "user" else ItemKind.assistant_turn
-+        items.append(
-+            ContextItem(
-+                id=str(message.get("id") or f"{name}-msg-{{index}}"),
-+                kind=kind,
-+                text=text,
-+                metadata={{"adapter": "{name}", "role": role}},
-+            )
-+        )
-+    return items
-+
-+
-+__all__ = [
-+    "{title.replace(" ", "")}AdapterError",
-+    "from_{name}_history",
-+    "from_{name}_tools",
-+]
-+'''
-+
-+
-+def _test_py(name: str) -> str:
-+    class_name = _title(name).replace(" ", "") + "AdapterError"
-+    return f'''from __future__ import annotations
-+
-+import pytest
-+
-+from contextweaver.adapters.{name} import (
-+    {class_name},
-+    from_{name}_history,
-+    from_{name}_tools,
-+)
-+from contextweaver.types import ItemKind
-+
-+
-+def test_from_{name}_tools_converts_plain_dicts() -> None:
-+    items = from_{name}_tools(
-+        [
-+            {{
-+                "id": "{name}.search",
-+                "name": "search",
-+                "description": "Search provider data",
-+                "tags": ["search"],
-+            }}
-+        ]
-+    )
-+
-+    assert len(items) == 1
-+    assert items[0].id == "{name}.search"
-+    assert items[0].namespace == "{name}"
-+    assert items[0].metadata["adapter"] == "{name}"
-+
-+
-+def test_from_{name}_tools_rejects_missing_id() -> None:
-+    with pytest.raises({class_name}):
-+        from_{name}_tools([{{"description": "missing id"}}])
-+
-+
-+def test_from_{name}_history_converts_roles() -> None:
-+    items = from_{name}_history(
-+        [
-+            {{"role": "user", "content": "hello"}},
-+            {{"role": "assistant", "content": "hi"}},
-+        ]
-+    )
-+
-+    assert [item.kind for item in items] == [ItemKind.user_turn, ItemKind.assistant_turn]
-+    assert all(item.metadata["adapter"] == "{name}" for item in items)
-+'''
-+
-+
-+def _docs_md(name: str) -> str:
-+    title = _title(name)
-+    return f'''# {title} integration
-+
-+This page is a scaffold for a {title} adapter. Replace this text with provider-specific setup and examples.
-+
-+## Install
-+
-+Keep provider SDK dependencies optional. A base `pip install contextweaver` should still work without the {title} SDK installed.
-+
-+```bash
-+pip install contextweaver
-+# Optional provider SDK install goes here.
-+```
-+
-+## Adapter functions
-+
-+The scaffold creates:
-+
-+- `from_{name}_tools(...)` for converting provider tool descriptions into `SelectableItem` values.
-+- `from_{name}_history(...)` for converting provider message history into `ContextItem` values.
-+
-+## Invariants
-+
-+- Provider SDK imports are guarded or local to functions.
-+- Public return values are contextweaver primitives, not provider SDK objects.
-+- Examples run without API keys or network access unless explicitly marked otherwise.
-+- Tests use fake data only.
-+- Tool output that may be large or sensitive should pass through the context firewall before becoming prompt-visible.
-+
-+## Local checks
-+
-+```bash
-+python examples/{name}_adapter_demo.py
-+python -m pytest tests/test_adapters_{name}.py
-+```
-+'''
-+
-+
-+def _example_py(name: str) -> str:
-+    return f'''"""Offline demo for the {name} adapter scaffold."""
-+
-+from __future__ import annotations
-+
-+from contextweaver.adapters.{name} import from_{name}_history, from_{name}_tools
-+
-+
-+def main() -> None:
-+    tools = from_{name}_tools(
-+        [
-+            {{
-+                "id": "{name}.search",
-+                "name": "search",
-+                "description": "Search fake provider records",
-+                "tags": ["search", "demo"],
-+            }}
-+        ]
-+    )
-+    history = from_{name}_history([{{"role": "user", "content": "find the demo record"}}])
-+
-+    print(f"converted tools: {{[tool.id for tool in tools]}}")
-+    print(f"converted history items: {{[item.kind.value for item in history]}}")
++    def test_invalid_names_are_rejected(self) -> None:
++        scaffold = _load_scaffold_module()
++        with self.assertRaises(ValueError):
++            scaffold.plan_files("123bad", ROOT)
++        with self.assertRaises(ValueError):
++            scaffold.plan_files("bad__name", ROOT)
 +
 +
 +if __name__ == "__main__":
-+    main()
-+'''
-+
-+
-+def _files_for(name: str) -> list[ScaffoldFile]:
-+    return [
-+        ScaffoldFile(Path("src") / "contextweaver" / "adapters" / f"{name}.py", _adapter_py(name)),
-+        ScaffoldFile(Path("tests") / f"test_adapters_{name}.py", _test_py(name)),
-+        ScaffoldFile(Path("docs") / f"integration_{name}.md", _docs_md(name)),
-+        ScaffoldFile(Path("examples") / f"{name}_adapter_demo.py", _example_py(name)),
-+    ]
-+
-+
-+def _write(files: list[ScaffoldFile], *, dry_run: bool, force: bool) -> None:
-+    for file in files:
-+        absolute = _REPO_ROOT / file.path
-+        if absolute.exists() and not force:
-+            raise SystemExit(f"Refusing to overwrite existing file: {file.path} (use --force)")
-+
-+    for file in files:
-+        absolute = _REPO_ROOT / file.path
-+        if dry_run:
-+            print(f"would write {file.path}")
-+            continue
-+        absolute.parent.mkdir(parents=True, exist_ok=True)
-+        absolute.write_text(file.content, encoding="utf-8")
-+        print(f"wrote {file.path}")
-+
-+
-+def main() -> None:
-+    parser = argparse.ArgumentParser(description="Generate a contextweaver adapter scaffold")
-+    parser.add_argument("name", help="Provider name, e.g. my_provider")
-+    parser.add_argument("--dry-run", action="store_true", help="Print files that would be written")
-+    parser.add_argument("--force", action="store_true", help="Overwrite existing scaffold files")
-+    args = parser.parse_args()
-+
-+    name = _module_name(args.name)
-+    _write(_files_for(name), dry_run=args.dry_run, force=args.force)
-+
-+
-+if __name__ == "__main__":
-+    main()
++    unittest.main()
