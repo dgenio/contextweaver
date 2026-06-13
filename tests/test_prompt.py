@@ -142,9 +142,7 @@ def test_render_item_section_override() -> None:
 def test_render_item_blank_section_override_falls_back() -> None:
     """An empty or whitespace-only section override falls back to the kind label (#411)."""
     for blank in ("", "   "):
-        item = ContextItem(
-            id="i1", kind=ItemKind.user_turn, text="hi", metadata={"section": blank}
-        )
+        item = ContextItem(id="i1", kind=ItemKind.user_turn, text="hi", metadata={"section": blank})
         assert render_item(item).startswith("[USER]")
 
 
