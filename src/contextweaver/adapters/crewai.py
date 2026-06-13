@@ -20,10 +20,16 @@ CrewAI tools docs: https://docs.crewai.com/concepts/tools
 
 from __future__ import annotations
 
-import copy
 import logging
 from typing import Any
 
+from contextweaver.adapters._framework_common import (
+    coerce_schema_dict,
+    collect_tags,
+    infer_namespace,
+    require_name_description,
+    strip_namespace_prefix,
+)
 from contextweaver.exceptions import CatalogError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.types import SelectableItem
@@ -39,8 +45,8 @@ def infer_crewai_namespace(tool_name: str) -> str:
     CrewAI tools are usually named in human-readable PascalCase or
     snake_case (e.g. ``SerperDevTool``, ``code_interpreter``).  This helper
     extracts a namespace using the same dot- / slash- / underscore-
-    separated prefix rules that the FastMCP adapter uses, falling back to
-    ``"crewai"`` when no prefix can be detected.
+    separated prefix rules that the other framework adapters use, falling
+    back to ``"crewai"`` when no prefix can be detected.
 
     Args:
         tool_name: The raw tool name string.
@@ -48,50 +54,7 @@ def infer_crewai_namespace(tool_name: str) -> str:
     Returns:
         The inferred namespace string.
     """
-    if not tool_name:
-        return _FALLBACK_NS
-    if "." in tool_name:
-        prefix = tool_name.split(".", 1)[0]
-        if prefix:
-            return prefix
-    if "/" in tool_name:
-        prefix = tool_name.split("/", 1)[0]
-        if prefix:
-            return prefix
-    parts = tool_name.split("_")
-    if len(parts) >= 2 and parts[0] and not parts[0].startswith("_"):
-        return parts[0]
-    return _FALLBACK_NS
-
-
-def _strip_namespace_prefix(tool_name: str, namespace: str) -> str:
-    """Return the short tool name with the namespace prefix removed."""
-    for prefix in (f"{namespace}_", f"{namespace}.", f"{namespace}/"):
-        if tool_name.startswith(prefix) and len(tool_name) > len(prefix):
-            return tool_name[len(prefix) :]
-    return tool_name
-
-
-def _args_schema_dict(raw: object) -> dict[str, Any]:
-    """Coerce a CrewAI ``args_schema`` value into a JSON-shaped dict.
-
-    CrewAI accepts either a Pydantic model class or an already-built dict.
-    For Pydantic models we call :meth:`model_json_schema`; for dicts we
-    return a shallow copy; everything else returns ``{}``.
-    """
-    if raw is None:
-        return {}
-    if isinstance(raw, dict):
-        return copy.deepcopy(raw)
-    schema_fn = getattr(raw, "model_json_schema", None)
-    if callable(schema_fn):
-        try:
-            schema = schema_fn()
-        except Exception:  # pragma: no cover - defensive; depends on user model
-            return {}
-        if isinstance(schema, dict):
-            return dict(schema)
-    return {}
+    return infer_namespace(tool_name, fallback=_FALLBACK_NS)
 
 
 def crewai_tool_to_selectable(
@@ -131,25 +94,15 @@ def crewai_tool_to_selectable(
         CatalogError: If required fields (``name``, ``description``) are
             missing or non-string.
     """
-    raw_name = tool_def.get("name")
-    if not isinstance(raw_name, str) or not raw_name:
-        raise CatalogError("CrewAI tool definition is missing a non-empty 'name' field.")
-    raw_description = tool_def.get("description")
-    if not isinstance(raw_description, str) or not raw_description:
-        raise CatalogError(f"CrewAI tool {raw_name!r} is missing a non-empty 'description' field.")
+    raw_name, raw_description = require_name_description(tool_def, label="CrewAI")
 
     full_name = raw_name
     ns = namespace if namespace is not None else infer_crewai_namespace(full_name)
-    short_name = _strip_namespace_prefix(full_name, ns)
+    short_name = strip_namespace_prefix(full_name, ns)
 
-    raw_tags = tool_def.get("tags")
-    tags: set[str] = {_FALLBACK_NS}
-    if isinstance(raw_tags, (list, set, tuple)):
-        for tag in raw_tags:
-            if isinstance(tag, str) and tag:
-                tags.add(tag)
+    tags = collect_tags(tool_def.get("tags"), fallback=_FALLBACK_NS)
 
-    args_schema = _args_schema_dict(tool_def.get("args_schema"))
+    args_schema = coerce_schema_dict(tool_def.get("args_schema"))
 
     metadata: dict[str, Any] = {}
     if "result_as_answer" in tool_def:

@@ -37,10 +37,10 @@ that read an export from disk should ``json.load`` it and pass the result to
 
 from __future__ import annotations
 
-import copy
 import logging
 from typing import Any
 
+from contextweaver.adapters._framework_common import coerce_schema_dict, collect_tags
 from contextweaver.exceptions import CatalogError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.types import SelectableItem
@@ -51,28 +51,6 @@ _FALLBACK_NS = "chainweaver"
 #: Tag stamped on every imported flow so callers can gate with
 #: ``Router.route(allowed_tags={"flow"})`` or filter flows out explicitly.
 FLOW_TAG = "flow"
-
-
-def _schema_dict(raw: object) -> dict[str, Any]:
-    """Coerce an export schema value into a JSON-shaped dict.
-
-    Accepts an already-built JSON-Schema dict (deep-copied so the caller's
-    export is never mutated) or a Pydantic model class exposing
-    ``model_json_schema``.  Anything else yields ``{}``.
-    """
-    if raw is None:
-        return {}
-    if isinstance(raw, dict):
-        return copy.deepcopy(raw)
-    schema_fn = getattr(raw, "model_json_schema", None)
-    if callable(schema_fn):
-        try:
-            schema = schema_fn()
-        except Exception:  # pragma: no cover - defensive; depends on user model
-            return {}
-        if isinstance(schema, dict):
-            return dict(schema)
-    return {}
 
 
 def chainweaver_flow_to_selectable(
@@ -120,16 +98,11 @@ def chainweaver_flow_to_selectable(
         )
 
     ns = namespace if namespace is not None else _FALLBACK_NS
-    args_schema = _schema_dict(flow.get("input_schema", flow.get("inputs")))
-    output_schema_raw = _schema_dict(flow.get("output_schema", flow.get("outputs")))
+    args_schema = coerce_schema_dict(flow.get("input_schema", flow.get("inputs")))
+    output_schema_raw = coerce_schema_dict(flow.get("output_schema", flow.get("outputs")))
     output_schema = output_schema_raw or None
 
-    tags: set[str] = {FLOW_TAG}
-    raw_tags = flow.get("tags")
-    if isinstance(raw_tags, (list, set, tuple)):
-        for tag in raw_tags:
-            if isinstance(tag, str) and tag:
-                tags.add(tag)
+    tags = collect_tags(flow.get("tags"), fallback=FLOW_TAG)
 
     metadata: dict[str, Any] = {"runtime": _FALLBACK_NS, "chainweaver_flow_id": raw_id}
     raw_version = flow.get("version")

@@ -445,20 +445,25 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 [How contextweaver Fits](docs/interop.md) positioning page, then jump into the
 [Cookbook](docs/cookbook.md) for copy-paste recipes.
 
-| Framework | Guide | Use Case |
-|---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
-| A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
-| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
-| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
-| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
-| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
-| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
-| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
-| smolagents | [Guide](docs/integration_smolagents.md) | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
-| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
+The **Code adapter** column lists the importable adapter module and its
+optional extra; its plain-dict conversion path works without the extra
+installed. _Guide only_ rows ship a written integration guide but no dedicated
+`tools → catalog` adapter yet (issue #401).
+
+| Framework | Guide | Code adapter | Use Case |
+|---|---|---|---|
+| MCP | [Guide](docs/integration_mcp.md) | `adapters.mcp` | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
+| A2A | [Guide](docs/integration_a2a.md) | `adapters.a2a` | Agent cards, multi-agent sessions |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | `adapters.fastmcp` · `[fastmcp]` | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | _Guide only_ | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | `adapters.openai_agents` · `[openai-agents]` | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | `adapters.google_adk` · `[google-adk]` | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | `adapters.langchain` · `[langchain]` | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | _Guide only_ | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | `adapters.crewai` · `[crewai]` | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
 
 ---
 
@@ -581,20 +586,20 @@ contextweaver works with any LLM provider and any agent framework:
 - **No vendor lock-in**: stdlib-only core; no cloud dependencies; runs anywhere Python 3.10+ runs
 
 <!-- mirrors the Framework Integrations table above; keep in sync -->
-| Framework | Guide | Use Case |
-|---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
-| A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
-| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
-| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
-| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
-| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
-| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
-| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
-| smolagents | [Guide](docs/integration_smolagents.md) | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
-| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
+| Framework | Guide | Code adapter | Use Case |
+|---|---|---|---|
+| MCP | [Guide](docs/integration_mcp.md) | `adapters.mcp` | Tool conversion, session loading, firewall |
+| A2A | [Guide](docs/integration_a2a.md) | `adapters.a2a` | Agent cards, multi-agent sessions |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | `adapters.fastmcp` · `[fastmcp]` | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | _Guide only_ | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | `adapters.openai_agents` · `[openai-agents]` | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | `adapters.google_adk` · `[google-adk]` | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | `adapters.langchain` · `[langchain]` | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | _Guide only_ | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | `adapters.crewai` · `[crewai]` | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.

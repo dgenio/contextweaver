@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Framework adapter expansion + shared conversion toolkit (#454, #502, #501,
+  #547, #401).** A coherent pass over the `adapters/` tool-catalog layer:
+  - **Shared conversion toolkit (#454).** New private
+    `adapters/_framework_common.py` centralises the mechanics the framework
+    adapters previously each re-implemented — `infer_namespace`,
+    `strip_namespace_prefix`, `coerce_schema_dict`, `collect_tags`,
+    `require_name_description`. The CrewAI, Agno, smolagents, Pydantic AI, and
+    ChainWeaver adapters now delegate to it with byte-identical behavior, so a
+    convention change is one edit instead of up to five.
+  - **LangChain adapter (#502).** `adapters.langchain` converts `BaseTool`
+    instances (or the plain-dict shape) into a `SelectableItem` catalog
+    (`langchain_tool_to_selectable`, `langchain_tools_to_catalog`,
+    `load_langchain_catalog`); `[langchain]` extra for live loading.
+  - **OpenAI Agents SDK adapter (#501).** `adapters.openai_agents` converts
+    function tools to a catalog and run items to `ContextItem`s with
+    tool-call → tool-output parentage (`openai_agents_tools_to_catalog`,
+    `from_openai_agents_run`); `[openai-agents]` extra.
+  - **Google ADK adapter (#547).** `adapters.google_adk` converts ADK tools to
+    a catalog and `Session.events` to `ContextItem`s with `function_call` →
+    `function_response` parentage (`google_adk_tools_to_catalog`,
+    `from_google_adk_session`); `[google-adk]` extra.
+  - **Integration table honesty (#401).** The README Framework Integrations
+    tables gain a **Code adapter** column distinguishing frameworks with an
+    importable adapter (and its extra) from guide-only entries.
 - **Context-engine tuning knobs: rendering, kinds, scoring, and overflow
   (#410, #411, #487, #510).** A coherent pass over the context build pipeline's
   selection / scoring / rendering / budget surface, all opt-in with

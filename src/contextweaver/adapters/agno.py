@@ -33,10 +33,16 @@ Agno docs:  https://docs.agno.com/
 
 from __future__ import annotations
 
-import copy
 import logging
 from typing import TYPE_CHECKING, Any
 
+from contextweaver.adapters._framework_common import (
+    coerce_schema_dict,
+    collect_tags,
+    infer_namespace,
+    require_name_description,
+    strip_namespace_prefix,
+)
 from contextweaver.adapters._messages_common import (
     expect_dict,
     expect_list,
@@ -74,48 +80,7 @@ def infer_agno_namespace(tool_name: str) -> str:
     Returns:
         The inferred namespace string.
     """
-    if not tool_name:
-        return _FALLBACK_NS
-    for sep in (".", "/"):
-        if sep in tool_name:
-            prefix = tool_name.split(sep, 1)[0]
-            if prefix:
-                return prefix
-    parts = tool_name.split("_")
-    if len(parts) >= 2 and parts[0] and not parts[0].startswith("_"):
-        return parts[0]
-    return _FALLBACK_NS
-
-
-def _strip_namespace_prefix(tool_name: str, namespace: str) -> str:
-    """Return the short tool name with the namespace prefix removed."""
-    for prefix in (f"{namespace}_", f"{namespace}.", f"{namespace}/"):
-        if tool_name.startswith(prefix) and len(tool_name) > len(prefix):
-            return tool_name[len(prefix) :]
-    return tool_name
-
-
-def _params_to_schema(raw: object) -> dict[str, Any]:
-    """Coerce Agno's ``parameters`` payload into a JSON-Schema dict.
-
-    Agno's ``Function.parameters`` is already an OpenAI-style JSON Schema
-    (``{"type": "object", "properties": {...}, "required": [...]}``) by
-    construction, but we accept a Pydantic ``BaseModel`` class too for
-    callers that built the function manually.
-    """
-    if raw is None:
-        return {}
-    if isinstance(raw, dict):
-        return copy.deepcopy(raw)
-    schema_fn = getattr(raw, "model_json_schema", None)
-    if callable(schema_fn):
-        try:
-            schema = schema_fn()
-        except Exception:  # pragma: no cover - defensive
-            return {}
-        if isinstance(schema, dict):
-            return dict(schema)
-    return {}
+    return infer_namespace(tool_name, fallback=_FALLBACK_NS)
 
 
 def agno_tool_to_selectable(
@@ -152,29 +117,19 @@ def agno_tool_to_selectable(
         CatalogError: If required fields (``name``, ``description``) are
             missing or non-string.
     """
-    raw_name = tool_def.get("name")
-    if not isinstance(raw_name, str) or not raw_name:
-        raise CatalogError("Agno tool definition is missing a non-empty 'name' field.")
-    raw_description = tool_def.get("description")
-    if not isinstance(raw_description, str) or not raw_description:
-        raise CatalogError(f"Agno tool {raw_name!r} is missing a non-empty 'description' field.")
+    raw_name, raw_description = require_name_description(tool_def, label="Agno")
 
     if namespace is not None:
         ns = namespace
     else:
         toolkit = tool_def.get("toolkit_name")
         ns = toolkit if isinstance(toolkit, str) and toolkit else infer_agno_namespace(raw_name)
-    short_name = _strip_namespace_prefix(raw_name, ns)
+    short_name = strip_namespace_prefix(raw_name, ns)
 
-    raw_tags = tool_def.get("tags")
-    tags: set[str] = {_FALLBACK_NS}
-    if isinstance(raw_tags, (list, set, tuple)):
-        for tag in raw_tags:
-            if isinstance(tag, str) and tag:
-                tags.add(tag)
+    tags = collect_tags(tool_def.get("tags"), fallback=_FALLBACK_NS)
 
     schema_value = tool_def.get("parameters", tool_def.get("args_schema"))
-    args_schema = _params_to_schema(schema_value)
+    args_schema = coerce_schema_dict(schema_value)
 
     metadata: dict[str, Any] = {}
     for meta_key in ("strict", "show_result", "stop_after_tool_call", "requires_confirmation"):

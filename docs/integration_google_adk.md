@@ -5,6 +5,27 @@
 > tool-calling agent so Gemini sees a focused shortlist of tools and a
 > budgeted prompt instead of the entire toolbelt and conversation history.
 
+## Importable adapter
+
+As of issue #547, `contextweaver.adapters.google_adk` ships first-class
+converters for ADK tools and session events:
+
+```python
+from contextweaver.adapters.google_adk import (
+    load_google_adk_catalog,
+    from_google_adk_session,
+)
+
+catalog = load_google_adk_catalog(agent_tools, namespace="maps")
+# ... ingest a session's events (function_call -> function_response parentage):
+items = from_google_adk_session(session, into=manager)
+```
+
+Install the optional extra for live loading (`pip install
+'contextweaver[google-adk]'`); the plain-dict / event-dict paths
+(`google_adk_tools_to_catalog`, `from_google_adk_session`) need no extra and
+are handy in tests.
+
 ## Why
 
 Vertex AI's agent builder abstracts away context management, which is
