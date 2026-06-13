@@ -52,6 +52,13 @@ object schema whose property names do not collide with parameters, its
 properties are merged in; otherwise the whole body schema is nested under a
 `body` property.
 
+### `servers` resolution
+
+`metadata["servers"]` follows the OpenAPI override order: an operation's own
+`servers` wins, then the path-item `servers`, then the document-level
+`servers`. The value is preserved for reference only — the adapter routes and
+never dispatches the call.
+
 ## `$ref` and version support
 
 - **Local refs** (`#/components/...`) are fully resolved, including recursive

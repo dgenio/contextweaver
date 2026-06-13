@@ -118,6 +118,7 @@ def openapi_operation_to_selectable(
     root: dict[str, Any] | None = None,
     base_namespace: str | None = None,
     shared_parameters: list[Any] | None = None,
+    shared_servers: list[Any] | None = None,
 ) -> SelectableItem:
     """Convert a single OpenAPI operation to a :class:`SelectableItem`.
 
@@ -131,6 +132,10 @@ def openapi_operation_to_selectable(
         base_namespace: Optional explicit namespace override.
         shared_parameters: Path-item-level parameters that apply to the
             operation (merged ahead of operation-level parameters).
+        shared_servers: Path-item-level ``servers`` that apply to the
+            operation. Precedence for the ``metadata["servers"]`` value is
+            operation-level ``servers`` → these path-level ``servers`` →
+            document-level ``servers``.
 
     Returns:
         A :class:`SelectableItem` with ``kind="tool"`` and an ``id`` of
@@ -163,8 +168,19 @@ def openapi_operation_to_selectable(
     security = operation.get("security")
     if security is not None:
         metadata["security"] = resolve_refs(security, base)
-    if root is not None and root.get("servers") is not None:
-        metadata["servers"] = resolve_refs(root["servers"], base)
+    # servers precedence: operation-level → path-item (shared_servers) → document.
+    op_servers = operation.get("servers")
+    root_servers = root.get("servers") if root is not None else None
+    if isinstance(op_servers, list):
+        servers: Any = op_servers
+    elif isinstance(shared_servers, list):
+        servers = shared_servers
+    elif isinstance(root_servers, list):
+        servers = root_servers
+    else:
+        servers = None
+    if servers is not None:
+        metadata["servers"] = resolve_refs(servers, base)
 
     logger.debug(
         "openapi_operation_to_selectable: id=%s, method=%s, path=%s, ns=%s",
@@ -220,6 +236,8 @@ def openapi_spec_to_catalog(
             continue
         shared = path_item.get("parameters")
         shared_params = shared if isinstance(shared, list) else None
+        path_servers = path_item.get("servers")
+        shared_servers = path_servers if isinstance(path_servers, list) else None
         for method in HTTP_METHODS:
             operation = path_item.get(method)
             if not isinstance(operation, dict):
@@ -232,6 +250,7 @@ def openapi_spec_to_catalog(
                     root=spec,
                     base_namespace=base_namespace,
                     shared_parameters=shared_params,
+                    shared_servers=shared_servers,
                 )
             )
             count += 1

@@ -545,7 +545,7 @@
   def normalize_args(args: 'object', schema: 'dict[str, Any] | None') -> 'tuple[Any, list[Repair]]'
   def openai_agents_tool_to_selectable(tool_def: 'dict[str, Any]', *, namespace: 'str | None' = ...) -> 'SelectableItem'
   def openai_agents_tools_to_catalog(tools: 'list[dict[str, Any]]', *, namespace: 'str | None' = ...) -> 'Catalog'
-  def openapi_operation_to_selectable(operation: 'dict[str, Any]', *, path: 'str', method: 'str', root: 'dict[str, Any] | None' = ..., base_namespace: 'str | None' = ..., shared_parameters: 'list[Any] | None' = ...) -> 'SelectableItem'
+  def openapi_operation_to_selectable(operation: 'dict[str, Any]', *, path: 'str', method: 'str', root: 'dict[str, Any] | None' = ..., base_namespace: 'str | None' = ..., shared_parameters: 'list[Any] | None' = ..., shared_servers: 'list[Any] | None' = ...) -> 'SelectableItem'
   def openapi_spec_to_catalog(spec: 'dict[str, Any]', *, base_namespace: 'str | None' = ...) -> 'Catalog'
   def parse_skill_frontmatter(text: 'str', *, label: 'str') -> 'tuple[dict[str, Any], str]'
   def pydantic_ai_tool_to_selectable(tool_def: 'dict[str, Any]', *, namespace: 'str | None' = ...) -> 'SelectableItem'

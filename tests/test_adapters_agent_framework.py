@@ -145,6 +145,34 @@ def test_load_agent_framework_catalog_duck_typed() -> None:
     assert item.args_schema == {"type": "object", "properties": {"city": {"type": "string"}}}
 
 
+def test_load_agent_framework_catalog_empty_parameters_not_overridden() -> None:
+    # An explicit empty ``parameters`` schema must win over ``input_schema``;
+    # the old ``parameters or input_schema`` fallback wrongly discarded it.
+    class FakeFunction:
+        def __init__(self) -> None:
+            self.name = "noop"
+            self.description = "Takes no arguments."
+            self.parameters: dict[str, object] = {}
+            self.input_schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+
+    catalog = load_agent_framework_catalog([FakeFunction()])
+    item = next(iter(catalog.all()))
+    assert item.args_schema == {}
+
+
+def test_load_agent_framework_catalog_input_schema_used_when_parameters_absent() -> None:
+    class FakeFunction:
+        def __init__(self) -> None:
+            self.name = "lookup"
+            self.description = "Look something up."
+            self.parameters = None
+            self.input_schema = {"type": "object", "properties": {"q": {"type": "string"}}}
+
+    catalog = load_agent_framework_catalog([FakeFunction()])
+    item = next(iter(catalog.all()))
+    assert item.args_schema == {"type": "object", "properties": {"q": {"type": "string"}}}
+
+
 def test_load_agent_framework_catalog_rejects_object_without_name() -> None:
     class Bogus:
         description = "no name"

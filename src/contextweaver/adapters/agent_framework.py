@@ -209,12 +209,17 @@ def load_agent_framework_catalog(
             raise CatalogError(
                 f"Agent Framework tool {name!r} is missing a non-empty 'description' attribute."
             )
+        # ``parameters`` wins; only fall back to ``input_schema`` when it is
+        # genuinely absent (``None``) — a tool that declares an explicit empty
+        # schema (``parameters={}``) must not be overridden by ``input_schema``.
+        parameters = getattr(tool, "parameters", None)
+        if parameters is None:
+            parameters = getattr(tool, "input_schema", None)
         tool_dicts.append(
             {
                 "name": name,
                 "description": description,
-                "parameters": getattr(tool, "parameters", None)
-                or getattr(tool, "input_schema", None),
+                "parameters": parameters,
                 "tags": list(getattr(tool, "tags", None) or []),
             }
         )

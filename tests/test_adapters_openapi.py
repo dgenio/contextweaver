@@ -197,6 +197,55 @@ def test_external_ref_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# servers precedence: operation → path-item → document
+# ---------------------------------------------------------------------------
+
+
+def test_servers_default_to_document_level() -> None:
+    op = PETSTORE["paths"]["/pets"]["get"]
+    item = openapi_operation_to_selectable(op, path="/pets", method="get", root=PETSTORE)
+    assert item.metadata["servers"] == [{"url": "https://api.example.com"}]
+
+
+def test_operation_level_servers_take_precedence() -> None:
+    op = {"operationId": "op", "servers": [{"url": "https://op.example.com"}]}
+    item = openapi_operation_to_selectable(
+        op,
+        path="/p",
+        method="get",
+        root=PETSTORE,
+        shared_servers=[{"url": "https://path.example.com"}],
+    )
+    assert item.metadata["servers"] == [{"url": "https://op.example.com"}]
+
+
+def test_path_level_servers_used_when_operation_has_none() -> None:
+    item = openapi_operation_to_selectable(
+        {"operationId": "op"},
+        path="/p",
+        method="get",
+        root=PETSTORE,
+        shared_servers=[{"url": "https://path.example.com"}],
+    )
+    assert item.metadata["servers"] == [{"url": "https://path.example.com"}]
+
+
+def test_spec_to_catalog_threads_path_level_servers() -> None:
+    spec = {
+        "openapi": "3.0.3",
+        "servers": [{"url": "https://root.example.com"}],
+        "paths": {
+            "/widgets": {
+                "servers": [{"url": "https://widgets.example.com"}],
+                "get": {"operationId": "listWidgets"},
+            }
+        },
+    }
+    item = next(iter(openapi_spec_to_catalog(spec).all()))
+    assert item.metadata["servers"] == [{"url": "https://widgets.example.com"}]
+
+
+# ---------------------------------------------------------------------------
 # Namespace inference
 # ---------------------------------------------------------------------------
 
