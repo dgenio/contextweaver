@@ -14,6 +14,7 @@
   class BeamSearchNavigator(*, beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ...) -> 'None'
       def navigate(self, query: 'str', graph: 'ChoiceGraph', active_items: 'dict[str, SelectableItem]', scorer: 'Retriever', doc_id_to_idx: 'dict[str, int]', *, all_item_ids: 'set[str] | None' = ..., debug: 'bool' = ...) -> 'NavigationResult'
   class BudgetExceededError(ContextWeaverError)(...)
+  class BudgetOverflowError(ContextWeaverError)(message: 'str', *, stats: 'BuildStats', dropped_kinds: 'list[str] | None' = ...) -> 'None'
   class BuildStats(tokens_per_section: 'dict[str, int]' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dropped_items: 'list[DroppedItem]' = ..., dedup_removed: 'int' = ..., dependency_closures: 'int' = ..., header_footer_tokens: 'int' = ..., token_estimator: 'str' = ..., firewall_events: 'list[FirewallStats]' = ...) -> None
       def firewall_summary(self) -> 'FirewallStats'
       def from_dict(cls, data: 'dict[str, Any]') -> 'BuildStats'
@@ -68,7 +69,7 @@
       def for_phase(self, phase: 'Phase') -> 'int'
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextBudget'
       def to_dict(self) -> 'dict[str, Any]'
-  class ContextBuildExplanation(version: 'int' = ..., phase: 'str' = ..., query: 'str' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dependency_closures: 'int' = ..., sensitivity_drops: 'int' = ..., dedup_removed: 'int' = ..., budget_tokens: 'int' = ..., candidates: 'list[CandidateExplanation]' = ...) -> None
+  class ContextBuildExplanation(version: 'int' = ..., phase: 'str' = ..., query: 'str' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dependency_closures: 'int' = ..., sensitivity_drops: 'int' = ..., dedup_removed: 'int' = ..., budget_tokens: 'int' = ..., resolved_weights: 'dict[str, float]' = ..., candidates: 'list[CandidateExplanation]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextBuildExplanation'
       def to_dict(self) -> 'dict[str, Any]'
   class ContextItem(id: 'str', kind: 'ItemKind', text: 'str', token_estimate: 'int' = ..., sensitivity: 'Sensitivity' = ..., metadata: 'dict[str, Any]' = ..., parent_id: 'str | None' = ..., artifact_ref: 'ArtifactRef | None' = ...) -> None
@@ -80,7 +81,7 @@
   class ContextPack(prompt: 'str', stats: 'BuildStats' = ..., phase: 'Phase' = ..., envelopes: 'list[ResultEnvelope]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextPack'
       def to_dict(self) -> 'dict[str, Any]'
-  class ContextPolicy(allowed_kinds_per_phase: 'dict[Phase, list[ItemKind]]' = ..., max_items_per_kind: 'dict[ItemKind, int]' = ..., sensitivity_floor: 'Sensitivity' = ..., sensitivity_action: "Literal['drop', 'redact']" = ..., redaction_hooks: 'list[str]' = ..., allow_redacted_drilldown: 'bool' = ..., extra: 'dict[str, Any]' = ...) -> None
+  class ContextPolicy(allowed_kinds_per_phase: 'dict[Phase, list[ItemKind]]' = ..., max_items_per_kind: 'dict[ItemKind, int]' = ..., sensitivity_floor: 'Sensitivity' = ..., sensitivity_action: "Literal['drop', 'redact']" = ..., redaction_hooks: 'list[str]' = ..., allow_redacted_drilldown: 'bool' = ..., overflow_action: "Literal['drop', 'warn', 'raise']" = ..., overflow_raise_kinds: 'list[ItemKind] | None' = ..., extra: 'dict[str, Any]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextPolicy'
       def to_dict(self) -> 'dict[str, Any]'
   class ContextWeaverError(Exception)(...)
@@ -202,7 +203,7 @@
       def put(self, fact: 'Fact') -> 'None'
       def to_dict(self) -> 'dict[str, Any]'
   class ItemKind(str, Enum)
-      enum members: user_turn, agent_msg, tool_call, tool_result, doc_snippet, memory_fact, plan_state, policy
+      enum members: user_turn, agent_msg, tool_call, tool_result, doc_snippet, retrieved_doc, memory_fact, plan_state, policy
   class ItemNotFoundError(ContextWeaverError)(...)
   class JaccardClusteringEngine()
       def cluster(self, items: 'list[SelectableItem]', *, k: 'int') -> 'dict[str, list[SelectableItem]]'
@@ -311,8 +312,9 @@
       def adjust(self, query: 'str', scored: 'list[tuple[str, float]]') -> 'list[tuple[str, float]]'
   class RuleBasedSummarizer(max_chars: 'int' = ...) -> 'None'
       def summarize(self, raw: 'str', metadata: 'dict[str, Any]') -> 'str'
-  class ScoringConfig(recency_weight: 'float' = ..., tag_match_weight: 'float' = ..., kind_priority_weight: 'float' = ..., token_cost_penalty: 'float' = ..., dedup_threshold: 'float' = ...) -> None
+  class ScoringConfig(recency_weight: 'float' = ..., tag_match_weight: 'float' = ..., kind_priority_weight: 'float' = ..., token_cost_penalty: 'float' = ..., dedup_threshold: 'float' = ..., kind_priority: 'dict[ItemKind, float] | None' = ..., phase_overrides: 'dict[Phase, ScoringConfig] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ScoringConfig'
+      def resolved_for_phase(self, phase: 'Phase') -> 'ScoringConfig'
       def to_dict(self) -> 'dict[str, Any]'
   class SecretRedactor(mask: 'str' = ..., estimator: 'TokenEstimator | None' = ...) -> 'None'
       def redact(self, item: 'ContextItem') -> 'ContextItem'
@@ -538,7 +540,7 @@
   class CandidateExplanation(item_id: 'str', kind: 'str', sensitivity: 'str', score: 'float | None' = ..., included: 'bool' = ..., drop_reason: 'str' = ..., dependency_closure: 'bool' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'CandidateExplanation'
       def to_dict(self) -> 'dict[str, Any]'
-  class ContextBuildExplanation(version: 'int' = ..., phase: 'str' = ..., query: 'str' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dependency_closures: 'int' = ..., sensitivity_drops: 'int' = ..., dedup_removed: 'int' = ..., budget_tokens: 'int' = ..., candidates: 'list[CandidateExplanation]' = ...) -> None
+  class ContextBuildExplanation(version: 'int' = ..., phase: 'str' = ..., query: 'str' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dependency_closures: 'int' = ..., sensitivity_drops: 'int' = ..., dedup_removed: 'int' = ..., budget_tokens: 'int' = ..., resolved_weights: 'dict[str, float]' = ..., candidates: 'list[CandidateExplanation]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextBuildExplanation'
       def to_dict(self) -> 'dict[str, Any]'
   class ContextManager(_IngestMixin, _BuildMixin, _RoutingMixin)(event_log: 'EventLog | None' = ..., artifact_store: 'ArtifactStore | None' = ..., budget: 'ContextBudget | None' = ..., policy: 'ContextPolicy | None' = ..., scoring_config: 'ScoringConfig | None' = ..., estimator: 'TokenEstimator | None' = ..., hook: 'EventHook | None' = ..., stores: 'StoreBundle | None' = ..., summarizer: 'Summarizer | None' = ..., extractor: 'Extractor | None' = ..., *, metrics: 'MetricsCollector | None' = ..., profile: 'ProfileConfig | None' = ..., deterministic: 'bool' = ..., sensitivity_classifier: 'SensitivityClassifier | None' = ..., redact_secrets: 'bool' = ...) -> 'None'
@@ -579,6 +581,7 @@
   def generate_candidates(event_log: 'EventLog', phase: 'Phase', policy: 'ContextPolicy') -> 'list[ContextItem]'
   def generate_views(ref: 'ArtifactRef', data: 'bytes', registry: 'ViewRegistry | None' = ...) -> 'list[ViewSpec]'
   def memory_entries_to_context_items(entries: 'list[MemoryEntry]', *, estimator: 'TokenEstimator | None' = ..., now: 'float | None' = ...) -> 'list[ContextItem]'
+  def passthrough_renderer(items: 'list[ContextItem]') -> 'str'
   def register_redaction_hook(name: 'str', hook: 'RedactionHook') -> 'None'
   def render_context(items: 'list[ContextItem]', separator: 'str' = ..., header: 'str' = ..., footer: 'str' = ...) -> 'str'
   def render_handoff_pack(pack: 'SessionHandoffPack') -> 'str'

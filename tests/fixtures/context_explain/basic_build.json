@@ -75,6 +75,12 @@
   "included_count": 5,
   "phase": "answer",
   "query": "weather",
+  "resolved_weights": {
+    "kind_priority_weight": 0.35,
+    "recency_weight": 0.3,
+    "tag_match_weight": 0.25,
+    "token_cost_penalty": 0.1
+  },
   "sensitivity_drops": 1,
   "total_candidates": 7,
   "version": 1

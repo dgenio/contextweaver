@@ -1,5 +1,5 @@
 {
-  "__init__.py": 348,
+  "__init__.py": 350,
   "_utils.py": 462,
   "adapters/agno.py": 515,
   "adapters/fastmcp.py": 459,
@@ -11,7 +11,7 @@
   "adapters/smolagents.py": 527,
   "adapters/weaver_contracts.py": 537,
   "context/_manager_ingest.py": 390,
-  "context/build.py": 404,
+  "context/build.py": 401,
   "context/explanation.py": 338,
   "context/firewall.py": 340,
   "context/firewall_api.py": 315,

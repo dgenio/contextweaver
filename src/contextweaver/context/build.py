@@ -19,12 +19,17 @@ import logging
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
-from contextweaver.config import ContextBudget, ContextPolicy
+from contextweaver.config import ContextPolicy
+from contextweaver.context.build_policy import (
+    adjust_budget_for_header,
+    enforce_overflow_policy,
+    override_phase_budget,
+    render_pack_prompt,
+)
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
 from contextweaver.context.dedup import deduplicate_candidates
 from contextweaver.context.explanation import build_explanation as _build_explanation
 from contextweaver.context.firewall import apply_firewall_to_batch
-from contextweaver.context.prompt import render_context
 from contextweaver.context.scoring import score_candidates
 from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import _SENSITIVITY_ORDER, apply_sensitivity_filter
@@ -35,6 +40,8 @@ from contextweaver.tokens import estimator_name
 from contextweaver.types import ContextItem, ItemKind, Phase, Sensitivity
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from contextweaver.context._manager_base import _ManagerState
     from contextweaver.context.explanation import ContextBuildExplanation
 
@@ -57,24 +64,19 @@ def run_build_pipeline(
     hints: list[str] | None = None,
     extra: dict[str, Any] | None = None,
     explain: bool = False,
+    renderer: Callable[[list[ContextItem]], str] | None = None,
 ) -> tuple[ContextPack, ContextBuildExplanation | None]:
     """Run the full eight-stage context build (synchronous core).
 
-    See :meth:`ContextManager.build` for parameter semantics. Returns a
-    ``(pack, explanation)`` tuple; *explanation* is ``None`` unless *explain*.
+    See :meth:`ContextManager.build` for parameter semantics (including the
+    caller-owned *renderer* hook, issue #410). Returns a ``(pack, explanation)``
+    tuple; *explanation* is ``None`` unless *explain*.
     """
     _ = extra  # reserved
     _tags = sorted(set(list(query_tags or []) + list(hints or [])))
 
-    # Override budget if requested
-    effective_budget = manager._budget
-    if budget_tokens is not None:
-        effective_budget = ContextBudget(
-            route=budget_tokens if phase == Phase.route else manager._budget.route,
-            call=budget_tokens if phase == Phase.call else manager._budget.call,
-            interpret=budget_tokens if phase == Phase.interpret else manager._budget.interpret,
-            answer=budget_tokens if phase == Phase.answer else manager._budget.answer,
-        )
+    # Override the active phase's budget if requested (issue #412 semantics).
+    effective_budget = override_phase_budget(manager._budget, phase, budget_tokens)
 
     # 1. Generate candidates
     candidates = generate_candidates(manager._event_log, phase, manager._policy)
@@ -122,8 +124,10 @@ def run_build_pipeline(
         redact_secrets=manager._redact_secrets,
     )
 
-    # 5. Score
-    scored = score_candidates(candidates, query, _tags, manager._scoring)
+    # 5. Score — resolve any per-phase weight override first (issue #487);
+    # dedup still uses the base config's threshold.
+    effective_scoring = manager._scoring.resolved_for_phase(phase)
+    scored = score_candidates(candidates, query, _tags, effective_scoring)
 
     # 6. Dedup
     pre_dedup_scored = list(scored)
@@ -148,13 +152,16 @@ def run_build_pipeline(
     else:
         dedup_dropped_records = []
 
-    # Pre-build episodic + fact injection text so we can estimate its
-    # token cost and subtract it from the budget *before* selection.
-    full_header, hf_tokens = _assemble_header(manager, header, footer, phase)
-
-    # Subtract header/footer overhead from the effective budget so that
-    # select_and_pack only fills the remaining space.
-    adjusted = _adjust_budget_for_header(effective_budget, phase, hf_tokens)
+    # Pre-build episodic + fact header so its token cost is reserved from the
+    # budget *before* selection.  A caller-owned renderer (issue #410) owns the
+    # whole layout, so header assembly is skipped and selection gets the full
+    # phase budget.
+    if renderer is None:
+        full_header, hf_tokens = _assemble_header(manager, header, footer, phase)
+        adjusted = adjust_budget_for_header(effective_budget, phase, hf_tokens)
+    else:
+        full_header, hf_tokens = "", 0
+        adjusted = effective_budget
 
     # 7. Select (budget already accounts for header/footer overhead)
     selection = select_and_pack(scored, phase, adjusted, manager._policy, manager._estimator)
@@ -206,8 +213,14 @@ def run_build_pipeline(
             f"total={stats.total_candidates}"
         )
 
-    # 8. Render
-    prompt = render_context(selected, header=full_header, footer=footer)
+    # Budget-overflow policy (issue #510): warn/raise on budget drops when
+    # configured; default "drop" is a no-op.  Runs after stats so a raise can
+    # attach the would-be stats; accounting is identical in every mode.
+    budget_dropped = [item for item, reason in selection.dropped if reason == "budget"]
+    enforce_overflow_policy(stats, manager._policy, budget_dropped)
+
+    # 8. Render (caller-owned renderer wins; default = section renderer)
+    prompt = render_pack_prompt(selected, full_header=full_header, footer=footer, renderer=renderer)
     pack = ContextPack(prompt=prompt, stats=stats, phase=phase, envelopes=envelopes)
 
     # Assemble the explanation (issue #291) only when requested.
@@ -226,6 +239,12 @@ def run_build_pipeline(
             scored=scored,
             selected_ids={item.id for item in selected},
             budget_tokens=adjusted.for_phase(phase),
+            resolved_weights={
+                "recency_weight": effective_scoring.recency_weight,
+                "tag_match_weight": effective_scoring.tag_match_weight,
+                "kind_priority_weight": effective_scoring.kind_priority_weight,
+                "token_cost_penalty": effective_scoring.token_cost_penalty,
+            },
         )
 
     manager._hook.on_context_built(pack)
@@ -380,25 +399,3 @@ def _assemble_header(
     if footer:
         hf_tokens += manager._estimator.estimate(footer)
     return full_header, hf_tokens
-
-
-def _adjust_budget_for_header(
-    effective_budget: ContextBudget, phase: Phase, hf_tokens: int
-) -> ContextBudget:
-    """Subtract header/footer token overhead from the active phase's budget."""
-    if hf_tokens <= 0:
-        return effective_budget
-    return ContextBudget(
-        route=max(effective_budget.route - hf_tokens, 0)
-        if phase == Phase.route
-        else effective_budget.route,
-        call=max(effective_budget.call - hf_tokens, 0)
-        if phase == Phase.call
-        else effective_budget.call,
-        interpret=max(effective_budget.interpret - hf_tokens, 0)
-        if phase == Phase.interpret
-        else effective_budget.interpret,
-        answer=max(effective_budget.answer - hf_tokens, 0)
-        if phase == Phase.answer
-        else effective_budget.answer,
-    )

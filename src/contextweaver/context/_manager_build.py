@@ -21,8 +21,11 @@ from contextweaver.exceptions import ContextWeaverError
 from contextweaver.types import Phase
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from contextweaver.context.explanation import ContextBuildExplanation
     from contextweaver.envelope import ContextPack
+    from contextweaver.types import ContextItem
 
 
 class _BuildMixin(_ManagerState):
@@ -39,6 +42,7 @@ class _BuildMixin(_ManagerState):
         hints: list[str] | None = None,
         extra: dict[str, Any] | None = None,
         explain: bool = False,
+        renderer: Callable[[list[ContextItem]], str] | None = None,
     ) -> tuple[ContextPack, ContextBuildExplanation | None]:
         """Run the full context compilation pipeline (synchronous core).
 
@@ -87,6 +91,7 @@ class _BuildMixin(_ManagerState):
                 hints=hints,
                 extra=extra,
                 explain=explain,
+                renderer=renderer,
             )
 
     @overload
@@ -102,6 +107,7 @@ class _BuildMixin(_ManagerState):
         extra: dict[str, Any] | None = ...,
         *,
         explain: Literal[False] = False,
+        renderer: Callable[[list[ContextItem]], str] | None = ...,
     ) -> ContextPack: ...
 
     @overload
@@ -117,6 +123,7 @@ class _BuildMixin(_ManagerState):
         extra: dict[str, Any] | None = ...,
         *,
         explain: Literal[True],
+        renderer: Callable[[list[ContextItem]], str] | None = ...,
     ) -> tuple[ContextPack, ContextBuildExplanation]: ...
 
     async def build(
@@ -131,6 +138,7 @@ class _BuildMixin(_ManagerState):
         extra: dict[str, Any] | None = None,
         *,
         explain: bool = False,
+        renderer: Callable[[list[ContextItem]], str] | None = None,
     ) -> ContextPack | tuple[ContextPack, ContextBuildExplanation]:
         """Asynchronously compile a :class:`~contextweaver.envelope.ContextPack`.
 
@@ -154,6 +162,8 @@ class _BuildMixin(_ManagerState):
                 :class:`ContextBuildExplanation` capturing per-candidate
                 scoring + drop reasons.  Default ``False`` preserves the
                 bare :class:`ContextPack` return shape (issue #291).
+            renderer: Keyword-only.  Optional caller-owned renderer that owns
+                the prompt layout (issue #410); ``None`` keeps section rendering.
 
         Returns:
             A :class:`~contextweaver.envelope.ContextPack` ready for
@@ -176,6 +186,7 @@ class _BuildMixin(_ManagerState):
                 hints=hints,
                 extra=extra,
                 explain=explain,
+                renderer=renderer,
             )
         else:
             pack, explanation = self._build(
@@ -188,6 +199,7 @@ class _BuildMixin(_ManagerState):
                 hints=hints,
                 extra=extra,
                 explain=explain,
+                renderer=renderer,
             )
         if explain:
             if explanation is None:  # invariant: _build populates it when explain=True
@@ -210,6 +222,7 @@ class _BuildMixin(_ManagerState):
         extra: dict[str, Any] | None = ...,
         *,
         explain: Literal[False] = False,
+        renderer: Callable[[list[ContextItem]], str] | None = ...,
     ) -> ContextPack: ...
 
     @overload
@@ -225,6 +238,7 @@ class _BuildMixin(_ManagerState):
         extra: dict[str, Any] | None = ...,
         *,
         explain: Literal[True],
+        renderer: Callable[[list[ContextItem]], str] | None = ...,
     ) -> tuple[ContextPack, ContextBuildExplanation]: ...
 
     def build_sync(
@@ -239,6 +253,7 @@ class _BuildMixin(_ManagerState):
         extra: dict[str, Any] | None = None,
         *,
         explain: bool = False,
+        renderer: Callable[[list[ContextItem]], str] | None = None,
     ) -> ContextPack | tuple[ContextPack, ContextBuildExplanation]:
         """Synchronous entry point — delegates to :meth:`_build`.
 
@@ -274,6 +289,7 @@ class _BuildMixin(_ManagerState):
             hints=hints,
             extra=extra,
             explain=explain,
+            renderer=renderer,
         )
         if explain:
             if explanation is None:  # invariant: _build populates it when explain=True

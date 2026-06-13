@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Context-engine tuning knobs: rendering, kinds, scoring, and overflow
+  (#410, #411, #487, #510).** A coherent pass over the context build pipeline's
+  selection / scoring / rendering / budget surface, all opt-in with
+  byte-identical defaults:
+  - **Caller-owned rendering (#410).** `ContextManager.build(...)` /
+    `build_sync(...)` accept a `renderer: Callable[[list[ContextItem]], str]`
+    hook. When supplied, the caller owns the entire prompt layout — the section
+    renderer, header, footer, and episodic/fact assembly are skipped — while
+    budget-aware selection and `pack.stats` still run. A ready-made
+    `contextweaver.context.passthrough_renderer` joins items by raw text.
+  - **Retrieval/RAG kind + presentation override (#411).** New
+    `ItemKind.retrieved_doc` gives retrieved/RAG payloads a first-class home
+    distinct from authored `doc_snippet`s. A per-item `metadata["section"]`
+    override decouples a prompt section label from the filtering `kind`, so
+    presentation can change without changing per-phase filtering.
+  - **Phase-aware scoring weights + kind priority (#487).** `ScoringConfig`
+    gains `kind_priority` (override the built-in item-kind priority table,
+    validated to `[0, 1]`) and `phase_overrides` (per-`Phase` weight configs;
+    resolution: phase override → base config → built-ins, resolved one level
+    deep — a per-phase override that itself defines `phase_overrides` is
+    rejected with `ConfigError`). `explain=True`
+    surfaces the resolved weights via `ContextBuildExplanation.resolved_weights`.
+  - **Budget-overflow policy (#510).** `ContextPolicy.overflow_action`
+    (`"drop"` default / `"warn"` / `"raise"`) plus an optional
+    `overflow_raise_kinds` scope turn silent budget drops into a logged warning
+    or a `BudgetOverflowError` (carrying the would-be `BuildStats`), so a
+    dropped mandatory item surfaces as a debuggable error instead of bad output.
 - **CI gate consolidation and expansion (#522, #518, #456, #474, #526, #539).**
   A coherent pass over the repo's generated-artifact / convention gating
   infrastructure:

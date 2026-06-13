@@ -15,14 +15,38 @@ _SECTION_LABELS: dict[ItemKind, str] = {
     ItemKind.tool_call: "TOOL CALL",
     ItemKind.tool_result: "TOOL RESULT",
     ItemKind.doc_snippet: "DOCUMENT",
+    ItemKind.retrieved_doc: "RETRIEVED",
     ItemKind.memory_fact: "FACT",
     ItemKind.plan_state: "PLAN",
     ItemKind.policy: "POLICY",
 }
 
 
+def passthrough_renderer(items: list[ContextItem]) -> str:
+    """Join selected items by their raw ``text``, imposing no section layout.
+
+    A ready-made caller-owned renderer for
+    :meth:`~contextweaver.context.manager.ContextManager.build`'s ``renderer``
+    hook (issue #410): callers that have already composed a domain-specific
+    layout can run the full budget-aware select/dedup pipeline and read
+    ``pack.stats`` without contextweaver reformatting the prompt into
+    ``[USER]`` / ``[PLAN]`` / ``[DOCUMENT]`` sections.
+
+    Args:
+        items: The selected items, in pack order.
+
+    Returns:
+        The items' ``text`` joined by blank lines.
+    """
+    return "\n\n".join(item.text for item in items)
+
+
 def render_item(item: ContextItem) -> str:
     """Render a single :class:`~contextweaver.types.ContextItem` as a prompt snippet.
+
+    The section label comes from a per-item ``metadata["section"]`` override
+    when present (issue #411 — presentation decoupled from filtering ``kind``),
+    else the built-in per-kind label, else the upper-cased kind value.
 
     Args:
         item: The item to render.
@@ -30,7 +54,11 @@ def render_item(item: ContextItem) -> str:
     Returns:
         A formatted string suitable for inclusion in a prompt.
     """
-    label = _SECTION_LABELS.get(item.kind, item.kind.value.upper())
+    section_override = item.metadata.get("section")
+    if isinstance(section_override, str) and section_override.strip():
+        label = section_override.strip()
+    else:
+        label = _SECTION_LABELS.get(item.kind, item.kind.value.upper())
     artifact_note = ""
     if item.artifact_ref:
         handle = item.artifact_ref.handle
