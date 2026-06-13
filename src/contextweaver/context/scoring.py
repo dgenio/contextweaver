@@ -14,7 +14,9 @@ from contextweaver.types import ContextItem, ItemKind
 
 logger = logging.getLogger("contextweaver.context")
 
-# Higher value → higher priority when included in context
+# Higher value → higher priority when included in context.  Overridable
+# per-build via ``ScoringConfig.kind_priority`` (issue #487); this table is the
+# default when no override is supplied.
 _KIND_PRIORITY: dict[ItemKind, float] = {
     ItemKind.policy: 1.0,
     ItemKind.plan_state: 0.9,
@@ -23,8 +25,23 @@ _KIND_PRIORITY: dict[ItemKind, float] = {
     ItemKind.tool_call: 0.6,
     ItemKind.tool_result: 0.55,
     ItemKind.memory_fact: 0.5,
+    # Retrieved/RAG payloads sit just above authored doc snippets: they are
+    # pulled in for the active query, so they are marginally more relevant than
+    # static documents by default (issue #411).
+    ItemKind.retrieved_doc: 0.45,
     ItemKind.doc_snippet: 0.4,
 }
+
+
+def _resolve_kind_priority(config: ScoringConfig, kind: ItemKind) -> float:
+    """Return the priority for *kind*, honoring a ``kind_priority`` override.
+
+    Resolution order (issue #487): ``config.kind_priority`` → the built-in
+    :data:`_KIND_PRIORITY` table → ``0.3`` for any unlisted kind.
+    """
+    if config.kind_priority is not None and kind in config.kind_priority:
+        return config.kind_priority[kind]
+    return _KIND_PRIORITY.get(kind, 0.3)
 
 
 def score_item(
@@ -60,8 +77,8 @@ def score_item(
     query_tag_set = set(query_tags)
     tag_sim = jaccard(item_tag_set, query_tag_set) if query_tag_set else text_sim
 
-    # Kind priority
-    kind_score = _KIND_PRIORITY.get(item.kind, 0.3)
+    # Kind priority (built-in table, overridable via config.kind_priority)
+    kind_score = _resolve_kind_priority(config, item.kind)
 
     # Token cost penalty: penalise very large items
     token_penalty = 1.0 / (1.0 + item.token_estimate / 500.0)

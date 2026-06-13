@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from contextweaver.envelope import BuildStats
     from contextweaver.routing.catalog import CatalogValidationReport
 
 
@@ -18,6 +19,39 @@ class ContextWeaverError(Exception):
 
 class BudgetExceededError(ContextWeaverError):
     """Raised when a context build would exceed the configured token budget."""
+
+
+class BudgetOverflowError(ContextWeaverError):
+    """Raised when budget pressure drops candidates under a fail-loud policy.
+
+    Opt-in via :attr:`~contextweaver.config.ContextPolicy.overflow_action`
+    (``"raise"``, issue #510): instead of silently dropping items that do not
+    fit the token budget, the build raises this so a subtly-wrong prompt
+    (e.g. a missing mandatory policy item) surfaces as an immediate,
+    debuggable error rather than as bad model output downstream.
+
+    The would-be :class:`~contextweaver.envelope.BuildStats` is attached so
+    callers can inspect exactly what was kept, dropped, and why without
+    re-running the build.
+
+    Attributes:
+        stats: The :class:`~contextweaver.envelope.BuildStats` the build
+            produced before raising.
+        dropped_kinds: Sorted distinct :class:`~contextweaver.types.ItemKind`
+            string values that were dropped for ``"budget"`` and triggered
+            the raise.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stats: BuildStats,
+        dropped_kinds: list[str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.stats = stats
+        self.dropped_kinds = dropped_kinds or []
 
 
 class ArtifactNotFoundError(ContextWeaverError):

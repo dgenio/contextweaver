@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from contextweaver.config import ContextBudget, ContextPolicy
+from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.explanation import (
     EXPLANATION_VERSION,
     CandidateExplanation,
@@ -225,3 +225,35 @@ def test_explanation_matches_golden_fixture() -> None:
         raise AssertionError(
             f"context-explain golden drifted: {FIXTURE_DIR / 'basic_build.json'}\n{diff}"
         )
+
+
+# ----------------------------------------------------------------------
+# Resolved scoring weights surfaced (issue #487)
+# ----------------------------------------------------------------------
+
+
+def test_explanation_reports_default_weights() -> None:
+    _pack, ex = _basic_manager().build_sync(phase=Phase.answer, query="weather", explain=True)
+    assert ex.resolved_weights == {
+        "recency_weight": 0.3,
+        "tag_match_weight": 0.25,
+        "kind_priority_weight": 0.35,
+        "token_cost_penalty": 0.1,
+    }
+
+
+def test_explanation_reports_phase_override_weights() -> None:
+    """explain=True surfaces the per-phase override weights actually applied (#487)."""
+    scoring = ScoringConfig(
+        phase_overrides={Phase.answer: ScoringConfig(recency_weight=0.9, tag_match_weight=0.05)}
+    )
+    mgr = ContextManager(event_log=_basic_log(), scoring_config=scoring)
+    _pack, ex = mgr.build_sync(phase=Phase.answer, query="weather", explain=True)
+    assert ex.resolved_weights["recency_weight"] == 0.9
+    assert ex.resolved_weights["tag_match_weight"] == 0.05
+
+
+def test_explanation_resolved_weights_roundtrip() -> None:
+    ex = ContextBuildExplanation(resolved_weights={"recency_weight": 0.42})
+    restored = ContextBuildExplanation.from_dict(ex.to_dict())
+    assert restored.resolved_weights == {"recency_weight": 0.42}

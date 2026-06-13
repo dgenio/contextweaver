@@ -6,10 +6,12 @@ import json
 
 import pytest
 
-from contextweaver.config import ContextBudget, ContextPolicy
+from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 from contextweaver.context.classify import HeuristicSensitivityClassifier
 from contextweaver.context.manager import ContextManager
+from contextweaver.context.prompt import passthrough_renderer
 from contextweaver.exceptions import (
+    BudgetOverflowError,
     ContextWeaverError,
     DuplicateItemError,
     ItemNotFoundError,
@@ -1430,3 +1432,118 @@ def test_manager_redact_secrets_scrubs_built_prompt() -> None:
     mgr = ContextManager(event_log=log, redact_secrets=True)
     prompt = mgr.build_sync(phase=Phase.answer).prompt
     assert "AKIAIOSFODNN7EXAMPLE" not in prompt
+
+
+# ------------------------------------------------------------------
+# Caller-owned renderer hook (issue #410)
+# ------------------------------------------------------------------
+
+
+def _distinct_log(n: int, *, tokens: int = 60) -> InMemoryEventLog:
+    """Event log of *n* lexically-distinct items that resist dedup collapse."""
+    topics = ["database", "weather", "stocks", "recipes", "travel", "music", "sports", "physics"]
+    log = InMemoryEventLog()
+    for i in range(n):
+        topic = topics[i % len(topics)]
+        log.append(
+            ContextItem(
+                id=f"u{i}",
+                kind=ItemKind.user_turn,
+                text=f"Tell me about {topic} number {i} in detail " * 4,
+                token_estimate=tokens,
+            )
+        )
+    return log
+
+
+def test_build_with_custom_renderer_owns_layout() -> None:
+    log = _distinct_log(3)
+    mgr = ContextManager(event_log=log)
+    pack = mgr.build_sync(phase=Phase.answer, query="info", renderer=passthrough_renderer)
+    # No section labels imposed; selection + stats still produced.
+    assert "[USER]" not in pack.prompt
+    assert pack.stats.included_count >= 1
+
+
+def test_build_custom_renderer_matches_default_selection() -> None:
+    """The renderer changes only rendering, not which items are selected (#410)."""
+    log = _distinct_log(4)
+    default_pack = ContextManager(event_log=log).build_sync(phase=Phase.answer, query="info")
+    custom_pack = ContextManager(event_log=log).build_sync(
+        phase=Phase.answer, query="info", renderer=lambda sel: "::".join(i.id for i in sel)
+    )
+    assert custom_pack.stats.included_count == default_pack.stats.included_count
+
+
+# ------------------------------------------------------------------
+# Budget-overflow policy (issue #510)
+# ------------------------------------------------------------------
+
+
+def test_build_overflow_raise() -> None:
+    log = _distinct_log(6, tokens=60)
+    mgr = ContextManager(event_log=log, policy=ContextPolicy(overflow_action="raise"))
+    with pytest.raises(BudgetOverflowError) as excinfo:
+        mgr.build_sync(phase=Phase.answer, query="info", budget_tokens=80)
+    assert excinfo.value.stats.dropped_count >= 1
+
+
+def test_build_overflow_drop_is_default() -> None:
+    log = _distinct_log(6, tokens=60)
+    pack = ContextManager(event_log=log).build_sync(
+        phase=Phase.answer, query="info", budget_tokens=80
+    )
+    # Default behavior: silent drop with stats, no exception.
+    assert pack.stats.dropped_count >= 1
+
+
+def test_build_overflow_warn_does_not_raise() -> None:
+    log = _distinct_log(6, tokens=60)
+    mgr = ContextManager(event_log=log, policy=ContextPolicy(overflow_action="warn"))
+    pack = mgr.build_sync(phase=Phase.answer, query="info", budget_tokens=80)
+    assert pack.stats.dropped_count >= 1
+
+
+def test_build_overflow_raise_scoped_skips_unlisted_kinds() -> None:
+    """A raise scoped to policy items ignores user_turn budget drops (#510)."""
+    log = _distinct_log(6, tokens=60)
+    mgr = ContextManager(
+        event_log=log,
+        policy=ContextPolicy(overflow_action="raise", overflow_raise_kinds=[ItemKind.policy]),
+    )
+    # Only user_turn items are dropped → no raise.
+    pack = mgr.build_sync(phase=Phase.answer, query="info", budget_tokens=80)
+    assert pack.stats.dropped_count >= 1
+
+
+# ------------------------------------------------------------------
+# Per-phase scoring overrides (issue #487)
+# ------------------------------------------------------------------
+
+
+def test_build_phase_override_changes_ordering() -> None:
+    """A per-phase kind_priority override reorders selection under tight budget (#487)."""
+    log = InMemoryEventLog()
+    log.append(ContextItem(id="doc", kind=ItemKind.doc_snippet, text="alpha", token_estimate=10))
+    log.append(ContextItem(id="usr", kind=ItemKind.user_turn, text="beta", token_estimate=10))
+    # Budget fits only one item. Default: user_turn (0.85) beats doc_snippet (0.4).
+    default_mgr = ContextManager(event_log=log)
+    default_pack = default_mgr.build_sync(phase=Phase.answer, query="x", budget_tokens=12)
+    assert "alpha" not in default_pack.prompt and "beta" in default_pack.prompt
+
+    # Override the answer phase to score purely on kind priority, ranking
+    # doc_snippet above user_turn — decisively flipping the selection.
+    scoring = ScoringConfig(
+        phase_overrides={
+            Phase.answer: ScoringConfig(
+                recency_weight=0.0,
+                tag_match_weight=0.0,
+                kind_priority_weight=1.0,
+                token_cost_penalty=0.0,
+                kind_priority={ItemKind.doc_snippet: 1.0, ItemKind.user_turn: 0.0},
+            ),
+        }
+    )
+    boosted_mgr = ContextManager(event_log=log, scoring_config=scoring)
+    boosted_pack = boosted_mgr.build_sync(phase=Phase.answer, query="x", budget_tokens=12)
+    assert "alpha" in boosted_pack.prompt and "beta" not in boosted_pack.prompt

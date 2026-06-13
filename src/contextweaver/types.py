@@ -37,6 +37,10 @@ class ItemKind(str, Enum):
     tool_call = "tool_call"
     tool_result = "tool_result"
     doc_snippet = "doc_snippet"
+    #: A document/payload pulled in by a retrieval / RAG step (issue #411).
+    #: Distinct from ``doc_snippet`` (an authored/static document) so per-kind
+    #: filtering and section labels can carry retrieval-specific semantics.
+    retrieved_doc = "retrieved_doc"
     memory_fact = "memory_fact"
     plan_state = "plan_state"
     policy = "policy"
