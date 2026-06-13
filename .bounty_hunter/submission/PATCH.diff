@@ -1,0 +1,193 @@
+  print(f\"    Full text length: {len(full_text)}\")\n    print(f\"    Facts: {envelope.facts}\")\n    print(f\"    Provenance: {envelope.provenance}\")\n    print(f\"    Binary artifacts: {len(binaries)}\")\n\n    # 3. Ingest MCP session from JSONL\n    session_path = Path(__file__).parent / \"data\" / \"mcp_session.jsonl\"\n    items = load_mcp_session_jsonl(session_path)\n    print(f\"\\n[3] Loaded MCP session: {len(items)} events\")\n    for it in items:\n        preview = it.text[:60].replace(\"\\n\", \" \")\n        print(f\"    {it.id} ({it.kind.value}): {preview}...\")\n\n    # 4. Ingest into ContextManager and build with firewall\n    mgr = ContextManager()\n    firewall_count = 0\n    for it in items:\n        if it.kind == ItemKind.tool_result and len(it.text) > 500:\n            _, env = mgr.ingest_tool_result(\n                tool_call_id=it.parent_id or it.id,\n                raw_output=it.text,\n                tool_name=str(it.metadata.get(\"tool_name\", \"\")),\n                firewall_threshold=500,\n            )\n            firewall_count += 1\n            print(f\"\\n[4] Firewall triggered for {it.id}: {env.status}\")\n            print(f\"    Summary: {env.summary[:80]}...\")\n            print(f\"    Facts extracted: {len(env.facts)}\")\n            if env.artifacts:\n                print(f\"    Artifact stored: {env.artifacts[0].handle}\")\n        else:\n            mgr.ingest(it)\n\n    # 5. Drilldown into stored artifact\n    refs = mgr.artifact_store.list_refs()\n    if refs:\n        ref = refs[0]\n        head = mgr.artifact_store.drilldown(ref.handle, {\"type\": \"head\", \"chars\": 120})\n        print(f\"\\n[5] Drilldown (first 120 chars of {ref.handle}):\")\n        print(f\"    {head}\")\n\n    # 6. Build context\n    pack = mgr.build_sync(phase=Phase.answer, query=\"invoices\")\n    print(\n        f\"\\n[6] Context build: {pack.stats.included_count} items included, \"\n        f\"{pack.stats.dropped_count} dropped\"\n    )\n    print(f\"    Firewall triggers: {firewall_count}\")\n    print(f\"    Prompt length: {len(pack.prompt)} chars\")\n\n    # 7. Happy-path: ingest_mcp_result (one-call artifact persistence)\n    mgr2 = ContextManager()\n    mcp_with_image = {\n        \"content\": [\n            {\"type\": \"text\", \"text\": \"Screenshot captured\"},\n            {\"type\": \"image\", \"data\": \"iVBORw0KGgo=\", \"mimeType\": \"image/png\"},\n        ],\n    }\n    item2, env2 = mgr2.ingest_mcp_result(\"call-img\", mcp_with_image, \"screenshot\")\n    print(f\"\\n[7] ingest_mcp_result: {item2.id}\")\n    print(f\"    Artifacts in envelope: {len(env2.artifacts)}\")\n    print(f\"    Artifact persisted: {mgr2.artifact_store.exists('mcp:screenshot:image:1')}\")\n    print(f\"    Event log count: {mgr2.event_log.count()}\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
++-    },
++-    {
++-      "file": "examples/fastmcp_discovery_demo.py",
++-      "excerpt": "\"\"\"FastMCP CodeMode custom-discovery-tool demo (issue #87).\n\nWraps contextweaver's :class:`~contextweaver.routing.router.Router` as a plain\ncallable suitable for FastMCP CodeMode's custom discovery hook, then\ndemonstrates how to use it to shrink a 22-tool catalog down to a 3-tool\nshortlist that the downstream LLM actually sees.\n\nThe two helpers used here \u2014\n:func:`~contextweaver.adapters.fastmcp.make_discovery_tool` and\n:func:`~contextweaver.adapters.fastmcp.make_context_hook` \u2014 return pure\ncallables.  Neither imports ``fastmcp`` at runtime, so this demo works on a\nstock ``pip install contextweaver`` install.  The same callables can be\nhanded to a real FastMCP server's ``custom_discovery_tool`` parameter; the\nadapter is the bridge, not the runtime.\n\nReferences:\n- FastMCP CodeMode discussion: https://github.com/PrefectHQ/fastmcp/discussions/3365\n- Issue: https://github.com/dgenio/contextweaver/issues/87\n\nRun standalone::\n\n    python examples/fastmcp_discovery_demo.py\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom contextweaver.adapters.fastmcp import make_context_hook, make_discovery_tool\nfrom contextweaver.context.manager import ContextManager\nfrom contextweaver.routing.cards import count_tokens\nfrom contextweaver.routing.catalog import Catalog\nfrom contextweaver.routing.router import Router\nfrom contextweaver.routing.tree import TreeBuilder\nfrom contextweaver.types import SelectableItem\n\n# 22 tools across 5 namespaces \u2014 realistic mid-size catalog.  Same shape as\n# what a FastMCP-composed server would expose after pulling in a couple of\n# third-party MCP servers (GitHub, Slack, Linear, Postgres, search).\n_TOOLS: list[tuple[str, str, str, list[str]]] = [\n    # (id, name, description, tags)\n    (\n        \"github.search_repos\",\n        \"search_repos\",\n        \"Search GitHub repositories by keyword\",\n        [\"search\", \"vcs\"],\n    ),\n    (\n        \"github.create_issue\",\n        \"create_issue\",\n        \"Create a new GitHub issue in a repository\",\n        [\"vcs\", \"write\"],\n    ),\n    (\n        \"github.get_pull_request\",\n        \"get_pull_request\",\n        \"Fetch a GitHub pull request by number\",\n        [\"vcs\", \"pull request\"],\n    ),\n    (\"github.list_commits\", \"list_commits\", \"List git commits on a branch\", [\"vcs\"]),\n    (\n        \"github.merge_pull_request\",\n        \"merge_pull_request\",\n        \"Merge an approved GitHub pull request\",\n        [\"vcs\", \"pull request\", \"write\"],\n    ),\n    (\n        \"slack.send_channel_message\",\n        \"send_channel_message\",\n        \"Post a message update to a Slack channel\",\n        [\"messaging\", \"channel\", \"write\"],\n    ),\n    (\n        \"slack.search_messages\",\n        \"search_messages\",\n        \"Search Slack channel messages by query\",\n        [\"search\", \"messaging\"],\n    ),\n    (\"slack.list_channels\", \"list_channels\", \"List Slack channels the bot can see\", [\"messaging\"]),\n    (\"slack.set_topic\", \"set_topic\", \"Set the topic of a Slack channel\", [\"messaging\", \"write\"]),\n    (\n        \"linear.create_ticket\",\n        \"create_ticket\",\n        \"Open a new Linear ticket for an incident or task\",\n        [\"tickets\", \"incident\", \"write\"],\n    ),\n    (\n        \"linear.update_ticket\",\n        \"update_ticket\",\n        \"Update an existing Linear ticket\",\n        [\"tickets\", \"write\"],\n    ),\n    (\n        \"linear.search_tickets\",\n        \"search_tickets\",\n        \"Search Linear tickets by keyword\",\n        [\"search\", \"tickets\"],\n    ),\n    (\"linear.close_ticket\", \"close_ticket\", \"Close a resolved Linear ticket\", [\"tickets\", \"write\"]),\n    (\n        \"db.query\",\n        \"db_query\",\n        \"Run a read-only SQL query against the data warehouse\",\n        [\"database\", \"sql\"],\n    ),\n    (\"db.explain\", \"db_explain\", \"Show the query plan for a SQL statement\", [\"database\", \"sql\"]),\n    (\"db.list_tables\", \"db_list_tables\", \"List warehouse tables and views\", [\"database\"]),\n    (\n        \"db.row_count\",\n        \"db_row_count\",\n        \"Get an approximate row count for a warehouse table\",\n        [\"database\"],\n    ),\n    (\"search.web\", \"web_search\", \"Search the public web\", [\"search\", \"web\"]),\n    (\n        \"search.docs\",\n        \"docs_search\",\n        \"Search internal engineering documentation pages\",\n        [\"search\", \"docs\", \"documentation\"],\n    ),\n    (\"search.code\", \"code_search\", \"Search the codebase by symbol or text\", [\"search\", \"code\"]),\n    (\n        \"search.tickets_global\",\n        \"tickets_global\",\n        \"Search incident tickets across Linear and GitHub\",\n        [\"search\", \"tickets\", \"incident\"],\n    ),\n    (\"search.everything\", \"search_everything\", \"Federated search across all backends\", [\"search\"]),\n]\n\n\ndef _build_catalog() -> Catalog:\n    \"\"\"Build a 22-item catalog with consistent metadata.\"\"\"\n    catalog = Catalog()\n    for tid, name, desc, tags in _TOOLS:\n        namespace = tid.split(\".\", 1)[0]\n        catalog.register(\n            SelectableItem(\n                id=tid,\n                kind=\"tool\",\n                name=name,\n                description=desc,\n                namespace=namespace,\n                tags=tags,\n                side_effects=\"write\" in tags,\n                # Stable args_schema so the discovery hook returns deterministic shapes.\n                args_schema={\n                    \"type\": \"object\",\n                    \"properties\": {\"query\": {\"type\": \"string\"}},\n                    \"required\": [\"query\"],\n                },\n            )\n        )\n    return catalog\n\n\ndef _approx_tokens_for_full_catalog(catalog: Catalog) -> int:\n    \"\"\"Approximate token cost of dumping the whole catalog into the LLM prompt.\n\n    Uses the same token estimator the library uses (tiktoken) so the\n    before / after numbers are an apples-to-apples comparison rather than\n    a hand-waved average.\n    \"\"\"\n    total = 0\n    for item in catalog.all():\n        # Approximate the schema-with-description payload the LLM would see.\n        blob = f\"{item.name}: {item.description}\\nschema: {item.args_schema}\"\n        total += count_tokens(blob)\n    return total\n\n\ndef _approx_tokens_for_shortlist(shortlist: list[dict[str, object]]) -> int:\n    total = 0\n    for tool in shortlist:\n        blob = f\"{tool['name']}: {tool['description']}\\nschema: {tool['input_schema']}\"\n        total += count_tokens(blob)\n    return total\n\n\ndef main() -> None:\n    \"\"\"Run the discovery-hook demo end-to-end.\"\"\"\n    print(\"=\" * 72)\n    print(\"contextweaver -- FastMCP CodeMode discovery-tool demo (issue #87)\")\n    print(\"=\" * 72)\n\n    # 1. Build the catalog and the routing graph.\n    catalog = _build_catalog()\n    items = catalog.all()\n    graph = TreeBuilder(max_children=8).build(items)\n    router = Router(graph, items=items, top_k=3)\n    print(f\"\\nCatalog: {len(items)} tools across {len({i.namespace for i in items})} namespaces\")\n\n    # 2. Wrap the router as a plain Callable[[str], list[dict]].\n    discover = make_discovery_tool(router, catalog)\n    print(\"Wrapped router as a plain Callable[[str], list[dict]].\")\n    print(\"No fastmcp import, no captured runtime references.\")\n\n    # 3. A handful of representative queries.  Each shows the catalog -> shortlist\n    #    compression that contextweaver buys you.\n    queries = [\n        \"find pull requests touching the payments service\",\n        \"open a ticket for the api-gateway outage\",\n        \"search documentation about retry semantics\",\n        \"send a slack channel message about the rollback\",\n    ]\n\n    full_catalog_tokens = _approx_tokens_for_full_catalog(catalog)\n    print(f\"\\nFull-catalog prompt size: ~{full_catalog_tokens} tokens\")\n\n    total_shortlist_tokens = 0\n    for q in queries:\n        print()\n        print(f\"  query: {q!r}\")\n        shortlist = discover(q)\n        names = [t[\"name\"] for t in shortlist]\n        print(f\"  shortlist ({len(shortlist)}): {names}\")\n        toks = _approx_tokens_for_shortlist(shortlist)\n        total_shortlist_tokens += toks\n        print(f\"  prompt size: ~{toks} tokens (saved ~{full_catalog_tokens - toks})\")\n\n    # 4. The context hook \u2014 wraps the firewall as a (q"
++     }
++   ],
++   "executor_note": "Local workspace is ready. Tests/install have been attempted where possible. Next build should add AI patch generation against these inspected files, then rerun tests."
++diff --git a/BOUNTY_HUNTER_FIX_PLAN.json b/BOUNTY_HUNTER_FIX_PLAN.json
++index d28605b..0d626cc 100644
++--- a/BOUNTY_HUNTER_FIX_PLAN.json
+++++ b/BOUNTY_HUNTER_FIX_PLAN.json
++@@ -6,6 +6,7 @@
++   "likely_work_type": "security-sensitive fix",
++   "recommended_next_action": "Run Fix Executor v2 after human approval gate is added.",
++   "likely_files_to_inspect": [
+++    "BOUNTY_HUNTER_EXECUTION_REPORT.json",
++     "mkdocs.yml",
++     "examples/architectures/mcp_context_gateway/real_catalogs/everything.json"
++   ],
++@@ -23,5 +24,5 @@
++     "Prepare a PR/claim package.",
++     "Ask for approval before external submission."
++   ],
++-  "created_at": "2026-06-13T00:33:59.991421+00:00"
+++  "created_at": "2026-06-13T00:57:28.049838+00:00"
++ }
++\ No newline at end of file
+diff --git a/docs/label_taxonomy.md b/docs/label_taxonomy.md
+new file mode 100644
+index 0000000..6b613e0
+--- /dev/null
++++ b/docs/label_taxonomy.md
+@@ -0,0 +1,82 @@
++# Label taxonomy
++
++This repository uses a small, composable label scheme so humans and coding agents can find work without reading the whole backlog.
++
++## Required dimensions
++
++Apply at least one label from each dimension when triaging an issue.
++
++### Area labels
++
++| Label | Use for |
++| --- | --- |
++| `area/context` | Context packing, selection, firewall, memory, handoff, prompt assembly. |
++| `area/routing` | Catalogs, graph building, route scoring, cards, manifests, hydration. |
++| `area/gateway` | MCP gateway, proxy runtime, gateway policy, validation, diagnostics. |
++| `area/adapters` | Framework/provider adapters and integration guides. |
++| `area/docs` | Documentation, examples, recipes, onboarding. |
++| `area/benchmarks` | Benchmarks, eval fixtures, scorecards, calibration. |
++
++### Complexity labels
++
++| Label | Use for |
++| --- | --- |
++| `complexity/xs` | One file, documentation or very small code change, no architectural decisions. |
++| `complexity/s` | One focused module plus tests, clear acceptance criteria. |
++| `complexity/m` | Cross-module work or non-trivial API/design considerations. |
++| `complexity/l` | Larger project work; maintainers should break these down before external contribution. |
++
++### Type labels
++
++| Label | Use for |
++| --- | --- |
++| `bug` | Incorrect behavior or regression. |
++| `enhancement` | New behavior in an existing area. |
++| `documentation` | Docs-only or mostly-docs work. |
++| `integration` | New adapter, provider, framework, or external interface support. |
++| `performance` | Runtime, token, memory, benchmark, or scaling work. |
++| `security` | Secret handling, sandboxing, validation, supply-chain, or data exposure risk. |
++| `testing` | Test coverage, fixtures, CI checks, smoke tests. |
++| `developer-experience` | Contributor tooling, templates, local workflow, maintainability. |
++
++## Discovery labels
++
++Use these labels to advertise work that is ready for contributors.
++
++| Label | Criteria |
++| --- | --- |
++| `good first issue` | One file/module, explicit acceptance criteria, no deep architecture required, tests/docs path named. |
++| `help wanted` | Maintainers want outside help and the work is scoped enough to start. |
++| `agent-friendly` | Issue is deterministic enough for coding agents: exact files, acceptance criteria, and test commands are listed. |
++
++## Suggested colors and descriptions
++
++These are maintainer-facing suggestions for GitHub label creation.
++
++| Label | Color | Description |
++| --- | --- | --- |
++| `area/context` | `1f77b4` | Context engine, firewall, memory, prompt building. |
++| `area/routing` | `9467bd` | Router, catalogs, cards, graph, hydration. |
++| `area/gateway` | `17becf` | MCP gateway/proxy runtime and diagnostics. |
++| `area/adapters` | `ff7f0e` | Framework/provider adapters and integration surfaces. |
++| `area/docs` | `2ca02c` | Documentation, examples, recipes, onboarding. |
++| `area/benchmarks` | `8c564b` | Benchmarks, evals, scorecards, fixtures. |
++| `complexity/xs` | `c7e9c0` | Very small, isolated change. |
++| `complexity/s` | `a1d99b` | Focused small change with tests. |
++| `complexity/m` | `74c476` | Medium scoped change. |
++| `complexity/l` | `31a354` | Large or needs decomposition. |
++| `agent-friendly` | `bfdadc` | Suitable for coding agents with clear files/tests. |
++| `developer-experience` | `d4c5f9` | Contributor and maintainer workflow improvements. |
++| `integration` | `fdae6b` | Adapter/provider/framework integration work. |
++| `testing` | `fdd0a2` | Test coverage, fixtures, smoke checks. |
++| `security` | `fb6a4a` | Security-sensitive behavior or hardening. |
++| `performance` | `9ecae1` | Runtime/token/benchmark performance. |
++
++## Triage checklist
++
++1. Add one `area/*` label.
++2. Add one `complexity/*` label.
++3. Add one type label.
++4. Add `good first issue` only if the issue names exact files/modules and has acceptance criteria.
++5. Add `agent-friendly` only if a coding agent can validate the work locally without credentials or network access.
++6. Prefer breaking `complexity/l` issues into smaller `complexity/xs` or `complexity/s` issues before adding `good first issue`.
+diff --git a/tests/test_new_adapter_scaffold.py b/tests/test_new_adapter_scaffold.py
+new file mode 100644
+index 0000000..1b8c858
+--- /dev/null
++++ b/tests/test_new_adapter_scaffold.py
+@@ -0,0 +1,71 @@
++"""Tests for the adapter scaffold generator."""
++
++from __future__ import annotations
++
++import importlib.util
++import tempfile
++import unittest
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[1]
++SCAFFOLD_PATH = ROOT / "scaffolds" / "new_adapter.py"
++
++
++def _load_scaffold_module():
++    spec = importlib.util.spec_from_file_location("new_adapter_scaffold", SCAFFOLD_PATH)
++    if spec is None or spec.loader is None:
++        raise RuntimeError(f"could not load {SCAFFOLD_PATH}")
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++class NewAdapterScaffoldTest(unittest.TestCase):
++    def test_plan_files_uses_expected_paths(self) -> None:
++        scaffold = _load_scaffold_module()
++        files = scaffold.plan_files("demo_provider", ROOT)
++        paths = {generated.path.relative_to(ROOT).as_posix() for generated in files}
++        self.assertIn("src/contextweaver/adapters/demo_provider.py", paths)
++        self.assertIn("tests/test_adapters_demo_provider.py", paths)
++        self.assertIn("docs/integration_demo_provider.md", paths)
++        self.assertIn("examples/demo_provider_adapter_demo.py", paths)
++        self.assertIn("docs/adapter_checklists/demo_provider.md", paths)
++
++    def test_generated_content_documents_adapter_invariants(self) -> None:
++        scaffold = _load_scaffold_module()
++        files = scaffold.plan_files("demo_provider", ROOT)
++        joined = "\n".join(generated.content for generated in files)
++        self.assertIn("Provider SDK imports must stay optional", joined)
++        self.assertIn("do not leak", joined.lower())
++        self.assertIn("from_demo_provider_tools", joined)
++        self.assertIn("from_demo_provider_history", joined)
++        self.assertIn("Install", joined)
++
++    def test_write_files_refuses_to_overwrite_without_force(self) -> None:
++        scaffold = _load_scaffold_module()
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            files = scaffold.plan_files("demo_provider", root)
++            scaffold.write_files(files)
++            with self.assertRaises(FileExistsError):
++                scaffold.write_files(files)
++
++    def test_main_dry_run_does_not_write_files(self) -> None:
++        scaffold = _load_scaffold_module()
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            rc = scaffold.main(["demo_provider", "--root", str(root), "--dry-run"])
++            self.assertEqual(rc, 0)
++            self.assertFalse((root / "src" / "contextweaver" / "adapters" / "demo_provider.py").exists())
++
++    def test_invalid_names_are_rejected(self) -> None:
++        scaffold = _load_scaffold_module()
++        with self.assertRaises(ValueError):
++            scaffold.plan_files("123bad", ROOT)
++        with self.assertRaises(ValueError):
++            scaffold.plan_files("bad__name", ROOT)
++
++
++if __name__ == "__main__":
++    unittest.main()

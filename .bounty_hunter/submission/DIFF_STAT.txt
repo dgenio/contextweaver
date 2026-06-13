@@ -1,0 +1,7 @@
+ BOUNTY_HUNTER_EXECUTION_REPORT.json | 50 +++++++++++-----------
+ BOUNTY_HUNTER_FIX_PLAN.json         |  3 +-
+ BOUNTY_HUNTER_LLM_CODE_PATCH.diff   | 32 +++++++++++++++
+ BOUNTY_HUNTER_REAL_CODE_PATCH.diff  | 32 +++++++++++++++
+ docs/label_taxonomy.md              | 82 +++++++++++++++++++++++++++++++++++++
+ tests/test_new_adapter_scaffold.py  | 71 ++++++++++++++++++++++++++++++++
+ 6 files changed, 244 insertions(+), 26 deletions(-)
