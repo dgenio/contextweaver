@@ -252,6 +252,11 @@ def from_google_adk_session(
       ``parent_id`` set to the originating call so dependency closure links
       the pair.
 
+    Parent linkage uses the ADK-provided ``id`` on the ``function_call`` /
+    ``function_response`` parts.  Hand-built events that omit those ids do not
+    link the response back to its call (each falls back to a distinct
+    index-derived id), so supply the call ids when constructing events by hand.
+
     Args:
         session_or_events: A ``Session`` instance or a list of events.
         into: Optional :class:`~contextweaver.context.manager.ContextManager`

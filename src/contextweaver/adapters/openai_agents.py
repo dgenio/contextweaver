@@ -230,6 +230,11 @@ def from_openai_agents_run(
     - approval / MCP / compaction control items → skipped (no conversational
       content). Genuinely unknown item types still raise.
 
+    Parent linkage uses the SDK-provided ``call_id`` / ``id`` carried on the
+    tool call and its output.  Hand-built item dicts that omit those ids do not
+    link the output back to its call — each falls back to a distinct
+    index-derived id — so supply the call ids when constructing items by hand.
+
     Args:
         run_or_items: A run/result object or a list of run items.
         into: Optional :class:`~contextweaver.context.manager.ContextManager`

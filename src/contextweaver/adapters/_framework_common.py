@@ -101,7 +101,7 @@ def coerce_schema_dict(raw: object) -> dict[str, Any]:
         except Exception:  # pragma: no cover - defensive; depends on user model
             return {}
         if isinstance(schema, dict):
-            return dict(schema)
+            return copy.deepcopy(schema)
     return {}
 
 
