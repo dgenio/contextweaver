@@ -1,0 +1,16 @@
+ .github/ISSUE_TEMPLATE/good_first_issue.md |  71 +++++++
+ BACKLOG.md                                 | 177 +++++++++++++++++
+ BOUNTY_HUNTER_EXECUTION_REPORT.json        | 113 +++++++++++
+ BOUNTY_HUNTER_FIX_PLAN.json                |  27 +++
+ BOUNTY_HUNTER_LLM_CODE_PATCH.diff          |   0
+ BOUNTY_HUNTER_REAL_CODE_PATCH.diff         |   0
+ CONTRIBUTOR_ONRAMP.md                      |  66 +++++++
+ LABEL_TAXONOMY.md                          |  73 +++++++
+ docs/starter_backlog.md                    | 284 +++++++++++++++++++++++++++
+ scaffolds/adapter/README.md                |  27 +++
+ scaffolds/adapter/adapter.py.tmpl          |  88 +++++++++
+ scaffolds/adapter/checklist.md             |  38 ++++
+ scaffolds/adapter/integration_doc.md.tmpl  |  42 ++++
+ scaffolds/adapter/test_adapter.py.tmpl     |  70 +++++++
+ scaffolds/new_adapter.py                   | 300 +++++++++++++++++++++++++++++
+ 15 files changed, 1376 insertions(+)

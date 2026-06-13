@@ -1,0 +1,27 @@
+{
+  "status": "fix plan drafted",
+  "objective": "[Community] Contributor on-ramp: curated starter backlog, adapter scaffold, and label taxonomy",
+  "issue_url": "https://github.com/dgenio/contextweaver/issues/446",
+  "repo": "dgenio/contextweaver",
+  "likely_work_type": "security-sensitive fix",
+  "recommended_next_action": "Run Fix Executor v2 after human approval gate is added.",
+  "likely_files_to_inspect": [
+    "mkdocs.yml",
+    "examples/architectures/mcp_context_gateway/real_catalogs/everything.json"
+  ],
+  "test_commands_to_try": [
+    "python -m pytest",
+    "python -m unittest discover"
+  ],
+  "safety_gate": "No external PR, bounty claim, wallet action, or payout connection will run without explicit approval.",
+  "steps": [
+    "Read the issue requirements and comments.",
+    "Inspect likely source files.",
+    "Identify the smallest safe fix.",
+    "Create a local patch.",
+    "Run detected test commands.",
+    "Prepare a PR/claim package.",
+    "Ask for approval before external submission."
+  ],
+  "created_at": "2026-06-13T00:33:59.991421+00:00"
+}

@@ -1,0 +1,88 @@
+"""{{Adapter Display Name}} adapter.
+
+This scaffold shows the expected shape for a contextweaver adapter. Replace
+placeholders and delete sections that do not apply to the provider.
+
+Design rules:
+- Keep provider imports optional and guarded.
+- Do not make network calls from conversion functions.
+- Return contextweaver-native types or plain Python data.
+- Translate provider-specific objects at the adapter boundary.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+from contextweaver.types import ContextItem, ItemKind, SelectableItem
+
+_PROVIDER_IMPORT_ERROR = (
+    "{{Adapter Display Name}} support requires the optional provider package "
+    "'{{provider_package}}'. Install it with the project extra documented for "
+    "this adapter, for example: pip install 'contextweaver[{{extra_name}}]'."
+)
+
+
+def _require_provider() -> Any:
+    """Import the optional provider SDK only when provider-specific code needs it."""
+    try:
+        import {{provider_import_name}}  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover - depends on optional SDK
+        raise ImportError(_PROVIDER_IMPORT_ERROR) from exc
+    return {{provider_import_name}}
+
+
+def from_{{adapter_name}}_tools(tools: Iterable[Any], *, namespace: str = "{{adapter_name}}") -> list[SelectableItem]:
+    """Convert provider-like tool objects into contextweaver `SelectableItem`s.
+
+    The input may be real provider tool objects or local fakes used in tests.
+    Prefer duck-typing or mapping access over importing provider classes at
+    module import time.
+    """
+    converted: list[SelectableItem] = []
+    for tool in tools:
+        name = _read_field(tool, "name")
+        description = _read_field(tool, "description", default="")
+        if not name:
+            raise ValueError("{{adapter_name}} tool is missing a name")
+        converted.append(
+            SelectableItem(
+                id=f"{namespace}.{name}",
+                kind="tool",
+                name=str(name),
+                description=str(description or name),
+                namespace=namespace,
+                metadata={"adapter": "{{adapter_name}}"},
+            )
+        )
+    return converted
+
+
+def from_{{adapter_name}}_history(messages: Iterable[Any]) -> list[ContextItem]:
+    """Convert provider-like message/history objects into `ContextItem`s.
+
+    Delete this function if the provider does not expose a useful history or
+    message representation.
+    """
+    items: list[ContextItem] = []
+    for idx, message in enumerate(messages):
+        role = str(_read_field(message, "role", default="user"))
+        text = str(_read_field(message, "content", default=""))
+        kind = ItemKind.user_turn if role == "user" else ItemKind.assistant_turn
+        items.append(
+            ContextItem(
+                id=f"{{adapter_name}}-msg-{idx}",
+                kind=kind,
+                text=text,
+                metadata={"adapter": "{{adapter_name}}", "role": role},
+            )
+        )
+    return items
+
+
+def _read_field(obj: Any, name: str, *, default: Any = None) -> Any:
+    """Read *name* from a mapping or object without depending on provider classes."""
+    if isinstance(obj, Mapping):
+        return obj.get(name, default)
+    return getattr(obj, name, default)

@@ -1,0 +1,42 @@
+# {{Adapter Display Name}} Integration
+
+This page documents the `contextweaver.adapters.{{adapter_name}}` adapter.
+
+## Install
+
+```bash
+pip install 'contextweaver[{{extra_name}}]'
+```
+
+If the provider SDK is already installed by your application, the adapter conversion functions can also be used directly from a core contextweaver install as long as you pass provider-like objects and do not call provider-specific helpers.
+
+## Convert tools
+
+```python
+from contextweaver.adapters.{{adapter_name}} import from_{{adapter_name}}_tools
+
+selectable_items = from_{{adapter_name}}_tools(provider_tools, namespace="{{adapter_name}}")
+```
+
+The returned objects are contextweaver `SelectableItem`s and can be registered in a catalog or routed like any other tools.
+
+## Convert history
+
+```python
+from contextweaver.adapters.{{adapter_name}} import from_{{adapter_name}}_history
+
+context_items = from_{{adapter_name}}_history(provider_messages)
+```
+
+Delete this section if the provider does not expose a message/history shape.
+
+## Boundaries
+
+- The adapter converts provider objects; it does not execute provider tools.
+- Tests use local fakes and do not call live APIs.
+- Provider SDK imports are optional and guarded.
+- Provider-specific objects should not leak beyond the adapter boundary.
+
+## Troubleshooting
+
+If you see an import error for `{{provider_package}}`, install the optional extra shown above or install the provider SDK in your application environment.

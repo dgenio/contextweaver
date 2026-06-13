@@ -1,0 +1,1 @@
+Fix: [Community] Contributor on-ramp: curated starter backlog, adapter scaffold, and label taxonomy
