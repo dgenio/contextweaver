@@ -154,7 +154,11 @@ class SelectableItem:
         )
 
 
-#: Alias — use when emphasising the LLM-facing card framing.
+#: Deprecated alias for :class:`SelectableItem` (issue #642); use
+#: ``SelectableItem`` in code. Kept as a plain alias — **not** a warning-
+#: emitting shim — because ``types.py`` is a pure-data module that may not have
+#: side effects (``docs/agent-context/invariants.md``); the deprecation is
+#: tracked documentation-only in ``docs/upgrading.md``.
 ToolCard = SelectableItem
 
 

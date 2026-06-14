@@ -46,7 +46,9 @@ Check out the MCP context gateway example [MCP gateway example](../examples/mcp_
 
 A `SelectableItem` is the unified representation of anything the Routing
 Engine can select — a tool, agent, skill, or internal function. The type
-alias `ToolCard` is used when emphasising the LLM-facing card framing.
+alias `ToolCard` (historically used when emphasising the LLM-facing card
+framing) is **deprecated** — use `SelectableItem`; it is scheduled for removal
+in 1.0 (see [Upgrading](upgrading.md)).
 
 Key fields: `id`, `kind`, `name`, `description`, `tags`, `namespace`,
 `side_effects`, `cost_hint`.

@@ -117,6 +117,7 @@ nav:
   - Token Calibration: token_calibration.md
   - Context Rot Demo: context_rot.md
   - Stability: stability.md
+  - Upgrading: upgrading.md
   - Launch Kit: launch_kit.md
   - Contracts: contracts.md
   - Observability: integration_otel.md

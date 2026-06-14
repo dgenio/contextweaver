@@ -214,14 +214,18 @@ def test_no_items_raises() -> None:
 def test_debug_trace_populated() -> None:
     router = _setup_router()
     result = router.route("database", debug=True)
-    assert len(result.debug_trace) >= 1
-    assert "depth" in result.debug_trace[0]
+    with pytest.warns(DeprecationWarning, match="debug_trace"):
+        legacy = result.debug_trace
+    assert len(legacy) >= 1
+    assert "depth" in legacy[0]
 
 
 def test_debug_trace_empty_when_not_requested() -> None:
     router = _setup_router()
     result = router.route("database", debug=False)
-    assert result.debug_trace == []
+    with pytest.warns(DeprecationWarning, match="debug_trace"):
+        legacy = result.debug_trace
+    assert legacy == []
 
 
 # ------------------------------------------------------------------
@@ -493,11 +497,13 @@ def test_trace_steps_only_with_debug() -> None:
 
 
 def test_legacy_debug_trace_preserved() -> None:
-    """The legacy ``debug_trace`` list-of-dicts shape still works."""
+    """The legacy ``debug_trace`` list-of-dicts shape still works (with a warning)."""
     router = _setup_router()
     result = router.route("database", debug=True)
-    assert result.debug_trace
-    first = result.debug_trace[0]
+    with pytest.warns(DeprecationWarning, match="debug_trace"):
+        legacy = result.debug_trace
+    assert legacy
+    first = legacy[0]
     assert "depth" in first
     assert "expansions" in first
 

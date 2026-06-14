@@ -68,8 +68,8 @@ expectations.
 |---|---|
 | Public import map reviewed | Decide which documented `contextweaver.*` imports are stable long-term. |
 | Experimental surfaces isolated | Keep experimental gateway/runtime features labeled or move them behind clear namespaces. |
-| Deprecation policy enforced | Deprecated public APIs warn before removal. |
-| Migration guide ready | Document any pre-1.0 breaking changes and replacements. |
+| Deprecation policy enforced | Deprecated public APIs warn before removal via `contextweaver._deprecation` (see [Upgrading](upgrading.md)). |
+| Migration guide ready | Pre-1.0 breaking changes and replacements documented on the [Upgrading](upgrading.md) page. |
 | Benchmark report stable | Make sure benchmark methodology, limits, and regeneration flow are current. |
 | Security-sensitive defaults reviewed | Re-check sensitivity and firewall defaults before declaring 1.0. |
 | Protocol compatibility reviewed | Re-check MCP, A2A, and weaver-spec adapter behavior against current upstream specs. |
@@ -77,10 +77,17 @@ expectations.
 
 ## Deprecation Policy
 
+The runtime mechanism behind this policy is `contextweaver._deprecation`
+(issue #517): deprecated public surfaces emit a `DeprecationWarning` naming the
+replacement and the planned removal version, and the full set is tracked in one
+registry. The adopter-facing policy and the live inventory of active
+deprecations live on the [Upgrading](upgrading.md) page.
+
 Before 1.0:
 
 - Public APIs may still change when correctness or clarity requires it.
-- The project should prefer warnings, migration notes, and changelog entries
+- Deprecated public surfaces warn for **at least one minor release** before
+  removal; the project prefers warnings, migration notes, and changelog entries
   over surprise removals.
 - Experimental surfaces may change faster, but docs should say so.
 

@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from contextweaver._deprecation import warn_deprecated
+
 #: Trace schema version.  Bumped on backwards-incompatible field changes.
 TRACE_VERSION: int = 1
 
@@ -149,6 +151,23 @@ class RouteTrace:
         The legacy format groups per-depth expansions under a list of
         ``{"depth": int, "expansions": [...]}`` records.  This method
         reconstructs that shape from :attr:`steps`.
+
+        .. deprecated:: 0.16.0
+            Use the structured :class:`RouteTrace` fields (:attr:`steps` /
+            :meth:`to_dict`); scheduled for removal in 1.0.0 (issue #642).
+        """
+        # Registered once in ``_deprecation._SHIMS``; warn from the body (as
+        # ``RouteResult.debug_trace`` does) rather than via ``@deprecated`` so
+        # the deprecation has a single registrant and cannot drift.
+        warn_deprecated("RouteTrace.to_legacy_dicts")
+        return self._to_legacy_dicts()
+
+    def _to_legacy_dicts(self) -> list[dict[str, Any]]:
+        """Construct the legacy ``debug_trace`` shape (no deprecation warning).
+
+        Internal helper shared by the deprecated public :meth:`to_legacy_dicts`
+        and :attr:`RouteResult.debug_trace` so that in-library callers do not
+        trip the deprecation warning on the canonical code path.
         """
         by_depth: dict[int, list[dict[str, Any]]] = {}
         for step in self.steps:

@@ -138,10 +138,7 @@
   class FirewallStats(triggered: 'bool', strategy: 'str', threshold_chars: 'int' = ..., original_chars: 'int' = ..., original_tokens: 'int' = ..., summary_chars: 'int' = ..., summary_tokens: 'int' = ..., artifact_ref: 'str | None' = ..., summarized_by_llm: 'bool' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'FirewallStats'
       def to_dict(self) -> 'dict[str, Any]'
-  class FuzzyScorer() -> 'None'
-      def fit(self, documents: 'list[str]') -> 'None'
-      def score(self, query: 'str', doc_index: 'int') -> 'float'
-      def score_all(self, query: 'str') -> 'list[float]'
+  FuzzyScorer: NoneType
   class GraphBuildError(ContextWeaverError)(message: 'str', *, cycle: 'list[str] | None' = ..., edge: 'tuple[str, str] | None' = ..., missing_root: 'str | None' = ...) -> 'None'
   class GraphManifest(manifest_version: 'int' = ..., build_hash: 'str' = ..., seed: 'int | None' = ..., engine_versions: 'dict[str, str]' = ..., timestamp: 'float' = ..., item_count: 'int' = ..., strategy: 'str' = ..., max_depth: 'int' = ..., extra: 'dict[str, Any]' = ...) -> None
       def for_build(cls, items: 'list[SelectableItem]', *, strategy: 'str' = ..., max_depth: 'int' = ..., seed: 'int | None' = ..., engine_versions: 'dict[str, str] | None' = ..., extra: 'dict[str, Any] | None' = ..., timestamp: 'float | None' = ...) -> 'GraphManifest'

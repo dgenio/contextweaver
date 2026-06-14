@@ -23,11 +23,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, overload
 
+from contextweaver._deprecation import warn_deprecated
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer
 from contextweaver.envelope import RoutingDecision
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import EmbeddingBackend, Retriever, RoutingScoreProvider
+from contextweaver.routing._scorer_adapter import _ScorerLike, _ScorerRetriever
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.explanation import explain_route, explain_route_dict
 from contextweaver.routing.filters import (
@@ -49,10 +51,9 @@ from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
 
-# Union of all scorer types Router accepts. ``FuzzyScorer`` is ``None`` when
-# the ``contextweaver[retrieval]`` extra is not installed; we widen with
-# ``Any`` rather than naming the runtime ``None`` sentinel here.
-_ScorerLike = TfIdfScorer | BM25Scorer | Any
+# ``_ScorerLike`` and the legacy ``_ScorerRetriever`` adapter live in
+# ``contextweaver.routing._scorer_adapter`` (imported above) so this
+# grandfathered module stays within its frozen size ceiling (issue #642).
 
 # Registry of named backends. ``Router(scorer_backend="bm25")`` constructs
 # the corresponding scorer when no explicit instance is provided.
@@ -131,8 +132,14 @@ class RouteResult:
 
     @property
     def debug_trace(self) -> list[dict[str, Any]]:
-        """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape."""
-        return self.trace.to_legacy_dicts()
+        """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape.
+
+        .. deprecated:: 0.16.0
+            Use :attr:`trace` (the structured :class:`RouteTrace`) instead;
+            scheduled for removal in 1.0.0 (issue #642).
+        """
+        warn_deprecated("RouteResult.debug_trace")
+        return self.trace._to_legacy_dicts()
 
     def to_dict(self, *, include_items: bool = True) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict (issue #289).
@@ -407,35 +414,6 @@ class RouteResult:
 # ---------------------------------------------------------------------------
 
 
-class _ScorerRetriever:
-    """Internal :class:`Retriever` adapter for legacy ``scorer=`` callers.
-
-    Wraps any pre-existing scorer that exposes the ``fit(corpus)`` /
-    ``score(query, index)`` shape (e.g. :class:`TfIdfScorer`,
-    :class:`BM25Scorer`, :class:`FuzzyScorer`) so the rest of
-    :class:`Router` can talk to a single :class:`Retriever` surface
-    regardless of how the engine was supplied.
-    """
-
-    def __init__(self, scorer: _ScorerLike) -> None:
-        self._scorer = scorer
-        self._corpus_size = 0
-
-    def fit(self, corpus: list[str]) -> None:
-        self._scorer.fit(corpus)
-        self._corpus_size = len(corpus)
-
-    def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
-        scored = [(i, self._scorer.score(query, i)) for i in range(self._corpus_size)]
-        scored.sort(key=lambda x: (-x[1], x[0]))
-        return scored[: max(0, top_k)]
-
-    def score_one(self, query: str, index: int) -> float:
-        if not 0 <= index < self._corpus_size:
-            return 0.0
-        return self._scorer.score(query, index)
-
-
 class Router:
     """Beam-search router over a :class:`ChoiceGraph`.
 
@@ -568,6 +546,7 @@ class Router:
             self._retriever = HybridEmbeddingRetriever(embedding_backend)
             self._retriever_engine_name = "embedding+tfidf"
         elif scorer is not None:
+            warn_deprecated("Router(scorer=...)", stacklevel=2)
             self._retriever = _ScorerRetriever(scorer)
             self._retriever_engine_name = "tfidf"
         elif scorer_backend != "tfidf":

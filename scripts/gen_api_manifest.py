@@ -32,6 +32,7 @@ import argparse
 import enum
 import importlib
 import inspect
+import warnings
 from collections.abc import Sequence
 
 from _golden import REPO_ROOT, _rel, check_text_artifacts, write_text_artifacts
@@ -144,7 +145,15 @@ def render_manifest() -> str:
             out.append("")
             continue
         for name in sorted(exported):
-            obj = getattr(module, name)
+            # Defensive: no current export warns on *attribute access*
+            # (``ToolCard`` is a plain alias; the decorated/body shims warn only
+            # when *called*), but the public surface deliberately retains
+            # deprecated re-exports (issue #642) and a future module-level
+            # ``__getattr__`` shim could warn on access — introspecting one must
+            # not let a DeprecationWarning derail manifest generation.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                obj = getattr(module, name)
             for line in _render_member(name, obj):
                 out.append(f"  {line}")
         out.append("")

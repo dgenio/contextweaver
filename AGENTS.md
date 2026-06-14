@@ -154,7 +154,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 
 | Type | Purpose |
 |---|---|
-| `SelectableItem` | Unified tool/agent/skill/flow/internal item (`kind="flow"` = external multi-step capability, e.g. a ChainWeaver flow). Alias: `ToolCard` (use `SelectableItem` in code). |
+| `SelectableItem` | Unified tool/agent/skill/flow/internal item (`kind="flow"` = external multi-step capability, e.g. a ChainWeaver flow). Deprecated alias: `ToolCard` (use `SelectableItem` in code; removal in 1.0 — see [docs/upgrading.md](docs/upgrading.md)). |
 | `ContextItem` | Event log entry with `parent_id` for dependency closure |
 | `ResultEnvelope` | Processed tool output: summary + facts + artifacts + views |
 | `ContextPack` | Rendered prompt + stats from a context build |
@@ -179,7 +179,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ToolIdParts` | Destructured canonical `tool_id` (namespace / name / version / hash8) |
 
 **Vocabulary notes:**
-- `SelectableItem` is the canonical name. `ToolCard` is a user-facing alias — use `SelectableItem` in code and docs.
+- `SelectableItem` is the canonical name. `ToolCard` is a **deprecated** alias (documentation-only deprecation, scheduled for removal in 1.0 — see [docs/upgrading.md](docs/upgrading.md)) — use `SelectableItem` in code and docs.
 - "Context" is overloaded — can mean `ContextItem`, `ContextPack`, the pipeline, or the LLM context window. Disambiguate when unclear. See [docs/concepts.md](docs/concepts.md).
 - "Firewall" here means context firewall (prevents large outputs from consuming the token budget), not a security firewall.
 
