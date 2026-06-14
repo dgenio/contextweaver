@@ -82,10 +82,6 @@ from contextweaver.adapters.gateway_policy import (
     RateLimitPolicy,
     RetryPolicy,
 )
-from contextweaver.adapters.gateway_primitives import (
-    PrimitiveGatewayRuntime,
-    PrimitiveUpstream,
-)
 from contextweaver.adapters.gateway_validation import (
     CatalogRefreshReport,
     SchemaFinding,
@@ -122,13 +118,6 @@ from contextweaver.adapters.mcp_gateway import (
     GATEWAY_TOOL_NAMES,
     dispatch_meta_tool,
     make_gateway_meta_tools,
-)
-from contextweaver.adapters.mcp_primitives import (
-    infer_resource_namespace,
-    mcp_prompt_get_to_envelope,
-    mcp_prompt_to_selectable,
-    mcp_resource_read_to_envelope,
-    mcp_resource_to_selectable,
 )
 from contextweaver.adapters.mcp_proxy import (
     PROXY_META_TOOL_NAMES,
@@ -199,8 +188,6 @@ __all__ = [
     "McpClientUpstream",
     "MultiplexUpstream",
     "PROXY_META_TOOL_NAMES",
-    "PrimitiveGatewayRuntime",
-    "PrimitiveUpstream",
     "ProxyRuntime",
     "RateLimit",
     "RateLimitPolicy",
@@ -256,7 +243,6 @@ __all__ = [
     "infer_openai_agents_namespace",
     "infer_openapi_namespace",
     "infer_pydantic_ai_namespace",
-    "infer_resource_namespace",
     "infer_smolagents_namespace",
     "google_adk_tool_to_selectable",
     "google_adk_tools_to_catalog",
@@ -281,10 +267,6 @@ __all__ = [
     "make_gateway_meta_tools",
     "make_proxy_meta_tools",
     "make_stripped_tools_list",
-    "mcp_prompt_get_to_envelope",
-    "mcp_prompt_to_selectable",
-    "mcp_resource_read_to_envelope",
-    "mcp_resource_to_selectable",
     "mcp_result_to_envelope",
     "mcp_tool_to_selectable",
     "normalize_args",

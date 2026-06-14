@@ -21,7 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   envelope wrappers live in `contextweaver.adapters.mcp_primitives`; declared
   prompt arguments become an `args_schema` so `prompt_get` validates inputs like
   `tool_execute`. The `SelectableItem` / `ChoiceCard` `kind` set now includes
-  `resource` and `prompt`.
+  `resource` and `prompt`. Four new gateway meta-tools — `resource_browse` /
+  `resource_read` / `prompt_browse` / `prompt_get`
+  (`contextweaver.adapters.mcp_gateway_primitives`) — expose the bounded-choice
+  surface, and `McpGatewayServer` advertises and dispatches them over stdio when
+  constructed with a `primitive_runtime=`.
 - **Unified cross-primitive identity & collision policy (#671).** New
   `contextweaver.routing.primitive_id` is the single source of truth for
   identifying MCP tools, resources, and prompts in one shared `Catalog`

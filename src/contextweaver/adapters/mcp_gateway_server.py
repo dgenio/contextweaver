@@ -28,10 +28,16 @@ from mcp import types as mcp_types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
+from contextweaver.adapters.gateway_primitives import PrimitiveGatewayRuntime
 from contextweaver.adapters.mcp_gateway import (
     GATEWAY_TOOL_NAMES,
     dispatch_meta_tool,
     make_gateway_meta_tools,
+)
+from contextweaver.adapters.mcp_gateway_primitives import (
+    PRIMITIVE_TOOL_NAMES,
+    dispatch_primitive_meta_tool,
+    make_primitive_meta_tools,
 )
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
 
@@ -49,9 +55,16 @@ class McpGatewayServer:
         version: Optional MCP server version string.
         instructions: Optional human-readable instructions advertised to
             the agent.
+        primitive_runtime: Optional :class:`PrimitiveGatewayRuntime`.  When
+            supplied, the server additionally advertises and dispatches the four
+            resource/prompt meta-tools (#669 / #670).  Construct it sharing this
+            runtime's :class:`~contextweaver.context.manager.ContextManager`
+            (``PrimitiveGatewayRuntime(upstream, context_manager=runtime.context_manager)``)
+            so reads land in one artifact store / ``tool_view`` surface.
 
     Attributes:
         runtime: The wrapped :class:`ProxyRuntime`.
+        primitive_runtime: The optional :class:`PrimitiveGatewayRuntime`.
         server: The underlying :class:`mcp.server.Server` with handlers
             wired up.
     """
@@ -63,6 +76,7 @@ class McpGatewayServer:
         name: str = "contextweaver-gateway",
         version: str | None = None,
         instructions: str | None = None,
+        primitive_runtime: PrimitiveGatewayRuntime | None = None,
     ) -> None:
         if runtime.mode != ExposureMode.GATEWAY:
             logger.warning(
@@ -71,18 +85,22 @@ class McpGatewayServer:
                 runtime.mode,
             )
         self.runtime = runtime
+        self.primitive_runtime = primitive_runtime
         self.server: Server[Any, Any] = Server(name, version=version, instructions=instructions)
         self._register_handlers()
 
     def _register_handlers(self) -> None:
         async def handle_list_tools() -> list[mcp_types.Tool]:
+            defs = list(make_gateway_meta_tools(self.runtime))
+            if self.primitive_runtime is not None:
+                defs += make_primitive_meta_tools(self.primitive_runtime)
             return [
                 mcp_types.Tool(
                     name=tool["name"],
                     description=tool["description"],
                     inputSchema=tool["inputSchema"],
                 )
-                for tool in make_gateway_meta_tools(self.runtime)
+                for tool in defs
             ]
 
         async def handle_call_tool(
@@ -93,18 +111,20 @@ class McpGatewayServer:
             # from a ``(content, is_error)`` tuple — the gateway's
             # ``tool_browse`` payload is a JSON array which fails
             # structured-content validation (must be a dict).
-            if name not in GATEWAY_TOOL_NAMES:
+            if name in GATEWAY_TOOL_NAMES:
+                result = await dispatch_meta_tool(self.runtime, name, arguments or {})
+            elif self.primitive_runtime is not None and name in PRIMITIVE_TOOL_NAMES:
+                result = await dispatch_primitive_meta_tool(
+                    self.primitive_runtime, name, arguments or {}
+                )
+            else:
                 payload = json.dumps(
-                    {
-                        "error": "ARGS_INVALID",
-                        "message": f"unknown meta-tool {name!r}",
-                    }
+                    {"error": "ARGS_INVALID", "message": f"unknown meta-tool {name!r}"}
                 )
                 return mcp_types.CallToolResult(
                     content=[mcp_types.TextContent(type="text", text=payload)],
                     isError=True,
                 )
-            result = await dispatch_meta_tool(self.runtime, name, arguments or {})
             content: list[mcp_types.ContentBlock] = [
                 mcp_types.TextContent(type="text", text=part.get("text", ""))
                 for part in result.get("content", [])
