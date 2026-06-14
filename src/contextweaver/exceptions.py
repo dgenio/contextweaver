@@ -251,7 +251,8 @@ class DeterminismError(ContextWeaverError):
 
     code: ClassVar[str] = "CW_DETERMINISM"
     default_hint: ClassVar[str | None] = (
-        f"disable deterministic mode or provide a deterministic summarizer; "
+        f"provide a deterministic (rule-based) summarizer/extractor, or disable "
+        f"deterministic mode if model calls are acceptable; "
         f"see {_ERRORS_DOC}/#determinismerror"
     )
 
@@ -269,6 +270,10 @@ class PathNotFoundError(CatalogError):
     """Raised when a well-formed ``tool_browse`` path resolves to no node."""
 
     code: ClassVar[str] = "CW_PATH_NOT_FOUND"
+    default_hint: ClassVar[str | None] = (
+        f"browse from the root to discover valid paths; the catalog may have "
+        f"changed since the path was built. See {_ERRORS_DOC}/#pathnotfounderror"
+    )
 
 
 class UpstreamError(ContextWeaverError):
