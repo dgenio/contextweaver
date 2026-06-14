@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from contextweaver.adapters.gateway_error import GatewayError
 from contextweaver.adapters.gateway_primitives import PrimitiveGatewayRuntime, PrimitiveUpstream
 from contextweaver.adapters.mcp_primitives import (
     mcp_prompt_to_selectable,
+    mcp_resource_read_to_envelope,
     mcp_resource_to_selectable,
 )
 from contextweaver.envelope import ChoiceCard, ResultEnvelope
@@ -93,6 +95,47 @@ def test_browse_prompts_returns_prompt_cards() -> None:
 def test_browse_requires_exactly_one_selector() -> None:
     err = _runtime().browse_resources(query="x", path="/y")
     assert isinstance(err, GatewayError) and err.code == "ARGS_INVALID"
+
+
+def test_browse_rejects_non_integer_top_k() -> None:
+    """A non-integer top_k is rejected as ARGS_INVALID, not a TypeError crash (#671 review)."""
+    err = _runtime().browse_resources(query="readme", top_k="5")  # type: ignore[arg-type]
+    assert isinstance(err, GatewayError) and err.code == "ARGS_INVALID"
+
+
+def test_browse_rejects_non_positive_top_k() -> None:
+    """A zero/negative top_k is also rejected cleanly (#671 review)."""
+    err = _runtime().browse_prompts(query="summarize", top_k=0)
+    assert isinstance(err, GatewayError) and err.code == "ARGS_INVALID"
+
+
+def test_resource_read_base64_decodes_blob() -> None:
+    """A binary `blob` part is base64-decoded back to its original bytes (#671 review)."""
+    raw = b"\x89PNG\r\n\x1a\n\x00\x01\x02\x03"
+    result = {
+        "contents": [
+            {
+                "uri": "file:///x.bin",
+                "mimeType": "application/octet-stream",
+                "blob": base64.b64encode(raw).decode(),
+            }
+        ]
+    }
+    envelope, binaries, _ = mcp_resource_read_to_envelope(result, "resource::fs:x#deadbeef")
+    stored, _mime, _label = next(iter(binaries.values()))
+    # Persisted bytes are the decoded payload, not the base64 text bytes.
+    assert stored == raw
+    assert envelope.artifacts[0].size_bytes == len(raw)
+
+
+def test_resource_read_malformed_blob_falls_back_to_raw_bytes() -> None:
+    """A non-base64 blob falls back to its raw string bytes instead of raising (#671 review)."""
+    result = {
+        "contents": [{"uri": "file:///x", "mimeType": "application/octet-stream", "blob": "!!!"}]
+    }
+    _envelope, binaries, _ = mcp_resource_read_to_envelope(result, "resource::fs:x#deadbeef")
+    stored, _mime, _label = next(iter(binaries.values()))
+    assert stored == b"!!!"
 
 
 async def test_read_resource_firewalls_and_persists() -> None:

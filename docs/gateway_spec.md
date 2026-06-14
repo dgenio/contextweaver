@@ -711,7 +711,13 @@ kind         = "resource" | "prompt"     ; "tool" is implied and never written
   the namespace/name), so the three id spaces are **disjoint by construction**.
 - The body after `kind::` obeys the §1.1 grammar exactly and is validated
   through the shared `parse_tool_id` / `format_tool_id` helpers, so both
-  directions agree.
+  directions agree. This round-trip guarantee applies to **canonical**
+  primitive ids only. The collision-disambiguated `~N` form introduced in §9.3
+  is **not** a canonical id and is deliberately outside the §1.1 grammar:
+  consumers must treat a `~N`-suffixed id as an **opaque catalog key** and must
+  not feed it back through `parse_tool_id`. The `~N` suffix is appended after
+  canonical-id formation, purely to key otherwise-identical entries in the
+  shared `Catalog`.
 
 ### 9.2 Shape hashes
 
@@ -729,6 +735,11 @@ hash spaces never alias:
 When two **distinct** primitives of the same kind still map to the same
 canonical id, `resolve_collisions` assigns a deterministic `~N` suffix: the
 lowest catalog index keeps the bare id, and later occurrences (in ascending
-index order) become `id~2`, `id~3`, …. The result is independent of input
-ordering, preserving the project's determinism invariant. Identical ids that
-refer to the *same* primitive are de-duplicated by the caller first.
+index order) become `id~2`, `id~3`, …. The assignment is deterministic **with
+respect to the provided catalog order** (it is keyed on list indexes and never
+depends on dict iteration order, so it reproduces across runs); it is *not*
+order-independent — re-ordering the catalog changes which occurrence keeps the
+bare id. This index-based determinism preserves the project's determinism
+invariant for a fixed catalog order. Identical ids that refer to the *same*
+primitive are de-duplicated by the caller first. The resulting `~N` ids are
+opaque catalog keys, not canonical primitive ids (see §9.1).

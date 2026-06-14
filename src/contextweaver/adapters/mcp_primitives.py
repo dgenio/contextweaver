@@ -24,6 +24,8 @@ and emits ids through the shared cross-primitive identity policy in
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import re
 from typing import Any
@@ -219,8 +221,19 @@ def mcp_resource_read_to_envelope(
             text_parts.append(text)
             raw = text.encode("utf-8")
         else:
-            raw = str(part.get("blob", "")).encode("utf-8")
+            # MCP `blob` payloads are base64-encoded binary; decode them back to
+            # the original bytes so persisted artifacts and `tool_view` drilldown
+            # stay byte-accurate (storing the base64 text bytes corrupts real
+            # binary resources). Malformed (non-base64) blobs fall back to raw bytes.
+            blob = part.get("blob")
             mime = part.get("mimeType", "application/octet-stream")
+            if isinstance(blob, str):
+                try:
+                    raw = base64.b64decode(blob, validate=True)
+                except (binascii.Error, ValueError):
+                    raw = blob.encode("utf-8")
+            else:
+                raw = b""
         handle = f"resource:{resource_id}:{i}"
         label = uri or f"content from {resource_id}"
         artifacts.append(

@@ -60,6 +60,16 @@ class PrimitiveIndex:
                 code="ARGS_INVALID",
                 message="browse requires exactly one of 'query' or 'path'.",
             )
+        # `top_k` arrives straight from an MCP client; reject non-integer or
+        # non-positive values here rather than letting a bad type reach
+        # make_choice_cards and raise TypeError across the meta-tool boundary.
+        if top_k is not None and (
+            isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1
+        ):
+            return GatewayError(
+                code="ARGS_INVALID",
+                message="'top_k' must be a positive integer.",
+            )
         if query is not None:
             if self.router is None:
                 return []

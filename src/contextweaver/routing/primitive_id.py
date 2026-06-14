@@ -269,10 +269,12 @@ def resolve_collisions(ids: list[str]) -> dict[str, str]:
     """Deterministically disambiguate repeated ids (§9 collision policy).
 
     The lowest input index of each repeated id keeps the bare form; subsequent
-    occurrences (in ascending index order) receive a ``~N`` suffix (``N`` ≥ 2),
-    so the assignment is reproducible regardless of input ordering.  Callers
-    should de-duplicate ids that refer to the *same* primitive first; every
-    entry here is treated as a distinct primitive needing a unique id.
+    occurrences (in ascending index order) receive a ``~N`` suffix (``N`` ≥ 2).
+    The assignment is deterministic *for a given input order* — it depends only
+    on the list indexes, never on dict iteration order, so it reproduces across
+    runs.  It is **not** order-independent: re-ordering ``ids`` changes which
+    occurrence keeps the bare id.  Callers should de-duplicate ids that refer to
+    the *same* primitive first; every entry here is a distinct primitive.
 
     Args:
         ids: Canonical ids in catalog order (duplicates allowed).
@@ -282,8 +284,8 @@ def resolve_collisions(ids: list[str]) -> dict[str, str]:
         re-key their items.  Index tokens are stable across runs.
 
     Example:
-        >>> resolve_collisions(["a:x#1", "a:x#1", "b:y#2"])
-        {'0': 'a:x#1', '1': 'a:x#1~2', '2': 'b:y#2'}
+        >>> resolve_collisions(["fs:readme#ab12cd34", "fs:readme#ab12cd34"])
+        {'0': 'fs:readme#ab12cd34', '1': 'fs:readme#ab12cd34~2'}
     """
     # Group input positions by their canonical id so we can number deterministically.
     positions_by_id: dict[str, list[int]] = {}
@@ -291,8 +293,7 @@ def resolve_collisions(ids: list[str]) -> dict[str, str]:
         positions_by_id.setdefault(raw, []).append(index)
     assignment: dict[str, str] = {}
     for raw, positions in positions_by_id.items():
-        # Sort positions so the lowest index keeps the bare id regardless of
-        # iteration order; subsequent ones get ~2, ~3, … in ascending order.
+        # Sorted so the lowest index keeps the bare id; later ones get ~2, ~3, ….
         for ordinal, index in enumerate(sorted(positions)):
             unique = raw if ordinal == 0 else f"{raw}{COLLISION_MARKER}{ordinal + 1}"
             assignment[str(index)] = unique

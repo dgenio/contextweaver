@@ -80,6 +80,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   side effects by hard invariants; the others remain on internal serialization
   paths.
 
+### Fixed
+
+- **Binary MCP resource reads are no longer corrupted (#671 review).**
+  `mcp_resource_read_to_envelope` now base64-decodes a resource part's `blob`
+  back to its original bytes before persisting it, instead of storing the
+  base64 text bytes — so `tool_view` drilldown on real binary resources stays
+  byte-accurate. Malformed (non-base64) blobs fall back to their raw bytes.
+- **`*_browse` rejects invalid `top_k` cleanly (#671 review).**
+  `PrimitiveIndex.browse` now validates `top_k` and returns a structured
+  `GatewayError(ARGS_INVALID)` for non-integer or non-positive values, instead
+  of letting a bad type reach `make_choice_cards` and raise `TypeError` across
+  the meta-tool boundary.
+- **Clarified collision-policy determinism & `~N` id status (#671 review).**
+  `resolve_collisions` docs and `docs/gateway_spec.md` §9 now state the
+  assignment is deterministic *for a given catalog order* (index-based, not
+  order-independent), and that the `~N`-suffixed form is an opaque catalog key
+  outside the §1.1 grammar (it does not round-trip through `parse_tool_id`).
+  Collision tests now use canonical 8-hex-char ids.
+
 ## [0.15.0] - 2026-06-14
 
 ### Added

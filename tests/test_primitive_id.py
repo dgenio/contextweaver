@@ -158,21 +158,35 @@ def test_from_dict_rejects_unknown_kind() -> None:
 
 
 def test_resolve_collisions_disambiguates_deterministically() -> None:
-    assignment = resolve_collisions(["a:x#1", "a:x#1", "b:y#2"])
-    assert assignment == {"0": "a:x#1", "1": "a:x#1~2", "2": "b:y#2"}
+    # Use canonical ids (8-hex-char `hash8` per §1.1) so the test exercises the
+    # same id shape `resolve_collisions` sees in production.
+    assignment = resolve_collisions(
+        ["fs:readme#ab12cd34", "fs:readme#ab12cd34", "gh:notes#0123abcd"]
+    )
+    assert assignment == {
+        "0": "fs:readme#ab12cd34",
+        "1": "fs:readme#ab12cd34~2",
+        "2": "gh:notes#0123abcd",
+    }
 
 
 def test_resolve_collisions_is_order_independent_for_the_winner() -> None:
     """The lowest input index always keeps the bare id, regardless of grouping."""
-    assignment = resolve_collisions(["b:y#2", "a:x#1", "a:x#1"])
-    assert assignment["1"] == "a:x#1"  # first occurrence of a:x#1
-    assert assignment["2"] == "a:x#1~2"  # second occurrence
-    assert assignment["0"] == "b:y#2"
+    assignment = resolve_collisions(
+        ["gh:notes#0123abcd", "fs:readme#ab12cd34", "fs:readme#ab12cd34"]
+    )
+    assert assignment["1"] == "fs:readme#ab12cd34"  # first occurrence
+    assert assignment["2"] == "fs:readme#ab12cd34~2"  # second occurrence
+    assert assignment["0"] == "gh:notes#0123abcd"
 
 
 def test_resolve_collisions_handles_triple() -> None:
-    assignment = resolve_collisions(["z:t#9", "z:t#9", "z:t#9"])
-    assert assignment == {"0": "z:t#9", "1": "z:t#9~2", "2": "z:t#9~3"}
+    assignment = resolve_collisions(["svc:tool#deadbeef", "svc:tool#deadbeef", "svc:tool#deadbeef"])
+    assert assignment == {
+        "0": "svc:tool#deadbeef",
+        "1": "svc:tool#deadbeef~2",
+        "2": "svc:tool#deadbeef~3",
+    }
 
 
 def test_primitive_kinds_constant() -> None:
