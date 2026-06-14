@@ -81,8 +81,12 @@ _REGISTRY: dict[str, Deprecation] = {}
 # Canonical inventory of the pre-1.0 legacy compatibility shims (issue #642).
 # Registered eagerly at import so ``active_deprecations()`` reflects the full
 # set regardless of which shims have been exercised, and so docs / the upgrade
-# guide can be checked against one source.  The shim call sites import only
-# :func:`warn_deprecated` (and :func:`deprecated`) and refer to these by name.
+# guide can be checked against one source.  This table is the *single*
+# registrant for every runtime-warned shim: the call sites only ever call
+# ``warn_deprecated("<name>")`` (look-up, no inline args), so a shim must never
+# also self-register via the ``@deprecated`` decorator — doing both would
+# require the two definitions to match byte-for-byte or import fails with
+# ``ConfigError``.
 #
 # Only *runtime-warned* shims belong here.  Surfaces that can only be
 # deprecated in documentation (the ``ToolCard`` alias, whose warning would have

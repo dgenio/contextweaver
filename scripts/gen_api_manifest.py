@@ -145,9 +145,12 @@ def render_manifest() -> str:
             out.append("")
             continue
         for name in sorted(exported):
-            # The public surface deliberately retains deprecated re-exports
-            # (issue #642); introspecting one must not let a DeprecationWarning
-            # it might emit on access derail manifest generation.
+            # Defensive: no current export warns on *attribute access*
+            # (``ToolCard`` is a plain alias; the decorated/body shims warn only
+            # when *called*), but the public surface deliberately retains
+            # deprecated re-exports (issue #642) and a future module-level
+            # ``__getattr__`` shim could warn on access — introspecting one must
+            # not let a DeprecationWarning derail manifest generation.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 obj = getattr(module, name)

@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import importlib
 import warnings
+from pathlib import Path
 
 import pytest
 
-from contextweaver._deprecation import DEPRECATION_MESSAGE_PREFIX
+from contextweaver._deprecation import DEPRECATION_MESSAGE_PREFIX, active_deprecations
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import SelectableItem
+
+_UPGRADING_GUIDE = Path(__file__).resolve().parents[1] / "docs" / "upgrading.md"
 
 
 def _items() -> list[SelectableItem]:
@@ -124,3 +127,25 @@ def test_canonical_routing_path_emits_no_first_party_deprecation() -> None:
         and str(w.message).startswith(DEPRECATION_MESSAGE_PREFIX)
     ]
     assert offenders == []
+
+
+# ------------------------------------------------------------------
+# Registry <-> upgrade-guide drift guard
+# ------------------------------------------------------------------
+
+
+def test_runtime_deprecations_are_documented_in_upgrading_guide() -> None:
+    """Every runtime-warned deprecation must be listed in ``docs/upgrading.md``.
+
+    ``active_deprecations()`` is the single source of truth for runtime-warned
+    shims (``_deprecation._SHIMS``); the upgrade guide carries the adopter-facing
+    inventory.  This guards the two against silent drift — adding a shim to the
+    registry without documenting it (or vice versa) fails here.
+    """
+    guide = _UPGRADING_GUIDE.read_text(encoding="utf-8")
+    undocumented = [dep.name for dep in active_deprecations() if dep.name not in guide]
+    assert not undocumented, (
+        "runtime deprecations missing from docs/upgrading.md: "
+        f"{undocumented}. Add a row to the inventory table (or remove the "
+        "_deprecation._SHIMS entry)."
+    )

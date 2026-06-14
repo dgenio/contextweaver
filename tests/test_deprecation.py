@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Iterator
 
 import pytest
 
+import contextweaver._deprecation as _deprecation
 from contextweaver._deprecation import (
     DEPRECATION_MESSAGE_PREFIX,
     Deprecation,
@@ -15,6 +17,23 @@ from contextweaver._deprecation import (
     warn_deprecated,
 )
 from contextweaver.exceptions import ConfigError
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registry() -> Iterator[None]:
+    """Snapshot and restore the global deprecation registry around each test.
+
+    These tests register throwaway ``t.*`` deprecations; without isolation they
+    leak into the process-global ``_REGISTRY`` and would make any later
+    assertion on the exact contents of ``active_deprecations()`` (e.g. the
+    docs-drift guard) order-dependent.
+    """
+    snapshot = dict(_deprecation._REGISTRY)
+    try:
+        yield
+    finally:
+        _deprecation._REGISTRY.clear()
+        _deprecation._REGISTRY.update(snapshot)
 
 
 def test_deprecation_message_is_actionable() -> None:
