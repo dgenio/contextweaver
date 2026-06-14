@@ -136,6 +136,27 @@ A change is complete when **all** of the following are true:
 4. Add tests in `tests/test_adapters.py`.
 5. Add an example in `examples/`.
 
+## Deprecating an API
+
+Use the runtime machinery in `src/contextweaver/_deprecation.py` (issue #517);
+do not call `warnings.warn` ad hoc.
+
+1. Add a `Deprecation(name, since, removal, instead)` entry to the `_SHIMS`
+   table in `_deprecation.py` (the single source of truth). Use the next minor
+   for `since` and `"1.0.0"` for `removal` unless decided otherwise.
+2. At the call site, emit the warning: `warn_deprecated("<name>")` inside a
+   property/method/branch, or decorate a callable with
+   `@deprecated("<name>", since=..., removal=..., instead=...)`. Keep behavior
+   identical; route in-library callers through a private helper so the canonical
+   path does not trip the warning.
+3. Migrate every in-repo caller (src, examples, docs snippets, tests) off the
+   deprecated surface; intentional shim tests assert the warning with
+   `pytest.warns(DeprecationWarning)`. The `filterwarnings` gate in
+   `pyproject.toml` escalates first-party deprecations to errors, so a leftover
+   caller fails CI.
+4. Add the surface to the inventory table in `docs/upgrading.md` and a
+   `CHANGELOG.md` "Deprecated" entry naming the replacement.
+
 ## Documentation Governance
 
 ### When docs must be updated

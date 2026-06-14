@@ -32,6 +32,7 @@ import argparse
 import enum
 import importlib
 import inspect
+import warnings
 from collections.abc import Sequence
 
 from _golden import REPO_ROOT, _rel, check_text_artifacts, write_text_artifacts
@@ -144,7 +145,13 @@ def render_manifest() -> str:
             out.append("")
             continue
         for name in sorted(exported):
-            obj = getattr(module, name)
+            # The public surface deliberately includes deprecated re-exports
+            # (e.g. the ``ToolCard`` alias served via ``__getattr__``, issue
+            # #642); introspecting them must not let their DeprecationWarning
+            # derail manifest generation.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                obj = getattr(module, name)
             for line in _render_member(name, obj):
                 out.append(f"  {line}")
         out.append("")

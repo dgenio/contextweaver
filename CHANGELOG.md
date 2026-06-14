@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- **Runtime deprecation machinery (#517).** New internal
+  `contextweaver._deprecation` module — `warn_deprecated(...)`, a `@deprecated`
+  decorator, and a single registry surfaced via `active_deprecations()` — emits
+  `DeprecationWarning`s with consistent, actionable wording ("deprecated since
+  X, removal in Y, use Z instead"). Every message starts with
+  `contextweaver deprecation:` so CI can escalate the project's *own*
+  deprecations to errors (new `filterwarnings` entry in `pyproject.toml`)
+  without touching third-party warnings. Documented in `docs/stability.md` and
+  the new Upgrading page, with a "Deprecating an API" workflow in
+  `docs/agent-context/workflows.md`.
+- **Upgrade guide (#616).** New `docs/upgrading.md` states the 0.x versioning
+  and deprecation policy and carries the live inventory of active deprecations
+  plus per-release "action required" notes.
+
+### Deprecated
+
+- **Pre-1.0 legacy compatibility shims (#642).** The following now emit a
+  `DeprecationWarning` (behavior unchanged; nothing removed yet — see the
+  Upgrading inventory for replacements and the 1.0 removal milestone):
+  - `contextweaver.ToolCard` / `contextweaver.types.ToolCard` → use
+    `SelectableItem`.
+  - `RouteResult.debug_trace` → use `RouteResult.trace`.
+  - `RouteTrace.to_legacy_dicts()` → use the structured `RouteTrace` fields.
+  - the `Router(scorer=...)` constructor argument → use `retriever=` or
+    `scorer_backend=`.
+
+  `ChoiceGraph.build_meta` and the pre-#190 `ArtifactRef` write path are
+  recorded as documentation-only deprecations in the upgrade guide (they remain
+  on internal serialization paths).
 
 ## [0.15.0] - 2026-06-14
 

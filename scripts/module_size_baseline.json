@@ -1,5 +1,5 @@
 {
-  "__init__.py": 358,
+  "__init__.py": 375,
   "_utils.py": 462,
   "adapters/agno.py": 515,
   "adapters/fastmcp.py": 459,
@@ -24,7 +24,7 @@
   "routing/graph.py": 509,
   "routing/hydration.py": 316,
   "routing/navigator.py": 347,
-  "routing/router.py": 900,
+  "routing/router.py": 908,
   "routing/tree.py": 406,
   "store/testing.py": 341
 }

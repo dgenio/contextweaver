@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, overload
 
+from contextweaver._deprecation import warn_deprecated
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer
 from contextweaver.envelope import RoutingDecision
 from contextweaver.exceptions import ConfigError, RouteError
@@ -131,8 +132,14 @@ class RouteResult:
 
     @property
     def debug_trace(self) -> list[dict[str, Any]]:
-        """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape."""
-        return self.trace.to_legacy_dicts()
+        """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape.
+
+        .. deprecated:: 0.16.0
+            Use :attr:`trace` (the structured :class:`RouteTrace`) instead;
+            scheduled for removal in 1.0.0 (issue #642).
+        """
+        warn_deprecated("RouteResult.debug_trace")
+        return self.trace._to_legacy_dicts()
 
     def to_dict(self, *, include_items: bool = True) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict (issue #289).
@@ -568,6 +575,7 @@ class Router:
             self._retriever = HybridEmbeddingRetriever(embedding_backend)
             self._retriever_engine_name = "embedding+tfidf"
         elif scorer is not None:
+            warn_deprecated("Router(scorer=...)", stacklevel=2)
             self._retriever = _ScorerRetriever(scorer)
             self._retriever_engine_name = "tfidf"
         elif scorer_backend != "tfidf":

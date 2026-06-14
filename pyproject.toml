@@ -370,6 +370,15 @@ where = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+# Escalate contextweaver's *own* deprecations to errors so the suite proves
+# that no in-repo code path (src, examples exercised under tests, the CLI)
+# trips a first-party deprecation, and that intentional legacy-shim tests
+# assert the warning explicitly via ``pytest.warns`` (issues #517 / #642).
+# The message anchor (``contextweaver deprecation:`` — see ``_deprecation.py``)
+# keeps unrelated third-party ``DeprecationWarning``s non-fatal.
+filterwarnings = [
+    "error:contextweaver deprecation:DeprecationWarning",
+]
 
 [tool.ruff]
 target-version = "py310"
