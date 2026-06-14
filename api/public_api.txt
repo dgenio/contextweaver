@@ -2,19 +2,19 @@
 # Drift here means the public surface changed — review the diff deliberately.
 
 ## contextweaver
-  class ArtifactNotFoundError(ContextWeaverError)(...)
+  class ArtifactNotFoundError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class ArtifactRef(handle: 'str', media_type: 'str', size_bytes: 'int', label: 'str' = ..., content_hash: 'str' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ArtifactRef'
       def to_dict(self) -> 'dict[str, Any]'
-  class ArtifactStoreQuotaError(ContextWeaverError)(...)
+  class ArtifactStoreQuotaError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class BM25Scorer() -> 'None'
       def fit(self, documents: 'list[str]') -> 'None'
       def score(self, query: 'str', doc_index: 'int') -> 'float'
       def score_all(self, query: 'str') -> 'list[float]'
   class BeamSearchNavigator(*, beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ...) -> 'None'
       def navigate(self, query: 'str', graph: 'ChoiceGraph', active_items: 'dict[str, SelectableItem]', scorer: 'Retriever', doc_id_to_idx: 'dict[str, int]', *, all_item_ids: 'set[str] | None' = ..., debug: 'bool' = ...) -> 'NavigationResult'
-  class BudgetExceededError(ContextWeaverError)(...)
-  class BudgetOverflowError(ContextWeaverError)(message: 'str', *, stats: 'BuildStats', dropped_kinds: 'list[str] | None' = ...) -> 'None'
+  class BudgetExceededError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
+  class BudgetOverflowError(ContextWeaverError)(message: 'str', *, stats: 'BuildStats', dropped_kinds: 'list[str] | None' = ..., hint: 'str | None' = ...) -> 'None'
   class BuildStats(tokens_per_section: 'dict[str, int]' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dropped_items: 'list[DroppedItem]' = ..., dedup_removed: 'int' = ..., dependency_closures: 'int' = ..., header_footer_tokens: 'int' = ..., token_estimator: 'str' = ..., firewall_events: 'list[FirewallStats]' = ...) -> None
       def firewall_summary(self) -> 'FirewallStats'
       def from_dict(cls, data: 'dict[str, Any]') -> 'BuildStats'
@@ -37,7 +37,7 @@
       def to_dict(self) -> 'dict[str, Any]'
       def validate_dependencies(self) -> 'list[str]'
       def validate_references(self) -> 'CatalogValidationReport'
-  class CatalogError(ContextWeaverError)(...)
+  class CatalogError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class CatalogNormalizer(*, strict: 'bool' = ..., lowercase_tags: 'bool' = ...) -> 'None'
       def normalize(self, items: 'list[SelectableItem]') -> 'tuple[list[SelectableItem], NormalizationReport]'
   class ChoiceCard(id: 'str', name: 'str', description: 'str', tags: 'list[str]' = ..., kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']" = ..., namespace: 'str' = ..., has_schema: 'bool' = ..., score: 'float | None' = ..., cost_hint: 'float' = ..., side_effects: 'bool' = ..., safety: "Literal['', 'read_only', 'destructive']" = ...) -> None
@@ -64,7 +64,7 @@
       def cluster(self, items: 'list[SelectableItem]', *, k: 'int') -> 'dict[str, list[SelectableItem]]'
   class CompactResult(firewalled: 'bool', payload: 'Any', summary: 'str | None', facts: 'list[str]' = ..., artifact_ref: 'str | None' = ..., stats: 'FirewallStats' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
-  class ConfigError(ContextWeaverError)(...)
+  class ConfigError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class ContextBudget(route: 'int' = ..., call: 'int' = ..., interpret: 'int' = ..., answer: 'int' = ...) -> None
       def for_phase(self, phase: 'Phase') -> 'int'
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextBudget'
@@ -84,10 +84,10 @@
   class ContextPolicy(allowed_kinds_per_phase: 'dict[Phase, list[ItemKind]]' = ..., max_items_per_kind: 'dict[ItemKind, int]' = ..., sensitivity_floor: 'Sensitivity' = ..., sensitivity_action: "Literal['drop', 'redact']" = ..., redaction_hooks: 'list[str]' = ..., allow_redacted_drilldown: 'bool' = ..., overflow_action: "Literal['drop', 'warn', 'raise']" = ..., overflow_raise_kinds: 'list[ItemKind] | None' = ..., extra: 'dict[str, Any]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextPolicy'
       def to_dict(self) -> 'dict[str, Any]'
-  class ContextWeaverError(Exception)(...)
+  class ContextWeaverError(Exception)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class DefaultCardPacker(*, max_cards: 'int' = ..., target_tokens_per_card: 'int | None' = ..., hard_cap_tokens_per_card: 'int | None' = ...) -> 'None'
       def pack(self, items: 'list[SelectableItem]', scores: 'dict[str, float]', *, budget_tokens: 'int | None' = ...) -> 'list[ChoiceCard]'
-  class DeterminismError(ContextWeaverError)(...)
+  class DeterminismError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class DeterministicScoreProvider()
       def adjust(self, query: 'str', scored: 'list[tuple[str, float]]') -> 'list[tuple[str, float]]'
   class DiagnosticEvent(event: 'str', timestamp: 'str' = ..., success: 'bool' = ..., duration_ms: 'float | None' = ..., session_id: 'str' = ..., tool_id: 'str | None' = ..., namespace: 'str | None' = ..., attributes: 'dict[str, Any]' = ..., version: 'int' = ...) -> None
@@ -98,7 +98,7 @@
   class DroppedItem(item_id: 'str', reason: 'str') -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'DroppedItem'
       def to_dict(self) -> 'dict[str, str]'
-  class DuplicateItemError(ContextWeaverError)(...)
+  class DuplicateItemError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   EXPLANATION_VERSION: int
   class EmbeddingBackend(Protocol)(*args, **kwargs)
       def embed(self, texts: 'list[str]') -> 'list[list[float]]'
@@ -139,7 +139,7 @@
       def from_dict(cls, data: 'dict[str, Any]') -> 'FirewallStats'
       def to_dict(self) -> 'dict[str, Any]'
   FuzzyScorer: NoneType
-  class GraphBuildError(ContextWeaverError)(message: 'str', *, cycle: 'list[str] | None' = ..., edge: 'tuple[str, str] | None' = ..., missing_root: 'str | None' = ...) -> 'None'
+  class GraphBuildError(ContextWeaverError)(message: 'str', *, cycle: 'list[str] | None' = ..., edge: 'tuple[str, str] | None' = ..., missing_root: 'str | None' = ..., hint: 'str | None' = ...) -> 'None'
   class GraphManifest(manifest_version: 'int' = ..., build_hash: 'str' = ..., seed: 'int | None' = ..., engine_versions: 'dict[str, str]' = ..., timestamp: 'float' = ..., item_count: 'int' = ..., strategy: 'str' = ..., max_depth: 'int' = ..., extra: 'dict[str, Any]' = ...) -> None
       def for_build(cls, items: 'list[SelectableItem]', *, strategy: 'str' = ..., max_depth: 'int' = ..., seed: 'int | None' = ..., engine_versions: 'dict[str, str] | None' = ..., extra: 'dict[str, Any] | None' = ..., timestamp: 'float | None' = ...) -> 'GraphManifest'
       def from_dict(cls, data: 'dict[str, Any]') -> 'GraphManifest'
@@ -204,7 +204,7 @@
       def to_dict(self) -> 'dict[str, Any]'
   class ItemKind(str, Enum)
       enum members: user_turn, agent_msg, tool_call, tool_result, doc_snippet, retrieved_doc, memory_fact, plan_state, policy
-  class ItemNotFoundError(ContextWeaverError)(...)
+  class ItemNotFoundError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class JaccardClusteringEngine()
       def cluster(self, items: 'list[SelectableItem]', *, k: 'int') -> 'dict[str, list[SelectableItem]]'
   class JsonFileArtifactStore(base_dir: 'str | Path', *, max_bytes: 'int | None' = ..., max_artifacts: 'int | None' = ...) -> 'None'
@@ -263,7 +263,7 @@
   PHASE_SCOPE_PREFERENCES: dict
   class Phase(str, Enum)
       enum members: route, call, interpret, answer
-  class PolicyViolationError(ContextWeaverError)(...)
+  class PolicyViolationError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class ProfileConfig(mode: 'Mode' = ..., budget: 'ContextBudget' = ..., policy: 'ContextPolicy' = ..., scoring: 'ScoringConfig' = ..., routing: 'RoutingConfig' = ..., seed: 'int | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ProfileConfig'
       def from_preset(cls, name: 'str') -> 'ProfileConfig'
@@ -280,7 +280,7 @@
       def fit(self, corpus: 'list[str]') -> 'None'
       def score_one(self, query: 'str', index: 'int') -> 'float'
       def search(self, query: 'str', top_k: 'int') -> 'list[tuple[int, float]]'
-  class RouteError(ContextWeaverError)(...)
+  class RouteError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class RouteHistory(called_tool_ids: 'list[str]' = ..., last_result_summary: 'str | None' = ..., step_number: 'int' = ..., repeat_penalty: 'float' = ..., result_boost_weight: 'float' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'RouteHistory'
       def to_dict(self) -> 'dict[str, Any]'
@@ -348,7 +348,7 @@
   class StoreBundle(artifact_store: 'ArtifactStore | None' = ..., event_log: 'EventLog | None' = ..., episodic_store: 'EpisodicStore | None' = ..., fact_store: 'FactStore | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'StoreBundle'
       def to_dict(self) -> 'dict[str, Any]'
-  class StoreClosedError(ContextWeaverError)(...)
+  class StoreClosedError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class StructuredExtractor(max_chars: 'int' = ...) -> 'None'
       def extract(self, raw: 'str', metadata: 'dict[str, Any]') -> 'list[str]'
   class StructuredFirewall(keep: 'list[str]' = ..., max_fact_chars: 'int' = ...) -> None

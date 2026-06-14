@@ -20,6 +20,10 @@ If a problem is framework-specific, check the integration guides in `docs/`:
 [MCP](integration_mcp.md) · [A2A](integration_a2a.md) ·
 [OpenTelemetry GenAI](integration_otel.md).
 
+If you have a specific exception in a stack trace, the
+[Error Reference](errors.md) lists every `ContextWeaverError` with its stable
+code, the modules that raise it, common causes, and the fix.
+
 ---
 
 ## 2. Common Issues & Solutions
