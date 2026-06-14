@@ -40,7 +40,7 @@
   class CatalogError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class CatalogNormalizer(*, strict: 'bool' = ..., lowercase_tags: 'bool' = ...) -> 'None'
       def normalize(self, items: 'list[SelectableItem]') -> 'tuple[list[SelectableItem], NormalizationReport]'
-  class ChoiceCard(id: 'str', name: 'str', description: 'str', tags: 'list[str]' = ..., kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']" = ..., namespace: 'str' = ..., has_schema: 'bool' = ..., score: 'float | None' = ..., cost_hint: 'float' = ..., side_effects: 'bool' = ..., safety: "Literal['', 'read_only', 'destructive']" = ...) -> None
+  class ChoiceCard(id: 'str', name: 'str', description: 'str', tags: 'list[str]' = ..., kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow', 'resource', 'prompt']" = ..., namespace: 'str' = ..., has_schema: 'bool' = ..., score: 'float | None' = ..., cost_hint: 'float' = ..., side_effects: 'bool' = ..., safety: "Literal['', 'read_only', 'destructive']" = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ChoiceCard'
       def to_dict(self) -> 'dict[str, Any]'
   class ChoiceGraph(max_children: 'int' = ...) -> 'None'
@@ -320,7 +320,7 @@
       def to_dict(self) -> 'dict[str, Any]'
   class SecretRedactor(mask: 'str' = ..., estimator: 'TokenEstimator | None' = ...) -> 'None'
       def redact(self, item: 'ContextItem') -> 'ContextItem'
-  class SelectableItem(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
+  class SelectableItem(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow', 'resource', 'prompt']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectableItem'
       def to_dict(self) -> 'dict[str, Any]'
   class SelectionValidation(status: 'SelectionStatus', selected_id: 'str | None', raw_id: 'str', repair: 'str | None' = ..., reason: 'str | None' = ...) -> None
@@ -365,7 +365,7 @@
       def score_all(self, query: 'str') -> 'list[float]'
   class TokenEstimator(Protocol)(*args, **kwargs)
       def estimate(self, text: 'str') -> 'int'
-  class ToolCard(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
+  class ToolCard(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow', 'resource', 'prompt']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectableItem'
       def to_dict(self) -> 'dict[str, Any]'
   class TraceStep(depth: 'int', node: 'str', scored_children: 'list[tuple[str, float]]' = ..., kept: 'list[str]' = ...) -> None
@@ -438,6 +438,18 @@
       def call_tool(self, tool_name: 'str', arguments: 'dict[str, Any]') -> 'dict[str, Any]'
       def list_tools(self) -> 'list[dict[str, Any]]'
   PROXY_META_TOOL_NAMES: tuple
+  class PrimitiveGatewayRuntime(upstream: 'PrimitiveUpstream', *, context_manager: 'ContextManager | None' = ..., beam_width: 'int' = ..., top_k: 'int' = ...) -> 'None'
+      def browse_prompts(self, *, query: 'str | None' = ..., path: 'str | None' = ..., top_k: 'int | None' = ...) -> 'list[ChoiceCard] | GatewayError'
+      def browse_resources(self, *, query: 'str | None' = ..., path: 'str | None' = ..., top_k: 'int | None' = ...) -> 'list[ChoiceCard] | GatewayError'
+      def get_prompt(self, prompt_id: 'str', arguments: 'dict[str, Any]') -> 'ResultEnvelope | GatewayError'
+      def read_resource(self, resource_id: 'str') -> 'ResultEnvelope | GatewayError'
+      def refresh(self) -> 'tuple[int, int]'
+      def register_sync(self, resource_defs: 'list[dict[str, Any]]', prompt_defs: 'list[dict[str, Any]]') -> 'tuple[int, int]'
+  class PrimitiveUpstream(Protocol)(*args, **kwargs)
+      def get_prompt(self, name: 'str', arguments: 'dict[str, Any]') -> 'dict[str, Any]'
+      def list_prompts(self) -> 'list[dict[str, Any]]'
+      def list_resources(self) -> 'list[dict[str, Any]]'
+      def read_resource(self, uri: 'str') -> 'dict[str, Any]'
   class ProxyRuntime(upstream: 'UpstreamCall', *, mode: 'ExposureMode' = ..., context_manager: 'ContextManager | None' = ..., tree_builder: 'TreeBuilder | None' = ..., beam_width: 'int' = ..., top_k: 'int' = ..., cache_stable: 'bool' = ..., diagnostic_sink: 'DiagnosticSink | None' = ..., session_id: 'str | None' = ..., redact_secrets: 'bool' = ..., on_invalid: "Literal['skip', 'raise']" = ..., schema_limits: 'SchemaLimits | None' = ..., tolerant_args: 'bool' = ..., retry_policy: 'RetryPolicy | None' = ..., rate_limiter: 'RateLimiter | None' = ..., result_cache: 'ToolResultCache | None' = ..., retry_sleep: 'Sleeper | None' = ..., jitter_source: 'Callable[[], float] | None' = ...) -> 'None'
       def browse(self, *, query: 'str | None' = ..., path: 'str | None' = ..., top_k: 'int | None' = ...) -> 'list[ChoiceCard] | GatewayError'
       def execute(self, tool_id: 'str', args: 'dict[str, Any]', *, dry_run: 'bool' = ...) -> 'ResultEnvelope | GatewayError | DryRunReport'
@@ -525,6 +537,7 @@
   def infer_openai_agents_namespace(tool_name: 'str') -> 'str'
   def infer_openapi_namespace(operation: 'dict[str, Any]', path: 'str', *, base_namespace: 'str | None' = ...) -> 'str'
   def infer_pydantic_ai_namespace(tool_name: 'str') -> 'str'
+  def infer_resource_namespace(uri: 'str') -> 'str'
   def infer_smolagents_namespace(tool_name: 'str') -> 'str'
   def langchain_tool_to_selectable(tool_def: 'dict[str, Any]', *, namespace: 'str | None' = ...) -> 'SelectableItem'
   def langchain_tools_to_catalog(tools: 'list[dict[str, Any]]', *, namespace: 'str | None' = ...) -> 'Catalog'
@@ -547,6 +560,10 @@
   def make_gateway_meta_tools(runtime: 'ProxyRuntime') -> 'list[dict[str, Any]]'
   def make_proxy_meta_tools(runtime: 'ProxyRuntime') -> 'list[dict[str, Any]]'
   def make_stripped_tools_list(runtime: 'ProxyRuntime') -> 'list[dict[str, Any]]'
+  def mcp_prompt_get_to_envelope(result: 'dict[str, Any]', prompt_id: 'str') -> 'tuple[ResultEnvelope, dict[str, tuple[bytes, str, str]], str]'
+  def mcp_prompt_to_selectable(prompt_def: 'dict[str, Any]') -> 'Any'
+  def mcp_resource_read_to_envelope(result: 'dict[str, Any]', resource_id: 'str') -> 'tuple[ResultEnvelope, dict[str, tuple[bytes, str, str]], str]'
+  def mcp_resource_to_selectable(resource_def: 'dict[str, Any]') -> 'Any'
   def mcp_result_to_envelope(result: 'dict[str, Any]', tool_name: 'str') -> 'tuple[ResultEnvelope, dict[str, tuple[bytes, str, str]], str]'
   def mcp_tool_to_selectable(tool_def: 'dict[str, Any]') -> 'SelectableItem'
   def normalize_args(args: 'object', schema: 'dict[str, Any] | None') -> 'tuple[Any, list[Repair]]'

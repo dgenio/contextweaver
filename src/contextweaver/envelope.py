@@ -585,7 +585,15 @@ class ContextPack:
 CHOICE_CARD_NAME_MAX_LEN: int = 64
 CHOICE_CARD_TAG_MAX_LEN: int = 24
 CHOICE_CARD_TAGS_MAX_COUNT: int = 5
-CHOICE_CARD_KINDS: tuple[str, ...] = ("tool", "agent", "skill", "internal", "flow")
+CHOICE_CARD_KINDS: tuple[str, ...] = (
+    "tool",
+    "agent",
+    "skill",
+    "internal",
+    "flow",
+    "resource",
+    "prompt",
+)
 
 #: Permitted values for the first-class :attr:`ChoiceCard.safety` field
 #: (issue #516).  ``""`` means *unspecified* (the upstream declared no
@@ -631,7 +639,7 @@ class ChoiceCard:
     name: str
     description: str
     tags: list[str] = field(default_factory=list)
-    kind: Literal["tool", "agent", "skill", "internal", "flow"] = "tool"
+    kind: Literal["tool", "agent", "skill", "internal", "flow", "resource", "prompt"] = "tool"
     namespace: str = ""
     has_schema: bool = False
     score: float | None = None

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Gateway resource & prompt runtime (#669 / #670).** New
+  `PrimitiveGatewayRuntime` (+ the `PrimitiveUpstream` protocol) extends the
+  gateway's bounded-choice routing and context-firewall treatment from tools to
+  MCP **resources** and **prompts** (#555). Resources/prompts are modelled as
+  `SelectableItem`s (`kind="resource"` / `"prompt"`) so they reuse the routing
+  `Catalog` / `Router` / `ChoiceCard` machinery; each kind routes in its own
+  index while sharing one `ContextManager` (artifact store + firewall +
+  `tool_view`) with the tool runtime. New converters
+  `mcp_resource_to_selectable` / `mcp_prompt_to_selectable` and read/get
+  envelope wrappers live in `contextweaver.adapters.mcp_primitives`; declared
+  prompt arguments become an `args_schema` so `prompt_get` validates inputs like
+  `tool_execute`. The `SelectableItem` / `ChoiceCard` `kind` set now includes
+  `resource` and `prompt`.
 - **Unified cross-primitive identity & collision policy (#671).** New
   `contextweaver.routing.primitive_id` is the single source of truth for
   identifying MCP tools, resources, and prompts in one shared `Catalog`
