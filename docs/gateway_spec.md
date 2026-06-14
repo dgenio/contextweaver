@@ -174,7 +174,10 @@ amendment:
 - `id` — the canonical `tool_id` from §1.
 - `name` — short display name (≤ 64 characters).
 - `description` — single-line summary (see §2.3 for truncation).
-- `tags` — sorted, deduplicated, **max 5 entries**, each ≤ 24 chars.
+- `tags` — sorted, deduplicated, **max 5 entries**, each ≤ 24 chars. The
+  safety tags `destructive` / `read-only` are **exempt from the cap**: they
+  are reserved into the kept set first so a safety marker can never be
+  evicted by lexicographically earlier tags (issue #516).
 - `kind` — one of `tool`, `agent`, `skill`, `internal`.
 - `namespace` — copy of the `tool_id` namespace.
 - `has_schema` — boolean. **Never** carries the schema itself.
@@ -182,6 +185,14 @@ amendment:
   in the JSON form.
 - `cost_hint` — `float`. Rendered only when `> 0`.
 - `side_effects` — `bool`. Rendered only when `true`.
+- `safety` — one of `""`, `"read_only"`, `"destructive"` (issue #516). A
+  first-class, **capping-immune** mirror of the read-only / destructive MCP
+  annotation, derived from the item's safety tags (`destructive` wins over
+  `read-only`). It guarantees the safety class survives even when the
+  `tags` cap would drop the tag, and gives runtime policy layers (issue #373)
+  a stable field to key on. Like the underlying annotation it is
+  informational, **not** an authorization control (see the SECURITY NOTE in
+  `adapters/mcp.py`).
 
 ### 2.2 Banned fields
 
@@ -239,6 +250,31 @@ Within a `tool_browse` response, cards are ordered:
 
 This matches the existing "tie-break by ID, sorted keys" invariant in
 `docs/agent-context/invariants.md:42`.
+
+### 2.6 Structured selection contract
+
+The selection turn — where a downstream model picks one card from a browse
+response — is the single point where model output re-enters the deterministic
+pipeline. Two complementary, deterministic helpers bound it (no model calls):
+
+- **Constrain before (issue #515).** `RouteResult.selection_schema(...)` (and
+  the free function `routing.selection.selection_schema`) renders the routed
+  candidate IDs as a JSON Schema whose selection property is an `enum` of those
+  IDs. Provider variants: `json_schema` (bare), `openai` (the `response_format`
+  `json_schema` envelope), `anthropic` (a tool definition with the schema as
+  `input_schema`). Passing the schema to a provider's constrained-output API
+  prevents the model from inventing or misspelling a `tool_id` at generation
+  time. Raises `RouteError` when there are no candidates.
+- **Validate after (issue #479).** `RouteResult.validate_selection(selected_id)`
+  (and `routing.selection.validate_selection`) checks a returned ID against the
+  offered candidates and returns a typed `SelectionValidation` with status
+  `accepted` / `repaired` / `rejected`. Repair is deterministic and tried in a
+  fixed order against the whitespace-stripped value — exact, then unique
+  case-insensitive match, then unique case-insensitive prefix. Ambiguous
+  case-fold / prefix matches are **rejected, never guessed**, so the contract
+  can never silently route to the wrong tool. `RouteResult.to_routing_decision`
+  runs this validation, stores the resolved canonical ID, and records the
+  outcome under `metadata["contextweaver"]["selection"]`.
 
 ## 3. Path-navigation grammar
 

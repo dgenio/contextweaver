@@ -32,6 +32,13 @@
     "namespace": {
       "type": "string"
     },
+    "safety": {
+      "enum": [
+        "",
+        "read_only",
+        "destructive"
+      ]
+    },
     "score": {
       "anyOf": [
         {

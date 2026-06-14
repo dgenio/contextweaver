@@ -40,7 +40,7 @@
   class CatalogError(ContextWeaverError)(...)
   class CatalogNormalizer(*, strict: 'bool' = ..., lowercase_tags: 'bool' = ...) -> 'None'
       def normalize(self, items: 'list[SelectableItem]') -> 'tuple[list[SelectableItem], NormalizationReport]'
-  class ChoiceCard(id: 'str', name: 'str', description: 'str', tags: 'list[str]' = ..., kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']" = ..., namespace: 'str' = ..., has_schema: 'bool' = ..., score: 'float | None' = ..., cost_hint: 'float' = ..., side_effects: 'bool' = ...) -> None
+  class ChoiceCard(id: 'str', name: 'str', description: 'str', tags: 'list[str]' = ..., kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']" = ..., namespace: 'str' = ..., has_schema: 'bool' = ..., score: 'float | None' = ..., cost_hint: 'float' = ..., side_effects: 'bool' = ..., safety: "Literal['', 'read_only', 'destructive']" = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ChoiceCard'
       def to_dict(self) -> 'dict[str, Any]'
   class ChoiceGraph(max_children: 'int' = ...) -> 'None'
@@ -287,14 +287,16 @@
   class RouteResult(candidate_items: 'list[SelectableItem]' = ..., candidate_ids: 'list[str]' = ..., paths: 'list[list[str]]' = ..., scores: 'list[float]' = ..., is_ambiguous: 'bool' = ..., clarifying_question: 'str | None' = ..., excluded_count: 'int' = ..., gated_count: 'int' = ..., context_hints: 'list[str]' = ..., context_boost_applied: 'bool' = ..., history_adjustments: 'dict[str, float]' = ..., trace: 'RouteTrace' = ...) -> None
       def explanation(self, format: "Literal['md', 'dict']" = ...) -> 'str | dict[str, Any]'
       def from_dict(cls, data: 'dict[str, Any]') -> 'RouteResult'
+      def selection_schema(self, *, provider: 'str' = ..., property_name: 'str' = ..., schema_name: 'str' = ...) -> 'dict[str, Any]'
       def to_dict(self, *, include_items: 'bool' = ...) -> 'dict[str, Any]'
-      def to_routing_decision(self, *, decision_id: 'str | None' = ..., selected_item_id: 'str | None' = ..., selected_card_id: 'str | None' = ..., context_summary: 'str | None' = ..., now: 'datetime | None' = ..., metadata: 'dict[str, Any] | None' = ...) -> 'RoutingDecision'
+      def to_routing_decision(self, *, decision_id: 'str | None' = ..., selected_item_id: 'str | None' = ..., selected_card_id: 'str | None' = ..., context_summary: 'str | None' = ..., now: 'datetime | None' = ..., metadata: 'dict[str, Any] | None' = ..., repair_selection: 'bool' = ...) -> 'RoutingDecision'
+      def validate_selection(self, selected_id: 'str | None', *, repair: 'bool' = ...) -> 'SelectionValidation'
   class RouteTrace(trace_version: 'int' = ..., query: 'str' = ..., confidence_gap: 'float' = ..., top_score: 'float' = ..., runner_up_score: 'float | None' = ..., is_ambiguous: 'bool' = ..., excluded_count: 'int' = ..., gated_count: 'int' = ..., retriever_engine: 'str' = ..., steps: 'list[TraceStep]' = ..., clarifying_question: 'str | None' = ..., extra: 'dict[str, Any]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'RouteTrace'
       def to_dict(self) -> 'dict[str, Any]'
       def to_legacy_dicts(self) -> 'list[dict[str, Any]]'
   class Router(graph: 'ChoiceGraph', items: 'list[SelectableItem] | None' = ..., scorer: '_ScorerLike | None' = ..., beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ..., *, scorer_backend: 'str' = ..., routing_config: 'RoutingConfig | None' = ..., retriever: 'Retriever | None' = ..., engine_registry: 'EngineRegistry | None' = ..., embedding_backend: 'EmbeddingBackend | None' = ..., pipeline: 'RoutingPipeline | None' = ..., score_provider: 'RoutingScoreProvider | None' = ...) -> 'None'
-      def route(self, query: 'str', *, debug: 'bool' = ..., exclude_ids: 'set[str] | None' = ..., exclude_tags: 'set[str] | None' = ..., allowed_namespaces: 'set[str] | None' = ..., allowed_tags: 'set[str] | None' = ..., context_hints: 'list[str] | None' = ..., history: 'RouteHistory | None' = ...) -> 'RouteResult'
+      def route(self, query: 'str', *, debug: 'bool' = ..., exclude_ids: 'set[str] | None' = ..., exclude_tags: 'set[str] | None' = ..., allowed_namespaces: 'set[str] | None' = ..., allowed_tags: 'set[str] | None' = ..., context_hints: 'list[str] | None' = ..., history: 'RouteHistory | None' = ..., pin_ids: 'set[str] | None' = ..., namespace_quota: 'int | None' = ...) -> 'RouteResult'
       def set_items(self, items: 'list[SelectableItem]') -> 'None'
   class RoutingConfig(beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ..., max_children: 'int' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'RoutingConfig'
@@ -320,6 +322,9 @@
       def redact(self, item: 'ContextItem') -> 'ContextItem'
   class SelectableItem(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectableItem'
+      def to_dict(self) -> 'dict[str, Any]'
+  class SelectionValidation(status: 'SelectionStatus', selected_id: 'str | None', raw_id: 'str', repair: 'str | None' = ..., reason: 'str | None' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'SelectionValidation'
       def to_dict(self) -> 'dict[str, Any]'
   class Sensitivity(str, Enum)
       enum members: public, internal, confidential, restricted
@@ -408,10 +413,12 @@
   def render_handoff_pack(pack: 'SessionHandoffPack') -> 'str'
   def render_inspection_report(report: 'dict[str, Any]') -> 'str'
   def select_memory_for_phase(source: 'MemorySource', query: 'str', phase: 'Phase', *, budget_tokens: 'int', estimator: 'TokenEstimator | None' = ..., now: 'float | None' = ..., max_entries: 'int | None' = ...) -> 'list[ContextItem]'
+  def selection_schema(candidate_ids: 'list[str]', *, provider: 'str' = ..., property_name: 'str' = ..., schema_name: 'str' = ...) -> 'dict[str, Any]'
   def summarize_diagnostics(events: 'list[DiagnosticEvent]') -> 'dict[str, Any]'
   tokens: module
   types: module
   def unregister_redaction_hook(name: 'str') -> 'None'
+  def validate_selection(selected_id: 'str | None', candidate_ids: 'list[str]', *, repair: 'bool' = ...) -> 'SelectionValidation'
 
 ## contextweaver.adapters
   class CatalogRefreshReport(registered: 'int' = ..., skipped: 'list[SkippedTool]' = ..., schema_findings: 'list[SchemaFinding]' = ...) -> None
@@ -708,16 +715,22 @@
   class RouteResult(candidate_items: 'list[SelectableItem]' = ..., candidate_ids: 'list[str]' = ..., paths: 'list[list[str]]' = ..., scores: 'list[float]' = ..., is_ambiguous: 'bool' = ..., clarifying_question: 'str | None' = ..., excluded_count: 'int' = ..., gated_count: 'int' = ..., context_hints: 'list[str]' = ..., context_boost_applied: 'bool' = ..., history_adjustments: 'dict[str, float]' = ..., trace: 'RouteTrace' = ...) -> None
       def explanation(self, format: "Literal['md', 'dict']" = ...) -> 'str | dict[str, Any]'
       def from_dict(cls, data: 'dict[str, Any]') -> 'RouteResult'
+      def selection_schema(self, *, provider: 'str' = ..., property_name: 'str' = ..., schema_name: 'str' = ...) -> 'dict[str, Any]'
       def to_dict(self, *, include_items: 'bool' = ...) -> 'dict[str, Any]'
-      def to_routing_decision(self, *, decision_id: 'str | None' = ..., selected_item_id: 'str | None' = ..., selected_card_id: 'str | None' = ..., context_summary: 'str | None' = ..., now: 'datetime | None' = ..., metadata: 'dict[str, Any] | None' = ...) -> 'RoutingDecision'
+      def to_routing_decision(self, *, decision_id: 'str | None' = ..., selected_item_id: 'str | None' = ..., selected_card_id: 'str | None' = ..., context_summary: 'str | None' = ..., now: 'datetime | None' = ..., metadata: 'dict[str, Any] | None' = ..., repair_selection: 'bool' = ...) -> 'RoutingDecision'
+      def validate_selection(self, selected_id: 'str | None', *, repair: 'bool' = ...) -> 'SelectionValidation'
   class Router(graph: 'ChoiceGraph', items: 'list[SelectableItem] | None' = ..., scorer: '_ScorerLike | None' = ..., beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ..., *, scorer_backend: 'str' = ..., routing_config: 'RoutingConfig | None' = ..., retriever: 'Retriever | None' = ..., engine_registry: 'EngineRegistry | None' = ..., embedding_backend: 'EmbeddingBackend | None' = ..., pipeline: 'RoutingPipeline | None' = ..., score_provider: 'RoutingScoreProvider | None' = ...) -> 'None'
-      def route(self, query: 'str', *, debug: 'bool' = ..., exclude_ids: 'set[str] | None' = ..., exclude_tags: 'set[str] | None' = ..., allowed_namespaces: 'set[str] | None' = ..., allowed_tags: 'set[str] | None' = ..., context_hints: 'list[str] | None' = ..., history: 'RouteHistory | None' = ...) -> 'RouteResult'
+      def route(self, query: 'str', *, debug: 'bool' = ..., exclude_ids: 'set[str] | None' = ..., exclude_tags: 'set[str] | None' = ..., allowed_namespaces: 'set[str] | None' = ..., allowed_tags: 'set[str] | None' = ..., context_hints: 'list[str] | None' = ..., history: 'RouteHistory | None' = ..., pin_ids: 'set[str] | None' = ..., namespace_quota: 'int | None' = ...) -> 'RouteResult'
       def set_items(self, items: 'list[SelectableItem]') -> 'None'
+  SELECTION_SCHEMA_PROVIDERS: tuple
   class SchemaSource(schemas: 'Mapping[str, dict[str, Any]] | None' = ...) -> 'None'
       def from_json_file(cls, path: 'str | Path') -> 'SchemaSource'
       def from_mcp_tools(cls, tool_defs: 'Iterable[Mapping[str, Any]]') -> 'SchemaSource'
       def get_schema(self, tool_id: 'str') -> 'dict[str, Any] | None'
       def known_ids(self) -> 'list[str]'
+  class SelectionValidation(status: 'SelectionStatus', selected_id: 'str | None', raw_id: 'str', repair: 'str | None' = ..., reason: 'str | None' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'SelectionValidation'
+      def to_dict(self) -> 'dict[str, Any]'
   class ToolIdParts(namespace: 'str', name: 'str', version: 'str | None' = ..., hash8: 'str | None' = ...) -> None
   class TreeBuilder(max_children: 'int' = ..., labeler: 'KeywordLabeler | None' = ..., target_group_size: 'int | None' = ..., *, routing_config: 'RoutingConfig | None' = ..., clustering: 'ClusteringEngine | None' = ..., engine_registry: 'EngineRegistry | None' = ...) -> 'None'
       def build(self, items: 'list[SelectableItem]', *, use_cache: 'bool' = ...) -> 'ChoiceGraph'
@@ -742,8 +755,10 @@
   def render_cards_text(cards: 'list[ChoiceCard]') -> 'str'
   def resolve_path(graph: 'ChoiceGraph', segments: 'list[str]') -> 'list[str]'
   def save_graph(graph: 'ChoiceGraph', path: 'str | Path') -> 'None'
+  def selection_schema(candidate_ids: 'list[str]', *, provider: 'str' = ..., property_name: 'str' = ..., schema_name: 'str' = ...) -> 'dict[str, Any]'
   def truncate_description_to_tokens(text: 'str', max_tokens: 'int') -> 'str'
   def validate_references(items: 'list[SelectableItem]') -> 'CatalogValidationReport'
+  def validate_selection(selected_id: 'str | None', candidate_ids: 'list[str]', *, repair: 'bool' = ...) -> 'SelectionValidation'
 
 ## contextweaver.store
   class InMemoryArtifactStore() -> 'None'

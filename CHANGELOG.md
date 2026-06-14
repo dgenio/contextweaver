@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Structured route→select contract and shortlist composition controls
+  (#515, #479, #516, #509).** A focused hardening of the boundary where a
+  model picks a tool from a routed shortlist:
+  - **Constrained-selection schemas (#515).** `RouteResult.selection_schema(...)`
+    (and `contextweaver.selection_schema`) renders the routed candidate IDs as a
+    JSON-Schema `enum`, with `json_schema` / `openai` / `anthropic` provider
+    variants, so a model can be forced to pick only a routed `tool_id` at
+    generation time.
+  - **Validated selection contract (#479).** `RouteResult.validate_selection(...)`
+    (and `contextweaver.validate_selection`) returns a typed `SelectionValidation`
+    (`accepted` / `repaired` / `rejected`) for a returned ID, with deterministic
+    repair (whitespace → case-fold → unique prefix; ambiguous matches are
+    rejected, never guessed). `RouteResult.to_routing_decision` now validates the
+    selection, stores the resolved canonical ID, and records the outcome under
+    `metadata["contextweaver"]["selection"]`.
+  - **First-class, capping-immune safety field (#516).** `ChoiceCard` gains a
+    `safety` field (`""` / `"read_only"` / `"destructive"`) derived from the
+    item's safety tags, and the §2.1 five-tag cap now reserves `destructive` /
+    `read-only` tags first so a safety marker can no longer be alphabetically
+    evicted from the model-facing surface.
+  - **Shortlist composition controls (#509).** `Router.route(...)` accepts
+    `pin_ids` (always-include items that occupy the first slots regardless of
+    relevance) and `namespace_quota` (a per-namespace cap on non-pinned items),
+    via `routing.filters.compose_shortlist`. Unset, composition is byte-identical
+    to the previous `top_k` truncation.
+
 - **Source-to-catalog adapters: OpenAPI, Agent Skills, and Microsoft Agent
   Framework (#546, #545, #430).** Three new adapters built on the shared
   conversion toolkit (`adapters/_framework_common.py`), extending routing to

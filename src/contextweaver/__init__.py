@@ -159,6 +159,11 @@ from contextweaver.routing.registry import (
     default_registry,
 )
 from contextweaver.routing.router import Router, RouteResult
+from contextweaver.routing.selection import (
+    SelectionValidation,
+    selection_schema,
+    validate_selection,
+)
 from contextweaver.routing.trace import RouteTrace, TraceStep
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.store import (
@@ -329,6 +334,7 @@ __all__ = [
     "RouteTrace",
     "Router",
     "RoutingPipeline",
+    "SelectionValidation",
     "TfIdfRetriever",
     "TraceStep",
     "TreeBuilder",
@@ -342,6 +348,8 @@ __all__ = [
     "load_catalog_yaml",
     "make_choice_cards",
     "render_cards_text",
+    "selection_schema",
+    "validate_selection",
     # summarize
     "RuleBasedSummarizer",
     "StructuredExtractor",
