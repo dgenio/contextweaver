@@ -632,7 +632,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.14.1**.
+Current package version: **0.15.0**.
 
 Recent milestones:
 
@@ -664,7 +664,7 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.14.1](https://pypi.org/project/contextweaver/0.14.1/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.15.0](https://pypi.org/project/contextweaver/0.15.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
