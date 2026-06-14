@@ -34,6 +34,8 @@ GatewayErrorCode = Literal[
     "RATE_LIMITED",
     "HYDRATE_FAILED",
     "VIEW_FAILED",
+    "RESOURCE_NOT_FOUND",
+    "PROMPT_NOT_FOUND",
 ]
 
 #: Default cap on the length of model-visible upstream error detail.

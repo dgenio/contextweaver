@@ -40,7 +40,7 @@
   class CatalogError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class CatalogNormalizer(*, strict: 'bool' = ..., lowercase_tags: 'bool' = ...) -> 'None'
       def normalize(self, items: 'list[SelectableItem]') -> 'tuple[list[SelectableItem], NormalizationReport]'
-  class ChoiceCard(id: 'str', name: 'str', description: 'str', tags: 'list[str]' = ..., kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']" = ..., namespace: 'str' = ..., has_schema: 'bool' = ..., score: 'float | None' = ..., cost_hint: 'float' = ..., side_effects: 'bool' = ..., safety: "Literal['', 'read_only', 'destructive']" = ...) -> None
+  class ChoiceCard(id: 'str', name: 'str', description: 'str', tags: 'list[str]' = ..., kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow', 'resource', 'prompt']" = ..., namespace: 'str' = ..., has_schema: 'bool' = ..., score: 'float | None' = ..., cost_hint: 'float' = ..., side_effects: 'bool' = ..., safety: "Literal['', 'read_only', 'destructive']" = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ChoiceCard'
       def to_dict(self) -> 'dict[str, Any]'
   class ChoiceGraph(max_children: 'int' = ...) -> 'None'
@@ -320,7 +320,7 @@
       def to_dict(self) -> 'dict[str, Any]'
   class SecretRedactor(mask: 'str' = ..., estimator: 'TokenEstimator | None' = ...) -> 'None'
       def redact(self, item: 'ContextItem') -> 'ContextItem'
-  class SelectableItem(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
+  class SelectableItem(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow', 'resource', 'prompt']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectableItem'
       def to_dict(self) -> 'dict[str, Any]'
   class SelectionValidation(status: 'SelectionStatus', selected_id: 'str | None', raw_id: 'str', repair: 'str | None' = ..., reason: 'str | None' = ...) -> None
@@ -365,7 +365,7 @@
       def score_all(self, query: 'str') -> 'list[float]'
   class TokenEstimator(Protocol)(*args, **kwargs)
       def estimate(self, text: 'str') -> 'int'
-  class ToolCard(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
+  class ToolCard(id: 'str', kind: "Literal['tool', 'agent', 'skill', 'internal', 'flow', 'resource', 'prompt']", name: 'str', description: 'str', tags: 'list[str]' = ..., namespace: 'str' = ..., args_schema: 'dict[str, Any]' = ..., output_schema: 'dict[str, Any] | None' = ..., examples: 'list[str]' = ..., constraints: 'dict[str, Any]' = ..., side_effects: 'bool' = ..., cost_hint: 'float' = ..., metadata: 'dict[str, Any]' = ..., depends_on: 'list[str] | None' = ..., provides: 'list[str] | None' = ..., requires: 'list[str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectableItem'
       def to_dict(self) -> 'dict[str, Any]'
   class TraceStep(depth: 'int', node: 'str', scored_children: 'list[tuple[str, float]]' = ..., kept: 'list[str]' = ...) -> None
@@ -709,6 +709,10 @@
       def label_group(self, items: 'list[SelectableItem]') -> 'tuple[str, str]'
   class NormalizationReport(items_processed: 'int' = ..., tag_dedup_count: 'int' = ..., description_filled_count: 'int' = ..., whitespace_normalized_count: 'int' = ..., invalid_ids: 'list[str]' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
+  PRIMITIVE_KINDS: tuple
+  class PrimitiveIdParts(kind: 'PrimitiveKind', namespace: 'str', name: 'str', version: 'str | None' = ..., hash8: 'str | None' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'PrimitiveIdParts'
+      def to_dict(self) -> 'dict[str, Any]'
   class ReferenceFinding(item_id: 'str', field: "Literal['depends_on', 'requires']", missing: 'str') -> None
       def message(self) -> 'str'
       def to_dict(self) -> 'dict[str, str]'
@@ -737,11 +741,16 @@
       def clear_cache(self) -> 'None'
   def aggregate_feedback(entries: 'Iterable[ExecutionFeedback]') -> 'dict[str, ExecutionFeedback]'
   def bound_browse_response(cards: 'list[ChoiceCard]', *, target_tokens_per_card: 'int' = ..., hard_cap_tokens_per_card: 'int' = ..., preamble_tokens: 'int' = ...) -> 'list[ChoiceCard]'
+  def canonical_prompt_id(*, namespace: 'str', name: 'str', argument_names: 'list[str] | None') -> 'str'
+  def canonical_resource_id(*, namespace: 'str', name: 'str', uri: 'str') -> 'str'
   def canonical_tool_id(*, namespace: 'str', name: 'str', upstream_name: 'str', input_schema: 'dict[str, Any] | None', version: 'str | None' = ...) -> 'str'
   def cards_for_route(route: 'list[str]', catalog: 'Catalog', *, redact_secrets: 'bool' = ...) -> 'list[ChoiceCard]'
   def compute_hash8(upstream_name: 'str', input_schema: 'dict[str, Any] | None') -> 'str'
+  def compute_prompt_hash8(name: 'str', argument_names: 'list[str] | None') -> 'str'
+  def compute_resource_hash8(uri: 'str') -> 'str'
   def count_tokens(text: 'str') -> 'int'
   def format_card_for_prompt(card: 'ChoiceCard') -> 'str'
+  def format_primitive_id(parts: 'PrimitiveIdParts') -> 'str'
   def format_tool_id(parts: 'ToolIdParts') -> 'str'
   def hydrate_with_schema(catalog: 'Catalog', tool_id: 'str', source: 'SchemaSource | Mapping[str, dict[str, Any]] | None' = ...) -> 'HydrationResult'
   def item_to_card(item: 'SelectableItem', *, score: 'float | None' = ..., redact_secrets: 'bool' = ...) -> 'ChoiceCard'
@@ -749,10 +758,12 @@
   def load_graph(path: 'str | Path') -> 'ChoiceGraph'
   def make_choice_cards(items: 'list[SelectableItem]', *, max_cards: 'int' = ..., target_tokens_per_card: 'int' = ..., hard_cap_tokens_per_card: 'int' = ..., scores: 'dict[str, float] | None' = ..., redact_secrets: 'bool' = ...) -> 'list[ChoiceCard]'
   def parse_path(path: 'str') -> 'list[str]'
+  def parse_primitive_id(s: 'str') -> 'PrimitiveIdParts'
   def parse_tool_id(s: 'str') -> 'ToolIdParts'
   def rank_collected(collected: 'dict[str, tuple[float, list[str]]]', active_items: 'dict[str, SelectableItem]') -> 'list[tuple[str, tuple[float, list[str]]]]'
   def render_cards(items: 'list[SelectableItem]', *, redact_secrets: 'bool' = ...) -> 'list[ChoiceCard]'
   def render_cards_text(cards: 'list[ChoiceCard]') -> 'str'
+  def resolve_collisions(ids: 'list[str]') -> 'dict[str, str]'
   def resolve_path(graph: 'ChoiceGraph', segments: 'list[str]') -> 'list[str]'
   def save_graph(graph: 'ChoiceGraph', path: 'str | Path') -> 'None'
   def selection_schema(candidate_ids: 'list[str]', *, provider: 'str' = ..., property_name: 'str' = ..., schema_name: 'str' = ...) -> 'dict[str, Any]'

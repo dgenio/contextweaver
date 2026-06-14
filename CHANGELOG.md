@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Gateway resource & prompt runtime (#669 / #670).** New
+  `PrimitiveGatewayRuntime` (+ the `PrimitiveUpstream` protocol) extends the
+  gateway's bounded-choice routing and context-firewall treatment from tools to
+  MCP **resources** and **prompts** (#555). Resources/prompts are modelled as
+  `SelectableItem`s (`kind="resource"` / `"prompt"`) so they reuse the routing
+  `Catalog` / `Router` / `ChoiceCard` machinery; each kind routes in its own
+  index while sharing one `ContextManager` (artifact store + firewall +
+  `tool_view`) with the tool runtime. New converters
+  `mcp_resource_to_selectable` / `mcp_prompt_to_selectable` and read/get
+  envelope wrappers live in `contextweaver.adapters.mcp_primitives`; declared
+  prompt arguments become an `args_schema` so `prompt_get` validates inputs like
+  `tool_execute`. The `SelectableItem` / `ChoiceCard` `kind` set now includes
+  `resource` and `prompt`. Four new gateway meta-tools — `resource_browse` /
+  `resource_read` / `prompt_browse` / `prompt_get`
+  (`contextweaver.adapters.mcp_gateway_primitives`) — expose the bounded-choice
+  surface, and `McpGatewayServer` advertises and dispatches them over stdio when
+  constructed with a `primitive_runtime=`.
+- **Unified cross-primitive identity & collision policy (#671).** New
+  `contextweaver.routing.primitive_id` is the single source of truth for
+  identifying MCP tools, resources, and prompts in one shared `Catalog`
+  (groundwork for routing resources/prompts through the gateway, #555). Tools
+  keep their bare canonical `tool_id`; resources and prompts get
+  disjoint-by-construction ids via a reserved `kind::` prefix
+  (`resource::fs:readme#ab12cd34`, `prompt::gh:summarize#deadbeef`). Stable
+  per-kind shape hashes (`compute_resource_hash8` over the URI;
+  `compute_prompt_hash8` over name + sorted argument names) and a deterministic
+  `~N` collision policy (`resolve_collisions`) round out the surface. Documented
+  in `docs/gateway_spec.md` §9.
 - **Stable error codes + remediation hints (#635).** Every
   `ContextWeaverError` subclass now carries a frozen, machine-readable `code`
   (e.g. `CW_CONFIG`) so programs can branch on failures without string-matching,
@@ -51,6 +79,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from (pure-data `types.py`, re-export-only `__init__.py`) are barred from
   side effects by hard invariants; the others remain on internal serialization
   paths.
+
+### Fixed
+
+- **Binary MCP resource reads are no longer corrupted (#671 review).**
+  `mcp_resource_read_to_envelope` now base64-decodes a resource part's `blob`
+  back to its original bytes before persisting it, instead of storing the
+  base64 text bytes — so `tool_view` drilldown on real binary resources stays
+  byte-accurate. Malformed (non-base64) blobs fall back to their raw bytes.
+- **`*_browse` rejects invalid `top_k` cleanly (#671 review).**
+  `PrimitiveIndex.browse` now validates `top_k` and returns a structured
+  `GatewayError(ARGS_INVALID)` for non-integer or non-positive values, instead
+  of letting a bad type reach `make_choice_cards` and raise `TypeError` across
+  the meta-tool boundary.
+- **Clarified collision-policy determinism & `~N` id status (#671 review).**
+  `resolve_collisions` docs and `docs/gateway_spec.md` §9 now state the
+  assignment is deterministic *for a given catalog order* (index-based, not
+  order-independent), and that the `~N`-suffixed form is an opaque catalog key
+  outside the §1.1 grammar (it does not round-trip through `parse_tool_id`).
+  Collision tests now use canonical 8-hex-char ids.
 
 ## [0.15.0] - 2026-06-14
 
