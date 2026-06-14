@@ -39,18 +39,24 @@ def _router() -> Router:
 # ------------------------------------------------------------------
 
 
-def test_toolcard_top_level_alias_warns_and_resolves() -> None:
+def test_toolcard_top_level_alias_is_plain_and_resolves() -> None:
     import contextweaver
 
-    with pytest.warns(DeprecationWarning, match="ToolCard is deprecated"):
+    # ``ToolCard`` is a documentation-only deprecation: a plain alias that does
+    # not emit a runtime warning, because the only places it could warn from
+    # (re-export-only ``__init__.py`` / pure-data ``types.py``) are barred by
+    # hard invariants. The deprecation is tracked in ``docs/upgrading.md``.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
         alias = contextweaver.ToolCard
     assert alias is SelectableItem
 
 
-def test_toolcard_types_alias_warns_and_resolves() -> None:
+def test_toolcard_types_alias_is_plain_and_resolves() -> None:
     types_mod = importlib.import_module("contextweaver.types")
 
-    with pytest.warns(DeprecationWarning, match="Use SelectableItem instead"):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
         alias = types_mod.ToolCard
     assert alias is SelectableItem
 

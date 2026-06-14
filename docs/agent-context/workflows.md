@@ -157,6 +157,15 @@ do not call `warnings.warn` ad hoc.
 4. Add the surface to the inventory table in `docs/upgrading.md` and a
    `CHANGELOG.md` "Deprecated" entry naming the replacement.
 
+**Documentation-only exception.** Do **not** add a runtime warning when the only
+call site would live in a module barred from side effects — a re-export-only
+`__init__.py` (hard rule: only re-exports) or a pure-data module such as
+`types.py` (invariant: no side effects in the data layer), or an internal
+serialization key on a hot path. Keep the surface a plain alias/accessor, skip
+steps 1–2 (no `_SHIMS` entry, no `warn_deprecated`), and record it as a
+documentation-only row in `docs/upgrading.md`. The `ToolCard` alias is the
+reference example.
+
 ## Documentation Governance
 
 ### When docs must be updated

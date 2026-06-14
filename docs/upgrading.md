@@ -35,11 +35,16 @@ Deprecations are delivered through the runtime machinery in
 - A deprecated public surface emits a `DeprecationWarning` whose message starts
   with `contextweaver deprecation:` and names the replacement and the planned
   removal version.
+- Some surfaces are **documentation-only** deprecations: they have no place to
+  emit a runtime warning from without breaking a hard invariant (a re-export-
+  only `__init__.py`, a pure-data module, or an internal serialization key on
+  the library's own hot path). These are still listed below and removed on the
+  same schedule; they simply do not warn at runtime.
 - A surface is deprecated for **at least one minor release** before it is
   removed, and removals only happen in a release whose changelog calls them out.
-- The set of active deprecations is tracked in one place
-  (`contextweaver._deprecation.active_deprecations()`), which is the source for
-  the inventory table below.
+- The set of runtime-warned deprecations is tracked in one place
+  (`contextweaver._deprecation.active_deprecations()`); the inventory table
+  below is that set plus the documentation-only surfaces.
 
 To see contextweaver's own deprecations as errors while testing your
 integration (third-party `DeprecationWarning`s stay non-fatal):
@@ -54,22 +59,29 @@ warnings.filterwarnings("error", message="contextweaver deprecation:")
 
 | Deprecated surface | Replacement | Deprecated in | Planned removal |
 |---|---|---|---|
-| `contextweaver.ToolCard` / `contextweaver.types.ToolCard` | `SelectableItem` | 0.16.0 | 1.0.0 |
 | `RouteResult.debug_trace` | `RouteResult.trace` (structured `RouteTrace`) | 0.16.0 | 1.0.0 |
 | `RouteTrace.to_legacy_dicts()` | the structured `RouteTrace` fields (`steps` / `to_dict()`) | 0.16.0 | 1.0.0 |
 | `Router(scorer=...)` constructor argument | `Router(retriever=...)` (a `Retriever`) or `Router(scorer_backend=...)` | 0.16.0 | 1.0.0 |
+| `contextweaver.ToolCard` / `contextweaver.types.ToolCard` | `SelectableItem` | documented (0.16.0) | 1.0.0 |
 | `ChoiceGraph.build_meta` (raw-dict accessor) | `ChoiceGraph.manifest` (typed `GraphManifest`) | documented (0.16.0) | not before 1.0.0 |
 | Legacy `ArtifactRef` write path (empty `content_hash`, pre-#190) | firewall-written `ArtifactRef`s carry a populated `content_hash` | documented (0.16.0) | not before 1.0.0 |
 
-The last two rows are **documentation-only** deprecations for now: `build_meta`
-is still the on-disk serialization key the routing graph round-trips through
-(so a runtime warning would fire on the library's own hot path), and the legacy
-`ArtifactRef` shape is a data default rather than a call site there is a clean
-place to warn from. They are recorded here so the 1.0 cleanup can retire them
-deliberately; the maintainer may choose to attach runtime warnings once the
-internal write paths are migrated.
+The last three rows are **documentation-only** deprecations for now:
 
-### Migrating off the warned surfaces
+- `ToolCard` is a plain alias for `SelectableItem` defined in the pure-data
+  `types.py` and re-exported by `__init__.py`. Emitting a runtime warning from
+  either would break a hard invariant (no side effects in the data layer; no
+  business logic in `__init__.py`), so the alias stays silent and the
+  deprecation is tracked here instead.
+- `build_meta` is still the on-disk serialization key the routing graph
+  round-trips through, so a runtime warning would fire on the library's own hot
+  path.
+- The legacy `ArtifactRef` shape is a data default rather than a call site there
+  is a clean place to warn from.
+
+They are recorded here so the 1.0 cleanup can retire them deliberately.
+
+### Migrating off the deprecated surfaces
 
 ```python
 # ToolCard -> SelectableItem
@@ -91,9 +103,10 @@ history see the
 
 ### 0.16.0 (unreleased)
 
-- **New deprecations.** The surfaces in the table above now emit
-  `DeprecationWarning`s. Nothing is removed in this release — existing code
-  keeps working — but migrate before 1.0.
+- **New deprecations.** The runtime-warned surfaces in the table above now emit
+  `DeprecationWarning`s; `ToolCard` and the other documentation-only rows are
+  flagged here without a runtime warning. Nothing is removed in this release —
+  existing code keeps working — but migrate before 1.0.
 
 ### 0.15.0
 

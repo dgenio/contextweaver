@@ -28,16 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pre-1.0 legacy compatibility shims (#642).** The following now emit a
   `DeprecationWarning` (behavior unchanged; nothing removed yet — see the
   Upgrading inventory for replacements and the 1.0 removal milestone):
-  - `contextweaver.ToolCard` / `contextweaver.types.ToolCard` → use
-    `SelectableItem`.
   - `RouteResult.debug_trace` → use `RouteResult.trace`.
   - `RouteTrace.to_legacy_dicts()` → use the structured `RouteTrace` fields.
   - the `Router(scorer=...)` constructor argument → use `retriever=` or
     `scorer_backend=`.
 
-  `ChoiceGraph.build_meta` and the pre-#190 `ArtifactRef` write path are
-  recorded as documentation-only deprecations in the upgrade guide (they remain
-  on internal serialization paths).
+  The `contextweaver.ToolCard` / `contextweaver.types.ToolCard` alias (→ use
+  `SelectableItem`), `ChoiceGraph.build_meta`, and the pre-#190 `ArtifactRef`
+  write path are recorded as documentation-only deprecations in the upgrade
+  guide. `ToolCard` stays a plain alias because the only modules it could warn
+  from (pure-data `types.py`, re-export-only `__init__.py`) are barred from
+  side effects by hard invariants; the others remain on internal serialization
+  paths.
 
 ## [0.15.0] - 2026-06-14
 

@@ -145,10 +145,9 @@ def render_manifest() -> str:
             out.append("")
             continue
         for name in sorted(exported):
-            # The public surface deliberately includes deprecated re-exports
-            # (e.g. the ``ToolCard`` alias served via ``__getattr__``, issue
-            # #642); introspecting them must not let their DeprecationWarning
-            # derail manifest generation.
+            # The public surface deliberately retains deprecated re-exports
+            # (issue #642); introspecting one must not let a DeprecationWarning
+            # it might emit on access derail manifest generation.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
                 obj = getattr(module, name)

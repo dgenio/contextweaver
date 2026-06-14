@@ -83,8 +83,14 @@ _REGISTRY: dict[str, Deprecation] = {}
 # set regardless of which shims have been exercised, and so docs / the upgrade
 # guide can be checked against one source.  The shim call sites import only
 # :func:`warn_deprecated` (and :func:`deprecated`) and refer to these by name.
+#
+# Only *runtime-warned* shims belong here.  Surfaces that can only be
+# deprecated in documentation (the ``ToolCard`` alias, whose warning would have
+# to live in the pure-data ``types.py`` / re-export-only ``__init__.py`` — both
+# barred by hard invariants — and the internal-serialization shims
+# ``ChoiceGraph.build_meta`` / the pre-#190 ``ArtifactRef`` write path) are
+# documentation-only and live in ``docs/upgrading.md`` instead.
 _SHIMS: tuple[Deprecation, ...] = (
-    Deprecation("ToolCard", since="0.16.0", removal="1.0.0", instead="SelectableItem"),
     Deprecation(
         "RouteResult.debug_trace", since="0.16.0", removal="1.0.0", instead="RouteResult.trace"
     ),
@@ -140,9 +146,17 @@ def warn_deprecated(
 
     If ``since`` / ``removal`` / ``instead`` are given the deprecation is
     registered (if not already); otherwise ``name`` must already be in the
-    registry.  ``stacklevel`` defaults to ``2`` so the warning points at the
-    caller's call site, giving the once-per-site dedup the warnings module
-    provides under its default filters.
+    registry.
+
+    ``stacklevel`` is interpreted from the perspective of *this function's
+    caller*: the default ``2`` blames one frame above that caller (the user
+    call site that reached a deprecated surface), exactly as a direct
+    ``warnings.warn(..., stacklevel=2)`` written at the call site would. The
+    implementation forwards ``stacklevel + 1`` to :func:`warnings.warn` so
+    ``warn_deprecated``'s own frame is skipped — without the ``+1`` every
+    warning would be attributed to this module instead of the caller, breaking
+    the once-per-call-site dedup the warnings module provides under its default
+    filters.
     """
     if since is not None and removal is not None and instead is not None:
         deprecation = register_deprecation(name, since=since, removal=removal, instead=instead)
@@ -158,6 +172,20 @@ def _missing(name: str) -> Deprecation:
     )
 
 
+def _qualified_name(func: Callable[..., Any]) -> str:
+    """Best-effort fully-qualified name (``module.qualname``) for *func*.
+
+    Defaulting to the fully-qualified name rather than the bare ``__qualname__``
+    keeps the registry key unique across modules: two different modules can each
+    define, say, a ``Client.connect`` whose ``__qualname__`` collides, which
+    would otherwise raise a spurious :class:`~contextweaver.exceptions.ConfigError`
+    from :func:`register_deprecation`.
+    """
+    qualname = str(getattr(func, "__qualname__", "callable"))
+    module = getattr(func, "__module__", None)
+    return f"{module}.{qualname}" if module else qualname
+
+
 def deprecated(
     name: str | None = None,
     *,
@@ -168,7 +196,10 @@ def deprecated(
     """Decorate a callable so calling it emits a deprecation warning.
 
     The wrapped callable's behaviour is otherwise unchanged.  ``name`` defaults
-    to the callable's qualified name.  Works on plain functions and methods.
+    to the callable's fully-qualified ``module.qualname`` (see
+    :func:`_qualified_name`) so two surfaces with the same ``__qualname__`` in
+    different modules cannot collide in the registry.  Works on plain functions
+    and methods.
 
     Example:
         >>> @deprecated(since="0.16.0", removal="1.0.0", instead="new_api")
@@ -177,7 +208,7 @@ def deprecated(
     """
 
     def decorate(func: _F) -> _F:
-        resolved: str = name or str(getattr(func, "__qualname__", "callable"))
+        resolved: str = name or _qualified_name(func)
         register_deprecation(resolved, since=since, removal=removal, instead=instead)
 
         @functools.wraps(func)

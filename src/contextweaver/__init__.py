@@ -20,8 +20,6 @@ Quick start::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
 from contextweaver import (
     config,
     diagnostics,
@@ -187,14 +185,9 @@ from contextweaver.types import (
     Phase,
     SelectableItem,
     Sensitivity,
+    ToolCard,
     ViewSpec,
 )
-
-if TYPE_CHECKING:
-    # ``ToolCard`` is a deprecated alias for ``SelectableItem`` (issue #642).
-    # Bound for type-checkers only; at runtime ``__getattr__`` serves it with a
-    # ``DeprecationWarning``.
-    from contextweaver.types import ToolCard as ToolCard
 
 __all__ = [
     # sub-modules
@@ -363,13 +356,3 @@ __all__ = [
     "StructuredFirewall",
     "project",
 ]
-
-
-def __getattr__(name: str) -> Any:  # noqa: ANN401 — module attribute hook
-    """Re-export the deprecated ``ToolCard`` alias with a runtime warning (#642)."""
-    if name == "ToolCard":
-        from contextweaver._deprecation import warn_deprecated
-
-        warn_deprecated("ToolCard")
-        return SelectableItem
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

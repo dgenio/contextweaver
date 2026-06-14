@@ -1058,7 +1058,9 @@ Check out the MCP context gateway example [MCP gateway example](../examples/mcp_
 
 A `SelectableItem` is the unified representation of anything the Routing
 Engine can select — a tool, agent, skill, or internal function. The type
-alias `ToolCard` is used when emphasising the LLM-facing card framing.
+alias `ToolCard` (historically used when emphasising the LLM-facing card
+framing) is **deprecated** — use `SelectableItem`; it is scheduled for removal
+in 1.0 (see [Upgrading](upgrading.md)).
 
 Key fields: `id`, `kind`, `name`, `description`, `tags`, `namespace`,
 `side_effects`, `cost_hint`.
@@ -3214,6 +3216,15 @@ do not call `warnings.warn` ad hoc.
    caller fails CI.
 4. Add the surface to the inventory table in `docs/upgrading.md` and a
    `CHANGELOG.md` "Deprecated" entry naming the replacement.
+
+**Documentation-only exception.** Do **not** add a runtime warning when the only
+call site would live in a module barred from side effects — a re-export-only
+`__init__.py` (hard rule: only re-exports) or a pure-data module such as
+`types.py` (invariant: no side effects in the data layer), or an internal
+serialization key on a hot path. Keep the surface a plain alias/accessor, skip
+steps 1–2 (no `_SHIMS` entry, no `warn_deprecated`), and record it as a
+documentation-only row in `docs/upgrading.md`. The `ToolCard` alias is the
+reference example.
 
 ## Documentation Governance
 

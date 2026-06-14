@@ -29,6 +29,7 @@ from contextweaver.envelope import RoutingDecision
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import EmbeddingBackend, Retriever, RoutingScoreProvider
+from contextweaver.routing._scorer_adapter import _ScorerLike, _ScorerRetriever
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.explanation import explain_route, explain_route_dict
 from contextweaver.routing.filters import (
@@ -50,10 +51,9 @@ from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
 
-# Union of all scorer types Router accepts. ``FuzzyScorer`` is ``None`` when
-# the ``contextweaver[retrieval]`` extra is not installed; we widen with
-# ``Any`` rather than naming the runtime ``None`` sentinel here.
-_ScorerLike = TfIdfScorer | BM25Scorer | Any
+# ``_ScorerLike`` and the legacy ``_ScorerRetriever`` adapter live in
+# ``contextweaver.routing._scorer_adapter`` (imported above) so this
+# grandfathered module stays within its frozen size ceiling (issue #642).
 
 # Registry of named backends. ``Router(scorer_backend="bm25")`` constructs
 # the corresponding scorer when no explicit instance is provided.
@@ -412,35 +412,6 @@ class RouteResult:
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
-
-
-class _ScorerRetriever:
-    """Internal :class:`Retriever` adapter for legacy ``scorer=`` callers.
-
-    Wraps any pre-existing scorer that exposes the ``fit(corpus)`` /
-    ``score(query, index)`` shape (e.g. :class:`TfIdfScorer`,
-    :class:`BM25Scorer`, :class:`FuzzyScorer`) so the rest of
-    :class:`Router` can talk to a single :class:`Retriever` surface
-    regardless of how the engine was supplied.
-    """
-
-    def __init__(self, scorer: _ScorerLike) -> None:
-        self._scorer = scorer
-        self._corpus_size = 0
-
-    def fit(self, corpus: list[str]) -> None:
-        self._scorer.fit(corpus)
-        self._corpus_size = len(corpus)
-
-    def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
-        scored = [(i, self._scorer.score(query, i)) for i in range(self._corpus_size)]
-        scored.sort(key=lambda x: (-x[1], x[0]))
-        return scored[: max(0, top_k)]
-
-    def score_one(self, query: str, index: int) -> float:
-        if not 0 <= index < self._corpus_size:
-            return 0.0
-        return self._scorer.score(query, index)
 
 
 class Router:

@@ -13,9 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal
-
-from contextweaver._deprecation import warn_deprecated
+from typing import Any, Literal
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -156,12 +154,12 @@ class SelectableItem:
         )
 
 
-# ``ToolCard`` is a deprecated alias for :class:`SelectableItem` (issue #642).
-# It is bound only for type-checkers; at runtime the name is served by the
-# module-level ``__getattr__`` below so that any access emits a
-# ``DeprecationWarning`` pointing at :class:`SelectableItem`.
-if TYPE_CHECKING:
-    ToolCard = SelectableItem
+#: Deprecated alias for :class:`SelectableItem` (issue #642); use
+#: ``SelectableItem`` in code. Kept as a plain alias — **not** a warning-
+#: emitting shim — because ``types.py`` is a pure-data module that may not have
+#: side effects (``docs/agent-context/invariants.md``); the deprecation is
+#: tracked documentation-only in ``docs/upgrading.md``.
+ToolCard = SelectableItem
 
 
 @dataclass
@@ -317,17 +315,3 @@ __all__ = [
     "ToolCard",
     "ViewSpec",
 ]
-
-
-def __getattr__(name: str) -> Any:  # noqa: ANN401 — module attribute hook
-    """Serve the deprecated ``ToolCard`` alias with a runtime warning (issue #642).
-
-    Keeping ``ToolCard`` out of the module globals and resolving it here means
-    ``contextweaver.types.ToolCard`` (and the top-level re-export) still works
-    but emits a :class:`DeprecationWarning` directing callers to
-    :class:`SelectableItem`.
-    """
-    if name == "ToolCard":
-        warn_deprecated("ToolCard")
-        return SelectableItem
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
