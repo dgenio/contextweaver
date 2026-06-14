@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Unified cross-primitive identity & collision policy (#671).** New
+  `contextweaver.routing.primitive_id` is the single source of truth for
+  identifying MCP tools, resources, and prompts in one shared `Catalog`
+  (groundwork for routing resources/prompts through the gateway, #555). Tools
+  keep their bare canonical `tool_id`; resources and prompts get
+  disjoint-by-construction ids via a reserved `kind::` prefix
+  (`resource::fs:readme#ab12cd34`, `prompt::gh:summarize#deadbeef`). Stable
+  per-kind shape hashes (`compute_resource_hash8` over the URI;
+  `compute_prompt_hash8` over name + sorted argument names) and a deterministic
+  `~N` collision policy (`resolve_collisions`) round out the surface. Documented
+  in `docs/gateway_spec.md` §9.
 - **Stable error codes + remediation hints (#635).** Every
   `ContextWeaverError` subclass now carries a frozen, machine-readable `code`
   (e.g. `CW_CONFIG`) so programs can branch on failures without string-matching,
