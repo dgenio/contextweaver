@@ -31,6 +31,7 @@ Public API:
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from contextweaver import tokens
 from contextweaver.envelope import CHOICE_CARD_TAGS_MAX_COUNT, ChoiceCard
@@ -54,7 +55,7 @@ _READ_ONLY_TAGS = frozenset({"read-only", "read_only"})
 _SAFETY_TAGS = _DESTRUCTIVE_TAGS | _READ_ONLY_TAGS
 
 
-def _derive_safety(item: SelectableItem) -> str:
+def _derive_safety(item: SelectableItem) -> Literal["", "read_only", "destructive"]:
     """Classify an item's safety from its tags (issue #516).
 
     Returns one of :data:`~contextweaver.envelope.CHOICE_CARD_SAFETY_LEVELS`.
@@ -180,7 +181,7 @@ def item_to_card(
         score=score,
         cost_hint=item.cost_hint,
         side_effects=item.side_effects,
-        safety=_derive_safety(item),  # type: ignore[arg-type]
+        safety=_derive_safety(item),
     )
 
 

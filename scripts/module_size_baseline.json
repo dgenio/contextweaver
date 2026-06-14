@@ -19,7 +19,7 @@
   "context/manager.py": 369,
   "extras/memory/mem0.py": 479,
   "protocols.py": 690,
-  "routing/cards.py": 473,
+  "routing/cards.py": 474,
   "routing/catalog.py": 610,
   "routing/graph.py": 509,
   "routing/hydration.py": 316,
