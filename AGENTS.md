@@ -31,7 +31,7 @@ It prepares context and routes tools but never calls models or executes tools.
 | `store/async_protocols.py` | Async counterparts `AsyncEventLog` / `AsyncArtifactStore` / `AsyncEpisodicStore` / `AsyncFactStore` (issue #495) — same surface, `async def`. Consumed only by the async `context/` path; backend-agnostic. |
 | `store/async_bridge.py` | `to_async(sync_store)` — wraps a *thread-safe* sync backend as the matching async protocol via `asyncio.to_thread`. Thread-affine backends (`SqliteEventLog`, `check_same_thread=True`) are not valid targets (issue #495). |
 | `store/_async_to_sync.py` | Inverse bridges + `to_sync(async_store, loop)` + `is_async_store()` (issue #495). Drives async stores on a private `_LoopThread` so the existing sync pipeline can consume them; `ContextManager` offloads `build` to a worker thread when async-backed. Not public API. |
-| `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
+| `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`). Each class carries a stable, frozen `code` (e.g. `CW_CONFIG`) plus an optional `hint`; `str(exc)` renders `[code] message (hint: …)`. Codes are documented in `docs/errors.md` and golden-listed in `tests/test_exceptions.py` (issues #635, #637). |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
 | `secrets.py` | Pure, deterministic secret detection/scrubbing primitives: `scrub_secrets()`, `scrub_secrets_in_list()`, `contains_secret()`, `SecretPattern` (issue #428). Shared by the firewall secret-scrub, the `SecretRedactor` hook, the sensitivity classifier, and ChoiceCard scrubbing. No I/O; never weakens a surface (only removes characters). |
 | `_version.py` | Single-source version derived from `importlib.metadata`; fallback `"0.0.0+local"` |
@@ -239,7 +239,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 
 - **Text similarity in `_utils.py` only** — `tokenize()`, `jaccard()`, `TfIdfScorer` are the single source of truth. Do not duplicate.
 - **`from __future__ import annotations`** in every source file.
-- **All exceptions from `contextweaver.exceptions`** — use the custom hierarchy, not bare `ValueError`/`RuntimeError`.
+- **All exceptions from `contextweaver.exceptions`** — use the custom hierarchy, not bare `ValueError`/`RuntimeError`. A new exception class needs a unique stable `code`, a `GOLDEN_CODES` entry in `tests/test_exceptions.py`, and a section in `docs/errors.md`.
 - **`to_dict()` / `from_dict()` on all dataclasses** — complements `serde.py`; they are not redundant. See [invariants](docs/agent-context/invariants.md#serialization-design).
 - **Deterministic by default** — tie-break by ID, sorted keys. No randomness in core pipelines.
 - **No wildcard imports** — never use `from contextweaver import *`.

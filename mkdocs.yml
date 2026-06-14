@@ -122,6 +122,7 @@ nav:
   - Contracts: contracts.md
   - Observability: integration_otel.md
   - Troubleshooting: troubleshooting.md
+  - Error Reference: errors.md
   - Contribution Paths: contributing_paths.md
   - API Reference: reference/
 
