@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Stable error codes + remediation hints (#635).** Every
+  `ContextWeaverError` subclass now carries a frozen, machine-readable `code`
+  (e.g. `CW_CONFIG`) so programs can branch on failures without string-matching,
+  plus an optional `hint` (with a class-level `default_hint` fallback). `str(exc)`
+  renders `[code] message (hint: …)`, so CLI error output surfaces both
+  automatically. Codes are golden-listed in `tests/test_exceptions.py` (a rename
+  or a code-less new exception fails CI).
+- **Error reference page (#637).** New `docs/errors.md` documents every
+  exception — stable code, raising modules, common causes, and the fix — with a
+  code index table; added to the mkdocs nav, cross-linked from the
+  troubleshooting guide, and included in `llms.txt` / `llms-full.txt`.
 - **Runtime deprecation machinery (#517).** New internal
   `contextweaver._deprecation` module — `warn_deprecated(...)`, a `@deprecated`
   decorator, and a single registry surfaced via `active_deprecations()` — emits
