@@ -149,6 +149,21 @@ If you are working from a repository checkout instead, install the package in ed
 pip install -e ".[dev]"
 ```
 
+Verify that the package imports from the Python environment you just activated:
+
+```bash
+python -c "import contextweaver; print(contextweaver.__version__)"
+```
+
+Expected output is the installed version, for example `0.14.0`. Then run the
+network-free demo as an end-to-end smoke test:
+
+```bash
+contextweaver demo
+```
+
+You should see the friendly walkthrough start without `ModuleNotFoundError` or
+`contextweaver: command not found`.
 `pipx run contextweaver demo --scenario killer` is the equivalent isolated
 path for pipx users.
 

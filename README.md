@@ -24,6 +24,7 @@ uvx contextweaver demo --scenario killer  # zero-install trial
 
 # Or install it:
 pip install contextweaver
+python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
 ```
 
