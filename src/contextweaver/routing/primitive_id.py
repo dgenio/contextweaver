@@ -41,7 +41,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from contextweaver.exceptions import CatalogError
 from contextweaver.routing.tool_id import ToolIdParts, format_tool_id, parse_tool_id
@@ -171,7 +171,7 @@ def parse_primitive_id(s: str) -> PrimitiveIdParts:
                 f"primitive id has an unknown kind prefix {prefix!r} "
                 f"(expected one of {('resource', 'prompt')})"
             )
-        kind = prefix  # type: ignore[assignment]  # narrowed by the guard above
+        kind = cast(PrimitiveKind, prefix)  # narrowed to resource/prompt by the guard above
     tool_parts = parse_tool_id(body)
     return PrimitiveIdParts(
         kind=kind,
