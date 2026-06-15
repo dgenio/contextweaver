@@ -111,6 +111,7 @@ nav:
       - Agent Skills: integration_agent_skills.md
       - External Memory: integration_memory.md
       - Persistent & Remote Stores: persistent_stores.md
+      - Puppetmaster: integration_puppetmaster.md
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md
   - Adopter Benchmark Report: benchmark_report.md
