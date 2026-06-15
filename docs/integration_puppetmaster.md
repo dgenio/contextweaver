@@ -48,9 +48,10 @@ references the handle and `tool_view` returns the precise slice.
 │ contextweaver                                                   │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │ ContextManager                                          │   │
-│   │   ├─ ingest_tool_result_sync(summary, raw_log)        │   │
+│   │   ├─ ingest_tool_result_sync(tool_call_id, raw_output) │   │
 │   │   │      → firewall stores raw log in artifact_store  │   │
-│   │   │      → ContextItem carries summary + ArtifactRef  │   │
+│   │   │      → summary auto-generated; ContextItem carries │   │
+│   │   │         summary + ArtifactRef                      │   │
 │   │   ├─ build(phase=Phase.route)                         │   │
 │   │   │      → choose which job/history is relevant       │   │
 │   │   └─ build(phase=Phase.answer)                        │   │
@@ -73,12 +74,17 @@ firewall so large payloads are stored out-of-band automatically:
 
 ```python
 from contextweaver import ContextManager
+from contextweaver.types import Sensitivity
 from contextweaver.config import ContextBudget, ContextPolicy
 
-mgr = ContextManager(
-    budget=ContextBudget(route=500, call=800, interpret=600, answer=1200),
-    policy=ContextPolicy(),
+budget = ContextBudget(route=500, call=800, interpret=600, answer=1200)
+
+policy = ContextPolicy(
+    sensitivity_floor=Sensitivity.internal,
+    sensitivity_action="redact",
+    redaction_hooks=["mask"],
 )
+mgr = ContextManager(budget=budget, policy=policy)
 
 job_summary = "Worker 'train-model' completed. Accuracy: 0.94. Epochs: 50."
 raw_log = """2024-06-01T12:00:01Z [INFO] Starting epoch 1...
@@ -88,18 +94,24 @@ raw_log = """2024-06-01T12:00:01Z [INFO] Starting epoch 1...
 2024-06-01T14:32:12Z [INFO] Saving checkpoint to /runs/epoch-50.pt
 """
 
+payload = json.dumps({"summary": job_summary, "log": raw_log})
+
 mgr.ingest_tool_result_sync(
     tool_call_id="job:train-model:42",
-    raw_output={"summary": job_summary, "log": raw_log},
+    raw_output=payload,
+    firewall=StructuredFirewall(keep=["summary"]),
 )
 
-# The firewall stores the raw log in the artifact store.
+# The firewall stores the raw payload in the artifact store.
 # The event log contains a compact ContextItem with a handle.
+# With StructuredFirewall(keep=["summary"]), the LLM sees the summary
+# inline while the full payload (including the log) stays behind the handle.
 ```
 
-The firewall intercepts the log if it exceeds the configured threshold (default
-2 048 bytes). The LLM sees the summary; the full log lives in the artifact store
-under a typed `ArtifactRef` handle.
+The firewall intercepts the payload if it exceeds the configured threshold (default
+2 000 bytes). When `StructuredFirewall(keep=[...])` is used, the LLM sees only the
+projected field(s) inline; the full payload remains in the artifact store under a
+typed `ArtifactRef` handle.
 
 ## Budgeting across job history
 
@@ -135,15 +147,24 @@ directly from the store:
 
 ```python
 # Gateway path (MCP proxy / gateway)
-from contextweaver.adapters.mcp_gateway import tool_view
+from contextweaver.adapters.mcp_gateway import dispatch_meta_tool
 
 # The model sends back the artifact handle from the summary.
-full_log = tool_view(mgr, handle="artifact:job:train-model:42")
+# Handles produced by ingest_tool_result_sync follow the form:
+#   artifact:result:{tool_call_id}
+handle = "artifact:result:job:train-model:42"
+result = dispatch_meta_tool(
+    name="tool_view",
+    runtime=proxy_runtime,   # your ProxyRuntime instance
+    arguments={"handle": handle, "selector": None},
+)
 ```
 
 ```python
 # Standalone path
-handle = "artifact:job:train-model:42"
+# Handles produced by ingest_tool_result_sync follow the form:
+#   artifact:result:{tool_call_id}
+handle = "artifact:result:job:train-model:42"
 assert mgr.artifact_store.exists(handle)
 full_bytes = mgr.artifact_store.get(handle)
 ```
@@ -186,11 +207,15 @@ Apply a `SensitivityClassifier` or `RedactionHook` if the *summary* itself must
 also be scrubbed before reaching the LLM:
 
 ```python
-from contextweaver.context.sensitivity import MaskRedactionHook
-from contextweaver.config import ContextPolicy
+from contextweaver import ContextManager
+from contextweaver.types import Sensitivity
+from contextweaver.config import ContextBudget, ContextPolicy
+
+budget = ContextBudget(route=500, call=800, interpret=600, answer=1200)
 
 policy = ContextPolicy(
     sensitivity_floor=Sensitivity.internal,
+    sensitivity_action="redact",
     redaction_hooks=["mask"],
 )
 mgr = ContextManager(budget=budget, policy=policy)
