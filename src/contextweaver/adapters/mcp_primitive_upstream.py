@@ -131,8 +131,7 @@ class McpClientPrimitiveUpstream:
     async def list_resources(self) -> list[dict[str, Any]]:
         """Call ``resources/list`` upstream and return dict-shaped defs."""
         listing = await asyncio.wait_for(self._session.list_resources(), timeout=self._timeout)
-        resources = getattr(listing, "resources", listing) or []
-        return [_model_to_dict(r) for r in resources]
+        return [_model_to_dict(r) for r in _unwrap_listing(listing, "resources")]
 
     async def read_resource(self, uri: str) -> dict[str, Any]:
         """Forward a ``resources/read`` and return a dict-shaped MCP result."""
@@ -142,8 +141,7 @@ class McpClientPrimitiveUpstream:
     async def list_prompts(self) -> list[dict[str, Any]]:
         """Call ``prompts/list`` upstream and return dict-shaped defs."""
         listing = await asyncio.wait_for(self._session.list_prompts(), timeout=self._timeout)
-        prompts = getattr(listing, "prompts", listing) or []
-        return [_model_to_dict(p) for p in prompts]
+        return [_model_to_dict(p) for p in _unwrap_listing(listing, "prompts")]
 
     async def get_prompt(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Forward a ``prompts/get`` and return a dict-shaped MCP result."""
@@ -161,7 +159,9 @@ class MultiplexPrimitiveUpstream:
     first source registered wins — the §9 cross-primitive identity policy keeps
     this collision rare in practice.  Routing indices are populated lazily by the
     corresponding ``list_*`` call, so callers should list before reading (the
-    :class:`PrimitiveGatewayRuntime` always refreshes before serving).
+    :class:`PrimitiveGatewayRuntime` always refreshes before serving).  Each
+    ``list_*`` rebuilds its ownership index from scratch, so repeated listings
+    (e.g. successive ``PrimitiveGatewayRuntime.refresh()`` calls) are idempotent.
     """
 
     def __init__(self, sources: list[Any]) -> None:  # noqa: ANN401 — PrimitiveUpstream Protocol
@@ -171,6 +171,7 @@ class MultiplexPrimitiveUpstream:
 
     async def list_resources(self) -> list[dict[str, Any]]:
         """Return the union of resource defs across all sources."""
+        self._resource_owner.clear()
         out: list[dict[str, Any]] = []
         for idx, source in enumerate(self._sources):
             for resource_def in await source.list_resources():
@@ -182,6 +183,7 @@ class MultiplexPrimitiveUpstream:
 
     async def list_prompts(self) -> list[dict[str, Any]]:
         """Return the union of prompt defs across all sources."""
+        self._prompt_owner.clear()
         out: list[dict[str, Any]] = []
         for idx, source in enumerate(self._sources):
             for prompt_def in await source.list_prompts():
@@ -206,6 +208,24 @@ class MultiplexPrimitiveUpstream:
             raise LookupError(f"no upstream owns prompt {name!r}")
         result: dict[str, Any] = await self._sources[idx].get_prompt(name, arguments)
         return result
+
+
+def _unwrap_listing(listing: Any, key: str) -> list[Any]:  # noqa: ANN401
+    """Extract the entry list from a ``*/list`` result of any shape.
+
+    The MCP SDK returns a pydantic result object carrying the entries under
+    *key* (``.resources`` / ``.prompts``); a dict-shaped payload nests them the
+    same way (``{"resources": [...]}``); a bare list is already the entries.
+    Unwrapping explicitly avoids iterating a dict's string keys into
+    :func:`_model_to_dict`.
+    """
+    if isinstance(listing, dict):
+        entries = listing.get(key)
+    elif isinstance(listing, list):
+        entries = listing
+    else:
+        entries = getattr(listing, key, None)
+    return list(entries) if entries else []
 
 
 def _model_to_dict(obj: Any) -> dict[str, Any]:  # noqa: ANN401

@@ -119,6 +119,25 @@ async def test_client_propagates_timeout_for_runtime_to_classify() -> None:
         await client.read_resource("file:///slow")
 
 
+class _DictSession:
+    """A session whose list endpoints return dict-shaped payloads."""
+
+    async def list_resources(self) -> dict[str, Any]:
+        return {"resources": [dict(r) for r in RESOURCES]}
+
+    async def list_prompts(self) -> dict[str, Any]:
+        return {"prompts": [dict(p) for p in PROMPTS]}
+
+
+async def test_client_unwraps_dict_shaped_listings() -> None:
+    """A dict-shaped ``{"resources": [...]}`` payload is unwrapped, not iterated as keys."""
+    client = McpClientPrimitiveUpstream(_DictSession())
+    resources = await client.list_resources()
+    assert [r["uri"] for r in resources] == [r["uri"] for r in RESOURCES]
+    prompts = await client.list_prompts()
+    assert [p["name"] for p in prompts] == [p["name"] for p in PROMPTS]
+
+
 # --- MultiplexPrimitiveUpstream ----------------------------------------------
 
 
@@ -149,6 +168,30 @@ async def test_multiplex_first_source_wins_on_collision() -> None:
     union = await mux.list_resources()
     assert len(union) == 1
     assert (await mux.read_resource("file:///x"))["contents"][0]["text"] == "a"
+
+
+async def test_multiplex_listings_are_idempotent() -> None:
+    """Repeated list_* calls rebuild the owner index, so they never erase the union."""
+    mux = MultiplexPrimitiveUpstream(
+        [StubPrimitiveUpstream(RESOURCES, PROMPTS), StubPrimitiveUpstream([], [])]
+    )
+    first_res = await mux.list_resources()
+    second_res = await mux.list_resources()
+    assert [r["uri"] for r in first_res] == [r["uri"] for r in second_res]
+    assert len(second_res) == len(RESOURCES)
+    first_pr = await mux.list_prompts()
+    second_pr = await mux.list_prompts()
+    assert [p["name"] for p in first_pr] == [p["name"] for p in second_pr]
+    assert len(second_pr) == len(PROMPTS)
+
+
+async def test_multiplex_repeated_refresh_keeps_catalog() -> None:
+    """A second PrimitiveGatewayRuntime.refresh() over a multiplex must not drop items."""
+    mux = MultiplexPrimitiveUpstream([StubPrimitiveUpstream(RESOURCES, PROMPTS)])
+    rt = PrimitiveGatewayRuntime(mux)
+    assert await rt.refresh() == (2, 1)
+    assert await rt.refresh() == (2, 1)
+    assert rt.browse_resources(query="readme")
 
 
 async def test_multiplex_unknown_id_raises_for_classification() -> None:
