@@ -47,7 +47,9 @@
           "agent",
           "skill",
           "internal",
-          "flow"
+          "flow",
+          "resource",
+          "prompt"
         ]
       },
       "metadata": {

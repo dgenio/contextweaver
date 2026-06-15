@@ -42,6 +42,17 @@ from contextweaver.routing.labeler import KeywordLabeler
 from contextweaver.routing.navigator import rank_collected
 from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
 from contextweaver.routing.path import parse_path, resolve_path
+from contextweaver.routing.primitive_id import (
+    PRIMITIVE_KINDS,
+    PrimitiveIdParts,
+    canonical_prompt_id,
+    canonical_resource_id,
+    compute_prompt_hash8,
+    compute_resource_hash8,
+    format_primitive_id,
+    parse_primitive_id,
+    resolve_collisions,
+)
 from contextweaver.routing.router import Router, RouteResult
 from contextweaver.routing.selection import (
     SELECTION_SCHEMA_PROVIDERS,
@@ -71,6 +82,8 @@ __all__ = [
     "FeedbackAwareScoreProvider",
     "KeywordLabeler",
     "NormalizationReport",
+    "PRIMITIVE_KINDS",
+    "PrimitiveIdParts",
     "ReferenceFinding",
     "RouteResult",
     "Router",
@@ -81,11 +94,16 @@ __all__ = [
     "TreeBuilder",
     "aggregate_feedback",
     "bound_browse_response",
+    "canonical_prompt_id",
+    "canonical_resource_id",
     "canonical_tool_id",
     "cards_for_route",
     "compute_hash8",
+    "compute_prompt_hash8",
+    "compute_resource_hash8",
     "count_tokens",
     "format_card_for_prompt",
+    "format_primitive_id",
     "format_tool_id",
     "hydrate_with_schema",
     "item_to_card",
@@ -93,8 +111,10 @@ __all__ = [
     "load_graph",
     "make_choice_cards",
     "parse_path",
+    "parse_primitive_id",
     "parse_tool_id",
     "rank_collected",
+    "resolve_collisions",
     "render_cards",
     "render_cards_text",
     "resolve_path",

@@ -79,7 +79,7 @@ class SelectableItem:
     """
 
     id: str
-    kind: Literal["tool", "agent", "skill", "internal", "flow"]
+    kind: Literal["tool", "agent", "skill", "internal", "flow", "resource", "prompt"]
     name: str
     description: str
     tags: list[str] = field(default_factory=list)

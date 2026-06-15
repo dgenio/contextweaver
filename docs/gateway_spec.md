@@ -684,3 +684,62 @@ adapter or routing surfaces:
   §4.1 and §4.2 reuse.
 - [`docs/agent-context/invariants.md`](https://github.com/dgenio/contextweaver/blob/main/docs/agent-context/invariants.md) —
   destination of the assertions in §6.
+
+## 9. Cross-primitive identity and collision policy (resources & prompts)
+
+MCP exposes three first-class context primitives — **tools**, **resources**,
+and **prompts**. The gateway shapes all three with the same bounded-choice +
+firewall treatment (#555). To route them through one shared
+[`Catalog`](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/routing/catalog.py),
+they need one identity scheme that cannot collide across kinds — a tool named
+`search` and a prompt named `search` must remain distinct items.
+[`routing/primitive_id.py`](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/routing/primitive_id.py)
+is the single source of truth for this policy (#671).
+
+### 9.1 Grammar
+
+```
+primitive_id = [ kind "::" ] tool_id
+kind         = "resource" | "prompt"     ; "tool" is implied and never written
+```
+
+- **Tools** keep the bare §1 form (`namespace:name[@version][#hash8]`) — the §1
+  grammar, fixtures, and existing catalogs are unchanged.
+- **Resources** and **prompts** prepend a reserved `kind` tag with the `::`
+  separator: `resource::fs:readme#ab12cd34`, `prompt::gh:summarize#deadbeef`.
+  `::` cannot appear in a tool id (§1.1 uses a single `:` and bans `:` inside
+  the namespace/name), so the three id spaces are **disjoint by construction**.
+- The body after `kind::` obeys the §1.1 grammar exactly and is validated
+  through the shared `parse_tool_id` / `format_tool_id` helpers, so both
+  directions agree. This round-trip guarantee applies to **canonical**
+  primitive ids only. The collision-disambiguated `~N` form introduced in §9.3
+  is **not** a canonical id and is deliberately outside the §1.1 grammar:
+  consumers must treat a `~N`-suffixed id as an **opaque catalog key** and must
+  not feed it back through `parse_tool_id`. The `~N` suffix is appended after
+  canonical-id formation, purely to key otherwise-identical entries in the
+  shared `Catalog`.
+
+### 9.2 Shape hashes
+
+`hash8` keeps an id stable across prose-only edits (§1.3). Each primitive
+hashes over its identity-defining shape, with a domain prefix so the three
+hash spaces never alias:
+
+- **Tool** — `upstream_name` + canonical input-schema shape (§1.3, unchanged).
+- **Resource** — the canonical `uri` (the resource's stable MCP identity).
+- **Prompt** — the prompt name + its **sorted** argument names (the argument
+  *set* defines the call shape; descriptions and rendered messages do not).
+
+### 9.3 Collision handling
+
+When two **distinct** primitives of the same kind still map to the same
+canonical id, `resolve_collisions` assigns a deterministic `~N` suffix: the
+lowest catalog index keeps the bare id, and later occurrences (in ascending
+index order) become `id~2`, `id~3`, …. The assignment is deterministic **with
+respect to the provided catalog order** (it is keyed on list indexes and never
+depends on dict iteration order, so it reproduces across runs); it is *not*
+order-independent — re-ordering the catalog changes which occurrence keeps the
+bare id. This index-based determinism preserves the project's determinism
+invariant for a fixed catalog order. Identical ids that refer to the *same*
+primitive are de-duplicated by the caller first. The resulting `~N` ids are
+opaque catalog keys, not canonical primitive ids (see §9.1).
