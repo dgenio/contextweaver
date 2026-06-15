@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Puppetmaster integration pattern (#416).** New `docs/integration_puppetmaster.md`
+  shows how contextweaver consumes Puppetmaster-style job artifacts, worker
+  summaries, logs, and follow-up reads without dumping raw artifacts into model
+  context. Covers artifact summary ingestion, drilldown via handles/selectors,
+  route/answer phase budgeting over job history, and explicit boundaries (in:
+  context consumer; out: job supervisor / worker orchestrator).
+
 - **Gateway resource & prompt runtime (#669 / #670).** New
   `PrimitiveGatewayRuntime` (+ the `PrimitiveUpstream` protocol) extends the
   gateway's bounded-choice routing and context-firewall treatment from tools to
