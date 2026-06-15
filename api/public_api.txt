@@ -423,6 +423,11 @@
 ## contextweaver.adapters
   class CatalogRefreshReport(registered: 'int' = ..., skipped: 'list[SkippedTool]' = ..., schema_findings: 'list[SchemaFinding]' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
+  class CompactRequest(data: 'dict[str, Any] | list[Any] | str', threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'CompactStrategy' = ..., keep: 'list[str]' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'CompactRequest'
+      def to_dict(self) -> 'dict[str, Any]'
+  class CompactResponse(firewalled: 'bool', payload: 'Any', summary: 'str | None' = ..., facts: 'list[str]' = ..., artifact_ref: 'str | None' = ..., tokens_saved: 'int' = ..., api_version: 'str' = ...) -> None
+      def to_dict(self) -> 'dict[str, Any]'
   class DryRunReport(tool_id: 'str', upstream_name: 'str', args_valid: 'bool', annotations: 'dict[str, Any]' = ..., checks: 'list[dict[str, str]]' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
   class ExposureMode(str, Enum)
@@ -459,9 +464,23 @@
       def backoff_delay(self, attempt_index: 'int', jitter_fraction: 'float' = ...) -> 'float'
       def from_dict(cls, data: 'dict[str, Any]') -> 'RetryPolicy'
       def to_dict(self) -> 'dict[str, Any]'
+  class RouteRequest(query: 'str', top_k: 'int' = ..., exclude_ids: 'list[str]' = ..., allowed_namespaces: 'list[str]' = ..., context_hints: 'list[str]' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'RouteRequest'
+      def to_dict(self) -> 'dict[str, Any]'
+  class RouteResponse(candidate_ids: 'list[str]' = ..., scores: 'list[float]' = ..., is_ambiguous: 'bool' = ..., clarifying_question: 'str | None' = ..., cards: 'list[dict[str, Any]]' = ..., api_version: 'str' = ...) -> None
+      def to_dict(self) -> 'dict[str, Any]'
+  SIDECAR_API_VERSION: str
   class SchemaFinding(tool_id: 'str', kind: 'SchemaFindingKind', detail: 'str') -> None
       def to_dict(self) -> 'dict[str, str]'
   class SchemaLimits(max_bytes: 'int' = ..., max_depth: 'int' = ..., max_properties: 'int' = ...) -> None
+  class SidecarApp(router: 'Router | None' = ..., config: 'SidecarConfig' = ..., clock: 'Callable[[], float]' = ...) -> None
+      def dispatch(self, method: 'str', path: 'str', headers: 'dict[str, str]', body: 'bytes', *, client_id: 'str' = ...) -> 'tuple[int, dict[str, Any]]'
+  class SidecarConfig(api_key: 'str | None' = ..., rate_limit: 'RateLimit | None' = ..., max_body_bytes: 'int' = ..., deterministic: 'bool' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'SidecarConfig'
+      def to_dict(self) -> 'dict[str, Any]'
+  class SidecarError(code: 'SidecarErrorCode', message: 'str', retryable: 'bool' = ..., details: 'dict[str, Any]' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'SidecarError'
+      def to_dict(self) -> 'dict[str, Any]'
   class SkillBodySource(paths: 'dict[str, Path] | None' = ...) -> 'None'
       def from_catalog(cls, catalog: 'Catalog') -> 'SkillBodySource'
       def get_body(self, skill_id: 'str') -> 'str | None'
@@ -546,6 +565,7 @@
   def make_discovery_tool(router: 'Router', catalog: 'Catalog', *, top_k: 'int | None' = ...) -> 'Callable[[str], list[dict[str, Any]]]'
   def make_gateway_meta_tools(runtime: 'ProxyRuntime') -> 'list[dict[str, Any]]'
   def make_proxy_meta_tools(runtime: 'ProxyRuntime') -> 'list[dict[str, Any]]'
+  def make_sidecar_server(app: 'SidecarApp', *, host: 'str' = ..., port: 'int' = ...) -> 'ThreadingHTTPServer'
   def make_stripped_tools_list(runtime: 'ProxyRuntime') -> 'list[dict[str, Any]]'
   def mcp_result_to_envelope(result: 'dict[str, Any]', tool_name: 'str') -> 'tuple[ResultEnvelope, dict[str, tuple[bytes, str, str]], str]'
   def mcp_tool_to_selectable(tool_def: 'dict[str, Any]') -> 'SelectableItem'
@@ -565,6 +585,7 @@
   def selectable_from_openai_agents_tool(tool_def: 'dict[str, Any]', *, namespace: 'str | None' = ...) -> 'SelectableItem'
   def selectable_from_pydantic_tool(tool_def: 'dict[str, Any]', *, namespace: 'str | None' = ...) -> 'SelectableItem'
   def selectable_from_smolagents_tool(tool_def: 'dict[str, Any]', *, namespace: 'str | None' = ...) -> 'SelectableItem'
+  def serve_api(app: 'SidecarApp', *, host: 'str' = ..., port: 'int' = ...) -> 'None'
   def skill_to_selectable(skill_dir: 'str | Path', *, namespace: 'str | None' = ...) -> 'SelectableItem'
   def smolagents_tool_to_selectable(tool_def: 'dict[str, Any]', *, namespace: 'str | None' = ...) -> 'SelectableItem'
   def smolagents_tools_to_catalog(tools: 'list[dict[str, Any]]', *, namespace: 'str | None' = ...) -> 'Catalog'

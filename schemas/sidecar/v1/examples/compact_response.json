@@ -1,0 +1,9 @@
+{
+  "api_version": "v1",
+  "firewalled": true,
+  "payload": {"invoices": [{"invoiceNumber": "A-1", "amount": 100}], "_cw": {"firewalled": true, "strategy": "structured"}},
+  "summary": null,
+  "facts": [],
+  "artifact_ref": "artifact:result:abc123",
+  "tokens_saved": 1820
+}

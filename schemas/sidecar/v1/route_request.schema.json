@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dgenio.github.io/contextweaver/schemas/sidecar/v1/route_request.schema.json",
+  "title": "Sidecar RouteRequest (v1)",
+  "description": "Request body for POST /v1/route (issue #674).",
+  "type": "object",
+  "required": ["query"],
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "description": "User query string to route."
+    },
+    "top_k": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 10,
+      "description": "Per-request cap on returned candidates (bounded by the server routing ceiling)."
+    },
+    "exclude_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Item IDs dropped before scoring (negative routing)."
+    },
+    "allowed_namespaces": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Namespace allow-list for toolset gating."
+    },
+    "context_hints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Conversation hints appended to the scoring query."
+    }
+  }
+}

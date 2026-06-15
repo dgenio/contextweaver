@@ -109,6 +109,13 @@ jobs:
           done
           python scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas
 
+      - name: "Sidecar HTTP smoke (non-gating, issue #678)"
+        if: ${{ matrix.python-version == '3.12' }}
+        continue-on-error: true
+        # Spins the stdlib HTTP sidecar up in-process and drives /v1/route +
+        # /v1/compact over loopback. Deterministic, credential-free, no network.
+        run: make sidecar-smoke
+
       - name: "Smoke evaluation (non-gating, issue #392)"
         if: ${{ matrix.python-version == '3.12' }}
         continue-on-error: true

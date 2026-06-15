@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway benchmark-primitives token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway benchmark-primitives sidecar-smoke token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -35,6 +35,7 @@ example:
 	python examples/langchain_memory_demo.py
 	python examples/cookbook/byot_recipe.py
 	python examples/cookbook/firewall_drilldown_recipe.py
+	python examples/sidecar_demo.py
 	$(MAKE) architectures
 
 architectures:
@@ -73,6 +74,9 @@ benchmark-gateway:
 
 benchmark-primitives:
 	python benchmarks/primitive_gateway_benchmark.py
+
+sidecar-smoke:
+	python examples/sidecar_demo.py
 
 smoke-eval:
 	python benchmarks/smoke_eval.py

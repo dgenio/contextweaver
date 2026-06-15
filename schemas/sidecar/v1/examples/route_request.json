@@ -1,0 +1,6 @@
+{
+  "query": "send a follow-up email to the customer",
+  "top_k": 5,
+  "allowed_namespaces": ["email", "crm"],
+  "context_hints": ["the user just closed a support ticket"]
+}
