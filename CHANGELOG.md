@@ -51,7 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `prompt_ids()` accessors mirroring `ProxyRuntime.list_tool_ids()`. The
   mixed-primitive context-shaping benchmark is runnable via `make
   benchmark-primitives`, and `docs/gateway_spec.md` §9.4–§9.5 document the
-  request flows and the serve/catalog wiring.
+  request flows and the serve/catalog wiring. Malformed snapshot-catalog
+  primitive entries (non-dict, or missing the required `uri` / `name` identity
+  field) are now skipped with a warning instead of being silently dropped, so a
+  mistyped resource/prompt entry surfaces in the serve logs.
 - **Stable error codes + remediation hints (#635).** Every
   `ContextWeaverError` subclass now carries a frozen, machine-readable `code`
   (e.g. `CW_CONFIG`) so programs can branch on failures without string-matching,

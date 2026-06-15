@@ -9,6 +9,7 @@ the flag-parsing rules (mutual exclusion of ``--gateway``/``--proxy``).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -566,6 +567,35 @@ def test_load_primitive_defs_bare_list_yields_empty(tmp_path: Path) -> None:
     catalog = tmp_path / "tools_only.json"
     catalog.write_text(json.dumps(_SNAPSHOT_CATALOG["tools"]), encoding="utf-8")
     assert _load_primitive_defs_from_catalog(catalog) == ([], [])
+
+
+def test_load_primitive_defs_skips_malformed_entries(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Non-dict and identity-less entries are dropped with a warning, not silently."""
+    catalog = tmp_path / "malformed.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "resources": [
+                    {"uri": "file:///ok.md", "name": "ok"},
+                    "not-a-dict",
+                    {"name": "missing-uri"},
+                ],
+                "prompts": [
+                    {"name": "good"},
+                    {"description": "missing-name"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.WARNING, logger="contextweaver.mcp_cli"):
+        resources, prompts = _load_primitive_defs_from_catalog(catalog)
+    assert [r["uri"] for r in resources] == ["file:///ok.md"]
+    assert [p["name"] for p in prompts] == ["good"]
+    # One warning per dropped entry (2 resources + 1 prompt malformed).
+    assert sum("skipping" in rec.message for rec in caplog.records) == 3
 
 
 def test_build_primitive_runtime_registers_and_shares_context(tmp_path: Path) -> None:

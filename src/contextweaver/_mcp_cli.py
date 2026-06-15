@@ -314,6 +314,36 @@ def _parse_catalog_file(catalog_path: Path) -> Any:  # noqa: ANN401 — JSON/YAM
         ) from exc
 
 
+def _collect_primitive_defs(raw: Any, *, kind: str, id_field: str) -> list[dict[str, Any]]:  # noqa: ANN401 — JSON/YAML payload
+    """Return the valid dict entries from a snapshot ``resources``/``prompts`` list.
+
+    Entries that are not dicts, or that lack the required identity field
+    (``uri`` for resources, ``name`` for prompts), are skipped with a warning so
+    a mistyped catalog entry is surfaced rather than silently dropped.
+
+    Args:
+        raw: The raw value under the snapshot's ``resources`` / ``prompts`` key.
+        kind: Human-readable primitive kind for log messages (``"resource"`` /
+            ``"prompt"``).
+        id_field: The required identity key (``"uri"`` / ``"name"``).
+
+    Returns:
+        A list of well-formed MCP-shaped dicts.
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            logger.warning("skipping non-dict %s catalog entry: %r", kind, entry)
+            continue
+        if not entry.get(id_field):
+            logger.warning("skipping %s catalog entry missing %r: %r", kind, id_field, entry)
+            continue
+        out.append(dict(entry))
+    return out
+
+
 def _load_primitive_defs_from_catalog(
     catalog_path: Path,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -323,7 +353,9 @@ def _load_primitive_defs_from_catalog(
     object (``{"tools": [...], "resources": [...], "prompts": [...]}``). A bare
     list catalog (tools only) or a catalog without those keys yields two empty
     lists, so the gateway transparently runs tools-only when no primitives are
-    declared.
+    declared. Malformed entries (non-dict, or missing the required ``uri`` /
+    ``name`` identity field) are skipped with a warning rather than silently
+    dropped, so a mistyped catalog entry does not vanish without a trace.
 
     Args:
         catalog_path: Filesystem path to the catalog file.
@@ -334,18 +366,8 @@ def _load_primitive_defs_from_catalog(
     data = _parse_catalog_file(catalog_path)
     if not isinstance(data, dict):
         return [], []
-    raw_resources = data.get("resources")
-    raw_prompts = data.get("prompts")
-    resources = (
-        [dict(r) for r in raw_resources if isinstance(r, dict)]
-        if isinstance(raw_resources, list)
-        else []
-    )
-    prompts = (
-        [dict(p) for p in raw_prompts if isinstance(p, dict)]
-        if isinstance(raw_prompts, list)
-        else []
-    )
+    resources = _collect_primitive_defs(data.get("resources"), kind="resource", id_field="uri")
+    prompts = _collect_primitive_defs(data.get("prompts"), kind="prompt", id_field="name")
     return resources, prompts
 
 
