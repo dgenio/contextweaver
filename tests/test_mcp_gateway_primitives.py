@@ -60,7 +60,7 @@ def test_kind_set_includes_resource_and_prompt() -> None:
 
 
 def test_make_primitive_meta_tools_returns_four() -> None:
-    tools = make_primitive_meta_tools(_primitive_runtime())
+    tools = make_primitive_meta_tools()
     assert [t["name"] for t in tools] == list(PRIMITIVE_TOOL_NAMES)
     # No banned schema fields leak into the meta-tool definitions.
     for tool in tools:

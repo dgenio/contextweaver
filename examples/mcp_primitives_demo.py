@@ -95,7 +95,7 @@ async def main() -> None:
     print(f"Registered {n_res} resources and {n_prompt} prompts behind the gateway.\n")
 
     print("Meta-tools exposed to the client:")
-    for tool in make_primitive_meta_tools(runtime):
+    for tool in make_primitive_meta_tools():
         print(f"  - {tool['name']}")
     print()
 

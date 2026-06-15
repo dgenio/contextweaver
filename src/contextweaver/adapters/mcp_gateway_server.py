@@ -93,7 +93,7 @@ class McpGatewayServer:
         async def handle_list_tools() -> list[mcp_types.Tool]:
             defs = list(make_gateway_meta_tools(self.runtime))
             if self.primitive_runtime is not None:
-                defs += make_primitive_meta_tools(self.primitive_runtime)
+                defs += make_primitive_meta_tools()
             return [
                 mcp_types.Tool(
                     name=tool["name"],

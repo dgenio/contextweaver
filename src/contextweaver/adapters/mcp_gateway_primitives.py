@@ -47,17 +47,15 @@ _BROWSE_SCHEMA: dict[str, Any] = {
 }
 
 
-def make_primitive_meta_tools(runtime: PrimitiveGatewayRuntime) -> list[dict[str, Any]]:
+def make_primitive_meta_tools() -> list[dict[str, Any]]:
     """Return the four resource/prompt meta-tool definitions (§9).
 
-    Args:
-        runtime: A configured :class:`PrimitiveGatewayRuntime` (reserved for
-            future per-runtime customisation; the definitions are static today).
+    The definitions are static; dispatch is bound to a runtime separately via
+    :func:`dispatch_primitive_meta_tool`.
 
     Returns:
         A list of four MCP tool definition dicts with no banned fields (§2.2).
     """
-    _ = runtime  # reserved
     return [
         {
             "name": RESOURCE_BROWSE,

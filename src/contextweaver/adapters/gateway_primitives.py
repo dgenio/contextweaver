@@ -209,7 +209,7 @@ def _convert(defs: list[dict[str, Any]], converter: Any) -> list[SelectableItem]
 
 def _validate(schema: dict[str, Any], args: dict[str, Any], path: str) -> GatewayError | None:
     """Validate *args* against *schema*; return ``ARGS_INVALID`` on failure."""
-    if not schema or not schema.get("properties") and not schema.get("required"):
+    if not schema or (not schema.get("properties") and not schema.get("required")):
         return None
     try:
         build_validator(schema).validate(args)
