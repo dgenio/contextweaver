@@ -95,6 +95,14 @@ class PrimitiveGatewayRuntime:
         """Return the shared per-session :class:`ContextManager`."""
         return self._context_manager
 
+    def resource_ids(self) -> list[str]:
+        """Return the canonical id of every registered resource (sorted)."""
+        return [item.id for item in self._resources.catalog.all()]
+
+    def prompt_ids(self) -> list[str]:
+        """Return the canonical id of every registered prompt (sorted)."""
+        return [item.id for item in self._prompts.catalog.all()]
+
     async def refresh(self) -> tuple[int, int]:
         """Re-fetch resources and prompts upstream; return ``(n_res, n_prompt)``."""
         resources = await self._upstream.list_resources()

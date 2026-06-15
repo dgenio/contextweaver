@@ -37,6 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `compute_prompt_hash8` over name + sorted argument names) and a deterministic
   `~N` collision policy (`resolve_collisions`) round out the surface. Documented
   in `docs/gateway_spec.md` §9.
+- **Resources/prompts reachable end-to-end via the gateway (#669 / #670 / #672 /
+  #673).** Three concrete `PrimitiveUpstream` adapters now ship in
+  `contextweaver.adapters.mcp_primitive_upstream` — `StubPrimitiveUpstream`
+  (in-process, for tests/CLI/air-gapped CI), `McpClientPrimitiveUpstream` (wraps
+  a connected MCP `ClientSession`), and `MultiplexPrimitiveUpstream` (multi-server
+  fan-out) — mirroring the tool `mcp_upstream` trio; per the protocol contract
+  they raise transport errors for the runtime to classify. `contextweaver mcp
+  serve --gateway` now exposes the four resource/prompt meta-tools when the
+  catalog is a snapshot object declaring `resources` / `prompts` alongside
+  `tools` (tools-only catalogs stay unchanged), sharing the tool runtime's
+  `ContextManager`. `PrimitiveGatewayRuntime` gains `resource_ids()` /
+  `prompt_ids()` accessors mirroring `ProxyRuntime.list_tool_ids()`. The
+  mixed-primitive context-shaping benchmark is runnable via `make
+  benchmark-primitives`, and `docs/gateway_spec.md` §9.4–§9.5 document the
+  request flows and the serve/catalog wiring.
 - **Stable error codes + remediation hints (#635).** Every
   `ContextWeaverError` subclass now carries a frozen, machine-readable `code`
   (e.g. `CW_CONFIG`) so programs can branch on failures without string-matching,

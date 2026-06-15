@@ -743,3 +743,73 @@ bare id. This index-based determinism preserves the project's determinism
 invariant for a fixed catalog order. Identical ids that refer to the *same*
 primitive are de-duplicated by the caller first. The resulting `~N` ids are
 opaque catalog keys, not canonical primitive ids (see §9.1).
+
+### 9.4 Request flows
+
+Resources and prompts get the same **browse → act** shape the tool meta-tools
+use (§3), with distinct verbs that match MCP's distinct semantics rather than
+overloading `tool_execute`. The four primitive meta-tools are advertised
+**only** when the gateway is constructed with a primitive runtime (see §9.5);
+otherwise the surface is tools-only and unchanged.
+
+| Verb | Input | Returns |
+|---|---|---|
+| `resource_browse` | exactly one of `query` (free-text) or `path`; optional `top_k` | bounded `list[ChoiceCard]` (`kind="resource"`) |
+| `resource_read` | `resource_id` (from a card) | firewalled `ResultEnvelope`; large reads addressable via `tool_view` |
+| `prompt_browse` | exactly one of `query` or `path`; optional `top_k` | bounded `list[ChoiceCard]` (`kind="prompt"`) |
+| `prompt_get` | `prompt_id` + `args` (validated against the prompt's argument schema) | firewalled `ResultEnvelope` of the rendered prompt |
+
+Properties that hold across both kinds:
+
+- **Bounded browse.** Each kind has its own routing index, so resource and
+  prompt cards never mix in one response, and the browse list is capped at
+  `top_k` exactly like `tool_browse`.
+- **Firewalled reads.** `resource_read` / `prompt_get` pass the upstream result
+  through the same context firewall as tool results: text is summarized into the
+  envelope and every part is persisted on the **shared** artifact store, so a
+  single large resource read cannot flood the model context and stays drillable
+  via `tool_view`.
+- **Read-only.** Both reads carry `side_effects=False`; browsing and reading
+  never mutate upstream state.
+- **Error taxonomy.** Failures are returned, never raised across the boundary:
+  `ARGS_INVALID` (bad/duplicate selectors, schema-invalid prompt args),
+  `RESOURCE_NOT_FOUND` / `PROMPT_NOT_FOUND` (unknown id), and the §3.4
+  `UPSTREAM_*` codes for transport failures (classified from the exception the
+  upstream raised).
+
+Upstream access is abstracted by the `PrimitiveUpstream` Protocol
+(`list_resources` / `read_resource` / `list_prompts` / `get_prompt`); unlike the
+tool `UpstreamCall`, its methods **raise** transport errors so the runtime can
+classify them. Three concrete adapters ship in
+`contextweaver.adapters.mcp_primitive_upstream`: `StubPrimitiveUpstream`
+(in-process, for tests/CLI/air-gapped CI), `McpClientPrimitiveUpstream` (wraps a
+connected MCP `ClientSession`), and `MultiplexPrimitiveUpstream` (fans listings
+across several sources and routes reads/fetches back to the owner).
+
+### 9.5 Serving resources and prompts
+
+`contextweaver mcp serve --gateway` exposes resources and prompts when the
+catalog is a **snapshot object** carrying optional `resources` / `prompts` lists
+alongside `tools`:
+
+```
+{
+  "tools":     [ { "name": "...", "inputSchema": { ... } } ],
+  "resources": [ { "uri": "file:///docs/readme.md", "name": "README",
+                   "mimeType": "text/markdown" } ],
+  "prompts":   [ { "name": "summarize_pr", "description": "...",
+                   "arguments": [ { "name": "repo", "required": true } ] } ]
+}
+```
+
+A bare list catalog (tools only), or one without those keys, runs the gateway
+tools-only and advertises only the three tool meta-tools — the primitive surface
+is strictly additive. Without a live upstream attached, the CLI serves the
+declared listings and canned reads via `StubPrimitiveUpstream`; production
+deployments swap in `McpClientPrimitiveUpstream` (or a `MultiplexPrimitiveUpstream`
+fan-out). The primitive runtime shares the tool runtime's `ContextManager`, so
+every primitive read lands in one artifact store and one `tool_view` surface.
+
+The mixed tools+resources+prompts context-shaping benchmark runs via
+`make benchmark-primitives` (`benchmarks/primitive_gateway_benchmark.py`),
+reporting per-kind token savings and `recall@k`.

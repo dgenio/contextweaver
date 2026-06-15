@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway benchmark-primitives token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -70,6 +70,9 @@ benchmark-matrix:
 
 benchmark-gateway:
 	python benchmarks/gateway_benchmark.py
+
+benchmark-primitives:
+	python benchmarks/primitive_gateway_benchmark.py
 
 smoke-eval:
 	python benchmarks/smoke_eval.py

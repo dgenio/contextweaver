@@ -42,7 +42,9 @@ from contextweaver._version import __version__
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
 from contextweaver.adapters.gateway_policy import RateLimitPolicy, RetryPolicy
+from contextweaver.adapters.gateway_primitives import PrimitiveGatewayRuntime
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
+from contextweaver.adapters.mcp_primitive_upstream import StubPrimitiveUpstream
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
@@ -272,6 +274,81 @@ def _build_dispatch_controls(
     return retry_policy, rate_limiter, result_cache
 
 
+def _parse_catalog_file(catalog_path: Path) -> Any:  # noqa: ANN401 — JSON/YAML payload
+    """Read and parse a JSON/YAML catalog file into its raw Python object.
+
+    Args:
+        catalog_path: Filesystem path to the catalog file (``.json``,
+            ``.yaml``, or ``.yml``).
+
+    Returns:
+        The parsed payload (typically a list of entries or a snapshot dict).
+
+    Raises:
+        typer.BadParameter: If the file is missing, unreadable, has an
+            unsupported extension, or cannot be parsed.
+    """
+    if not catalog_path.exists():
+        raise typer.BadParameter(f"catalog file not found: {catalog_path}", param_hint="--catalog")
+    try:
+        text = catalog_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise typer.BadParameter(
+            f"cannot read catalog file {catalog_path}: {exc}", param_hint="--catalog"
+        ) from exc
+    suffix = catalog_path.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        parse: Any = yaml.safe_load
+    elif suffix == ".json":
+        parse = json.loads
+    else:
+        raise typer.BadParameter(
+            f"unsupported catalog format {suffix!r} for {catalog_path}; use .json, .yaml, or .yml",
+            param_hint="--catalog",
+        )
+    try:
+        return parse(text)
+    except (yaml.YAMLError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(
+            f"invalid catalog file {catalog_path}: {exc}", param_hint="--catalog"
+        ) from exc
+
+
+def _load_primitive_defs_from_catalog(
+    catalog_path: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return ``(resource_defs, prompt_defs)`` from a snapshot-shaped catalog (#669 / #670).
+
+    Resources and prompts are optional siblings of ``tools`` in a snapshot
+    object (``{"tools": [...], "resources": [...], "prompts": [...]}``). A bare
+    list catalog (tools only) or a catalog without those keys yields two empty
+    lists, so the gateway transparently runs tools-only when no primitives are
+    declared.
+
+    Args:
+        catalog_path: Filesystem path to the catalog file.
+
+    Returns:
+        A ``(resource_defs, prompt_defs)`` tuple of raw MCP-shaped dicts.
+    """
+    data = _parse_catalog_file(catalog_path)
+    if not isinstance(data, dict):
+        return [], []
+    raw_resources = data.get("resources")
+    raw_prompts = data.get("prompts")
+    resources = (
+        [dict(r) for r in raw_resources if isinstance(r, dict)]
+        if isinstance(raw_resources, list)
+        else []
+    )
+    prompts = (
+        [dict(p) for p in raw_prompts if isinstance(p, dict)]
+        if isinstance(raw_prompts, list)
+        else []
+    )
+    return resources, prompts
+
+
 def _load_tool_defs_from_catalog(catalog_path: Path) -> list[dict[str, Any]]:
     """Read a contextweaver catalog file and return MCP-shaped tool defs.
 
@@ -294,30 +371,7 @@ def _load_tool_defs_from_catalog(catalog_path: Path) -> list[dict[str, Any]]:
         typer.BadParameter: If the file cannot be read or parsed, or if no
             tool entries can be found inside it.
     """
-    if not catalog_path.exists():
-        raise typer.BadParameter(f"catalog file not found: {catalog_path}", param_hint="--catalog")
-    try:
-        text = catalog_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise typer.BadParameter(
-            f"cannot read catalog file {catalog_path}: {exc}", param_hint="--catalog"
-        ) from exc
-    suffix = catalog_path.suffix.lower()
-    if suffix in (".yaml", ".yml"):
-        parse: Any = yaml.safe_load
-    elif suffix == ".json":
-        parse = json.loads
-    else:
-        raise typer.BadParameter(
-            f"unsupported catalog format {suffix!r} for {catalog_path}; use .json, .yaml, or .yml",
-            param_hint="--catalog",
-        )
-    try:
-        data: Any = parse(text)
-    except (yaml.YAMLError, json.JSONDecodeError) as exc:
-        raise typer.BadParameter(
-            f"invalid catalog file {catalog_path}: {exc}", param_hint="--catalog"
-        ) from exc
+    data: Any = _parse_catalog_file(catalog_path)
     # Accept the real-MCP-server snapshot shape used by the recipes
     # ({"_source": ..., "tools": [...]}) by unwrapping its ``tools`` list.
     if isinstance(data, dict) and isinstance(data.get("tools"), list):
@@ -466,6 +520,51 @@ def _build_runtime(
     # Reuse the helper so test code can introspect the resulting catalog
     # without re-parsing the file.
     return runtime
+
+
+def _build_primitive_runtime(
+    catalog_path: Path,
+    runtime: ProxyRuntime,
+    *,
+    top_k: int,
+    beam_width: int,
+) -> PrimitiveGatewayRuntime | None:
+    """Construct a :class:`PrimitiveGatewayRuntime` from *catalog_path* (#669 / #670).
+
+    Resources and prompts are read from the optional ``resources`` / ``prompts``
+    keys of a snapshot-shaped catalog. When neither is present, the gateway runs
+    tools-only and this returns ``None`` (so ``McpGatewayServer`` advertises only
+    the tool meta-tools).
+
+    The primitive runtime shares the tool runtime's
+    :class:`~contextweaver.context.manager.ContextManager`, so resource/prompt
+    reads land in the same artifact store and are addressable via ``tool_view``.
+    Without a live upstream attached, a :class:`StubPrimitiveUpstream` serves the
+    declared listings and canned reads, mirroring the tool path's
+    :class:`StubUpstream`.
+
+    Args:
+        catalog_path: Catalog file path (JSON or YAML).
+        runtime: The already-built tool :class:`ProxyRuntime` to share state with.
+        top_k: Maximum number of cards returned by ``resource_browse`` /
+            ``prompt_browse``.
+        beam_width: Router beam width.
+
+    Returns:
+        A ready :class:`PrimitiveGatewayRuntime`, or ``None`` when the catalog
+        declares no resources or prompts.
+    """
+    resource_defs, prompt_defs = _load_primitive_defs_from_catalog(catalog_path)
+    if not resource_defs and not prompt_defs:
+        return None
+    primitive_runtime = PrimitiveGatewayRuntime(
+        StubPrimitiveUpstream(resource_defs, prompt_defs),
+        context_manager=runtime.context_manager,
+        beam_width=beam_width,
+        top_k=top_k,
+    )
+    primitive_runtime.register_sync(resource_defs, prompt_defs)
+    return primitive_runtime
 
 
 @mcp_app.command("inspect")
@@ -725,10 +824,28 @@ def serve(
     )
     tool_count = len(runtime.list_tool_ids())
 
+    # In gateway mode, also surface upstream resources/prompts (#669 / #670) when
+    # the catalog declares them, sharing the tool runtime's ContextManager so
+    # reads land in one artifact store / tool_view surface. Proxy mode is a
+    # transparent tool passthrough and does not expose the primitive meta-tools.
+    primitive_runtime: PrimitiveGatewayRuntime | None = None
+    if resolved_mode == _ServeMode.gateway:
+        primitive_runtime = _build_primitive_runtime(
+            catalog, runtime, top_k=top_k, beam_width=beam_width
+        )
+
     if not quiet:
+        primitives = (
+            "off"
+            if primitive_runtime is None
+            else (
+                f"resources={len(primitive_runtime.resource_ids())} "
+                f"prompts={len(primitive_runtime.prompt_ids())}"
+            )
+        )
         typer.echo(
             f"contextweaver mcp serve: mode={resolved_mode.value} "
-            f"catalog={catalog} tools={tool_count} top_k={top_k} "
+            f"catalog={catalog} tools={tool_count} primitives={primitives} top_k={top_k} "
             f"beam_width={beam_width} cache_stable={cache_stable} "
             f"version={version} diagnostics={diagnostics or 'off'} "
             f"state_dir={state_dir or 'in-memory'}",
@@ -742,7 +859,9 @@ def serve(
 
     server: McpGatewayServer | McpProxyServer
     if resolved_mode == _ServeMode.gateway:
-        server = McpGatewayServer(runtime, name=name, version=version)
+        server = McpGatewayServer(
+            runtime, name=name, version=version, primitive_runtime=primitive_runtime
+        )
     else:
         server = McpProxyServer(runtime, name=name, version=version)
 

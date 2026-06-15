@@ -20,7 +20,9 @@ import typer
 
 from contextweaver._mcp_cli import (
     _build_dispatch_controls,
+    _build_primitive_runtime,
     _build_runtime,
+    _load_primitive_defs_from_catalog,
     _load_serve_config,
     _load_tool_defs_from_catalog,
     _ServeMode,
@@ -533,3 +535,83 @@ def test_build_dispatch_controls_rejects_string_cache_allow() -> None:
 def test_build_dispatch_controls_rejects_bad_retryable_codes() -> None:
     with pytest.raises(typer.BadParameter):
         _build_dispatch_controls({"retry": {"retryable_codes": "UPSTREAM_TIMEOUT"}})
+
+
+# ------------------------------------------------------------------
+# Gateway resources/prompts wiring (#669 / #670)
+# ------------------------------------------------------------------
+
+_SNAPSHOT_CATALOG = {
+    "tools": [{"name": "demo", "description": "Demo tool", "inputSchema": {"type": "object"}}],
+    "resources": [
+        {"uri": "file:///docs/readme.md", "name": "README", "mimeType": "text/markdown"},
+        {"uri": "postgres://db/users", "name": "users", "description": "user records"},
+    ],
+    "prompts": [
+        {"name": "greet", "description": "Greet a user", "arguments": [{"name": "who"}]},
+    ],
+}
+
+
+def test_load_primitive_defs_reads_snapshot_keys(tmp_path: Path) -> None:
+    catalog = tmp_path / "snapshot.json"
+    catalog.write_text(json.dumps(_SNAPSHOT_CATALOG), encoding="utf-8")
+    resources, prompts = _load_primitive_defs_from_catalog(catalog)
+    assert [r["uri"] for r in resources] == ["file:///docs/readme.md", "postgres://db/users"]
+    assert [p["name"] for p in prompts] == ["greet"]
+
+
+def test_load_primitive_defs_bare_list_yields_empty(tmp_path: Path) -> None:
+    """A tools-only (bare list) catalog declares no primitives."""
+    catalog = tmp_path / "tools_only.json"
+    catalog.write_text(json.dumps(_SNAPSHOT_CATALOG["tools"]), encoding="utf-8")
+    assert _load_primitive_defs_from_catalog(catalog) == ([], [])
+
+
+def test_build_primitive_runtime_registers_and_shares_context(tmp_path: Path) -> None:
+    catalog = tmp_path / "snapshot.json"
+    catalog.write_text(json.dumps(_SNAPSHOT_CATALOG), encoding="utf-8")
+    tool_runtime = _build_runtime(
+        catalog, mode=_ServeMode.gateway, top_k=10, beam_width=3, cache_stable=False
+    )
+    primitive_runtime = _build_primitive_runtime(catalog, tool_runtime, top_k=10, beam_width=3)
+    assert primitive_runtime is not None
+    assert len(primitive_runtime.resource_ids()) == 2
+    assert len(primitive_runtime.prompt_ids()) == 1
+    # The shared ContextManager keeps reads in one artifact / tool_view surface.
+    assert primitive_runtime.context_manager is tool_runtime.context_manager
+
+
+def test_build_primitive_runtime_none_without_primitives(tmp_path: Path) -> None:
+    catalog = tmp_path / "tools_only.json"
+    catalog.write_text(json.dumps(_SNAPSHOT_CATALOG["tools"]), encoding="utf-8")
+    tool_runtime = _build_runtime(
+        catalog, mode=_ServeMode.gateway, top_k=10, beam_width=3, cache_stable=False
+    )
+    assert _build_primitive_runtime(catalog, tool_runtime, top_k=10, beam_width=3) is None
+
+
+def test_serve_dry_run_reports_primitive_counts(tmp_path: Path) -> None:
+    """A snapshot catalog with resources/prompts surfaces their counts in the summary."""
+    catalog = tmp_path / "snapshot.json"
+    catalog.write_text(json.dumps(_SNAPSHOT_CATALOG), encoding="utf-8")
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--gateway", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert "primitives=resources=2 prompts=1" in (result.stderr + result.stdout)
+
+
+def test_serve_dry_run_primitives_off_for_tools_only(tmp_path: Path) -> None:
+    catalog = tmp_path / "tools_only.json"
+    catalog.write_text(json.dumps(_SNAPSHOT_CATALOG["tools"]), encoding="utf-8")
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--gateway", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert "primitives=off" in (result.stderr + result.stdout)
+
+
+def test_serve_proxy_mode_does_not_wire_primitives(tmp_path: Path) -> None:
+    """Proxy mode is a transparent tool passthrough; primitives stay off."""
+    catalog = tmp_path / "snapshot.json"
+    catalog.write_text(json.dumps(_SNAPSHOT_CATALOG), encoding="utf-8")
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--proxy", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert "primitives=off" in (result.stderr + result.stdout)
