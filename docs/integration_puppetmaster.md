@@ -73,9 +73,10 @@ A Puppetmaster job completion is just another tool result. Ingest it via the
 firewall so large payloads are stored out-of-band automatically:
 
 ```python
-from contextweaver import ContextManager
+from contextweaver import ContextManager, StructuredFirewall
 from contextweaver.types import Sensitivity
 from contextweaver.config import ContextBudget, ContextPolicy
+import json
 
 budget = ContextBudget(route=500, call=800, interpret=600, answer=1200)
 
@@ -109,7 +110,7 @@ mgr.ingest_tool_result_sync(
 ```
 
 The firewall intercepts the payload if it exceeds the configured threshold (default
-2 000 bytes). When `StructuredFirewall(keep=[...])` is used, the LLM sees only the
+2 000 characters). When `StructuredFirewall(keep=[...])` is used, the LLM sees only the
 projected field(s) inline; the full payload remains in the artifact store under a
 typed `ArtifactRef` handle.
 
@@ -146,17 +147,17 @@ handle. In a gateway setup this is `tool_view`; in a standalone script you read
 directly from the store:
 
 ```python
-# Gateway path (MCP proxy / gateway)
+# Gateway path (MCP proxy / gateway) — inside an async function
 from contextweaver.adapters.mcp_gateway import dispatch_meta_tool
 
 # The model sends back the artifact handle from the summary.
 # Handles produced by ingest_tool_result_sync follow the form:
 #   artifact:result:{tool_call_id}
 handle = "artifact:result:job:train-model:42"
-result = dispatch_meta_tool(
-    name="tool_view",
-    runtime=proxy_runtime,   # your ProxyRuntime instance
-    arguments={"handle": handle, "selector": None},
+result = await dispatch_meta_tool(
+    proxy_runtime,            # your ProxyRuntime instance
+    "tool_view",
+    {"handle": handle, "selector": {}},
 )
 ```
 
