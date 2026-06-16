@@ -61,7 +61,7 @@ _CI_PYTHON_MATRIX_RE = re.compile(r"python-version:\s*\[([^\]]+)\]")
 _QUOTED_RE = re.compile(r'"([^"]+)"')
 # Roadmap status row: ``| **v0.14.1 — ...** | ✅ current (v0.14.1) | ... |``.
 _ROADMAP_CURRENT_RE = re.compile(
-    r"^\|\s*\*\*([^|]+?)\*\*\s*\|\s*✅ current(?: \(([^)]+)\))?\s*\|",
+    r"^\|\s*\*\*([^|]+?)\*\*(?:\s*\([^)]+\))?\s*\|\s*✅ current(?: \(([^)]+)\))?\s*\|",
     re.MULTILINE,
 )
 

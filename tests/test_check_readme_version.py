@@ -90,6 +90,16 @@ def test_find_drift_passes_when_in_sync() -> None:
     assert check_readme_version.find_drift("0.12.0", readme) == []
 
 
+def test_find_drift_matches_dated_current_roadmap_row() -> None:
+    """The current roadmap row may include a date after the bold milestone."""
+    readme = (
+        "Current package version: **0.12.0**.\n"
+        "... (this repo, [v0.12.0](url)) ...\n"
+        "| **v0.12.0 — Current** (2026-06-16) | ✅ current (v0.12.0) | ok |"
+    )
+    assert check_readme_version.find_drift("0.12.0", readme) == []
+
+
 def test_find_drift_reports_missing_references() -> None:
     """Missing references are reported rather than silently passing."""
     problems = check_readme_version.find_drift("0.12.0", "no version references here")
