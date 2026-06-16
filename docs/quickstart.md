@@ -155,8 +155,8 @@ Verify that the package imports from the Python environment you just activated:
 python -c "import contextweaver; print(contextweaver.__version__)"
 ```
 
-Expected output is the installed version, for example `0.14.0`. Then run the
-network-free demo as an end-to-end smoke test:
+Expected output is the installed version, for example `0.14.0`. Then run
+the network-free demo as an end-to-end smoke test:
 
 ```bash
 contextweaver demo
@@ -164,8 +164,17 @@ contextweaver demo
 
 You should see the friendly walkthrough start without `ModuleNotFoundError` or
 `contextweaver: command not found`.
-`pipx run contextweaver demo --scenario killer` is the equivalent isolated
-path for pipx users.
+
+For a quieter, faster confidence check (especially useful in CI or after
+upgrading), run the built-in verify command:
+
+```bash
+contextweaver verify
+```
+
+This checks import path, ContextManager instantiation, a minimal context
+build, token counting, and routing — all without network dependencies.
+For machine-readable output: `contextweaver verify --json`.
 
 If your network blocks `openaipublic.blob.core.windows.net`, the demo or
 token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.
