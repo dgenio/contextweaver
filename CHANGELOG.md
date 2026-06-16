@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HTTP sidecar: language-agnostic route/compact API (#427, #674/#675/#676/#677/#678).**
+  New `contextweaver serve-api` exposes the deterministic router and the context
+  firewall over a small, versioned HTTP/JSON API so non-Python agents can use
+  them without embedding Python: `POST /v1/route` (tool routing), `POST
+  /v1/compact` (tool-result compaction), and an unauthenticated `GET /v1/health`
+  liveness probe. Built on the Python standard library (`http.server`) with **no
+  new dependency**, reusing the same sync `Router` and `compact_tool_result`
+  facade as the in-process API. New public surface in `contextweaver.adapters`:
+  `SidecarApp` + `SidecarConfig` (transport-free dispatch with optional
+  bearer-token auth, per-client rate limiting, body-size cap, and typed
+  `SidecarError` responses), `serve_api` / `make_sidecar_server`, and the
+  `RouteRequest` / `RouteResponse` / `CompactRequest` / `CompactResponse`
+  contract dataclasses (`SIDECAR_API_VERSION`). Versioned JSON Schemas + example
+  payloads ship under `schemas/sidecar/v1/`; clients in
+  `examples/sidecar_demo.py` (Python, also runs under `make example`) and
+  `examples/sidecar/client.ts` (TypeScript, dependency-free). A non-gating
+  `make sidecar-smoke` CI step drives the transport in-process. See
+  `docs/sidecar.md`.
+
 - **`contextweaver verify` subcommand (#657).** New non-gateway verification
   mode giving library-first adopters a fast, deterministic, network-free
   smoke test of core functionality.  Checks import path, `ContextManager`

@@ -1,0 +1,6 @@
+{
+  "error": "RATE_LIMITED",
+  "message": "rate limit exceeded",
+  "retryable": true,
+  "details": {"scope": "sidecar/minute", "retry_after": 42.0}
+}

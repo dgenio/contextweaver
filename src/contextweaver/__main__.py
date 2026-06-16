@@ -51,7 +51,10 @@ from contextweaver._verify import (
     _check_tokens,
     _VerifyCheck,
 )
+from contextweaver.adapters._sidecar_http import serve_api
+from contextweaver.adapters.gateway_policy import RateLimit
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
+from contextweaver.adapters.sidecar import SidecarApp, SidecarConfig
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
 from contextweaver.eval.dataset import EvalDataset
@@ -889,6 +892,55 @@ def _render_lint_report(
         table.add_row(f"[{colour}]{severity}[/{colour}]", kind, detail)
     _console.print(table)
     _console.print(f"[bold red]FAIL[/bold red] {len(findings)} finding(s)")
+
+
+@app.command("serve-api")
+def serve_api_command(
+    catalog: Annotated[
+        Path | None,
+        typer.Option(help="Tool catalog JSON file. Omit to serve /v1/compact only."),
+    ] = None,
+    host: Annotated[str, typer.Option(help="Interface to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="TCP port to listen on.")] = 8731,
+    top_k: Annotated[
+        int, typer.Option("--top-k", help="Routing ceiling: max candidates per /v1/route call.")
+    ] = 50,
+    beam_width: Annotated[int, typer.Option("--beam-width", help="Beam width.")] = 3,
+    api_key: Annotated[
+        str | None,
+        typer.Option(
+            help="Require this bearer token on /v1/route and /v1/compact.",
+            envvar="CONTEXTWEAVER_SIDECAR_API_KEY",
+        ),
+    ] = None,
+    rate_per_minute: Annotated[
+        int | None, typer.Option(help="Per-client sliding-window request cap per minute.")
+    ] = None,
+    max_body_bytes: Annotated[
+        int, typer.Option(help="Reject request bodies larger than this many bytes.")
+    ] = 1_048_576,
+) -> None:
+    """Serve the language-agnostic HTTP sidecar (route/compact) — issue #427.
+
+    Exposes ``POST /v1/route`` (tool routing) and ``POST /v1/compact``
+    (tool-result compaction) over HTTP/JSON so non-Python agents can use the
+    deterministic router and context firewall without embedding Python.
+    ``GET /v1/health`` is an unauthenticated liveness probe.
+    """
+    router: Router | None = None
+    if catalog is not None:
+        items = load_catalog_json(str(catalog))
+        graph = TreeBuilder().build(items)
+        router = Router(graph, items=items, beam_width=beam_width, top_k=top_k)
+        print(f"Loaded {len(items)} catalog items from {catalog}; /v1/route enabled")
+    else:
+        print("No catalog provided; serving /v1/compact only (/v1/route disabled)")
+
+    rate_limit = RateLimit(max_calls_per_minute=rate_per_minute) if rate_per_minute else None
+    config = SidecarConfig(api_key=api_key, rate_limit=rate_limit, max_body_bytes=max_body_bytes)
+    app_obj = SidecarApp(router=router, config=config)
+    print(f"contextweaver sidecar listening on http://{host}:{port} (Ctrl-C to stop)")
+    serve_api(app_obj, host=host, port=port)
 
 
 # ---------------------------------------------------------------------------

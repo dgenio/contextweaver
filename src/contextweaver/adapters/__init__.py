@@ -14,6 +14,7 @@ Three responsibility groups (see ``AGENTS.md`` Module Map for the full list):
 
 from __future__ import annotations
 
+from contextweaver.adapters._sidecar_http import make_sidecar_server, serve_api
 from contextweaver.adapters.a2a import (
     a2a_agent_to_selectable,
     a2a_result_to_envelope,
@@ -158,6 +159,15 @@ from contextweaver.adapters.pydantic_ai import (
     selectable_from_pydantic_tool,
     to_pydantic_ai_messages,
 )
+from contextweaver.adapters.sidecar import SidecarApp, SidecarConfig
+from contextweaver.adapters.sidecar_contract import (
+    SIDECAR_API_VERSION,
+    CompactRequest,
+    CompactResponse,
+    RouteRequest,
+    RouteResponse,
+    SidecarError,
+)
 from contextweaver.adapters.smolagents import (
     from_smolagents_agent,
     infer_smolagents_namespace,
@@ -180,7 +190,10 @@ from contextweaver.adapters.weaver_contracts import (
 )
 
 __all__ = [
+    "SIDECAR_API_VERSION",
     "CatalogRefreshReport",
+    "CompactRequest",
+    "CompactResponse",
     "DryRunReport",
     "ExposureMode",
     "GATEWAY_TOOL_NAMES",
@@ -194,14 +207,21 @@ __all__ = [
     "RateLimiter",
     "Repair",
     "RetryPolicy",
+    "RouteRequest",
+    "RouteResponse",
     "SchemaFinding",
     "SchemaLimits",
+    "SidecarApp",
+    "SidecarConfig",
+    "SidecarError",
     "SkillBodySource",
     "SkippedTool",
     "StubUpstream",
     "ToolResultCache",
     "UpstreamCall",
     "call_with_retry",
+    "make_sidecar_server",
+    "serve_api",
     "a2a_agent_to_selectable",
     "a2a_result_to_envelope",
     "agent_framework_tool_to_selectable",

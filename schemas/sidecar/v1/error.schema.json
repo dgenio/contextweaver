@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dgenio.github.io/contextweaver/schemas/sidecar/v1/error.schema.json",
+  "title": "Sidecar Error (v1)",
+  "description": "Wire error shape returned by the sidecar (mirrors gateway_spec.md §3.4).",
+  "type": "object",
+  "required": ["error", "message", "retryable"],
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "enum": [
+        "BAD_REQUEST",
+        "UNAUTHORIZED",
+        "RATE_LIMITED",
+        "NOT_FOUND",
+        "METHOD_NOT_ALLOWED",
+        "PAYLOAD_TOO_LARGE",
+        "ROUTING_UNAVAILABLE",
+        "INTERNAL"
+      ]
+    },
+    "message": { "type": "string" },
+    "retryable": { "type": "boolean" },
+    "details": { "type": "object" }
+  }
+}

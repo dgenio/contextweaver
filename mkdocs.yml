@@ -92,6 +92,7 @@ nav:
       - GitHub Copilot: recipes/github_copilot.md
       - Cursor: recipes/cursor.md
   - Gateway Spec: gateway_spec.md
+  - HTTP Sidecar: sidecar.md
   - Security Model: security_model.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md

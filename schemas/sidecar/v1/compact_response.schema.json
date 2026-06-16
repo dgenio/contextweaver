@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dgenio.github.io/contextweaver/schemas/sidecar/v1/compact_response.schema.json",
+  "title": "Sidecar CompactResponse (v1)",
+  "description": "Response body for POST /v1/compact (issue #674).",
+  "type": "object",
+  "required": ["api_version", "firewalled", "payload", "facts", "tokens_saved"],
+  "additionalProperties": false,
+  "properties": {
+    "api_version": { "type": "string", "const": "v1" },
+    "firewalled": {
+      "type": "boolean",
+      "description": "True when the payload was offloaded out-of-band."
+    },
+    "payload": {
+      "description": "Object to hand to the LLM (pass-through or summary/projection envelope)."
+    },
+    "summary": { "type": ["string", "null"] },
+    "facts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifact_ref": { "type": ["string", "null"] },
+    "tokens_saved": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Tokens kept out of the prompt (original minus summary)."
+    }
+  }
+}
