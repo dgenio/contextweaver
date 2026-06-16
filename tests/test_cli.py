@@ -685,3 +685,39 @@ def test_catalog_lint_committed_sample_is_clean() -> None:
         return
     result = _run("catalog", "lint", str(sample))
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# ------------------------------------------------------------------
+# verify (issue #657)
+# ------------------------------------------------------------------
+
+
+def test_verify_subcommand_passes() -> None:
+    """Happy path: all five checks pass."""
+    result = _run("verify")
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "import" in out.lower()
+    assert "manager" in out.lower()
+    assert "build" in out.lower()
+    assert "tokens" in out.lower()
+    assert "routing" in out.lower()
+    assert "pass" in out.lower()
+    assert "all checks passed" in out.lower()
+
+
+def test_verify_subcommand_json_mode() -> None:
+    """--json emits machine-readable payload."""
+    result = _run("verify", "--json")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert len(payload["checks"]) == 5
+    check_names = [c["name"] for c in payload["checks"]]
+    assert "import" in check_names
+    assert "manager" in check_names
+    assert "build" in check_names
+    assert "tokens" in check_names
+    assert "routing" in check_names
+    assert all(c["ok"] is True for c in payload["checks"])
+    assert "next_step" in payload
