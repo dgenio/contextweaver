@@ -89,9 +89,17 @@ class _SidecarHandler(BaseHTTPRequestHandler):
 
     def _write_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
+        # Close the connection after every response. The handler advertises
+        # HTTP/1.1 (keep-alive), but it does not always drain the full request
+        # body — an over-_READ_CAP or malformed Content-Length leaves unread
+        # bytes on the socket that would desync a reused connection. Signalling
+        # ``Connection: close`` (and forcing close_connection) keeps each
+        # request/response self-contained.
+        self.close_connection = True
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 

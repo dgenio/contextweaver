@@ -17,12 +17,13 @@ the sidecar adds no async surface.
 
 from __future__ import annotations
 
-import json
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from contextweaver.adapters._sidecar_validation import bearer_token, parse_json_object
 from contextweaver.adapters.gateway_controls import RateLimiter
 from contextweaver.adapters.gateway_policy import RateLimit, RateLimitPolicy
 from contextweaver.adapters.sidecar_contract import (
@@ -34,7 +35,7 @@ from contextweaver.adapters.sidecar_contract import (
     SidecarError,
 )
 from contextweaver.context.firewall_api import compact_tool_result
-from contextweaver.exceptions import ConfigError, ContextWeaverError
+from contextweaver.exceptions import ContextWeaverError
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.router import Router
 
@@ -121,6 +122,10 @@ class SidecarApp:
     config: SidecarConfig = field(default_factory=SidecarConfig)
     clock: Callable[[], float] = time.monotonic
     _limiters: dict[str, RateLimiter] = field(default_factory=dict, init=False, repr=False)
+    #: Guards ``_limiters`` and the non-thread-safe ``RateLimiter`` instances it
+    #: holds, since one ``SidecarApp`` is shared across ``ThreadingHTTPServer``
+    #: threads (see ``_check_rate_limit``).
+    _rate_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     def dispatch(
         self,
@@ -139,20 +144,24 @@ class SidecarApp:
         the per-client rate limiter.  Returns a JSON-serialisable body dict.
         """
         normalized = {k.lower(): v for k, v in headers.items()}
-        route = (method.upper(), path.rstrip("/") or path)
+        # Normalise once and use the normalised values for every check below so a
+        # trailing slash (e.g. ``/v1/route/``) routes identically to ``/v1/route``
+        # instead of falling through to NOT_FOUND.
+        norm_method = method.upper()
+        norm_path = path.rstrip("/") or "/"
 
-        if route == ("GET", "/v1/health"):
+        if (norm_method, norm_path) == ("GET", "/v1/health"):
             return 200, self._health()
 
-        if path not in ("/v1/route", "/v1/compact"):
+        if norm_path not in ("/v1/route", "/v1/compact"):
             return self._error("NOT_FOUND", f"unknown path {path!r}")
-        if method.upper() != "POST":
+        if norm_method != "POST":
             return self._error("METHOD_NOT_ALLOWED", f"{method} not allowed on {path}")
 
         auth = self._check_auth(normalized)
         if auth is not None:
             return auth
-        if path == "/v1/route" and self.router is None:
+        if norm_path == "/v1/route" and self.router is None:
             return self._error(
                 "ROUTING_UNAVAILABLE",
                 "this sidecar was started without a catalog; /v1/route is disabled "
@@ -168,8 +177,8 @@ class SidecarApp:
             )
 
         try:
-            payload = _parse_json_object(body)
-            if path == "/v1/route":
+            payload = parse_json_object(body)
+            if norm_path == "/v1/route":
                 return 200, self._route(payload).to_dict()
             return 200, self._compact(payload).to_dict()
         except ContextWeaverError as exc:
@@ -180,9 +189,9 @@ class SidecarApp:
     # -- handlers -------------------------------------------------------------
 
     def _route(self, payload: dict[str, Any]) -> RouteResponse:
-        # ``dispatch`` guarantees ``router is not None`` before reaching here
-        # (it returns ROUTING_UNAVAILABLE otherwise); assert for the type checker.
-        assert self.router is not None
+        # narrow: ``dispatch`` returns ROUTING_UNAVAILABLE when ``router`` is
+        # None, so it is never None here — assert only narrows the type.
+        assert self.router is not None  # noqa: S101  # narrow type for mypy
         req = RouteRequest.from_dict(payload)
         result = self.router.route(
             req.query,
@@ -240,7 +249,7 @@ class SidecarApp:
     def _check_auth(self, headers: dict[str, str]) -> tuple[int, dict[str, Any]] | None:
         if self.config.api_key is None:
             return None
-        provided = _bearer_token(headers.get("authorization", ""))
+        provided = bearer_token(headers.get("authorization", ""))
         if provided != self.config.api_key:
             return self._error("UNAUTHORIZED", "missing or invalid bearer token")
         return None
@@ -248,12 +257,16 @@ class SidecarApp:
     def _check_rate_limit(self, client_id: str) -> tuple[int, dict[str, Any]] | None:
         if self.config.rate_limit is None:
             return None
-        limiter = self._limiters.get(client_id)
-        if limiter is None:
-            policy = RateLimitPolicy(per_meta_tool={_RATE_BUCKET: self.config.rate_limit})
-            limiter = RateLimiter(policy, clock=self.clock)
-            self._limiters[client_id] = limiter
-        decision = limiter.check(_RATE_BUCKET)
+        # ``RateLimiter`` mutates per-bucket deques/dicts and is not thread-safe;
+        # the app is shared across server threads, so both the per-client limiter
+        # lookup/creation and the ``check`` call must happen under the lock.
+        with self._rate_lock:
+            limiter = self._limiters.get(client_id)
+            if limiter is None:
+                policy = RateLimitPolicy(per_meta_tool={_RATE_BUCKET: self.config.rate_limit})
+                limiter = RateLimiter(policy, clock=self.clock)
+                self._limiters[client_id] = limiter
+            decision = limiter.check(_RATE_BUCKET)
         if decision.allowed:
             return None
         details: dict[str, Any] = {"scope": decision.scope}
@@ -276,24 +289,3 @@ class SidecarApp:
             details=details or {},
         )
         return _STATUS_BY_CODE[code], err.to_dict()
-
-
-def _bearer_token(header_value: str) -> str | None:
-    """Extract the token from an ``Authorization: Bearer <token>`` header."""
-    parts = header_value.split(None, 1)
-    if len(parts) == 2 and parts[0].lower() == "bearer":
-        return parts[1].strip()
-    return None
-
-
-def _parse_json_object(body: bytes) -> dict[str, Any]:
-    """Decode *body* as a JSON object, raising ``ConfigError`` otherwise."""
-    if not body:
-        raise ConfigError("request body is empty; expected a JSON object")
-    try:
-        parsed = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConfigError(f"request body is not valid UTF-8 JSON: {exc}") from exc
-    if not isinstance(parsed, dict):
-        raise ConfigError("request body must be a JSON object")
-    return parsed

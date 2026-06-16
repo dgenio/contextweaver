@@ -92,6 +92,19 @@ def test_unknown_path_is_not_found() -> None:
     assert body["error"] == "NOT_FOUND"
 
 
+def test_trailing_slash_routes_like_canonical_path() -> None:
+    # ``/v1/route/`` must route identically to ``/v1/route`` rather than 404.
+    app = SidecarApp(router=_router())
+    status, body = app.dispatch(
+        "POST", "/v1/route/", {}, _body({"query": "send email", "top_k": 3})
+    )
+    assert status == 200
+    assert len(body["candidate_ids"]) <= 3
+    # Health and compact tolerate a trailing slash too.
+    assert app.dispatch("GET", "/v1/health/", {}, b"")[0] == 200
+    assert app.dispatch("POST", "/v1/compact/", {}, _body({"data": {"a": 1}}))[0] == 200
+
+
 def test_wrong_method_is_method_not_allowed() -> None:
     app = SidecarApp(router=_router())
     status, body = app.dispatch("GET", "/v1/route", {}, b"")

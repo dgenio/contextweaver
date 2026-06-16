@@ -17,8 +17,9 @@ model covers both surfaces.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
+from contextweaver.adapters._sidecar_validation import opt_int, opt_str_list, require_str
 from contextweaver.exceptions import ConfigError
 
 #: Current sidecar API version.  Bumped only on a breaking wire change; the
@@ -44,33 +45,8 @@ SidecarErrorCode = Literal[
     "INTERNAL",
 ]
 
-
-def _require_str(payload: dict[str, Any], key: str) -> str:
-    """Return ``payload[key]`` as a non-empty ``str`` or raise ``ConfigError``."""
-    value = payload.get(key)
-    if not isinstance(value, str) or not value.strip():
-        raise ConfigError(f"sidecar request field {key!r} must be a non-empty string")
-    return value
-
-
-def _opt_int(payload: dict[str, Any], key: str, default: int) -> int:
-    """Return ``payload[key]`` coerced to ``int`` (default when absent/null)."""
-    value = payload.get(key, default)
-    if value is None:
-        return default
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ConfigError(f"sidecar request field {key!r} must be an integer")
-    return int(value)
-
-
-def _opt_str_list(payload: dict[str, Any], key: str) -> list[str]:
-    """Return ``payload[key]`` as a ``list[str]`` (empty when absent/null)."""
-    value = payload.get(key)
-    if value is None:
-        return []
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ConfigError(f"sidecar request field {key!r} must be a list of strings")
-    return list(value)
+#: Runtime view of :data:`SidecarErrorCode` for validating inbound payloads.
+_SIDECAR_ERROR_CODES: frozenset[str] = frozenset(get_args(SidecarErrorCode))
 
 
 @dataclass
@@ -113,15 +89,15 @@ class RouteRequest:
         """
         if not isinstance(data, dict):
             raise ConfigError("sidecar route request body must be a JSON object")
-        top_k = _opt_int(data, "top_k", 10)
+        top_k = opt_int(data, "top_k", 10)
         if top_k < 1:
             raise ConfigError("sidecar route request field 'top_k' must be >= 1")
         return cls(
-            query=_require_str(data, "query"),
+            query=require_str(data, "query"),
             top_k=top_k,
-            exclude_ids=_opt_str_list(data, "exclude_ids"),
-            allowed_namespaces=_opt_str_list(data, "allowed_namespaces"),
-            context_hints=_opt_str_list(data, "context_hints"),
+            exclude_ids=opt_str_list(data, "exclude_ids"),
+            allowed_namespaces=opt_str_list(data, "allowed_namespaces"),
+            context_hints=opt_str_list(data, "context_hints"),
         )
 
 
@@ -208,8 +184,8 @@ class CompactRequest:
                 "sidecar compact request field 'strategy' must be one of "
                 "'auto', 'structured', 'text', 'passthrough'"
             )
-        threshold_chars = _opt_int(data, "threshold_chars", 2000)
-        budget = _opt_int(data, "budget", 800)
+        threshold_chars = opt_int(data, "threshold_chars", 2000)
+        budget = opt_int(data, "budget", 800)
         if threshold_chars < 0:
             raise ConfigError("sidecar compact request field 'threshold_chars' must be >= 0")
         return cls(
@@ -217,7 +193,7 @@ class CompactRequest:
             threshold_chars=threshold_chars,
             budget=budget,
             strategy=strategy,
-            keep=_opt_str_list(data, "keep"),
+            keep=opt_str_list(data, "keep"),
         )
 
 
@@ -286,10 +262,34 @@ class SidecarError:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SidecarError:
-        """Deserialise from the §3.4 JSON shape."""
+        """Deserialise from the §3.4 JSON shape.
+
+        Raises:
+            ConfigError: If *data* is not an object, the ``error`` code is
+                missing or not a known :data:`SidecarErrorCode`, or ``message``
+                / ``retryable`` / ``details`` have the wrong type.  Mirrors the
+                strict validation the other contract dataclasses perform so the
+                typed contract is not silently bypassed.
+        """
+        if not isinstance(data, dict):
+            raise ConfigError("sidecar error body must be a JSON object")
+        code = data.get("error")
+        if code not in _SIDECAR_ERROR_CODES:
+            raise ConfigError(
+                f"sidecar error field 'error' must be one of {sorted(_SIDECAR_ERROR_CODES)}"
+            )
+        message = data.get("message", "")
+        if not isinstance(message, str):
+            raise ConfigError("sidecar error field 'message' must be a string")
+        retryable = data.get("retryable", False)
+        if not isinstance(retryable, bool):
+            raise ConfigError("sidecar error field 'retryable' must be a boolean")
+        details = data.get("details", {})
+        if not isinstance(details, dict):
+            raise ConfigError("sidecar error field 'details' must be a JSON object")
         return cls(
-            code=data["error"],
-            message=data.get("message", ""),
-            retryable=bool(data.get("retryable", False)),
-            details=dict(data.get("details", {})),
+            code=code,  # validated against _SIDECAR_ERROR_CODES above
+            message=message,
+            retryable=retryable,
+            details=dict(details),
         )

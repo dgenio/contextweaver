@@ -108,6 +108,21 @@ def test_sidecar_error_round_trip() -> None:
     assert err.to_dict()["error"] == "RATE_LIMITED"
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},  # missing error code
+        {"error": "TEAPOT"},  # unknown error code
+        {"error": "INTERNAL", "message": 123},  # message wrong type
+        {"error": "INTERNAL", "retryable": "yes"},  # retryable wrong type
+        {"error": "INTERNAL", "details": [1, 2]},  # details wrong type
+    ],
+)
+def test_sidecar_error_rejects_bad_input(payload: dict) -> None:
+    with pytest.raises(ConfigError):
+        SidecarError.from_dict(payload)
+
+
 # --- Published schemas validate the examples --------------------------------
 
 

@@ -91,6 +91,15 @@ def test_bad_request_error_shape_over_http(server: tuple[str, int]) -> None:
     assert "retryable" in body
 
 
+def test_response_closes_connection(server: tuple[str, int]) -> None:
+    # The handler does not always drain the request body, so it must not keep the
+    # connection alive — every response advertises ``Connection: close``.
+    host, port = server
+    with urllib.request.urlopen(f"http://{host}:{port}/v1/health", timeout=10) as resp:
+        assert resp.status == 200
+        assert resp.headers.get("Connection", "").lower() == "close"
+
+
 def test_concurrent_requests_stay_correct(server: tuple[str, int]) -> None:
     host, port = server
     results: list[int] = []
