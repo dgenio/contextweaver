@@ -1,6 +1,6 @@
 """Command-line interface for contextweaver.
 
-Provides ten sub-commands / sub-apps:
+Provides eleven sub-commands / sub-apps:
 
 demo        Run a built-in demonstration of both engines.
 build       Build a routing graph from a catalog JSON file.
@@ -15,6 +15,8 @@ inspect     Render a payload-safe context/routing/artifact report (issue #398).
 budget-check
             Assert an ingested session's rendered prompt stays under a
             token ceiling for CI regression checks (issue #276).
+verify      Verify library installation and core functionality
+            without network dependencies (issue #657).
 mcp serve   [experimental] Run contextweaver as a stdio MCP server
             (gateway or proxy mode) in front of an upstream catalog
             (issues #243, #246).
@@ -41,6 +43,14 @@ from rich.table import Table
 from rich.tree import Tree as RichTree
 
 from contextweaver._mcp_cli import mcp_app
+from contextweaver._verify import (
+    _check_build,
+    _check_import,
+    _check_manager,
+    _check_routing,
+    _check_tokens,
+    _VerifyCheck,
+)
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.config import ContextBudget
 from contextweaver.context.manager import ContextManager
@@ -672,6 +682,77 @@ def eval_cmd(
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
     else:
         print(report.summary())
+
+
+# ---------------------------------------------------------------------------
+# verify (issue #657)
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def verify(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit machine-readable JSON for CI/automation."),
+    ] = False,
+) -> None:
+    """Verify library installation and core functionality (issue #657).
+
+    Runs deterministic, network-free checks covering:
+    import path, ContextManager instantiation, a minimal context build,
+    token counting, and routing.  Prints pass/fail output with actionable
+    next steps.  Exit code 0 when all checks pass, 1 otherwise.
+    """
+    checks: list[_VerifyCheck] = [
+        _check_import(),
+        _check_manager(),
+        _check_build(),
+        _check_tokens(),
+        _check_routing(),
+    ]
+    all_ok = all(c.ok for c in checks)
+    next_step = (
+        "Try `contextweaver demo` for a guided walkthrough, or "
+        "read docs/quickstart.md for a 10-minute tutorial."
+    )
+
+    if json_output:
+        payload = {
+            "ok": all_ok,
+            "checks": [
+                {
+                    "name": c.name,
+                    "ok": c.ok,
+                    "detail": c.detail,
+                    "fix_hint": c.fix_hint,
+                }
+                for c in checks
+            ],
+            "next_step": next_step,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        table = Table(
+            title="[bold]contextweaver verify[/bold]",
+            show_header=True,
+            header_style="bold",
+        )
+        table.add_column("Check")
+        table.add_column("Status")
+        table.add_column("Detail")
+        for c in checks:
+            status = "[green]PASS[/green]" if c.ok else "[red]FAIL[/red]"
+            table.add_row(c.name, status, c.detail)
+        _console.print(table)
+        if all_ok:
+            _console.print("[bold green]All checks passed.[/bold green]")
+        else:
+            for c in checks:
+                if not c.ok and c.fix_hint:
+                    _console.print(f"[red]- {c.name}:[/red] {c.fix_hint}")
+        _console.print(f"\n[dim]Next step:[/dim] {next_step}")
+
+    raise typer.Exit(0 if all_ok else 1)
 
 
 # ---------------------------------------------------------------------------
