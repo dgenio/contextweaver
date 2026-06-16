@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`contextweaver verify` subcommand (#657).** New non-gateway verification
+  mode giving library-first adopters a fast, deterministic, network-free
+  smoke test of core functionality.  Checks import path, `ContextManager`
+  instantiation, a minimal context build, token counting, and routing.  Outputs
+  a Rich table for humans (`--json` for CI/automation) with a clear pass/fail
+  exit code and actionable fix hints.  Documented in `docs/quickstart.md`.
+
 - **Puppetmaster integration pattern (#416).** New `docs/integration_puppetmaster.md`
   shows how contextweaver consumes Puppetmaster-style job artifacts, worker
   summaries, logs, and follow-up reads without dumping raw artifacts into model

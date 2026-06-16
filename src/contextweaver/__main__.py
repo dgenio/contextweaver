@@ -1,6 +1,6 @@
 """Command-line interface for contextweaver.
 
-Provides eleven sub-commands / sub-apps:
+Provides sub-commands / sub-apps:
 
 demo        Run a built-in demonstration of both engines.
 build       Build a routing graph from a catalog JSON file.
@@ -713,7 +713,8 @@ def verify(
     all_ok = all(c.ok for c in checks)
     next_step = (
         "Try `contextweaver demo` for a guided walkthrough, or "
-        "read docs/quickstart.md for a 10-minute tutorial."
+        "visit https://dgenio.github.io/contextweaver/quickstart/ "
+        "for a 10-minute tutorial."
     )
 
     if json_output:

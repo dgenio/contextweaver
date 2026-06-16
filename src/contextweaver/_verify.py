@@ -113,10 +113,10 @@ def _check_build() -> _VerifyCheck:
 def _check_tokens() -> _VerifyCheck:
     """Verify the token counter returns a positive count."""
     try:
-        from contextweaver.tokens import count as count_tokens
+        from contextweaver.tokens import heuristic_counter
 
         sample = "Hello, world! This is a sample text for token counting."
-        n = count_tokens(sample)
+        n = heuristic_counter().estimate(sample)
         return _VerifyCheck(
             name="tokens",
             ok=True,
@@ -127,7 +127,7 @@ def _check_tokens() -> _VerifyCheck:
             name="tokens",
             ok=False,
             detail=str(exc),
-            fix_hint="tiktoken cache may be missing; set TIKTOKEN_CACHE_DIR",
+            fix_hint="Something is deeply broken with the installation; please reinstall",
         )
 
 

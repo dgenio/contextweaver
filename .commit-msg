@@ -1,0 +1,9 @@
+feat(cli): address PR review fixes for verify subcommand (#657)
+
+- Switch _check_tokens() to heuristic_counter() for strictly
+  network-free operation.
+- Remove hard-coded sub-command count from module docstring.
+- Update next_step to published docs URL.
+- Add CHANGELOG entry under [Unreleased].
+- Add tests/test__verify.py with 5 happy-path + 5 failure-mode
+  unit tests (monkeypatch/unittest.mock.patch).
