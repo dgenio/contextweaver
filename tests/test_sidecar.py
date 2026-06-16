@@ -154,6 +154,49 @@ def test_rate_limit_per_client_with_injected_clock() -> None:
     assert app.dispatch("POST", "/v1/compact", {}, payload, client_id="a")[0] == 200
 
 
+def test_rate_limit_is_thread_safe_under_concurrency() -> None:
+    # The shared SidecarApp guards its per-client RateLimiter with a lock; with a
+    # pinned clock the window never slides, so exactly `max_calls_per_minute`
+    # concurrent requests from one client must be allowed and the rest rejected.
+    # Without the lock the racy increments would over-admit (allowed > limit).
+    import threading
+
+    limit = 50
+    config = SidecarConfig(rate_limit=RateLimit(max_calls_per_minute=limit))
+    app = SidecarApp(router=None, config=config, clock=lambda: 0.0)
+    payload = _body({"data": "hi"})
+    statuses: list[int] = []
+    lock = threading.Lock()
+
+    def worker() -> None:
+        status, _ = app.dispatch("POST", "/v1/compact", {}, payload, client_id="shared")
+        with lock:
+            statuses.append(status)
+
+    threads = [threading.Thread(target=worker) for _ in range(limit * 2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+
+    assert len(statuses) == limit * 2
+    assert statuses.count(200) == limit
+    assert statuses.count(429) == limit
+
+
+def test_limiter_map_is_bounded_lru() -> None:
+    # Per-client limiters are kept as a bounded LRU so a client churning through
+    # identities cannot grow the map without limit.
+    from contextweaver.adapters.sidecar import _MAX_LIMITERS
+
+    config = SidecarConfig(rate_limit=RateLimit(max_calls_per_minute=5))
+    app = SidecarApp(router=None, config=config, clock=lambda: 0.0)
+    payload = _body({"data": "hi"})
+    for i in range(_MAX_LIMITERS + 10):
+        app.dispatch("POST", "/v1/compact", {}, payload, client_id=f"client-{i}")
+    assert len(app._limiters) == _MAX_LIMITERS
+
+
 def test_body_size_cap_rejects_large_payload() -> None:
     app = SidecarApp(router=None, config=SidecarConfig(max_body_bytes=32))
     status, body = app.dispatch("POST", "/v1/compact", {}, b"x" * 100)

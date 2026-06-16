@@ -17,8 +17,10 @@ the sidecar adds no async surface.
 
 from __future__ import annotations
 
+import secrets
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -41,6 +43,10 @@ from contextweaver.routing.router import Router
 
 #: Bucket name used for the per-client rate limiter (one logical surface).
 _RATE_BUCKET = "sidecar"
+
+#: Upper bound on retained per-client rate limiters (LRU-evicted past this), so a
+#: client churning identities (rotating IPs/tokens) cannot grow the map unbounded.
+_MAX_LIMITERS = 4096
 
 #: HTTP status code per :data:`~contextweaver.adapters.sidecar_contract.SidecarErrorCode`.
 _STATUS_BY_CODE: dict[str, int] = {
@@ -121,10 +127,10 @@ class SidecarApp:
     router: Router | None = None
     config: SidecarConfig = field(default_factory=SidecarConfig)
     clock: Callable[[], float] = time.monotonic
-    _limiters: dict[str, RateLimiter] = field(default_factory=dict, init=False, repr=False)
-    #: Guards ``_limiters`` and the non-thread-safe ``RateLimiter`` instances it
-    #: holds, since one ``SidecarApp`` is shared across ``ThreadingHTTPServer``
-    #: threads (see ``_check_rate_limit``).
+    _limiters: OrderedDict[str, RateLimiter] = field(
+        default_factory=OrderedDict, init=False, repr=False
+    )
+    #: Guards ``_limiters`` + its non-thread-safe ``RateLimiter``s (shared across threads).
     _rate_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     def dispatch(
@@ -144,9 +150,7 @@ class SidecarApp:
         the per-client rate limiter.  Returns a JSON-serialisable body dict.
         """
         normalized = {k.lower(): v for k, v in headers.items()}
-        # Normalise once and use the normalised values for every check below so a
-        # trailing slash (e.g. ``/v1/route/``) routes identically to ``/v1/route``
-        # instead of falling through to NOT_FOUND.
+        # Normalise once so a trailing slash (``/v1/route/``) routes like ``/v1/route``.
         norm_method = method.upper()
         norm_path = path.rstrip("/") or "/"
 
@@ -250,7 +254,8 @@ class SidecarApp:
         if self.config.api_key is None:
             return None
         provided = bearer_token(headers.get("authorization", ""))
-        if provided != self.config.api_key:
+        # Constant-time compare (no timing side-channel); None guard first.
+        if provided is None or not secrets.compare_digest(provided, self.config.api_key):
             return self._error("UNAUTHORIZED", "missing or invalid bearer token")
         return None
 
@@ -266,6 +271,10 @@ class SidecarApp:
                 policy = RateLimitPolicy(per_meta_tool={_RATE_BUCKET: self.config.rate_limit})
                 limiter = RateLimiter(policy, clock=self.clock)
                 self._limiters[client_id] = limiter
+                if len(self._limiters) > _MAX_LIMITERS:
+                    self._limiters.popitem(last=False)  # evict least-recently-seen
+            else:
+                self._limiters.move_to_end(client_id)
             decision = limiter.check(_RATE_BUCKET)
         if decision.allowed:
             return None

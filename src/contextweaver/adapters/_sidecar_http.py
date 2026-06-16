@@ -85,7 +85,13 @@ class _SidecarHandler(BaseHTTPRequestHandler):
             return b""
         if length <= 0:
             return b""
-        return self.rfile.read(min(length, _READ_CAP))
+        # Read at most one byte past the app's configured ``max_body_bytes`` so
+        # the dispatcher can still detect an oversize body (PAYLOAD_TOO_LARGE)
+        # without buffering the whole payload; ``_READ_CAP`` is the absolute
+        # hard ceiling regardless of how the app is configured.
+        app: SidecarApp = self.server.app  # type: ignore[attr-defined]
+        limit = min(app.config.max_body_bytes + 1, _READ_CAP)
+        return self.rfile.read(min(length, limit))
 
     def _write_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
