@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
@@ -56,6 +57,8 @@ from contextweaver.adapters.gateway_policy import RateLimit
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.adapters.sidecar import SidecarApp, SidecarConfig
 from contextweaver.config import ContextBudget
+from contextweaver.context.consolidation import consolidate
+from contextweaver.context.consolidation_types import ConsolidationPolicy
 from contextweaver.context.manager import ContextManager
 from contextweaver.eval.dataset import EvalDataset
 from contextweaver.eval.routing import evaluate_routing
@@ -74,6 +77,8 @@ from contextweaver.routing.graph_io import load_graph, save_graph
 from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
+from contextweaver.store.episodic import InMemoryEpisodicStore
+from contextweaver.store.facts import InMemoryFactStore
 from contextweaver.types import ContextItem, ItemKind, Phase, SelectableItem
 
 # ---------------------------------------------------------------------------
@@ -680,6 +685,95 @@ def eval_cmd(
     router = Router(graph, items=items, beam_width=beam_width, top_k=top_k)
     ds = EvalDataset.load(dataset)
     report = evaluate_routing(router, ds, catalog_ids={it.id for it in items})
+
+    if json_output:
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        print(report.summary())
+
+
+# ---------------------------------------------------------------------------
+# consolidate (issue #498)
+# ---------------------------------------------------------------------------
+
+
+@app.command("consolidate")
+def consolidate_cmd(
+    episodes: Annotated[
+        Path,
+        typer.Option(..., "--episodes", help="Episodic-store JSON file ({'episodes': [...]})."),
+    ],
+    facts: Annotated[
+        Path | None,
+        typer.Option("--facts", help="Optional fact-store JSON file ({'facts': [...]})."),
+    ] = None,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Write promoted facts into the fact store.")
+    ] = False,
+    facts_out: Annotated[
+        Path | None,
+        typer.Option("--facts-out", help="Write the updated fact store here (with --apply)."),
+    ] = None,
+    min_occurrences: Annotated[
+        int, typer.Option("--min-occurrences", help="Min clustered episodes to promote.")
+    ] = 3,
+    min_sessions: Annotated[
+        int, typer.Option("--min-sessions", help="Min distinct sessions to promote.")
+    ] = 2,
+    similarity: Annotated[
+        float, typer.Option("--similarity", help="Jaccard similarity threshold for clustering.")
+    ] = 0.5,
+    decay_after_days: Annotated[
+        int,
+        typer.Option("--decay-after-days", help="Decay horizon in days; negative disables decay."),
+    ] = 90,
+    as_of: Annotated[
+        str | None,
+        typer.Option("--as-of", help="ISO-8601 reference time for decay reporting."),
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Consolidate episodic memory into durable facts (issue #498).
+
+    Loads an episodic store (and an optional fact store) from JSON, runs the
+    deterministic consolidation pipeline, and prints the report. With
+    ``--apply`` the promoted facts are upserted into the fact store; pass
+    ``--facts-out`` to persist the updated store.
+    """
+    try:
+        ep_store = InMemoryEpisodicStore.from_dict(json.loads(episodes.read_text(encoding="utf-8")))
+        fact_store = (
+            InMemoryFactStore.from_dict(json.loads(facts.read_text(encoding="utf-8")))
+            if facts is not None
+            else InMemoryFactStore()
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(f"could not read store JSON: {exc}") from exc
+
+    policy = ConsolidationPolicy(
+        min_occurrences=min_occurrences,
+        min_sessions=min_sessions,
+        similarity_threshold=similarity,
+        decay_after_days=None if decay_after_days < 0 else decay_after_days,
+    )
+    parsed_as_of = None
+    if as_of is not None:
+        try:
+            parsed_as_of = datetime.fromisoformat(as_of)
+        except ValueError as exc:
+            raise typer.BadParameter(f"invalid --as-of timestamp: {exc}") from exc
+
+    try:
+        report = consolidate(ep_store, fact_store, policy, as_of=parsed_as_of, apply=apply)
+    except ContextWeaverError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    if apply and facts_out is not None:
+        facts_out.write_text(
+            json.dumps(fact_store.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
 
     if json_output:
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
