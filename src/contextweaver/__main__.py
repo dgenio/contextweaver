@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
@@ -761,12 +761,15 @@ def consolidate_cmd(
     )
     # Default the decay reference to now so --decay-after-days takes effect in
     # the common case; an explicit --as-of (with RFC 3339 ``Z`` support) wins.
+    # Use UTC so the reference matches the naive-UTC timestamps parse_iso
+    # produces from episode/fact metadata (a naive local now() would skew the
+    # decay horizon by the host's UTC offset).
     if as_of is not None:
         parsed_as_of = parse_iso(as_of)
         if parsed_as_of is None:
             raise typer.BadParameter(f"invalid --as-of timestamp: {as_of!r}; expected ISO-8601")
     else:
-        parsed_as_of = datetime.now()
+        parsed_as_of = datetime.now(timezone.utc)
 
     try:
         report = consolidate(ep_store, fact_store, policy, as_of=parsed_as_of, apply=apply)
