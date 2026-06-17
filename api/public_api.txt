@@ -683,6 +683,10 @@
   def reciprocal_rank(predicted: 'Sequence[str]', expected: 'Collection[str]') -> 'float'
 
 ## contextweaver.routing
+  class CachedRetriever(base: 'Retriever', cache: 'RoutingIndexCache', *, engine_name: 'str | None' = ..., codec: 'IndexCodec | None' = ...) -> 'None'
+      def fit(self, corpus: 'list[str]') -> 'None'
+      def score_one(self, query: 'str', index: 'int') -> 'float'
+      def search(self, query: 'str', top_k: 'int') -> 'list[tuple[int, float]]'
   class Catalog() -> 'None'
       def all(self) -> 'list[SelectableItem]'
       def filter_by_namespace(self, namespace: 'str') -> 'list[SelectableItem]'
@@ -725,6 +729,9 @@
       def to_dict(self) -> 'dict[str, Any]'
   class FeedbackAwareScoreProvider(feedback: 'Mapping[str, ExecutionFeedback] | Sequence[ExecutionFeedback]', *, success_weight: 'float' = ..., failure_penalty: 'float' = ..., quality_weight: 'float' = ..., latency_weight: 'float' = ..., cost_weight: 'float' = ..., latency_ref_ms: 'float' = ..., token_cost_ref: 'float' = ...) -> 'None'
       def adjust(self, query: 'str', scored: 'list[tuple[str, float]]') -> 'list[tuple[str, float]]'
+  class IndexCodec(Protocol)(*args, **kwargs)
+      def dump(self, retriever: 'Any') -> 'dict[str, Any]'
+      def load(self, retriever: 'Any', state: 'dict[str, Any]') -> 'None'
   class KeywordLabeler(top_k: 'int' = ..., namespace_threshold: 'float' = ...) -> 'None'
       def label(self, item: 'SelectableItem') -> 'tuple[str, str]'
       def label_group(self, items: 'list[SelectableItem]') -> 'tuple[str, str]'
@@ -747,6 +754,9 @@
   class Router(graph: 'ChoiceGraph', items: 'list[SelectableItem] | None' = ..., scorer: '_ScorerLike | None' = ..., beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ..., *, scorer_backend: 'str' = ..., routing_config: 'RoutingConfig | None' = ..., retriever: 'Retriever | None' = ..., engine_registry: 'EngineRegistry | None' = ..., embedding_backend: 'EmbeddingBackend | None' = ..., pipeline: 'RoutingPipeline | None' = ..., score_provider: 'RoutingScoreProvider | None' = ...) -> 'None'
       def route(self, query: 'str', *, debug: 'bool' = ..., exclude_ids: 'set[str] | None' = ..., exclude_tags: 'set[str] | None' = ..., allowed_namespaces: 'set[str] | None' = ..., allowed_tags: 'set[str] | None' = ..., context_hints: 'list[str] | None' = ..., history: 'RouteHistory | None' = ..., pin_ids: 'set[str] | None' = ..., namespace_quota: 'int | None' = ...) -> 'RouteResult'
       def set_items(self, items: 'list[SelectableItem]') -> 'None'
+  class RoutingIndexCache(directory: 'str | os.PathLike[str] | None' = ..., *, max_entries: 'int' = ...) -> 'None'
+      def get(self, fingerprint: 'str') -> 'dict[str, Any] | None'
+      def put(self, fingerprint: 'str', payload: 'dict[str, Any]') -> 'None'
   SELECTION_SCHEMA_PROVIDERS: tuple
   class SchemaSource(schemas: 'Mapping[str, dict[str, Any]] | None' = ...) -> 'None'
       def from_json_file(cls, path: 'str | Path') -> 'SchemaSource'
@@ -756,6 +766,7 @@
   class SelectionValidation(status: 'SelectionStatus', selected_id: 'str | None', raw_id: 'str', repair: 'str | None' = ..., reason: 'str | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectionValidation'
       def to_dict(self) -> 'dict[str, Any]'
+  TFIDF_CODEC: _TfIdfCodec
   class ToolIdParts(namespace: 'str', name: 'str', version: 'str | None' = ..., hash8: 'str | None' = ...) -> None
   class TreeBuilder(max_children: 'int' = ..., labeler: 'KeywordLabeler | None' = ..., target_group_size: 'int | None' = ..., *, routing_config: 'RoutingConfig | None' = ..., clustering: 'ClusteringEngine | None' = ..., engine_registry: 'EngineRegistry | None' = ...) -> 'None'
       def build(self, items: 'list[SelectableItem]', *, use_cache: 'bool' = ...) -> 'ChoiceGraph'
@@ -774,6 +785,7 @@
   def format_primitive_id(parts: 'PrimitiveIdParts') -> 'str'
   def format_tool_id(parts: 'ToolIdParts') -> 'str'
   def hydrate_with_schema(catalog: 'Catalog', tool_id: 'str', source: 'SchemaSource | Mapping[str, dict[str, Any]] | None' = ...) -> 'HydrationResult'
+  def index_fingerprint(documents: 'list[str]', *, engine_name: 'str') -> 'str'
   def item_to_card(item: 'SelectableItem', *, score: 'float | None' = ..., redact_secrets: 'bool' = ...) -> 'ChoiceCard'
   def lazy_schema_resolver(catalog: 'Catalog', source: 'SchemaSource | Mapping[str, dict[str, Any]] | None' = ...) -> '_LazyResolver'
   def load_graph(path: 'str | Path') -> 'ChoiceGraph'

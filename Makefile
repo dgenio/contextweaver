@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-gateway benchmark-primitives sidecar-smoke token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
+.PHONY: fmt lint type test example demo ci docs docs-serve benchmark benchmark-matrix benchmark-routing-scale benchmark-gateway benchmark-primitives sidecar-smoke token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
 
 fmt:
 	ruff format src/ tests/ examples/ scripts/
@@ -68,6 +68,13 @@ token-calibration:
 
 benchmark-matrix:
 	python benchmarks/benchmark.py --matrix
+
+# Routing-scale profiler + bottleneck report (issue #684; non-gating). Profiles
+# the routing path up to 10k tools and the persistent fitted-index cache
+# (#543/#624/#685); writes benchmarks/results/routing_scale.json + the report
+# at docs/benchmarks/routing-scale.md.
+benchmark-routing-scale:
+	python benchmarks/routing_scale.py
 
 benchmark-gateway:
 	python benchmarks/gateway_benchmark.py
