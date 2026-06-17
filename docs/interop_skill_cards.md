@@ -9,6 +9,15 @@
 > This page documents the mapping. It is documentation, not a new adapter:
 > everything below uses existing contextweaver APIs and adds no dependency.
 
+> **Skills as guidance (this page) vs skills as routable capabilities.** This
+> page is about *guidance* cards entering a prompt as `ContextItem`s. That is
+> distinct from the Agent Skills (`SKILL.md`) adapter
+> ([`docs/integration_agent_skills.md`](integration_agent_skills.md), issue
+> #545), which loads a skill *library* into the routing catalog as
+> `kind="skill"` `SelectableItem`s so the router can shortlist which skill
+> applies. Use the adapter when the router should *pick* a skill; use the
+> mapping below when approved guidance text should be *injected* as context.
+
 ## What a skill card is
 
 A skill card is a small, reviewed unit of guidance — "when editing

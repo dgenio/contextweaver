@@ -37,6 +37,10 @@ class ItemKind(str, Enum):
     tool_call = "tool_call"
     tool_result = "tool_result"
     doc_snippet = "doc_snippet"
+    #: A document/payload pulled in by a retrieval / RAG step (issue #411).
+    #: Distinct from ``doc_snippet`` (an authored/static document) so per-kind
+    #: filtering and section labels can carry retrieval-specific semantics.
+    retrieved_doc = "retrieved_doc"
     memory_fact = "memory_fact"
     plan_state = "plan_state"
     policy = "policy"
@@ -75,7 +79,7 @@ class SelectableItem:
     """
 
     id: str
-    kind: Literal["tool", "agent", "skill", "internal", "flow"]
+    kind: Literal["tool", "agent", "skill", "internal", "flow", "resource", "prompt"]
     name: str
     description: str
     tags: list[str] = field(default_factory=list)
@@ -150,7 +154,11 @@ class SelectableItem:
         )
 
 
-#: Alias — use when emphasising the LLM-facing card framing.
+#: Deprecated alias for :class:`SelectableItem` (issue #642); use
+#: ``SelectableItem`` in code. Kept as a plain alias — **not** a warning-
+#: emitting shim — because ``types.py`` is a pure-data module that may not have
+#: side effects (``docs/agent-context/invariants.md``); the deprecation is
+#: tracked documentation-only in ``docs/upgrading.md``.
 ToolCard = SelectableItem
 
 

@@ -24,6 +24,7 @@ uvx contextweaver demo --scenario killer  # zero-install trial
 
 # Or install it:
 pip install contextweaver
+python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
 ```
 
@@ -333,6 +334,7 @@ pip install -e ".[dev]"
 
 ### Adopting in 5 lines from an existing OpenAI / Anthropic / Gemini agent
 
+<!-- snippet: skip (illustrative; `messages` is the caller's existing history) -->
 ```python
 from contextweaver.adapters.openai_messages import from_openai_messages
 from contextweaver.context.manager import ContextManager
@@ -378,6 +380,7 @@ print(pack.stats)    # what was kept, dropped, deduplicated
 
 ### Route a large tool catalog
 
+<!-- snippet: skip (illustrative; needs a real catalog.json on disk) -->
 ```python
 from contextweaver.routing.catalog import Catalog, load_catalog_json
 from contextweaver.routing.tree import TreeBuilder
@@ -415,20 +418,28 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 [How contextweaver Fits](docs/interop.md) positioning page, then jump into the
 [Cookbook](docs/cookbook.md) for copy-paste recipes.
 
-| Framework | Guide | Use Case |
-|---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
-| A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
-| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
-| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
-| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
-| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
-| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
-| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
-| smolagents | [Guide](docs/integration_smolagents.md) | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
-| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
+The **Code adapter** column lists the importable adapter module and its
+optional extra; its plain-dict conversion path works without the extra
+installed. _Guide only_ rows ship a written integration guide but no dedicated
+`tools → catalog` adapter yet (issue #401).
+
+| Framework | Guide | Code adapter | Use Case |
+|---|---|---|---|
+| MCP | [Guide](docs/integration_mcp.md) | `adapters.mcp` | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
+| A2A | [Guide](docs/integration_a2a.md) | `adapters.a2a` | Agent cards, multi-agent sessions |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | `adapters.fastmcp` · `[fastmcp]` | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | _Guide only_ | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | `adapters.openai_agents` · `[openai-agents]` | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | `adapters.google_adk` · `[google-adk]` | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | `adapters.langchain` · `[langchain]` | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | _Guide only_ | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | `adapters.crewai` · `[crewai]` | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
+| Microsoft Agent Framework | [Guide](docs/integration_agent_framework.md) | `adapters.agent_framework` · `[agent-framework]` | AutoGen / Semantic Kernel tools + thread history |
+| OpenAPI | [Guide](docs/integration_openapi.md) | `adapters.openapi` | Route over REST API operations (no extra) |
+| Agent Skills | [Guide](docs/integration_agent_skills.md) | `adapters.agent_skills` | Route over SKILL.md libraries with lazy body hydration |
 
 ---
 
@@ -551,20 +562,23 @@ contextweaver works with any LLM provider and any agent framework:
 - **No vendor lock-in**: stdlib-only core; no cloud dependencies; runs anywhere Python 3.10+ runs
 
 <!-- mirrors the Framework Integrations table above; keep in sync -->
-| Framework | Guide | Use Case |
-|---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
-| A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
-| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
-| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
-| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
-| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
-| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
-| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
-| smolagents | [Guide](docs/integration_smolagents.md) | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
-| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
+| Framework | Guide | Code adapter | Use Case |
+|---|---|---|---|
+| MCP | [Guide](docs/integration_mcp.md) | `adapters.mcp` | Tool conversion, session loading, firewall |
+| A2A | [Guide](docs/integration_a2a.md) | `adapters.a2a` | Agent cards, multi-agent sessions |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | `adapters.fastmcp` · `[fastmcp]` | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | _Guide only_ | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | `adapters.openai_agents` · `[openai-agents]` | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | `adapters.google_adk` · `[google-adk]` | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | `adapters.langchain` · `[langchain]` | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | _Guide only_ | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | `adapters.crewai` · `[crewai]` | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
+| Microsoft Agent Framework | [Guide](docs/integration_agent_framework.md) | `adapters.agent_framework` · `[agent-framework]` | AutoGen / Semantic Kernel tools + thread history |
+| OpenAPI | [Guide](docs/integration_openapi.md) | `adapters.openapi` | Route over REST API operations (no extra) |
+| Agent Skills | [Guide](docs/integration_agent_skills.md) | `adapters.agent_skills` | Route over SKILL.md libraries with lazy body hydration |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -623,7 +637,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.14.1**.
+Current package version: **0.15.0**.
 
 Recent milestones:
 
@@ -655,7 +669,7 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.14.1](https://pypi.org/project/contextweaver/0.14.1/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.15.0](https://pypi.org/project/contextweaver/0.15.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
@@ -755,8 +769,11 @@ to any LLM or framework. See dedicated guides for
 [Pipecat](docs/integration_pipecat.md),
 [CrewAI](docs/integration_crewai.md),
 [Pydantic AI](docs/integration_pydantic_ai.md),
-[smolagents](docs/integration_smolagents.md), and
-[Agno](docs/integration_agno.md).  If your runtime isn't listed, the
+[smolagents](docs/integration_smolagents.md),
+[Agno](docs/integration_agno.md),
+[Microsoft Agent Framework](docs/integration_agent_framework.md),
+[OpenAPI](docs/integration_openapi.md), and
+[Agent Skills](docs/integration_agent_skills.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 

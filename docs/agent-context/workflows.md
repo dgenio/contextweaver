@@ -5,12 +5,15 @@
 ```bash
 make fmt      # ruff format src/ tests/ examples/ scripts/
 make lint     # ruff check src/ tests/ examples/ scripts/
-make type     # mypy src/
+make type     # mypy src/ examples/ scripts/  (examples + scripts gated too, #539)
 make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + schemas-check + example + demo
+make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
+make drift-check  # one gate over every generated-artifact drift check (#522; in `make ci`)
+make module-size-check  # enforce the ≤300-line convention, frozen baseline (#456; in `make ci`)
+make doc-snippets-check # execute README + curated docs Python snippets (#526; in `make ci`)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -30,15 +33,20 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
 
-> Gating CI steps beyond `make ci`: `make scorecard-check`,
-> `make readme-version-check` (#347/#473), `make context-rot-check` (#349),
-> `make llms-check` (#389), `make record-demos-check` (#390),
-> `make gateway-scorecard-check` (#391), and `make weaver-conformance`.
-> `make smoke-eval` (#392) also runs in CI but remains non-gating.
-> (`make schemas-check` also gates, but it runs *inside* `make ci`.)
+> As of #474, `make ci` now mirrors the gating CI checks a contributor can run
+> offline: the consolidated generated-artifact drift gate `make drift-check`
+> (#522 — schemas, scorecards, recorded demos, llms.txt, context-rot SVG, and
+> the public-API manifest #518), plus `make module-size-check` (#456),
+> `make doc-snippets-check` (#526), and `make readme-version-check` (#347).
+> The individual `*-check` targets still exist for granular use, but you no
+> longer need to remember to run them separately before a PR.
+>
+> CI-only gates (not in `make ci` because they need the network or are heavy):
+> `make weaver-conformance` (fetches schemas) and the docs build job.
+> `make smoke-eval` (#392) and the benchmark job run in CI but remain non-gating.
 
-`make ci` runs all declared targets in sequence. Run the additional gating checks
-listed above before opening a PR when the affected artifacts or integrations change.
+`make ci` runs all declared targets in sequence. The CI-only gates above run on
+every PR regardless; run them locally when the affected integrations change.
 
 ## Command-Selection Rules
 
@@ -127,6 +135,36 @@ A change is complete when **all** of the following are true:
 3. External format dependencies stay at the adapter boundary.
 4. Add tests in `tests/test_adapters.py`.
 5. Add an example in `examples/`.
+
+## Deprecating an API
+
+Use the runtime machinery in `src/contextweaver/_deprecation.py` (issue #517);
+do not call `warnings.warn` ad hoc.
+
+1. Add a `Deprecation(name, since, removal, instead)` entry to the `_SHIMS`
+   table in `_deprecation.py` (the single source of truth). Use the next minor
+   for `since` and `"1.0.0"` for `removal` unless decided otherwise.
+2. At the call site, emit the warning: `warn_deprecated("<name>")` inside a
+   property/method/branch, or decorate a callable with
+   `@deprecated("<name>", since=..., removal=..., instead=...)`. Keep behavior
+   identical; route in-library callers through a private helper so the canonical
+   path does not trip the warning.
+3. Migrate every in-repo caller (src, examples, docs snippets, tests) off the
+   deprecated surface; intentional shim tests assert the warning with
+   `pytest.warns(DeprecationWarning)`. The `filterwarnings` gate in
+   `pyproject.toml` escalates first-party deprecations to errors, so a leftover
+   caller fails CI.
+4. Add the surface to the inventory table in `docs/upgrading.md` and a
+   `CHANGELOG.md` "Deprecated" entry naming the replacement.
+
+**Documentation-only exception.** Do **not** add a runtime warning when the only
+call site would live in a module barred from side effects — a re-export-only
+`__init__.py` (hard rule: only re-exports) or a pure-data module such as
+`types.py` (invariant: no side effects in the data layer), or an internal
+serialization key on a hot path. Keep the surface a plain alias/accessor, skip
+steps 1–2 (no `_SHIMS` entry, no `warn_deprecated`), and record it as a
+documentation-only row in `docs/upgrading.md`. The `ToolCard` alias is the
+reference example.
 
 ## Documentation Governance
 

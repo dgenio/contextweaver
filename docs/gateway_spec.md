@@ -174,7 +174,10 @@ amendment:
 - `id` — the canonical `tool_id` from §1.
 - `name` — short display name (≤ 64 characters).
 - `description` — single-line summary (see §2.3 for truncation).
-- `tags` — sorted, deduplicated, **max 5 entries**, each ≤ 24 chars.
+- `tags` — sorted, deduplicated, **max 5 entries**, each ≤ 24 chars. The
+  safety tags `destructive` / `read-only` are **exempt from the cap**: they
+  are reserved into the kept set first so a safety marker can never be
+  evicted by lexicographically earlier tags (issue #516).
 - `kind` — one of `tool`, `agent`, `skill`, `internal`.
 - `namespace` — copy of the `tool_id` namespace.
 - `has_schema` — boolean. **Never** carries the schema itself.
@@ -182,6 +185,14 @@ amendment:
   in the JSON form.
 - `cost_hint` — `float`. Rendered only when `> 0`.
 - `side_effects` — `bool`. Rendered only when `true`.
+- `safety` — one of `""`, `"read_only"`, `"destructive"` (issue #516). A
+  first-class, **capping-immune** mirror of the read-only / destructive MCP
+  annotation, derived from the item's safety tags (`destructive` wins over
+  `read-only`). It guarantees the safety class survives even when the
+  `tags` cap would drop the tag, and gives runtime policy layers (issue #373)
+  a stable field to key on. Like the underlying annotation it is
+  informational, **not** an authorization control (see the SECURITY NOTE in
+  `adapters/mcp.py`).
 
 ### 2.2 Banned fields
 
@@ -239,6 +250,31 @@ Within a `tool_browse` response, cards are ordered:
 
 This matches the existing "tie-break by ID, sorted keys" invariant in
 `docs/agent-context/invariants.md:42`.
+
+### 2.6 Structured selection contract
+
+The selection turn — where a downstream model picks one card from a browse
+response — is the single point where model output re-enters the deterministic
+pipeline. Two complementary, deterministic helpers bound it (no model calls):
+
+- **Constrain before (issue #515).** `RouteResult.selection_schema(...)` (and
+  the free function `routing.selection.selection_schema`) renders the routed
+  candidate IDs as a JSON Schema whose selection property is an `enum` of those
+  IDs. Provider variants: `json_schema` (bare), `openai` (the `response_format`
+  `json_schema` envelope), `anthropic` (a tool definition with the schema as
+  `input_schema`). Passing the schema to a provider's constrained-output API
+  prevents the model from inventing or misspelling a `tool_id` at generation
+  time. Raises `RouteError` when there are no candidates.
+- **Validate after (issue #479).** `RouteResult.validate_selection(selected_id)`
+  (and `routing.selection.validate_selection`) checks a returned ID against the
+  offered candidates and returns a typed `SelectionValidation` with status
+  `accepted` / `repaired` / `rejected`. Repair is deterministic and tried in a
+  fixed order against the whitespace-stripped value — exact, then unique
+  case-insensitive match, then unique case-insensitive prefix. Ambiguous
+  case-fold / prefix matches are **rejected, never guessed**, so the contract
+  can never silently route to the wrong tool. `RouteResult.to_routing_decision`
+  runs this validation, stores the resolved canonical ID, and records the
+  outcome under `metadata["contextweaver"]["selection"]`.
 
 ## 3. Path-navigation grammar
 
@@ -648,3 +684,132 @@ adapter or routing surfaces:
   §4.1 and §4.2 reuse.
 - [`docs/agent-context/invariants.md`](https://github.com/dgenio/contextweaver/blob/main/docs/agent-context/invariants.md) —
   destination of the assertions in §6.
+
+## 9. Cross-primitive identity and collision policy (resources & prompts)
+
+MCP exposes three first-class context primitives — **tools**, **resources**,
+and **prompts**. The gateway shapes all three with the same bounded-choice +
+firewall treatment (#555). To route them through one shared
+[`Catalog`](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/routing/catalog.py),
+they need one identity scheme that cannot collide across kinds — a tool named
+`search` and a prompt named `search` must remain distinct items.
+[`routing/primitive_id.py`](https://github.com/dgenio/contextweaver/blob/main/src/contextweaver/routing/primitive_id.py)
+is the single source of truth for this policy (#671).
+
+### 9.1 Grammar
+
+```
+primitive_id = [ kind "::" ] tool_id
+kind         = "resource" | "prompt"     ; "tool" is implied and never written
+```
+
+- **Tools** keep the bare §1 form (`namespace:name[@version][#hash8]`) — the §1
+  grammar, fixtures, and existing catalogs are unchanged.
+- **Resources** and **prompts** prepend a reserved `kind` tag with the `::`
+  separator: `resource::fs:readme#ab12cd34`, `prompt::gh:summarize#deadbeef`.
+  `::` cannot appear in a tool id (§1.1 uses a single `:` and bans `:` inside
+  the namespace/name), so the three id spaces are **disjoint by construction**.
+- The body after `kind::` obeys the §1.1 grammar exactly and is validated
+  through the shared `parse_tool_id` / `format_tool_id` helpers, so both
+  directions agree. This round-trip guarantee applies to **canonical**
+  primitive ids only. The collision-disambiguated `~N` form introduced in §9.3
+  is **not** a canonical id and is deliberately outside the §1.1 grammar:
+  consumers must treat a `~N`-suffixed id as an **opaque catalog key** and must
+  not feed it back through `parse_tool_id`. The `~N` suffix is appended after
+  canonical-id formation, purely to key otherwise-identical entries in the
+  shared `Catalog`.
+
+### 9.2 Shape hashes
+
+`hash8` keeps an id stable across prose-only edits (§1.3). Each primitive
+hashes over its identity-defining shape, with a domain prefix so the three
+hash spaces never alias:
+
+- **Tool** — `upstream_name` + canonical input-schema shape (§1.3, unchanged).
+- **Resource** — the canonical `uri` (the resource's stable MCP identity).
+- **Prompt** — the prompt name + its **sorted** argument names (the argument
+  *set* defines the call shape; descriptions and rendered messages do not).
+
+### 9.3 Collision handling
+
+When two **distinct** primitives of the same kind still map to the same
+canonical id, `resolve_collisions` assigns a deterministic `~N` suffix: the
+lowest catalog index keeps the bare id, and later occurrences (in ascending
+index order) become `id~2`, `id~3`, …. The assignment is deterministic **with
+respect to the provided catalog order** (it is keyed on list indexes and never
+depends on dict iteration order, so it reproduces across runs); it is *not*
+order-independent — re-ordering the catalog changes which occurrence keeps the
+bare id. This index-based determinism preserves the project's determinism
+invariant for a fixed catalog order. Identical ids that refer to the *same*
+primitive are de-duplicated by the caller first. The resulting `~N` ids are
+opaque catalog keys, not canonical primitive ids (see §9.1).
+
+### 9.4 Request flows
+
+Resources and prompts get the same **browse → act** shape the tool meta-tools
+use (§3), with distinct verbs that match MCP's distinct semantics rather than
+overloading `tool_execute`. The four primitive meta-tools are advertised
+**only** when the gateway is constructed with a primitive runtime (see §9.5);
+otherwise the surface is tools-only and unchanged.
+
+| Verb | Input | Returns |
+|---|---|---|
+| `resource_browse` | exactly one of `query` (free-text) or `path`; optional `top_k` | bounded `list[ChoiceCard]` (`kind="resource"`) |
+| `resource_read` | `resource_id` (from a card) | firewalled `ResultEnvelope`; large reads addressable via `tool_view` |
+| `prompt_browse` | exactly one of `query` or `path`; optional `top_k` | bounded `list[ChoiceCard]` (`kind="prompt"`) |
+| `prompt_get` | `prompt_id` + `args` (validated against the prompt's argument schema) | firewalled `ResultEnvelope` of the rendered prompt |
+
+Properties that hold across both kinds:
+
+- **Bounded browse.** Each kind has its own routing index, so resource and
+  prompt cards never mix in one response, and the browse list is capped at
+  `top_k` exactly like `tool_browse`.
+- **Firewalled reads.** `resource_read` / `prompt_get` pass the upstream result
+  through the same context firewall as tool results: text is summarized into the
+  envelope and every part is persisted on the **shared** artifact store, so a
+  single large resource read cannot flood the model context and stays drillable
+  via `tool_view`.
+- **Read-only.** Both reads carry `side_effects=False`; browsing and reading
+  never mutate upstream state.
+- **Error taxonomy.** Failures are returned, never raised across the boundary:
+  `ARGS_INVALID` (bad/duplicate selectors, schema-invalid prompt args),
+  `RESOURCE_NOT_FOUND` / `PROMPT_NOT_FOUND` (unknown id), and the §3.4
+  `UPSTREAM_*` codes for transport failures (classified from the exception the
+  upstream raised).
+
+Upstream access is abstracted by the `PrimitiveUpstream` Protocol
+(`list_resources` / `read_resource` / `list_prompts` / `get_prompt`); unlike the
+tool `UpstreamCall`, its methods **raise** transport errors so the runtime can
+classify them. Three concrete adapters ship in
+`contextweaver.adapters.mcp_primitive_upstream`: `StubPrimitiveUpstream`
+(in-process, for tests/CLI/air-gapped CI), `McpClientPrimitiveUpstream` (wraps a
+connected MCP `ClientSession`), and `MultiplexPrimitiveUpstream` (fans listings
+across several sources and routes reads/fetches back to the owner).
+
+### 9.5 Serving resources and prompts
+
+`contextweaver mcp serve --gateway` exposes resources and prompts when the
+catalog is a **snapshot object** carrying optional `resources` / `prompts` lists
+alongside `tools`:
+
+```
+{
+  "tools":     [ { "name": "...", "inputSchema": { ... } } ],
+  "resources": [ { "uri": "file:///docs/readme.md", "name": "README",
+                   "mimeType": "text/markdown" } ],
+  "prompts":   [ { "name": "summarize_pr", "description": "...",
+                   "arguments": [ { "name": "repo", "required": true } ] } ]
+}
+```
+
+A bare list catalog (tools only), or one without those keys, runs the gateway
+tools-only and advertises only the three tool meta-tools — the primitive surface
+is strictly additive. Without a live upstream attached, the CLI serves the
+declared listings and canned reads via `StubPrimitiveUpstream`; production
+deployments swap in `McpClientPrimitiveUpstream` (or a `MultiplexPrimitiveUpstream`
+fan-out). The primitive runtime shares the tool runtime's `ContextManager`, so
+every primitive read lands in one artifact store and one `tool_view` surface.
+
+The mixed tools+resources+prompts context-shaping benchmark runs via
+`make benchmark-primitives` (`benchmarks/primitive_gateway_benchmark.py`),
+reporting per-kind token savings and `recall@k`.

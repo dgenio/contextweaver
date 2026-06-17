@@ -43,10 +43,16 @@ Pydantic AI tool docs:     https://ai.pydantic.dev/tools/
 
 from __future__ import annotations
 
-import copy
 import logging
 from typing import TYPE_CHECKING, Any
 
+from contextweaver.adapters._framework_common import (
+    coerce_schema_dict,
+    collect_tags,
+    infer_namespace,
+    require_name_description,
+    strip_namespace_prefix,
+)
 from contextweaver.adapters._pydantic_ai_messages import (
     decode_messages as _decode_messages,
 )
@@ -84,47 +90,7 @@ def infer_pydantic_ai_namespace(tool_name: str) -> str:
     Returns:
         The inferred namespace string.
     """
-    if not tool_name:
-        return _FALLBACK_NS
-    for sep in (".", "/"):
-        if sep in tool_name:
-            prefix = tool_name.split(sep, 1)[0]
-            if prefix:
-                return prefix
-    parts = tool_name.split("_")
-    if len(parts) >= 2 and parts[0] and not parts[0].startswith("_"):
-        return parts[0]
-    return _FALLBACK_NS
-
-
-def _strip_namespace_prefix(tool_name: str, namespace: str) -> str:
-    """Return the short tool name with the namespace prefix removed."""
-    for prefix in (f"{namespace}_", f"{namespace}.", f"{namespace}/"):
-        if tool_name.startswith(prefix) and len(tool_name) > len(prefix):
-            return tool_name[len(prefix) :]
-    return tool_name
-
-
-def _args_schema_dict(raw: object) -> dict[str, Any]:
-    """Coerce a Pydantic AI ``parameters_json_schema`` value into a dict.
-
-    Pydantic AI tools typically expose their argument schema as an already-
-    realised JSON Schema dict via ``parameters_json_schema``.  Some user code
-    builds the tool from a Pydantic ``BaseModel`` class — we accept either.
-    """
-    if raw is None:
-        return {}
-    if isinstance(raw, dict):
-        return copy.deepcopy(raw)
-    schema_fn = getattr(raw, "model_json_schema", None)
-    if callable(schema_fn):
-        try:
-            schema = schema_fn()
-        except Exception:  # pragma: no cover - defensive
-            return {}
-        if isinstance(schema, dict):
-            return dict(schema)
-    return {}
+    return infer_namespace(tool_name, fallback=_FALLBACK_NS)
 
 
 def pydantic_ai_tool_to_selectable(
@@ -160,27 +126,15 @@ def pydantic_ai_tool_to_selectable(
         CatalogError: If required fields (``name``, ``description``) are
             missing or non-string.
     """
-    raw_name = tool_def.get("name")
-    if not isinstance(raw_name, str) or not raw_name:
-        raise CatalogError("Pydantic AI tool definition is missing a non-empty 'name' field.")
-    raw_description = tool_def.get("description")
-    if not isinstance(raw_description, str) or not raw_description:
-        raise CatalogError(
-            f"Pydantic AI tool {raw_name!r} is missing a non-empty 'description' field."
-        )
+    raw_name, raw_description = require_name_description(tool_def, label="Pydantic AI")
 
     ns = namespace if namespace is not None else infer_pydantic_ai_namespace(raw_name)
-    short_name = _strip_namespace_prefix(raw_name, ns)
+    short_name = strip_namespace_prefix(raw_name, ns)
 
-    raw_tags = tool_def.get("tags")
-    tags: set[str] = {_FALLBACK_NS}
-    if isinstance(raw_tags, (list, set, tuple)):
-        for tag in raw_tags:
-            if isinstance(tag, str) and tag:
-                tags.add(tag)
+    tags = collect_tags(tool_def.get("tags"), fallback=_FALLBACK_NS)
 
     schema_value = tool_def.get("parameters_json_schema", tool_def.get("args_schema"))
-    args_schema = _args_schema_dict(schema_value)
+    args_schema = coerce_schema_dict(schema_value)
 
     metadata: dict[str, Any] = {}
     if "takes_ctx" in tool_def:

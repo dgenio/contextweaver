@@ -33,8 +33,8 @@
 <text x="72" y="374.0" class="ytick">50%</text>
 <line x1="80" y1="300.0" x2="690" y2="300.0" class="grid" />
 <text x="72" y="304.0" class="ytick">100%</text>
-<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="80.0,389.6 232.5,400.1 385.0,392.4 537.5,415.5 690.0,426.0" />
-<circle cx="80.0" cy="389.6" r="3.5" fill="#2563eb" /><circle cx="232.5" cy="400.1" r="3.5" fill="#2563eb" /><circle cx="385.0" cy="392.4" r="3.5" fill="#2563eb" /><circle cx="537.5" cy="415.5" r="3.5" fill="#2563eb" /><circle cx="690.0" cy="426.0" r="3.5" fill="#2563eb" />
+<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="80.0,389.6 232.5,400.1 385.0,393.1 537.5,416.2 690.0,426.0" />
+<circle cx="80.0" cy="389.6" r="3.5" fill="#2563eb" /><circle cx="232.5" cy="400.1" r="3.5" fill="#2563eb" /><circle cx="385.0" cy="393.1" r="3.5" fill="#2563eb" /><circle cx="537.5" cy="416.2" r="3.5" fill="#2563eb" /><circle cx="690.0" cy="426.0" r="3.5" fill="#2563eb" />
 <text x="80.0" y="458" class="xtick">83</text>
 <text x="232.5" y="458" class="xtick">166</text>
 <text x="385.0" y="458" class="xtick">332</text>

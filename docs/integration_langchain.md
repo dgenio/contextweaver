@@ -5,6 +5,23 @@
 > and graph-based agents get budget-aware memory, bounded tool routing,
 > and a context firewall — without giving up the framework's agent loop.
 
+## Importable adapter
+
+As of issue #502, `contextweaver.adapters.langchain` ships a first-class
+`BaseTool → SelectableItem` adapter, so you no longer hand-roll the conversion:
+
+```python
+from contextweaver.adapters.langchain import load_langchain_catalog
+
+# `tools` is your list of LangChain BaseTool instances.
+catalog = load_langchain_catalog(tools, namespace="research")
+```
+
+Install the optional extra for live loading (`pip install
+'contextweaver[langchain]'`); the plain-dict path
+(`langchain_tools_to_catalog`) needs no extra and is handy in tests. Feed the
+returned `Catalog` to the `Router` exactly as in the routing examples below.
+
 ## Why
 
 LangChain's memory classes (`ConversationBufferMemory`,

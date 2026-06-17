@@ -5,6 +5,27 @@
 > so single agents and Swarm-style hand-offs both share one budget-aware
 > context.
 
+## Importable adapter
+
+As of issue #501, `contextweaver.adapters.openai_agents` ships first-class
+converters for the SDK's function tools and run items:
+
+```python
+from contextweaver.adapters.openai_agents import (
+    load_openai_agents_catalog,
+    from_openai_agents_run,
+)
+
+catalog = load_openai_agents_catalog(agent.tools, namespace="ops")
+# ... after a run, ingest its items (tool calls keep their outputs as children):
+items = from_openai_agents_run(result.new_items, into=manager)
+```
+
+Install the optional extra for live loading (`pip install
+'contextweaver[openai-agents]'`); the plain-dict / item-dict paths
+(`openai_agents_tools_to_catalog`, `from_openai_agents_run`) need no extra and
+are handy in tests.
+
 ## Why
 
 The OpenAI Agents SDK (often called OpenAI ADK) is great at orchestrating

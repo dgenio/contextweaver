@@ -92,6 +92,7 @@ nav:
       - GitHub Copilot: recipes/github_copilot.md
       - Cursor: recipes/cursor.md
   - Gateway Spec: gateway_spec.md
+  - HTTP Sidecar: sidecar.md
   - Security Model: security_model.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md
@@ -106,18 +107,24 @@ nav:
       - Pydantic AI: integration_pydantic_ai.md
       - smolagents: integration_smolagents.md
       - Agno: integration_agno.md
+      - Microsoft Agent Framework: integration_agent_framework.md
+      - OpenAPI: integration_openapi.md
+      - Agent Skills: integration_agent_skills.md
       - External Memory: integration_memory.md
       - Persistent & Remote Stores: persistent_stores.md
+      - Puppetmaster: integration_puppetmaster.md
   - Architecture: architecture.md
   - Benchmarks: benchmarks.md
   - Adopter Benchmark Report: benchmark_report.md
   - Token Calibration: token_calibration.md
   - Context Rot Demo: context_rot.md
   - Stability: stability.md
+  - Upgrading: upgrading.md
   - Launch Kit: launch_kit.md
   - Contracts: contracts.md
   - Observability: integration_otel.md
   - Troubleshooting: troubleshooting.md
+  - Error Reference: errors.md
   - Contribution Paths: contributing_paths.md
   - API Reference: reference/
 

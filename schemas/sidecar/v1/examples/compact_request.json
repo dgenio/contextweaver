@@ -1,0 +1,6 @@
+{
+  "data": {"invoices": [{"invoiceNumber": "A-1", "amount": 100, "raw": "...large blob..."}]},
+  "threshold_chars": 2000,
+  "strategy": "structured",
+  "keep": ["invoices[].invoiceNumber", "invoices[].amount"]
+}

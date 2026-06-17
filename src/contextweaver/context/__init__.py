@@ -32,7 +32,7 @@ from contextweaver.context.memory_source import (
     memory_entries_to_context_items,
     select_memory_for_phase,
 )
-from contextweaver.context.prompt import render_context, render_item
+from contextweaver.context.prompt import passthrough_renderer, render_context, render_item
 from contextweaver.context.scoring import score_candidates, score_item
 from contextweaver.context.selection import select_and_pack
 from contextweaver.context.sensitivity import (
@@ -67,6 +67,7 @@ __all__ = [
     "generate_candidates",
     "generate_views",
     "memory_entries_to_context_items",
+    "passthrough_renderer",
     "register_redaction_hook",
     "unregister_redaction_hook",
     "render_context",

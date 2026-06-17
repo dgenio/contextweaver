@@ -273,11 +273,12 @@ def main() -> None:
         media_type="application/json",
         firewall_threshold=2000,
     )
-    firewalled = item.artifact_ref is not None and len(raw_result) > 2000
-    if firewalled:
+    artifact_ref = item.artifact_ref
+    firewalled = artifact_ref is not None and len(raw_result) > 2000
+    if firewalled and artifact_ref is not None:
         print(
             f"firewall: {len(raw_result):,} chars -> {len(item.text):,}-char summary "
-            f"(artifact {item.artifact_ref.handle})"
+            f"(artifact {artifact_ref.handle})"
         )
 
     frame_mapped = False

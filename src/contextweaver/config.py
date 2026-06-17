@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
+from contextweaver._scoring_config import ScoringConfig
 from contextweaver.exceptions import ConfigError
 from contextweaver.types import ItemKind, Phase, Sensitivity
 
@@ -17,46 +18,8 @@ from contextweaver.types import ItemKind, Phase, Sensitivity
 #: the runtime enforcement agree (issue #463).
 SENSITIVITY_ACTIONS: tuple[str, ...] = ("drop", "redact")
 
-# ---------------------------------------------------------------------------
-# Scoring
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class ScoringConfig:
-    """Weights used by the candidate scorer.
-
-    All weights should sum to ≤ 1.0; the remainder is unweighted base score.
-    """
-
-    recency_weight: float = 0.3
-    tag_match_weight: float = 0.25
-    kind_priority_weight: float = 0.35
-    token_cost_penalty: float = 0.1
-    dedup_threshold: float = 0.85
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialise to a JSON-compatible dict."""
-        return {
-            "recency_weight": self.recency_weight,
-            "tag_match_weight": self.tag_match_weight,
-            "kind_priority_weight": self.kind_priority_weight,
-            "token_cost_penalty": self.token_cost_penalty,
-            "dedup_threshold": self.dedup_threshold,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ScoringConfig:
-        """Deserialise from a JSON-compatible dict."""
-        _d = cls()
-        return cls(
-            recency_weight=float(data.get("recency_weight", _d.recency_weight)),
-            tag_match_weight=float(data.get("tag_match_weight", _d.tag_match_weight)),
-            kind_priority_weight=float(data.get("kind_priority_weight", _d.kind_priority_weight)),
-            token_cost_penalty=float(data.get("token_cost_penalty", _d.token_cost_penalty)),
-            dedup_threshold=float(data.get("dedup_threshold", _d.dedup_threshold)),
-        )
-
+#: Valid values for :attr:`ContextPolicy.overflow_action` (issue #510).
+OVERFLOW_ACTIONS: tuple[str, ...] = ("drop", "warn", "raise")
 
 # ---------------------------------------------------------------------------
 # Budget
@@ -130,6 +93,7 @@ _DEFAULT_ALLOWED_KINDS: dict[Phase, list[ItemKind]] = {
         ItemKind.tool_call,
         ItemKind.tool_result,
         ItemKind.doc_snippet,
+        ItemKind.retrieved_doc,
         ItemKind.memory_fact,
         ItemKind.plan_state,
         ItemKind.policy,
@@ -160,6 +124,16 @@ class ContextPolicy:
             so ``redact``/``drop`` cannot be bypassed by re-fetching the raw
             artifact bytes (issue #451).  Set ``True`` only for deployments that
             intentionally rely on drilldown to recover filtered content.
+        overflow_action: What to do when budget pressure drops candidates
+            (issue #510).  ``"drop"`` (default) keeps today's silent
+            drop-with-stats behavior; ``"warn"`` logs the dropped item IDs and
+            reasons once per build; ``"raise"`` raises
+            :class:`~contextweaver.exceptions.BudgetOverflowError` with the
+            would-be :class:`~contextweaver.envelope.BuildStats` attached.
+        overflow_raise_kinds: Optional filter scoping ``"warn"``/``"raise"`` to
+            budget drops of these :class:`~contextweaver.types.ItemKind`\\s
+            (e.g. ``[ItemKind.policy]``).  ``None`` (default) applies the action
+            to any budget drop.
     """
 
     allowed_kinds_per_phase: dict[Phase, list[ItemKind]] = field(
@@ -174,21 +148,31 @@ class ContextPolicy:
     sensitivity_action: Literal["drop", "redact"] = "drop"
     redaction_hooks: list[str] = field(default_factory=list)
     allow_redacted_drilldown: bool = False
+    overflow_action: Literal["drop", "warn", "raise"] = "drop"
+    overflow_raise_kinds: list[ItemKind] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Validate ``sensitivity_action`` at construction time (issue #463).
+        """Validate ``sensitivity_action`` / ``overflow_action`` at construction.
+
+        Validating here (issues #463, #510) turns a config typo into an
+        immediate, well-classified error instead of one that surfaces only at
+        the first build's sensitivity or selection stage.
 
         Raises:
             ConfigError: If ``sensitivity_action`` is not one of
-                :data:`SENSITIVITY_ACTIONS`.  Validating here turns a config
-                typo into an immediate, well-classified error instead of one
-                that surfaces only at the first build's sensitivity stage.
+                :data:`SENSITIVITY_ACTIONS` or ``overflow_action`` is not one
+                of :data:`OVERFLOW_ACTIONS`.
         """
         if self.sensitivity_action not in SENSITIVITY_ACTIONS:
             raise ConfigError(
                 f"ContextPolicy.sensitivity_action must be one of {SENSITIVITY_ACTIONS}, "
                 f"got {self.sensitivity_action!r}"
+            )
+        if self.overflow_action not in OVERFLOW_ACTIONS:
+            raise ConfigError(
+                f"ContextPolicy.overflow_action must be one of {OVERFLOW_ACTIONS}, "
+                f"got {self.overflow_action!r}"
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -203,6 +187,10 @@ class ContextPolicy:
             "sensitivity_action": self.sensitivity_action,
             "redaction_hooks": list(self.redaction_hooks),
             "allow_redacted_drilldown": self.allow_redacted_drilldown,
+            "overflow_action": self.overflow_action,
+            "overflow_raise_kinds": [k.value for k in self.overflow_raise_kinds]
+            if self.overflow_raise_kinds is not None
+            else None,
             "extra": dict(self.extra),
         }
 
@@ -239,6 +227,13 @@ class ContextPolicy:
             allow_redacted_drilldown=bool(
                 data.get("allow_redacted_drilldown", _d.allow_redacted_drilldown)
             ),
+            overflow_action=cast(
+                "Literal['drop', 'warn', 'raise']",
+                data.get("overflow_action", _d.overflow_action),
+            ),
+            overflow_raise_kinds=[ItemKind(k) for k in data["overflow_raise_kinds"]]
+            if data.get("overflow_raise_kinds") is not None
+            else None,
             extra=dict(data.get("extra", _d.extra)),
         )
 

@@ -137,7 +137,7 @@ def main() -> None:
 
     # 2. Single conversion.
     print("\n[2] Single tool conversion:")
-    item = pydantic_ai_tool_to_selectable(PYDANTIC_AI_TOOLS[0])  # type: ignore[arg-type]
+    item = pydantic_ai_tool_to_selectable(PYDANTIC_AI_TOOLS[0])
     print(f"    ID:        {item.id}")
     print(f"    Name:      {item.name}")
     print(f"    Namespace: {item.namespace}")
@@ -146,7 +146,7 @@ def main() -> None:
 
     # 3. Batch conversion → Catalog.
     print("\n[3] Building Catalog from 4 Pydantic AI tools:")
-    catalog = pydantic_ai_tools_to_catalog(PYDANTIC_AI_TOOLS)  # type: ignore[arg-type]
+    catalog = pydantic_ai_tools_to_catalog(PYDANTIC_AI_TOOLS)
     for it in catalog.all():
         print(f"    {it.id:40s} ns={it.namespace:12s} tags={sorted(it.tags)}")
 
@@ -162,7 +162,7 @@ def main() -> None:
 
     # 5. Message round-trip — decode → encode should rebuild the input.
     print("\n[5] Message round-trip:")
-    items = from_pydantic_ai_messages(PYDANTIC_AI_TRANSCRIPT)  # type: ignore[arg-type]
+    items = from_pydantic_ai_messages(PYDANTIC_AI_TRANSCRIPT)
     print(f"    decoded {len(items)} ContextItem(s):")
     for ci in items:
         suffix = f" parent={ci.parent_id}" if ci.parent_id else ""

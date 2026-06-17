@@ -416,3 +416,90 @@ def test_profile_config_full_roundtrip_includes_policy() -> None:
     assert restored.policy.sensitivity_floor == Sensitivity.restricted
     assert restored.policy.extra == {"test": True}
     assert restored.scoring.dedup_threshold == 0.92
+
+
+# ---------------------------------------------------------------------------
+# ScoringConfig — kind_priority + phase_overrides (#487)
+# ---------------------------------------------------------------------------
+
+
+def test_scoring_config_defaults_have_no_overrides() -> None:
+    """Default config is override-free so builds stay byte-identical (#487)."""
+    cfg = ScoringConfig()
+    assert cfg.kind_priority is None
+    assert cfg.phase_overrides is None
+
+
+def test_scoring_config_kind_priority_validation() -> None:
+    """kind_priority values outside [0, 1] fail at construction (#487)."""
+    with pytest.raises(ConfigError, match=r"kind_priority\['policy'\] must be in \[0, 1\]"):
+        ScoringConfig(kind_priority={ItemKind.policy: 1.5})
+
+
+def test_scoring_config_resolved_for_phase() -> None:
+    """A registered phase resolves to its override; others to the base (#487)."""
+    override = ScoringConfig(recency_weight=0.9)
+    cfg = ScoringConfig(phase_overrides={Phase.route: override})
+    assert cfg.resolved_for_phase(Phase.route) is override
+    assert cfg.resolved_for_phase(Phase.answer) is cfg
+
+
+def test_scoring_config_roundtrip_with_overrides() -> None:
+    """kind_priority + phase_overrides survive a round-trip (#487)."""
+    cfg = ScoringConfig(
+        kind_priority={ItemKind.doc_snippet: 0.9, ItemKind.policy: 1.0},
+        phase_overrides={Phase.route: ScoringConfig(tag_match_weight=0.5)},
+    )
+    restored = ScoringConfig.from_dict(cfg.to_dict())
+    assert restored.kind_priority == {ItemKind.doc_snippet: 0.9, ItemKind.policy: 1.0}
+    assert restored.phase_overrides is not None
+    assert restored.phase_overrides[Phase.route].tag_match_weight == 0.5
+
+
+def test_scoring_config_default_to_dict_omits_new_keys() -> None:
+    """Default config serialises without the optional keys (stable shape, #487)."""
+    payload = ScoringConfig().to_dict()
+    assert "kind_priority" not in payload
+    assert "phase_overrides" not in payload
+
+
+def test_scoring_config_rejects_nested_phase_overrides() -> None:
+    """A phase override may not itself carry phase_overrides (#487).
+
+    Resolution is one level deep, so nesting is silently ignored — reject it at
+    construction instead of letting it look effective.
+    """
+    nested = ScoringConfig(phase_overrides={Phase.answer: ScoringConfig()})
+    with pytest.raises(
+        ConfigError,
+        match=r"phase_overrides\['route'\] must not itself define phase_overrides",
+    ):
+        ScoringConfig(phase_overrides={Phase.route: nested})
+
+
+# ---------------------------------------------------------------------------
+# ContextPolicy — overflow policy (#510)
+# ---------------------------------------------------------------------------
+
+
+def test_context_policy_overflow_action_defaults_to_drop() -> None:
+    policy = ContextPolicy()
+    assert policy.overflow_action == "drop"
+    assert policy.overflow_raise_kinds is None
+
+
+def test_context_policy_rejects_invalid_overflow_action() -> None:
+    with pytest.raises(ConfigError, match="overflow_action must be one of"):
+        ContextPolicy(overflow_action="explode")  # type: ignore[arg-type]
+
+
+def test_context_policy_from_dict_rejects_invalid_overflow_action() -> None:
+    with pytest.raises(ConfigError, match="overflow_action must be one of"):
+        ContextPolicy.from_dict({"overflow_action": "explode"})
+
+
+def test_context_policy_overflow_roundtrip() -> None:
+    policy = ContextPolicy(overflow_action="raise", overflow_raise_kinds=[ItemKind.policy])
+    restored = ContextPolicy.from_dict(policy.to_dict())
+    assert restored.overflow_action == "raise"
+    assert restored.overflow_raise_kinds == [ItemKind.policy]

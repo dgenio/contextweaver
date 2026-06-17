@@ -23,15 +23,18 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, overload
 
+from contextweaver._deprecation import warn_deprecated
 from contextweaver._utils import BM25Scorer, FuzzyScorer, TfIdfScorer
 from contextweaver.envelope import RoutingDecision
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
 from contextweaver.protocols import EmbeddingBackend, Retriever, RoutingScoreProvider
+from contextweaver.routing._scorer_adapter import _ScorerLike, _ScorerRetriever
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.explanation import explain_route, explain_route_dict
 from contextweaver.routing.filters import (
     augment_query,
+    compose_shortlist,
     filter_items,
     suggest_clarifying_question,
 )
@@ -40,15 +43,17 @@ from contextweaver.routing.history import RouteHistory, adjust_scores
 from contextweaver.routing.navigator import BeamSearchNavigator, rank_collected
 from contextweaver.routing.pipeline import RoutingPipeline
 from contextweaver.routing.registry import EngineRegistry, default_registry
+from contextweaver.routing.selection import SelectionValidation
+from contextweaver.routing.selection import selection_schema as _selection_schema
+from contextweaver.routing.selection import validate_selection as _validate_selection
 from contextweaver.routing.trace import RouteTrace
 from contextweaver.types import SelectableItem
 
 logger = logging.getLogger("contextweaver.routing")
 
-# Union of all scorer types Router accepts. ``FuzzyScorer`` is ``None`` when
-# the ``contextweaver[retrieval]`` extra is not installed; we widen with
-# ``Any`` rather than naming the runtime ``None`` sentinel here.
-_ScorerLike = TfIdfScorer | BM25Scorer | Any
+# ``_ScorerLike`` and the legacy ``_ScorerRetriever`` adapter live in
+# ``contextweaver.routing._scorer_adapter`` (imported above) so this
+# grandfathered module stays within its frozen size ceiling (issue #642).
 
 # Registry of named backends. ``Router(scorer_backend="bm25")`` constructs
 # the corresponding scorer when no explicit instance is provided.
@@ -127,8 +132,14 @@ class RouteResult:
 
     @property
     def debug_trace(self) -> list[dict[str, Any]]:
-        """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape."""
-        return self.trace.to_legacy_dicts()
+        """Legacy view of :attr:`trace` in the pre-#51 dict-of-dicts shape.
+
+        .. deprecated:: 0.16.0
+            Use :attr:`trace` (the structured :class:`RouteTrace`) instead;
+            scheduled for removal in 1.0.0 (issue #642).
+        """
+        warn_deprecated("RouteResult.debug_trace")
+        return self.trace._to_legacy_dicts()
 
     def to_dict(self, *, include_items: bool = True) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict (issue #289).
@@ -242,6 +253,42 @@ class RouteResult:
             return explain_route_dict(self)
         return explain_route(self, format="md")
 
+    def selection_schema(
+        self,
+        *,
+        provider: str = "json_schema",
+        property_name: str = "tool_id",
+        schema_name: str = "tool_selection",
+    ) -> dict[str, Any]:
+        """Constrained-selection schema over :attr:`candidate_ids` (issue #515).
+
+        Thin wrapper over
+        :func:`contextweaver.routing.selection.selection_schema` (see it for the
+        full provider/argument semantics) — the generation-side complement to
+        :meth:`validate_selection`.
+        """
+        return _selection_schema(
+            self.candidate_ids,
+            provider=provider,
+            property_name=property_name,
+            schema_name=schema_name,
+        )
+
+    def validate_selection(
+        self,
+        selected_id: str | None,
+        *,
+        repair: bool = True,
+    ) -> SelectionValidation:
+        """Validate *selected_id* against :attr:`candidate_ids` (issue #479).
+
+        Thin wrapper over
+        :func:`contextweaver.routing.selection.validate_selection` (see it for
+        the repair order and rejection reasons), returning the typed
+        :class:`~contextweaver.routing.selection.SelectionValidation` outcome.
+        """
+        return _validate_selection(selected_id, self.candidate_ids, repair=repair)
+
     def to_routing_decision(
         self,
         *,
@@ -251,6 +298,7 @@ class RouteResult:
         context_summary: str | None = None,
         now: datetime | None = None,
         metadata: dict[str, Any] | None = None,
+        repair_selection: bool = True,
     ) -> RoutingDecision:
         """Build a spec-aligned :class:`RoutingDecision` from this result.
 
@@ -263,9 +311,19 @@ class RouteResult:
             decision_id: Identifier to assign to the decision.  Defaults to a
                 freshly minted ``"rd-{uuid4}"`` string when not provided.
             selected_item_id: Optional ID of the item the downstream LLM picked.
+                Validated against the candidate set via
+                :meth:`validate_selection` (issue #479): an accepted or repaired
+                selection is stored as its canonical candidate ID, and the typed
+                outcome is recorded under
+                ``metadata["contextweaver"]["selection"]``.  A rejected
+                selection is preserved verbatim with ``selected_card_id=None``.
             selected_card_id: Optional ID of the :class:`ChoiceCard` containing
-                the selected item.  When omitted, populated from
+                the selected item.  When omitted, populated from the resolved
                 ``selected_item_id`` if it matches one of the candidates.
+            repair_selection: When ``True`` (default), near-miss selections
+                (whitespace, case, unambiguous prefix) are deterministically
+                repaired to the matching candidate; when ``False`` only an exact
+                match resolves.
             context_summary: Optional brief context summary for audit / debug.
             now: Optional timezone-aware timestamp.  Defaults to
                 ``datetime.now(timezone.utc)``.
@@ -291,12 +349,25 @@ class RouteResult:
             scores=score_map,
             max_cards=max(len(self.candidate_items), 1),
         )
+        resolved_item_id = selected_item_id
         resolved_card_id = selected_card_id
-        if resolved_card_id is None and selected_item_id is not None:
-            for card in cards:
-                if card.id == selected_item_id:
-                    resolved_card_id = card.id
-                    break
+        selection_outcome: SelectionValidation | None = None
+        if selected_item_id is not None:
+            selection_outcome = _validate_selection(
+                selected_item_id, self.candidate_ids, repair=repair_selection
+            )
+            if not selection_outcome.ok:
+                # Rejected: keep ``selected_item_id`` verbatim but drop any
+                # caller card id so a rejected selection can't carry a non-null
+                # ``selected_card_id`` (documented contract; PR #585 review).
+                resolved_card_id = None
+            elif selection_outcome.selected_id is not None:
+                resolved_item_id = selection_outcome.selected_id
+            if resolved_card_id is None and selection_outcome.ok:
+                for card in cards:
+                    if card.id == resolved_item_id:
+                        resolved_card_id = card.id
+                        break
         timestamp = now if now is not None else datetime.now(timezone.utc)
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -313,6 +384,8 @@ class RouteResult:
             cw_meta["context_hints"] = list(self.context_hints)
         if self.clarifying_question is not None:
             cw_meta["clarifying_question"] = self.clarifying_question
+        if selection_outcome is not None:
+            cw_meta["selection"] = selection_outcome.to_dict()
         # Merge router-supplied diagnostics into ``metadata["contextweaver"]``
         # rather than ``setdefault``: if the caller already populated that key
         # with their own dict, ``setdefault`` would silently drop our
@@ -329,7 +402,7 @@ class RouteResult:
             id=decision_id if decision_id is not None else f"rd-{uuid.uuid4()}",
             choice_cards=cards,
             timestamp=timestamp,
-            selected_item_id=selected_item_id,
+            selected_item_id=resolved_item_id,
             selected_card_id=resolved_card_id,
             context_summary=context_summary,
             metadata=meta,
@@ -339,35 +412,6 @@ class RouteResult:
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
-
-
-class _ScorerRetriever:
-    """Internal :class:`Retriever` adapter for legacy ``scorer=`` callers.
-
-    Wraps any pre-existing scorer that exposes the ``fit(corpus)`` /
-    ``score(query, index)`` shape (e.g. :class:`TfIdfScorer`,
-    :class:`BM25Scorer`, :class:`FuzzyScorer`) so the rest of
-    :class:`Router` can talk to a single :class:`Retriever` surface
-    regardless of how the engine was supplied.
-    """
-
-    def __init__(self, scorer: _ScorerLike) -> None:
-        self._scorer = scorer
-        self._corpus_size = 0
-
-    def fit(self, corpus: list[str]) -> None:
-        self._scorer.fit(corpus)
-        self._corpus_size = len(corpus)
-
-    def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
-        scored = [(i, self._scorer.score(query, i)) for i in range(self._corpus_size)]
-        scored.sort(key=lambda x: (-x[1], x[0]))
-        return scored[: max(0, top_k)]
-
-    def score_one(self, query: str, index: int) -> float:
-        if not 0 <= index < self._corpus_size:
-            return 0.0
-        return self._scorer.score(query, index)
 
 
 class Router:
@@ -502,6 +546,7 @@ class Router:
             self._retriever = HybridEmbeddingRetriever(embedding_backend)
             self._retriever_engine_name = "embedding+tfidf"
         elif scorer is not None:
+            warn_deprecated("Router(scorer=...)", stacklevel=2)
             self._retriever = _ScorerRetriever(scorer)
             self._retriever_engine_name = "tfidf"
         elif scorer_backend != "tfidf":
@@ -597,6 +642,8 @@ class Router:
         allowed_tags: set[str] | None = None,
         context_hints: list[str] | None = None,
         history: RouteHistory | None = None,
+        pin_ids: set[str] | None = None,
+        namespace_quota: int | None = None,
     ) -> RouteResult:
         """Route *query* through the graph and return ranked results.
 
@@ -625,6 +672,17 @@ class Router:
                 / ``requires`` metadata is applied.  Per-candidate score
                 deltas surface on :attr:`RouteResult.history_adjustments`.
                 ``None`` is byte-equivalent to pre-#27 behaviour.
+            pin_ids: Optional set of item IDs that must always appear in the
+                shortlist regardless of query relevance (issue #509 — pinned
+                always-include items, e.g. an escalation / "ask the user" tool).
+                Pinned items occupy the first slots and bypass *namespace_quota*.
+                IDs that were filtered out or are not in the catalog are ignored.
+            namespace_quota: Optional cap on how many *non-pinned* items a single
+                namespace may contribute to the shortlist (issue #509 — diversity
+                quota), so one large upstream cannot monopolise all *top_k* slots.
+                Must be ≥ 1 when supplied.  ``None`` disables the quota.  With both
+                *pin_ids* and *namespace_quota* unset, shortlist composition is
+                byte-identical to the previous ``top_k`` truncation.
 
         Returns:
             A :class:`RouteResult` with ranked items and a populated
@@ -632,7 +690,10 @@ class Router:
 
         Raises:
             RouteError: If the graph is empty or no items are registered.
+            ConfigError: If *namespace_quota* is supplied and is < 1.
         """
+        if namespace_quota is not None and namespace_quota < 1:
+            raise ConfigError(f"namespace_quota must be >= 1 when supplied, got {namespace_quota}")
         if not self._items:
             raise RouteError(
                 "No items registered. Pass items to Router() or call set_items() before routing."
@@ -715,7 +776,16 @@ class Router:
             # holds even if a provider forgets to re-sort.
             reordered = sorted(provider_output, key=lambda pair: (-pair[1], pair[0]))
             all_sorted = [(iid, (score, id_to_path[iid])) for iid, score in reordered]
-        top = all_sorted[: self._top_k]
+        # Shortlist composition (issue #509): pinned always-include items and
+        # per-namespace diversity quotas.  Replaces a plain ``[:top_k]`` slice;
+        # a no-op identical to that slice when neither control is supplied.
+        top = compose_shortlist(
+            all_sorted,
+            active_items,
+            top_k=self._top_k,
+            pin_ids=pin_ids,
+            namespace_quota=namespace_quota,
+        )
 
         # Ambiguity reads from the untrimmed sorted view so that callers
         # using top_k=1 still see the runner-up signal (issue #14).
@@ -743,6 +813,11 @@ class Router:
             trace.extra["score_provider"] = type(self._score_provider).__name__
         if history_adjustments:
             trace.extra["history_adjustments"] = dict(history_adjustments)
+        applied_pins = sorted(pid for pid in (pin_ids or set()) if pid in active_items)
+        if applied_pins:
+            trace.extra["pinned"] = applied_pins
+        if namespace_quota is not None:
+            trace.extra["namespace_quota"] = namespace_quota
         top_items = [active_items[iid] for iid, _ in top if iid in active_items]
         # Clarifying question is rendered from the top of the untrimmed
         # sort so it stays useful when top_k=1.

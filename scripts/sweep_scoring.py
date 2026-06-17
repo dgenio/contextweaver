@@ -182,7 +182,18 @@ def _enumerate_grid(sample: int | None) -> list[ScoringConfig]:
     configs: list[ScoringConfig] = []
     for combo in itertools.product(*values):
         kwargs = dict(zip(keys, combo, strict=True))
-        configs.append(ScoringConfig(**kwargs))
+        # The grid only varies the float weight fields; build explicitly so the
+        # type checker sees float arguments (ScoringConfig also accepts the
+        # optional kind_priority / phase_overrides fields, issue #487).
+        configs.append(
+            ScoringConfig(
+                recency_weight=kwargs["recency_weight"],
+                tag_match_weight=kwargs["tag_match_weight"],
+                kind_priority_weight=kwargs["kind_priority_weight"],
+                token_cost_penalty=kwargs["token_cost_penalty"],
+                dedup_threshold=kwargs["dedup_threshold"],
+            )
+        )
     if sample is None or sample >= len(configs):
         return configs
     # Deterministic stratified sample — take every (n // sample)-th entry.

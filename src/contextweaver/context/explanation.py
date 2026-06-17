@@ -11,27 +11,16 @@ does the same for routing decisions.  Both stay strictly pure-data:
 no I/O, no randomness, no network calls.  Deterministic for a given
 input (sorted keys, rounded floats).
 
-Privacy
--------
+Privacy: the explanation surfaces item *ids*, *kinds*, *sensitivity levels*,
+*scores*, and *drop reasons* — never the raw ``ContextItem.text``, artifact
+bytes, or ``args_schema`` content (which can carry sensitive payloads).  Same
+posture as the routing explanation (see ``docs/agent-context/invariants.md``
+"Do not put schemas on ChoiceCard").
 
-The explanation surfaces item *ids*, *kinds*, *sensitivity levels*,
-*scores*, and *drop reasons*.  It does **not** surface the raw
-``ContextItem.text`` content, raw artifact bytes, or
-``args_schema`` content — those can carry sensitive payloads.  This
-is the same privacy posture as the routing explanation
-(``docs/agent-context/invariants.md`` "Do not put schemas on
-ChoiceCard").
-
-Public API
-----------
-
-* :class:`ContextBuildExplanation` — versioned dataclass with
-  ``to_dict`` / ``from_dict``.
-* :class:`CandidateExplanation` — per-candidate explanation entry.
-
-The dataclass is opt-in via ``ContextManager.build(..., explain=True)``;
-the default ``explain=False`` keeps the public surface unchanged for
-existing callers.
+Public API: :class:`ContextBuildExplanation` + :class:`CandidateExplanation`,
+both versioned dataclasses with ``to_dict`` / ``from_dict``.  Opt-in via
+``ContextManager.build(..., explain=True)``; the default ``explain=False``
+keeps the public surface unchanged for existing callers.
 """
 
 from __future__ import annotations
@@ -130,6 +119,9 @@ class ContextBuildExplanation:
         dedup_removed: How many items deduplication collapsed.
         budget_tokens: The effective phase budget after header/footer
             reservation.
+        resolved_weights: The scoring weights applied for this build's phase
+            (issue #487) — the per-phase override when registered, else the
+            global config. Keys: the four ``ScoringConfig`` weight fields.
         candidates: Per-candidate :class:`CandidateExplanation` entries
             ordered by inclusion (included first, then dropped),
             then by descending score within each group (then by id,
@@ -147,6 +139,7 @@ class ContextBuildExplanation:
     sensitivity_drops: int = 0
     dedup_removed: int = 0
     budget_tokens: int = 0
+    resolved_weights: dict[str, float] = field(default_factory=dict)
     candidates: list[CandidateExplanation] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -163,6 +156,7 @@ class ContextBuildExplanation:
             "sensitivity_drops": self.sensitivity_drops,
             "dedup_removed": self.dedup_removed,
             "budget_tokens": self.budget_tokens,
+            "resolved_weights": dict(self.resolved_weights),
             "candidates": [c.to_dict() for c in self.candidates],
         }
 
@@ -185,6 +179,9 @@ class ContextBuildExplanation:
             sensitivity_drops=int(data.get("sensitivity_drops", 0)),
             dedup_removed=int(data.get("dedup_removed", 0)),
             budget_tokens=int(data.get("budget_tokens", 0)),
+            resolved_weights={
+                str(k): float(v) for k, v in data.get("resolved_weights", {}).items()
+            },
             candidates=[CandidateExplanation.from_dict(c) for c in data.get("candidates", [])],
         )
 
@@ -203,6 +200,7 @@ def build_explanation(
     scored: Sequence[tuple[float, ContextItem]],
     selected_ids: set[str],
     budget_tokens: int,
+    resolved_weights: dict[str, float],
 ) -> ContextBuildExplanation:
     """Assemble a :class:`ContextBuildExplanation` from pipeline state.
 
@@ -236,6 +234,7 @@ def build_explanation(
         selected_ids: IDs that made it into the final pack.
         budget_tokens: The effective phase budget after header /
             footer reservation.
+        resolved_weights: The scoring weights applied for this phase (#487).
 
     Returns:
         A fully populated :class:`ContextBuildExplanation`.
@@ -327,6 +326,7 @@ def build_explanation(
         sensitivity_drops=sensitivity_drops,
         dedup_removed=dedup_removed,
         budget_tokens=budget_tokens,
+        resolved_weights=dict(resolved_weights),
         candidates=candidates,
     )
 

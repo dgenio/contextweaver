@@ -23,14 +23,15 @@ It prepares context and routes tools but never calls models or executes tools.
 | `envelope.py` | Result types: `ResultEnvelope`, `BuildStats`, `DroppedItem`, `ContextPack`, `ChoiceCard`, `HydrationResult`, `RoutingDecision` |
 | `diagnostics.py` | Versioned, payload-safe gateway events and sinks (`DiagnosticEvent`, `DiagnosticSink`, JSONL/in-memory sinks) plus deterministic aggregate reports (issues #370/#378). |
 | `inspection.py` | Pure JSON/Markdown report construction for offline context, routing, and artifact inspection without raw payload content (issue #398). |
-| `config.py` | Configuration: `ContextBudget`, `ContextPolicy`, `ScoringConfig` |
+| `config.py` | Configuration: `ContextBudget`, `ContextPolicy` (incl. `overflow_action` budget-overflow policy, issue #510), and re-exported `ScoringConfig` |
+| `_scoring_config.py` | `ScoringConfig` — candidate-scorer weights, incl. `kind_priority` + per-`Phase` `phase_overrides` (issue #487). Extracted from `config.py` to keep it ≤300 lines; re-exported there so `from contextweaver.config import ScoringConfig` is unchanged. |
 | `profiles.py` | Routing and profile config: `Mode`, `RoutingConfig`, `ProfileConfig`, named presets |
 | `protocols.py` | Protocol interfaces: `TokenEstimator`, `EventHook`, `Summarizer`, `Extractor`, `RedactionHook`, `SensitivityClassifier` (ingestion-time labelling, issue #542), `MemorySource`, `Labeler`, `Retriever`, `Reranker`, `ClusteringEngine`, `RoutingScoreProvider` (store protocols re-exported from `store/protocols.py`). Bundled estimators: `HeuristicEstimator` (default, script-aware, dependency-free — counts CJK/Kana/Hangul/emoji ≈1 token/char, issue #525), `CharDivFourEstimator` (raw `len // 4` primitive), `TiktokenEstimator` (exact, falls back to `HeuristicEstimator` offline). Each carries a stable `name` for `BuildStats.token_estimator`. |
 | `store/protocols.py` | Store-layer protocols: `EventLog`, `ArtifactStore`, `EpisodicStore`, `FactStore` |
 | `store/async_protocols.py` | Async counterparts `AsyncEventLog` / `AsyncArtifactStore` / `AsyncEpisodicStore` / `AsyncFactStore` (issue #495) — same surface, `async def`. Consumed only by the async `context/` path; backend-agnostic. |
 | `store/async_bridge.py` | `to_async(sync_store)` — wraps a *thread-safe* sync backend as the matching async protocol via `asyncio.to_thread`. Thread-affine backends (`SqliteEventLog`, `check_same_thread=True`) are not valid targets (issue #495). |
 | `store/_async_to_sync.py` | Inverse bridges + `to_sync(async_store, loop)` + `is_async_store()` (issue #495). Drives async stores on a private `_LoopThread` so the existing sync pipeline can consume them; `ContextManager` offloads `build` to a worker thread when async-backed. Not public API. |
-| `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`) |
+| `exceptions.py` | Custom exception hierarchy (all errors inherit `ContextWeaverError`). Each class carries a stable, frozen `code` (e.g. `CW_CONFIG`) plus an optional `hint`; `str(exc)` renders `[code] message (hint: …)`. Codes are documented in `docs/errors.md` and golden-listed in `tests/test_exceptions.py` (issues #635, #637). |
 | `_utils.py` | Text similarity primitives: `tokenize()`, `jaccard()`, `TfIdfScorer` |
 | `secrets.py` | Pure, deterministic secret detection/scrubbing primitives: `scrub_secrets()`, `scrub_secrets_in_list()`, `contains_secret()`, `SecretPattern` (issue #428). Shared by the firewall secret-scrub, the `SecretRedactor` hook, the sensitivity classifier, and ChoiceCard scrubbing. No I/O; never weakens a surface (only removes characters). |
 | `_version.py` | Single-source version derived from `importlib.metadata`; fallback `"0.0.0+local"` |
@@ -61,7 +62,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `context/memory_source.py` | `memory_entries_to_context_items` / `select_memory_for_phase` helpers that materialise memory entries into budgeted `memory_fact` candidates (issue #293). |
 | `context/handoff_types.py` | `HandoffEntry` + `SessionHandoffPack` dataclasses and canonical handoff category constants (issue #294). |
 | `context/handoff.py` | `build_session_handoff_pack` / `render_handoff_pack` — deterministic, budget-aware, sensitivity- and firewall-respecting session continuity snapshot (issue #294). |
-| `context/explanation.py` | `ContextBuildExplanation` + `CandidateExplanation` opt-in debug surface returned by `ContextManager.build(..., explain=True)` (issue #291). Sister to `routing/explanation.py` on the routing side. |
+| `context/explanation.py` | `ContextBuildExplanation` + `CandidateExplanation` opt-in debug surface returned by `ContextManager.build(..., explain=True)` (issue #291); carries `resolved_weights` (the per-phase scoring weights applied, issue #487). Sister to `routing/explanation.py` on the routing side. |
+| `context/build_policy.py` | Pure build-pipeline policy helpers (not public API): `override_phase_budget` / `adjust_budget_for_header` (budget math), `enforce_overflow_policy` (`ContextPolicy.overflow_action`, issue #510), and `render_pack_prompt` (caller-owned `renderer` hook, issue #410). Extracted from `build.py` to keep it within its size ceiling. |
 | `context/classify.py` | Opt-in deterministic ingestion-time sensitivity classification (issue #542): `HeuristicSensitivityClassifier` (implements the `SensitivityClassifier` protocol) + `detect_sensitivity()`. Runs at the start of the pipeline's sensitivity stage and over fact/episode header content; may only **raise** a label, never lower it. Reuses `secrets.contains_secret` plus PII markers. |
 | `context/secret_redaction.py` | Opt-in `SecretRedactor` `RedactionHook` (issue #428): substring-scrubs secret shapes from an item's text via `secrets.scrub_secrets`. Registered under the name `"secret"` for `ContextPolicy.redaction_hooks`; complements (does not replace) `MaskRedactionHook`. |
 | `routing/` | `Catalog`, `ChoiceGraph`, `TreeBuilder`, `Router` (beam search), card renderer |
@@ -70,6 +72,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
 | `routing/catalog.py` (validation) | `validate_references` / `Catalog.validate_references` → `CatalogValidationReport` of dangling `depends_on`/`requires` refs; loaders take `on_invalid` (`"warn"`/`"raise"`/`"ignore"`) and raise `CatalogValidationError` in raise mode (issue #519) |
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
+| `routing/index_cache.py` | Persistent, reusable fitted-index cache (issues #543/#624/#685): `RoutingIndexCache` (in-process LRU + optional deterministic-JSON on-disk layer) and `CachedRetriever` (a `Retriever` wrapper that loads/stores the fitted index keyed by a corpus fingerprint, transparently — warm loads score byte-identically to a cold fit). Pass via `Router(retriever=CachedRetriever(TfIdfRetriever(), cache))`. Codec + fingerprint live in `routing/_index_codec.py`. |
+| `routing/_index_codec.py` | Private helper for `index_cache.py`: `index_fingerprint()` (deterministic ordered-corpus SHA-256) + the `IndexCodec` contract and bundled `TFIDF_CODEC`. Not public API; names re-exported from `index_cache`. |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
 | `routing/explanation.py` | `RouteResult.explanation()` Markdown / dict rendering (issue #226) |
 | `routing/pipeline.py` | `RoutingPipeline` composer — explicit retrieve → rerank → navigate → pack stages (issue #56) |
@@ -77,25 +81,43 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/packer.py` | `DefaultCardPacker` wrapping `make_choice_cards` for the pipeline pack stage (issue #56) |
 | `routing/history.py` | `RouteHistory` dataclass + `adjust_scores` (history-aware re-routing, issue #27) |
 | `routing/feedback.py` | Optional feedback-aware routing scores (issue #318): `ExecutionFeedback` (contextweaver-native, **not** a weaver-spec type), `DeterministicScoreProvider` (default no-op), `FeedbackAwareScoreProvider`, `aggregate_feedback`. Plugs into `Router(score_provider=...)`; default `None` keeps routing deterministic. |
+| `routing/selection.py` | Structured route→select contract (issues #515/#479), both pure/deterministic: `selection_schema` emits the routed candidate IDs as a provider-native constrained-selection schema (`json_schema`/`openai`/`anthropic`) so a model can only pick a routed `tool_id` ("constrain before"); `validate_selection` → `SelectionValidation` validates/repairs (strip → case-fold → unique-prefix; ambiguous matches rejected, never guessed) a returned ID against the candidates ("validate after"). Surfaced on `RouteResult.selection_schema()` / `RouteResult.validate_selection()`; `to_routing_decision` resolves + records the outcome. Shortlist composition (`pin_ids` always-include + per-namespace `namespace_quota`, issue #509) lives in `routing/filters.compose_shortlist` and is exposed via `Router.route(...)`. |
 | `extras/embeddings.py` | `SentenceTransformerBackend` + `HybridEmbeddingRetriever` + `HashingEmbeddingBackend` (re-exported) behind the `[embeddings]` extra (issue #8) |
 | `extras/embeddings_hashing.py` | `HashingEmbeddingBackend` — stdlib-only deterministic `EmbeddingBackend` using blake2b hashing trick; no extras required (issue #266) |
 | `_schema_gen.py` | Dataclass → JSON Schema (Draft 2020-12) generator + `make schemas-check` engine (issue #225) |
 | `routing/tool_id.py` | Canonical `tool_id` grammar (`parse_tool_id` / `format_tool_id` / `compute_hash8`) per `docs/gateway_spec.md` §1 |
+| `routing/primitive_id.py` | Unified cross-primitive identity + collision policy for tools/resources/prompts (`parse_primitive_id` / `format_primitive_id` / `canonical_resource_id` / `canonical_prompt_id` / `resolve_collisions`) per `docs/gateway_spec.md` §9. Tools keep the bare `tool_id`; resources/prompts get disjoint `kind::` ids (issue #671). |
 | `routing/path.py` | `tool_browse` path-navigation grammar (`parse_path` / `resolve_path`) per `docs/gateway_spec.md` §3 |
 | `routing/hydration.py` | Public schema-hydration helpers — `SchemaSource` (from raw dict / JSON file / MCP tools-list), `hydrate_with_schema`, `lazy_schema_resolver`. Reference architectures use these to resolve a tool's full input schema from a sidecar source rather than hand-rolling a `_FULL_SCHEMAS` dict. Inline `args_schema` on the catalog item wins; sidecar only fills empties. Issue #261. |
-| `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI, Pydantic AI, smolagents, Agno protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories (issues #13, #28, #29, #34, #193, #194, #219, #222, #272, #274, #275) |
+| `adapters/` | MCP, FastMCP, A2A, weaver-spec, CrewAI, Pydantic AI, smolagents, Agno, LangChain, OpenAI Agents SDK, Google ADK, Microsoft Agent Framework, OpenAPI, Agent Skills protocol adapters + MCP proxy / gateway runtime + provider-message ingestion helpers for OpenAI / Anthropic / Gemini chat histories. Framework tool-catalog adapters share `adapters/_framework_common.py` (issue #454). (issues #13, #28, #29, #34, #193, #194, #219, #222, #272, #274, #275, #430, #454, #501, #502, #545, #546, #547) |
 | `adapters/chainweaver.py` | ChainWeaver flow-export → `SelectableItem(kind="flow")` import (`chainweaver_flow_to_selectable`, `chainweaver_flows_to_catalog`, `load_chainweaver_export`, issue #334). Pure data; no ChainWeaver dependency. Preserves name/description/input+output schemas; stamps `metadata["runtime"]="chainweaver"` + flow id/version. |
 | `adapters/crewai.py` | CrewAI `BaseTool` (or equivalent plain-dict shape) ↔ `SelectableItem` (`crewai_tool_to_selectable`, `crewai_tools_to_catalog`, `infer_crewai_namespace`, `load_crewai_catalog`, issue #193) |
 | `adapters/pydantic_ai.py` | Pydantic AI `Tool` ↔ `SelectableItem` and `ModelMessage` ↔ `ContextItem` lossless round-trip (`pydantic_ai_tool_to_selectable`, `pydantic_ai_tools_to_catalog`, `load_pydantic_ai_catalog`, `from_/to_pydantic_ai_messages`, issue #272) — heavy decode/encode helpers live in `adapters/_pydantic_ai_messages.py` |
 | `adapters/smolagents.py` | Hugging Face smolagents `Tool` ↔ `SelectableItem` and `MultiStepAgent.memory.steps` → `ContextItem`s (`smolagents_tool_to_selectable`, `smolagents_tools_to_catalog`, `load_smolagents_catalog`, `from_smolagents_agent`, issue #274) |
 | `adapters/agno.py` | Agno (formerly Phidata) `Function` / `Toolkit` ↔ `SelectableItem` and `AgentSession` → `ContextItem`s (`agno_tool_to_selectable`, `agno_tools_to_catalog`, `load_agno_catalog`, `from_agno_session`, issue #275) |
+| `adapters/_framework_common.py` | Shared, framework-agnostic conversion scaffolding for the framework tool-catalog adapters (issue #454): `infer_namespace`, `strip_namespace_prefix`, `coerce_schema_dict`, `collect_tags`, `require_name_description`. Pure/stateless, imports no framework lib. Private — not exported. New adapters reuse these instead of re-implementing namespace/schema/tag mechanics. |
+| `adapters/langchain.py` | LangChain `BaseTool` (or equivalent plain-dict shape) ↔ `SelectableItem` (`langchain_tool_to_selectable`, `langchain_tools_to_catalog`, `infer_langchain_namespace`, `load_langchain_catalog`, issue #502). `[langchain]` extra for live loading; plain-dict path needs no extra. |
+| `adapters/openai_agents.py` | OpenAI Agents SDK `FunctionTool` ↔ `SelectableItem` and run items → `ContextItem`s (`openai_agents_tool_to_selectable`, `openai_agents_tools_to_catalog`, `load_openai_agents_catalog`, `from_openai_agents_run`, issue #501). Run-item ingestion lives in `adapters/_openai_agents_run.py`. `[openai-agents]` extra for live loading. |
+| `adapters/google_adk.py` | Google ADK tools ↔ `SelectableItem` and `Session.events` → `ContextItem`s (`google_adk_tool_to_selectable`, `google_adk_tools_to_catalog`, `load_google_adk_catalog`, `from_google_adk_session`, issue #547). Session ingestion lives in `adapters/_google_adk_session.py`. `[google-adk]` extra for live loading. |
+| `adapters/agent_framework.py` | Microsoft Agent Framework (AutoGen / Semantic Kernel lineage) tools ↔ `SelectableItem` and thread `ChatMessage`s → `ContextItem`s (`agent_framework_tool_to_selectable`, `agent_framework_tools_to_catalog`, `load_agent_framework_catalog`, `from_agent_framework_thread`, issue #430). Thread ingestion lives in `adapters/_agent_framework_thread.py`. `[agent-framework]` extra for live loading. |
+| `adapters/openapi.py` | OpenAPI 3.0/3.1 operations → `SelectableItem` catalog (`openapi_operation_to_selectable`, `openapi_spec_to_catalog`, `load_openapi_catalog`, `infer_openapi_namespace`, issue #546). Routes over REST APIs; never calls them. Local `$ref` resolution + `parameters`/`requestBody` → `args_schema` composition + method→safety tags live in `adapters/_openapi_schema.py`. No extra — PyYAML/jsonschema are core. |
+| `adapters/agent_skills.py` | Agent Skills (`SKILL.md`) directories → `kind="skill"` `SelectableItem`s with lazy body hydration (`skill_to_selectable`, `load_skills_catalog`, `parse_skill_frontmatter`, `SkillBodySource`, issue #545). Frontmatter routes; `SkillBodySource` resolves the body/resources on selection (mirrors `routing/hydration.SchemaSource`). No extra — PyYAML is core. |
 | `adapters/proxy_runtime.py` | `ProxyRuntime` shared core + `ExposureMode` enum + `UpstreamCall` Protocol (issue #29) |
 | `adapters/gateway_diagnostics.py` / `gateway_catalog_diagnostics.py` | Sanitized `ProxyRuntime` instrumentation plus exact gateway/proxy static-schema exposure calculations: catalog, browse/hydrate/execute/view events, savings, artifact-view usage, and latency (issues #370/#378). |
 | `adapters/mcp_gateway.py` | Two-tool gateway dispatch (`tool_browse` + `tool_execute` + `tool_view`, issues #28 / #34) |
 | `adapters/mcp_proxy.py` | Transparent proxy dispatch (stripped `tools/list` + `tool_hydrate` + `tool_execute`, issue #13) |
 | `adapters/mcp_upstream.py` | Concrete `UpstreamCall` adapters (`StubUpstream`, `McpClientUpstream`, `MultiplexUpstream`) |
-| `adapters/mcp_gateway_server.py` | Bind `mcp_gateway` onto `mcp.server.Server` over stdio (issue #28) |
+| `adapters/mcp_gateway_server.py` | Bind `mcp_gateway` onto `mcp.server.Server` over stdio (issue #28); optional `primitive_runtime=` also advertises/dispatches the four resource/prompt meta-tools (issues #669/#670) |
+| `adapters/mcp_primitives.py` | MCP resource/prompt → `SelectableItem(kind="resource"/"prompt")` converters + `resources/read` / `prompts/get` result→envelope wrappers (issues #669/#670). Emits ids via `routing/primitive_id`. |
+| `adapters/gateway_primitives.py` | `PrimitiveGatewayRuntime` + `PrimitiveUpstream` Protocol — bounded-choice routing + firewall for resources/prompts, sharing the tool runtime's `ContextManager` (issues #669/#670/#555). |
+| `adapters/_primitive_index.py` | Private single-kind catalog+graph+router+browse helper for `gateway_primitives` (keeps it ≤300 lines). Not public API. |
+| `adapters/mcp_gateway_primitives.py` | The four resource/prompt gateway meta-tools (`resource_browse` / `resource_read` / `prompt_browse` / `prompt_get`) + dispatch, mirroring `mcp_gateway` (issues #669/#670). |
+| `adapters/mcp_primitive_upstream.py` | Concrete `PrimitiveUpstream` adapters mirroring `mcp_upstream`: `StubPrimitiveUpstream` (in-process), `McpClientPrimitiveUpstream` (wraps an MCP `ClientSession`), `MultiplexPrimitiveUpstream` (multi-server fan-out). Transport errors raise (the runtime classifies them) per the Protocol contract (issues #669/#670). |
 | `adapters/mcp_proxy_server.py` | Bind `mcp_proxy` onto `mcp.server.Server` over stdio (issue #13) |
+| `adapters/sidecar_contract.py` | HTTP sidecar wire contract (issue #674): `RouteRequest`/`RouteResponse`/`CompactRequest`/`CompactResponse`/`SidecarError` dataclasses + `SIDECAR_API_VERSION`. Pure, dependency-free; the published JSON Schemas live under `schemas/sidecar/v1/`. |
+| `adapters/sidecar.py` | HTTP sidecar runtime (issue #675/#676): `SidecarConfig` + `SidecarApp.dispatch` — transport-free `(method, path, headers, body) → (status, json)` over the sync `Router` (`/v1/route`) and `compact_tool_result` facade (`/v1/compact`). Optional bearer-token auth, per-client rate limiting (reuses `gateway_controls.RateLimiter`), body-size cap, and typed `SidecarError` responses; never raises across the HTTP boundary. |
+| `adapters/_sidecar_http.py` | Stdlib `http.server.ThreadingHTTPServer` binding for `SidecarApp` (issue #675). No third-party dependency. Public re-exports: `serve_api` (blocking serve) + `make_sidecar_server` (build-only, for tests). Not public API itself. |
+| `adapters/_sidecar_validation.py` | Stateless parsing + field-validation helpers shared by `sidecar.py` and `sidecar_contract.py` (request-body JSON decode, bearer-token extraction, typed contract-field coercions). Pure, dependency-free; raises `ConfigError` on malformed input. Not public API. |
 | `adapters/gateway_error.py` | Structured `GatewayError` (codes + §3.4 wire shape) + `retryable` hint. Upstream-error taxonomy: `classify_upstream_exception` maps timeouts/connection/auth/permission/rate failures to `UPSTREAM_TIMEOUT`/`UPSTREAM_UNAVAILABLE`/`AUTH_FAILED`/`PERMISSION_DENIED`/`RATE_LIMITED` (fallback `UPSTREAM_ERROR`); `redact_upstream_detail` strips control chars + caps length on model-visible detail (issue #485). |
 | `adapters/gateway_validation.py` | Untrusted-schema hardening for the gateway ingest path (issues #464/#484): `SchemaLimits`/`SchemaFinding`/`SkippedTool`/`CatalogRefreshReport`, `check_schema_health` (meta-validation + iterative size/depth/property bounds), `build_validator` (cached per `tool_id`). Pure, deterministic; iterative traversal avoids stack exhaustion on hostile schemas. |
 | `adapters/gateway_args.py` | Opt-in deterministic tool-call argument repair (issue #488): `normalize_args` (stringified-object parse + schema-demanded `str→int/number/boolean/null` coercion) + `Repair`. Gated behind `ProxyRuntime(tolerant_args=True)`; never renames keys, drops keys, or fuzzy-matches. |
@@ -144,7 +166,7 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 
 | Type | Purpose |
 |---|---|
-| `SelectableItem` | Unified tool/agent/skill/flow/internal item (`kind="flow"` = external multi-step capability, e.g. a ChainWeaver flow). Alias: `ToolCard` (use `SelectableItem` in code). |
+| `SelectableItem` | Unified tool/agent/skill/flow/internal item (`kind="flow"` = external multi-step capability, e.g. a ChainWeaver flow). Deprecated alias: `ToolCard` (use `SelectableItem` in code; removal in 1.0 — see [docs/upgrading.md](docs/upgrading.md)). |
 | `ContextItem` | Event log entry with `parent_id` for dependency closure |
 | `ResultEnvelope` | Processed tool output: summary + facts + artifacts + views |
 | `ContextPack` | Rendered prompt + stats from a context build |
@@ -165,11 +187,13 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 | `ProxyRuntime` | Shared core for MCP proxy (#13) and gateway (#28) modes — owns upstream catalog, per-session `ContextManager`, browse / execute / view dispatch; persisted text results are returned as envelope artifact refs for `tool_view`. Hardens the untrusted-input boundary (issues #464/#484/#485/#488): `on_invalid` (skip/raise) + `schema_limits` + `last_refresh_report` at ingest, cached per-`tool_id` validators, classified+redacted upstream errors, and opt-in `tolerant_args`. Opt-in dispatch-path controls (issues #529/#482/#512/#483): `retry_policy`, `rate_limiter`, `result_cache`, and `tool_execute(dry_run=True)` — all inert by default; catalog refresh rebuilds all derived state atomically (#507). |
 | `ExposureMode` | `TRANSPARENT` (#13) vs `GATEWAY` (#28) for `ProxyRuntime` |
 | `UpstreamCall` | Transport-agnostic Protocol over upstream MCP fan-out (used by `ProxyRuntime`) |
+| `PrimitiveGatewayRuntime` | Resource/prompt counterpart to `ProxyRuntime`: bounded-choice browse + firewalled read/get over MCP resources and prompts, sharing the tool runtime's `ContextManager` (issues #669/#670) |
+| `PrimitiveUpstream` | Transport-agnostic Protocol for upstream `resources/list` / `resources/read` / `prompts/list` / `prompts/get` (sibling of `UpstreamCall`) |
 | `GatewayError` | Structured error payload (§3.4) returned from every gateway/proxy meta-tool. Carries a `retryable` hint and a classified upstream-error taxonomy (issue #485) plus the `SCHEMA_INVALID` ingest code (issue #484) |
 | `ToolIdParts` | Destructured canonical `tool_id` (namespace / name / version / hash8) |
 
 **Vocabulary notes:**
-- `SelectableItem` is the canonical name. `ToolCard` is a user-facing alias — use `SelectableItem` in code and docs.
+- `SelectableItem` is the canonical name. `ToolCard` is a **deprecated** alias (documentation-only deprecation, scheduled for removal in 1.0 — see [docs/upgrading.md](docs/upgrading.md)) — use `SelectableItem` in code and docs.
 - "Context" is overloaded — can mean `ContextItem`, `ContextPack`, the pipeline, or the LLM context window. Disambiguate when unclear. See [docs/concepts.md](docs/concepts.md).
 - "Firewall" here means context firewall (prevents large outputs from consuming the token budget), not a security firewall.
 
@@ -178,12 +202,12 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 ```bash
 make fmt      # ruff format src/ tests/ examples/ scripts/
 make lint     # ruff check src/ tests/ examples/ scripts/
-make type     # mypy src/
+make type     # mypy src/ examples/ scripts/  (examples + scripts gated too, #539)
 make test     # python -m pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures via the umbrella target)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + schemas-check + example + demo
+make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
 make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -195,6 +219,13 @@ make scorecard        # render benchmarks/scorecard.md from benchmarks/results/l
 make scorecard-check  # verify scorecard.md is up to date (exits non-zero on drift)
 make schemas         # regenerate schemas/ + docs/schemas/v0/ (issue #225)
 make schemas-check    # verify published schemas match dataclasses (gating, in `make ci`)
+make drift            # regenerate every committed generated artifact (issue #522)
+make drift-check      # one gate over all generated-artifact drift checks (in `make ci`, #522)
+make api             # regenerate api/public_api.txt (public-API manifest, #518)
+make api-check        # verify the public-API manifest matches the surface (in drift-check, #518)
+make module-size-check # enforce the ≤300-line convention; frozen baseline (gating, #456)
+make module-size-update # re-snapshot scripts/module_size_baseline.json (deliberate use only)
+make doc-snippets-check # execute README + curated docs Python snippets (gating, #526)
 make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks/sweep_scoring.md
 make context-rot       # render the context-rot demo: benchmarks/results/context_rot.json + docs/assets/context_rot.svg (#349)
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating in CI; exits non-zero on drift)
@@ -222,7 +253,7 @@ These are strongly recommended. Engineering judgment applies — deviate with go
 
 - **Text similarity in `_utils.py` only** — `tokenize()`, `jaccard()`, `TfIdfScorer` are the single source of truth. Do not duplicate.
 - **`from __future__ import annotations`** in every source file.
-- **All exceptions from `contextweaver.exceptions`** — use the custom hierarchy, not bare `ValueError`/`RuntimeError`.
+- **All exceptions from `contextweaver.exceptions`** — use the custom hierarchy, not bare `ValueError`/`RuntimeError`. A new exception class needs a unique stable `code`, a `GOLDEN_CODES` entry in `tests/test_exceptions.py`, and a section in `docs/errors.md`.
 - **`to_dict()` / `from_dict()` on all dataclasses** — complements `serde.py`; they are not redundant. See [invariants](docs/agent-context/invariants.md#serialization-design).
 - **Deterministic by default** — tie-break by ID, sorted keys. No randomness in core pipelines.
 - **No wildcard imports** — never use `from contextweaver import *`.
@@ -240,6 +271,12 @@ These are strongly recommended. Engineering judgment applies — deviate with go
   `mcp serve` graduates from `[experimental]` to stable), and `_demos.py`
   (CLI demo-output module — print-heavy walkthrough scripts backing the
   `demo` subcommand, same rationale as `__main__.py`).
+  Enforced mechanically by `make module-size-check` (issue #456): new
+  non-exempt modules must stay ≤300 lines, and pre-existing oversized modules
+  are **grandfathered** at their current size in
+  `scripts/module_size_baseline.json` and frozen — they may shrink but may not
+  grow past their recorded ceiling. Decomposing a grandfathered module lowers
+  its ceiling via `make module-size-update`.
 - **Core runtime dependencies.** The core install pulls `tiktoken`, `PyYAML`, `rank-bm25`, plus `mcp` and `jsonschema` (added when the proxy / gateway runtimes landed — both are load-bearing for `docs/gateway_spec.md` §4.4 schema validation and the MCP transport binding).  Adding *another* core dependency requires explicit justification: broad ecosystem use, small wheel, and a default the library would otherwise have to approximate.  Heavy or runtime-specific packages (CLI, OpenTelemetry, fuzzy retrieval, ANN, NetworkX, FastMCP, LangChain) live under `[project.optional-dependencies]` and are loaded via guarded imports.
 - **Dependency-constraint policy** (issue #356). Specifiers are **lower-bound-only** (`>=`), set to the lowest version *actually known to work* — no `==` pins, no speculative upper caps. The only caps kept carry an inline rationale (pre-1.0 `weaver_contracts<1`; docs-extra major pins). Two CI jobs enforce this: a **gating floor-deps job** (`uv pip install --resolution lowest-direct`, Python 3.10, in `ci.yml`) proves the `>=` floors, and a **non-gating weekly** `deps-latest-weekly.yml` (latest + pre-releases) is the no-upper-cap safety net. Raising a floor is a real change — verify with the floor-deps job. Python support is **3.10–3.13**, every cell gating in the CI matrix (3.14 is pending — the heavy dev/adapter stack still caps at `Requires-Python <3.14`).
 

@@ -13,10 +13,11 @@ Fixes # <!-- issue number, if applicable -->
 ## Checklist
 
 - [ ] Tests added or updated for every new/changed public function
-- [ ] `make ci` passes locally (fmt + lint + type + test + schemas-check + example + demo)
+- [ ] `make ci` passes locally (fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo)
 - [ ] `CHANGELOG.md` updated under `## [Unreleased]`
 - [ ] Docstrings added for all new public APIs (Google-style)
-- [ ] Every modified module stays ≤ 300 lines (or a decomposition issue is linked above)
+- [ ] Public-API change? Regenerated `api/public_api.txt` with `make api` (gated by `make api-check`)
+- [ ] Every modified module stays ≤ 300 lines (enforced by `make module-size-check`; or a decomposition issue is linked above)
 - [ ] Related issue linked in the summary above
 - [ ] Agent-facing docs updated if pipeline, API, or conventions changed
 

@@ -48,3 +48,33 @@ def test_policy_kind_boost() -> None:
     scored = score_candidates([policy_item, user_item], "policy", [], cfg)
     # policy kind should score higher
     assert scored[0][1].kind == ItemKind.policy
+
+
+def test_kind_priority_override_changes_ordering() -> None:
+    """A kind_priority override flips the default kind ranking (#487)."""
+    doc = _item("d1", ItemKind.doc_snippet, "shared text")
+    policy = _item("p1", ItemKind.policy, "shared text")
+    # Default: policy (1.0) outranks doc_snippet (0.4).
+    assert score_candidates([doc, policy], "shared", [], ScoringConfig())[0][1].id == "p1"
+    # Override: lift doc_snippet above policy.
+    boosted = ScoringConfig(kind_priority={ItemKind.doc_snippet: 1.0, ItemKind.policy: 0.1})
+    assert score_candidates([doc, policy], "shared", [], boosted)[0][1].id == "d1"
+
+
+def test_kind_priority_override_falls_back_for_unlisted_kinds() -> None:
+    """Unlisted kinds keep the built-in priority (#487)."""
+    cfg = ScoringConfig(kind_priority={ItemKind.doc_snippet: 0.9})
+    # user_turn is not in the override, so its built-in 0.85 still applies and
+    # outranks tool_result's built-in 0.55.
+    user = _item("u1", ItemKind.user_turn, "x")
+    tool = _item("t1", ItemKind.tool_result, "x")
+    scored = score_candidates([tool, user], "y", [], cfg)
+    assert scored[0][1].id == "u1"
+
+
+def test_retrieved_doc_outranks_doc_snippet_by_default() -> None:
+    """retrieved_doc carries a slightly higher default priority (#411)."""
+    retrieved = _item("r1", ItemKind.retrieved_doc, "shared text")
+    doc = _item("d1", ItemKind.doc_snippet, "shared text")
+    scored = score_candidates([doc, retrieved], "shared", [], ScoringConfig())
+    assert scored[0][1].id == "r1"

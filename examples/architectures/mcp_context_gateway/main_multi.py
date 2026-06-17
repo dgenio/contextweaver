@@ -229,8 +229,8 @@ def main() -> None:
     # 1. Load the 60-tool catalog and build a routing graph.
     # ------------------------------------------------------------------
     catalog = Catalog()
-    for item in load_catalog_yaml(CATALOG_PATH):
-        catalog.register(item)
+    for selectable in load_catalog_yaml(CATALOG_PATH):
+        catalog.register(selectable)
     catalog_tools = len(catalog.all())
     schemas = SchemaSource.from_json_file(SCHEMAS_PATH)
 

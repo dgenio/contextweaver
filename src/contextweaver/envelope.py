@@ -585,7 +585,23 @@ class ContextPack:
 CHOICE_CARD_NAME_MAX_LEN: int = 64
 CHOICE_CARD_TAG_MAX_LEN: int = 24
 CHOICE_CARD_TAGS_MAX_COUNT: int = 5
-CHOICE_CARD_KINDS: tuple[str, ...] = ("tool", "agent", "skill", "internal", "flow")
+CHOICE_CARD_KINDS: tuple[str, ...] = (
+    "tool",
+    "agent",
+    "skill",
+    "internal",
+    "flow",
+    "resource",
+    "prompt",
+)
+
+#: Permitted values for the first-class :attr:`ChoiceCard.safety` field
+#: (issue #516).  ``""`` means *unspecified* (the upstream declared no
+#: read-only/destructive hint); ``"read_only"`` and ``"destructive"`` are the
+#: two MCP-derived safety classes.  The value is a preserved, capping-immune
+#: signal — distinct from the droppable ``destructive`` / ``read-only`` *tags*
+#: — that runtime policy layers (issue #373) can key on.
+CHOICE_CARD_SAFETY_LEVELS: tuple[str, ...] = ("", "read_only", "destructive")
 
 
 @dataclass
@@ -602,6 +618,16 @@ class ChoiceCard:
     - ``tags`` ≤ :data:`CHOICE_CARD_TAGS_MAX_COUNT` (5) entries,
       each ≤ :data:`CHOICE_CARD_TAG_MAX_LEN` (24) characters.
     - ``kind`` ∈ :data:`CHOICE_CARD_KINDS`.
+    - ``safety`` ∈ :data:`CHOICE_CARD_SAFETY_LEVELS` (issue #516).
+
+    ``safety`` is a first-class, capping-immune mirror of the read-only /
+    destructive MCP annotation.  The renderer caps ``tags`` at five entries
+    (``gateway_spec.md`` §2.1), so a tag-rich item could otherwise lose its
+    ``destructive`` marker; ``safety`` guarantees the signal survives and gives
+    runtime policy layers (issue #373) a stable field to key on instead of a
+    droppable tag.  It is informational only — like the underlying annotation
+    it is **not** an authorization control (see the SECURITY NOTE in
+    ``adapters/mcp.py``).
 
     Violations raise :class:`~contextweaver.exceptions.ValidationError` at
     construction time so the invariants hold for every code path (including
@@ -613,12 +639,13 @@ class ChoiceCard:
     name: str
     description: str
     tags: list[str] = field(default_factory=list)
-    kind: Literal["tool", "agent", "skill", "internal", "flow"] = "tool"
+    kind: Literal["tool", "agent", "skill", "internal", "flow", "resource", "prompt"] = "tool"
     namespace: str = ""
     has_schema: bool = False
     score: float | None = None
     cost_hint: float = 0.0
     side_effects: bool = False
+    safety: Literal["", "read_only", "destructive"] = ""
 
     def __post_init__(self) -> None:
         """Enforce the gateway-spec §2 size bounds (issue #225)."""
@@ -626,6 +653,11 @@ class ChoiceCard:
             raise ValidationError(
                 f"ChoiceCard.kind must be one of {CHOICE_CARD_KINDS}, "
                 f"got {self.kind!r}; see docs/gateway_spec.md §2"
+            )
+        if self.safety not in CHOICE_CARD_SAFETY_LEVELS:
+            raise ValidationError(
+                f"ChoiceCard.safety must be one of {CHOICE_CARD_SAFETY_LEVELS}, "
+                f"got {self.safety!r}; see docs/gateway_spec.md §2.1"
             )
         if len(self.name) > CHOICE_CARD_NAME_MAX_LEN:
             raise ValidationError(
@@ -656,6 +688,7 @@ class ChoiceCard:
             "has_schema": self.has_schema,
             "cost_hint": self.cost_hint,
             "side_effects": self.side_effects,
+            "safety": self.safety,
         }
         if self.score is not None:
             d["score"] = self.score
@@ -675,6 +708,7 @@ class ChoiceCard:
             score=data.get("score"),
             cost_hint=float(data.get("cost_hint", 0.0)),
             side_effects=bool(data.get("side_effects", False)),
+            safety=data.get("safety", ""),
         )
 
 

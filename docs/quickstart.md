@@ -41,6 +41,7 @@ Time budget:
 If you have an OpenAI Chat Completions session saved as JSON, you can build
 a context pack in five lines (plus imports):
 
+<!-- snippet: skip (illustrative; reads the reader's own session.json) -->
 ```python
 import json
 from contextweaver.adapters.openai_messages import from_openai_messages
@@ -60,6 +61,7 @@ inverse for round-tripping back into the OpenAI SDK.
 
 Anthropic and Google Gemini have sibling adapters with the same shape:
 
+<!-- snippet: skip (illustrative fragment; mirrors the OpenAI block above) -->
 ```python
 from contextweaver.adapters.anthropic_messages import from_anthropic_messages
 from contextweaver.adapters.gemini_contents import from_gemini_contents
@@ -147,8 +149,32 @@ If you are working from a repository checkout instead, install the package in ed
 pip install -e ".[dev]"
 ```
 
-`pipx run contextweaver demo --scenario killer` is the equivalent isolated
-path for pipx users.
+Verify that the package imports from the Python environment you just activated:
+
+```bash
+python -c "import contextweaver; print(contextweaver.__version__)"
+```
+
+Expected output is the installed version, for example `0.14.0`. Then run
+the network-free demo as an end-to-end smoke test:
+
+```bash
+contextweaver demo
+```
+
+You should see the friendly walkthrough start without `ModuleNotFoundError` or
+`contextweaver: command not found`.
+
+For a quieter, faster confidence check (especially useful in CI or after
+upgrading), run the built-in verify command:
+
+```bash
+contextweaver verify
+```
+
+This checks import path, ContextManager instantiation, a minimal context
+build, token counting, and routing — all without network dependencies.
+For machine-readable output: `contextweaver verify --json`.
 
 If your network blocks `openaipublic.blob.core.windows.net`, the demo or
 token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.

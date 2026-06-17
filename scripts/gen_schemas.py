@@ -24,10 +24,10 @@ ship without the schema being regenerated.
 from __future__ import annotations
 
 import argparse
-import shutil
-import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+from _golden import check_text_artifacts, write_text_artifacts
 
 from contextweaver._schema_gen import (
     SCHEMA_ID_BASE,
@@ -73,32 +73,14 @@ def _build_schemas() -> dict[str, str]:
     return schemas
 
 
-def _write(schemas: dict[str, str]) -> None:
-    SCHEMAS_DIR.mkdir(parents=True, exist_ok=True)
-    DOCS_SCHEMAS_DIR.mkdir(parents=True, exist_ok=True)
-    for name, body in schemas.items():
-        (SCHEMAS_DIR / name).write_text(body, encoding="utf-8")
-    # Mirror under docs/ so mkdocs publishes them at the $id URL.
-    for name in schemas:
-        shutil.copyfile(SCHEMAS_DIR / name, DOCS_SCHEMAS_DIR / name)
-
-
-def _check(schemas: dict[str, str]) -> int:
-    drifted: list[str] = []
-    for name, expected in schemas.items():
-        on_disk = SCHEMAS_DIR / name
-        if not on_disk.exists() or on_disk.read_text(encoding="utf-8") != expected:
-            drifted.append(name)
-        mirror = DOCS_SCHEMAS_DIR / name
-        if not mirror.exists() or mirror.read_text(encoding="utf-8") != expected:
-            drifted.append(f"docs/schemas/v0/{name}")
-    if drifted:
-        print("schemas drifted — run `make schemas`:", file=sys.stderr)
-        for path in drifted:
-            print(f"  {path}", file=sys.stderr)
-        return 1
-    print("schemas up to date")
-    return 0
+def _artifact_map() -> dict[Path, str]:
+    """Return ``{absolute_path: serialised_json}`` for ``schemas/`` and the
+    mkdocs mirror under ``docs/schemas/v0/`` (published at the ``$id`` URL)."""
+    rendered: dict[Path, str] = {}
+    for name, body in _build_schemas().items():
+        rendered[SCHEMAS_DIR / name] = body
+        rendered[DOCS_SCHEMAS_DIR / name] = body
+    return rendered
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -110,13 +92,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    schemas = _build_schemas()
+    rendered = _artifact_map()
 
     if args.check:
-        return _check(schemas)
+        return check_text_artifacts(rendered, label="schemas", regen="make schemas")
 
-    _write(schemas)
-    print(f"wrote {len(schemas)} schemas to {SCHEMAS_DIR.relative_to(REPO_ROOT)}/")
+    write_text_artifacts(rendered)
+    # rendered holds each schema twice (schemas/ + the docs/schemas/v0 mirror);
+    # report the distinct schema count to avoid a confusing doubled number.
+    print(f"wrote {len(rendered) // 2} schemas to schemas/ + docs/schemas/v0/")
     return 0
 
 

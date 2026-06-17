@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dgenio.github.io/contextweaver/schemas/sidecar/v1/compact_request.schema.json",
+  "title": "Sidecar CompactRequest (v1)",
+  "description": "Request body for POST /v1/compact (issue #674).",
+  "type": "object",
+  "required": ["data"],
+  "additionalProperties": false,
+  "properties": {
+    "data": {
+      "type": ["object", "array", "string"],
+      "description": "The tool result to compact."
+    },
+    "threshold_chars": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 2000,
+      "description": "Payloads at or below this size pass through unchanged."
+    },
+    "budget": {
+      "type": "integer",
+      "default": 800,
+      "description": "Soft token budget for the inline text summary."
+    },
+    "strategy": {
+      "enum": ["auto", "structured", "text", "passthrough"],
+      "default": "auto",
+      "description": "Firewall strategy."
+    },
+    "keep": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "JSON-path allow-list for the structured projection strategy."
+    }
+  }
+}

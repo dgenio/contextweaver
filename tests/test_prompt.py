@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextweaver.context.prompt import render_context, render_item
+from contextweaver.context.prompt import passthrough_renderer, render_context, render_item
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind
 
 
@@ -117,3 +117,49 @@ def test_render_context_header_footer() -> None:
     result = render_context([item], header="HEADER", footer="FOOTER")
     assert result.startswith("HEADER")
     assert result.endswith("FOOTER")
+
+
+def test_render_item_retrieved_doc_label() -> None:
+    """retrieved_doc renders under its own section label (#411)."""
+    item = ContextItem(id="r1", kind=ItemKind.retrieved_doc, text="evidence")
+    assert render_item(item).startswith("[RETRIEVED]")
+
+
+def test_render_item_section_override() -> None:
+    """metadata['section'] overrides presentation without touching the kind (#411)."""
+    item = ContextItem(
+        id="i1",
+        kind=ItemKind.doc_snippet,
+        text="cluster body",
+        metadata={"section": "CLUSTER"},
+    )
+    rendered = render_item(item)
+    assert rendered.startswith("[CLUSTER]")
+    # The filtering kind is unchanged — only presentation moved.
+    assert item.kind is ItemKind.doc_snippet
+
+
+def test_render_item_blank_section_override_falls_back() -> None:
+    """An empty or whitespace-only section override falls back to the kind label (#411)."""
+    for blank in ("", "   "):
+        item = ContextItem(id="i1", kind=ItemKind.user_turn, text="hi", metadata={"section": blank})
+        assert render_item(item).startswith("[USER]")
+
+
+def test_render_item_section_override_is_stripped() -> None:
+    """A padded section override is trimmed so the header is clean (#411)."""
+    item = ContextItem(
+        id="i1", kind=ItemKind.doc_snippet, text="body", metadata={"section": "  CLUSTER  "}
+    )
+    assert render_item(item).startswith("[CLUSTER]")
+
+
+def test_passthrough_renderer_joins_raw_text() -> None:
+    """passthrough_renderer imposes no section layout (#410)."""
+    items = [
+        ContextItem(id="i1", kind=ItemKind.user_turn, text="first"),
+        ContextItem(id="i2", kind=ItemKind.agent_msg, text="second"),
+    ]
+    result = passthrough_renderer(items)
+    assert result == "first\n\nsecond"
+    assert "[USER]" not in result

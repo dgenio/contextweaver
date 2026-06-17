@@ -16,6 +16,301 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   support, removes the long-expired no-op `[cli]` extra, and drops reserved
   `[ann]` / `[graph]` extras that installed dependencies without activating any
   runtime code.
+- **Routing-scale index cache + profiler (#543, #624, #685, #684, #686).**
+  New `contextweaver.routing.RoutingIndexCache` + `CachedRetriever` persist and
+  reuse the fitted first-stage retriever index — the dominant cost of the first
+  `route()` call on a large catalog — keyed by a deterministic corpus
+  fingerprint. The cache has an in-process LRU layer (reuse across `Router`
+  instances in one process, folding in the cross-call reuse of #543) and an
+  optional on-disk layer (`RoutingIndexCache(directory=...)`, deterministic JSON
+  written atomically) that survives process restarts (#624). Opt in via
+  `Router(graph, items=items, retriever=CachedRetriever(TfIdfRetriever(),
+  cache))`; warm loads are **byte-identical** to a cold fit, so routing quality
+  and determinism are unchanged. The cache never raises into the routing path —
+  a corrupt or version-incompatible payload is treated as a miss and re-fitted.
+  Added `benchmarks/routing_scale.py` + `make benchmark-routing-scale`
+  (non-gating) which profiles routing up to 10k tools and writes the bottleneck
+  report at `docs/benchmarks/routing-scale.md` (#684), and a routing-quality
+  guardrail suite (`tests/test_routing_quality_guardrails.py`) pinning the
+  recall floor and cache transparency over the gold set (#686). No new
+  dependency. See `docs/benchmarks/routing-scale.md`.
+
+- **HTTP sidecar: language-agnostic route/compact API (#427, #674/#675/#676/#677/#678).**
+  New `contextweaver serve-api` exposes the deterministic router and the context
+  firewall over a small, versioned HTTP/JSON API so non-Python agents can use
+  them without embedding Python: `POST /v1/route` (tool routing), `POST
+  /v1/compact` (tool-result compaction), and an unauthenticated `GET /v1/health`
+  liveness probe. Built on the Python standard library (`http.server`) with **no
+  new dependency**, reusing the same sync `Router` and `compact_tool_result`
+  facade as the in-process API. New public surface in `contextweaver.adapters`:
+  `SidecarApp` + `SidecarConfig` (transport-free dispatch with optional
+  bearer-token auth, per-client rate limiting, body-size cap, and typed
+  `SidecarError` responses), `serve_api` / `make_sidecar_server`, and the
+  `RouteRequest` / `RouteResponse` / `CompactRequest` / `CompactResponse`
+  contract dataclasses (`SIDECAR_API_VERSION`). Versioned JSON Schemas + example
+  payloads ship under `schemas/sidecar/v1/`; clients in
+  `examples/sidecar_demo.py` (Python, also runs under `make example`) and
+  `examples/sidecar/client.ts` (TypeScript, dependency-free). A non-gating
+  `make sidecar-smoke` CI step drives the transport in-process. See
+  `docs/sidecar.md`.
+
+- **`contextweaver verify` subcommand (#657).** New non-gateway verification
+  mode giving library-first adopters a fast, deterministic, network-free
+  smoke test of core functionality.  Checks import path, `ContextManager`
+  instantiation, a minimal context build, token counting, and routing.  Outputs
+  a Rich table for humans (`--json` for CI/automation) with a clear pass/fail
+  exit code and actionable fix hints.  Documented in `docs/quickstart.md`.
+
+- **Puppetmaster integration pattern (#416).** New `docs/integration_puppetmaster.md`
+  shows how contextweaver consumes Puppetmaster-style job artifacts, worker
+  summaries, logs, and follow-up reads without dumping raw artifacts into model
+  context. Covers artifact summary ingestion, drilldown via handles/selectors,
+  route/answer phase budgeting over job history, and explicit boundaries (in:
+  context consumer; out: job supervisor / worker orchestrator).
+
+- **Gateway resource & prompt runtime (#669 / #670).** New
+  `PrimitiveGatewayRuntime` (+ the `PrimitiveUpstream` protocol) extends the
+  gateway's bounded-choice routing and context-firewall treatment from tools to
+  MCP **resources** and **prompts** (#555). Resources/prompts are modelled as
+  `SelectableItem`s (`kind="resource"` / `"prompt"`) so they reuse the routing
+  `Catalog` / `Router` / `ChoiceCard` machinery; each kind routes in its own
+  index while sharing one `ContextManager` (artifact store + firewall +
+  `tool_view`) with the tool runtime. New converters
+  `mcp_resource_to_selectable` / `mcp_prompt_to_selectable` and read/get
+  envelope wrappers live in `contextweaver.adapters.mcp_primitives`; declared
+  prompt arguments become an `args_schema` so `prompt_get` validates inputs like
+  `tool_execute`. The `SelectableItem` / `ChoiceCard` `kind` set now includes
+  `resource` and `prompt`. Four new gateway meta-tools — `resource_browse` /
+  `resource_read` / `prompt_browse` / `prompt_get`
+  (`contextweaver.adapters.mcp_gateway_primitives`) — expose the bounded-choice
+  surface, and `McpGatewayServer` advertises and dispatches them over stdio when
+  constructed with a `primitive_runtime=`.
+- **Unified cross-primitive identity & collision policy (#671).** New
+  `contextweaver.routing.primitive_id` is the single source of truth for
+  identifying MCP tools, resources, and prompts in one shared `Catalog`
+  (groundwork for routing resources/prompts through the gateway, #555). Tools
+  keep their bare canonical `tool_id`; resources and prompts get
+  disjoint-by-construction ids via a reserved `kind::` prefix
+  (`resource::fs:readme#ab12cd34`, `prompt::gh:summarize#deadbeef`). Stable
+  per-kind shape hashes (`compute_resource_hash8` over the URI;
+  `compute_prompt_hash8` over name + sorted argument names) and a deterministic
+  `~N` collision policy (`resolve_collisions`) round out the surface. Documented
+  in `docs/gateway_spec.md` §9.
+- **Resources/prompts reachable end-to-end via the gateway (#669 / #670 / #672 /
+  #673).** Three concrete `PrimitiveUpstream` adapters now ship in
+  `contextweaver.adapters.mcp_primitive_upstream` — `StubPrimitiveUpstream`
+  (in-process, for tests/CLI/air-gapped CI), `McpClientPrimitiveUpstream` (wraps
+  a connected MCP `ClientSession`), and `MultiplexPrimitiveUpstream` (multi-server
+  fan-out) — mirroring the tool `mcp_upstream` trio; per the protocol contract
+  they raise transport errors for the runtime to classify. `contextweaver mcp
+  serve --gateway` now exposes the four resource/prompt meta-tools when the
+  catalog is a snapshot object declaring `resources` / `prompts` alongside
+  `tools` (tools-only catalogs stay unchanged), sharing the tool runtime's
+  `ContextManager`. `PrimitiveGatewayRuntime` gains `resource_ids()` /
+  `prompt_ids()` accessors mirroring `ProxyRuntime.list_tool_ids()`. The
+  mixed-primitive context-shaping benchmark is runnable via `make
+  benchmark-primitives`, and `docs/gateway_spec.md` §9.4–§9.5 document the
+  request flows and the serve/catalog wiring. Malformed snapshot-catalog
+  primitive entries (non-dict, or missing the required `uri` / `name` identity
+  field) are now skipped with a warning instead of being silently dropped, so a
+  mistyped resource/prompt entry surfaces in the serve logs.
+- **Stable error codes + remediation hints (#635).** Every
+  `ContextWeaverError` subclass now carries a frozen, machine-readable `code`
+  (e.g. `CW_CONFIG`) so programs can branch on failures without string-matching,
+  plus an optional `hint` (with a class-level `default_hint` fallback). `str(exc)`
+  renders `[code] message (hint: …)`, so CLI error output surfaces both
+  automatically. Codes are golden-listed in `tests/test_exceptions.py` (a rename
+  or a code-less new exception fails CI).
+- **Error reference page (#637).** New `docs/errors.md` documents every
+  exception — stable code, raising modules, common causes, and the fix — with a
+  code index table; added to the mkdocs nav, cross-linked from the
+  troubleshooting guide, and included in `llms.txt` / `llms-full.txt`.
+- **Runtime deprecation machinery (#517).** New internal
+  `contextweaver._deprecation` module — `warn_deprecated(...)`, a `@deprecated`
+  decorator, and a single registry surfaced via `active_deprecations()` — emits
+  `DeprecationWarning`s with consistent, actionable wording ("deprecated since
+  X, removal in Y, use Z instead"). Every message starts with
+  `contextweaver deprecation:` so CI can escalate the project's *own*
+  deprecations to errors (new `filterwarnings` entry in `pyproject.toml`)
+  without touching third-party warnings. Documented in `docs/stability.md` and
+  the new Upgrading page, with a "Deprecating an API" workflow in
+  `docs/agent-context/workflows.md`.
+- **Upgrade guide (#616).** New `docs/upgrading.md` states the 0.x versioning
+  and deprecation policy and carries the live inventory of active deprecations
+  plus per-release "action required" notes.
+
+### Deprecated
+
+- **Pre-1.0 legacy compatibility shims (#642).** The following now emit a
+  `DeprecationWarning` (behavior unchanged; nothing removed yet — see the
+  Upgrading inventory for replacements and the 1.0 removal milestone):
+  - `RouteResult.debug_trace` → use `RouteResult.trace`.
+  - `RouteTrace.to_legacy_dicts()` → use the structured `RouteTrace` fields.
+  - the `Router(scorer=...)` constructor argument → use `retriever=` or
+    `scorer_backend=`.
+
+  The `contextweaver.ToolCard` / `contextweaver.types.ToolCard` alias (→ use
+  `SelectableItem`), `ChoiceGraph.build_meta`, and the pre-#190 `ArtifactRef`
+  write path are recorded as documentation-only deprecations in the upgrade
+  guide. `ToolCard` stays a plain alias because the only modules it could warn
+  from (pure-data `types.py`, re-export-only `__init__.py`) are barred from
+  side effects by hard invariants; the others remain on internal serialization
+  paths.
+
+### Fixed
+
+- **Binary MCP resource reads are no longer corrupted (#671 review).**
+  `mcp_resource_read_to_envelope` now base64-decodes a resource part's `blob`
+  back to its original bytes before persisting it, instead of storing the
+  base64 text bytes — so `tool_view` drilldown on real binary resources stays
+  byte-accurate. Malformed (non-base64) blobs fall back to their raw bytes.
+- **`*_browse` rejects invalid `top_k` cleanly (#671 review).**
+  `PrimitiveIndex.browse` now validates `top_k` and returns a structured
+  `GatewayError(ARGS_INVALID)` for non-integer or non-positive values, instead
+  of letting a bad type reach `make_choice_cards` and raise `TypeError` across
+  the meta-tool boundary.
+- **Clarified collision-policy determinism & `~N` id status (#671 review).**
+  `resolve_collisions` docs and `docs/gateway_spec.md` §9 now state the
+  assignment is deterministic *for a given catalog order* (index-based, not
+  order-independent), and that the `~N`-suffixed form is an opaque catalog key
+  outside the §1.1 grammar (it does not round-trip through `parse_tool_id`).
+  Collision tests now use canonical 8-hex-char ids.
+
+## [0.15.0] - 2026-06-14
+
+### Added
+
+- **Structured route→select contract and shortlist composition controls
+  (#515, #479, #516, #509).** A focused hardening of the boundary where a
+  model picks a tool from a routed shortlist:
+  - **Constrained-selection schemas (#515).** `RouteResult.selection_schema(...)`
+    (and `contextweaver.selection_schema`) renders the routed candidate IDs as a
+    JSON-Schema `enum`, with `json_schema` / `openai` / `anthropic` provider
+    variants, so a model can be forced to pick only a routed `tool_id` at
+    generation time.
+  - **Validated selection contract (#479).** `RouteResult.validate_selection(...)`
+    (and `contextweaver.validate_selection`) returns a typed `SelectionValidation`
+    (`accepted` / `repaired` / `rejected`) for a returned ID, with deterministic
+    repair (whitespace → case-fold → unique prefix; ambiguous matches are
+    rejected, never guessed). `RouteResult.to_routing_decision` now validates the
+    selection, stores the resolved canonical ID, and records the outcome under
+    `metadata["contextweaver"]["selection"]`.
+  - **First-class, capping-immune safety field (#516).** `ChoiceCard` gains a
+    `safety` field (`""` / `"read_only"` / `"destructive"`) derived from the
+    item's safety tags, and the §2.1 five-tag cap now reserves `destructive` /
+    `read-only` tags first so a safety marker can no longer be alphabetically
+    evicted from the model-facing surface.
+  - **Shortlist composition controls (#509).** `Router.route(...)` accepts
+    `pin_ids` (always-include items that occupy the first slots regardless of
+    relevance) and `namespace_quota` (a per-namespace cap on non-pinned items),
+    via `routing.filters.compose_shortlist`. Unset, composition is byte-identical
+    to the previous `top_k` truncation.
+
+- **Source-to-catalog adapters: OpenAPI, Agent Skills, and Microsoft Agent
+  Framework (#546, #545, #430).** Three new adapters built on the shared
+  conversion toolkit (`adapters/_framework_common.py`), extending routing to
+  capability sources beyond agent-framework tools:
+  - **OpenAPI adapter (#546).** `adapters.openapi` converts an OpenAPI 3.0/3.1
+    document (dict, JSON, or YAML) into a `SelectableItem` catalog — one item
+    per operation (`openapi_operation_to_selectable`, `openapi_spec_to_catalog`,
+    `load_openapi_catalog`). `parameters` + `requestBody` compose into a single
+    `args_schema`; local `$ref`s resolve (external refs raise); HTTP methods map
+    to read-only / destructive safety tags mirroring the MCP adapter.
+    contextweaver routes — it never makes the HTTP call. No extra required.
+  - **Agent Skills adapter (#545).** `adapters.agent_skills` loads `SKILL.md`
+    skill directories into the catalog as `kind="skill"` items using only their
+    frontmatter (`skill_to_selectable`, `load_skills_catalog`); `SkillBodySource`
+    hydrates the full Markdown body and bundled resources lazily on selection,
+    mirroring `routing.hydration.SchemaSource`. No extra required.
+  - **Microsoft Agent Framework adapter (#430).** `adapters.agent_framework`
+    converts `AIFunction` tools to a catalog and thread `ChatMessage`s to
+    `ContextItem`s with function-call → result parentage
+    (`agent_framework_tools_to_catalog`, `from_agent_framework_thread`);
+    `[agent-framework]` extra for live loading.
+- **Framework adapter expansion + shared conversion toolkit (#454, #502, #501,
+  #547, #401).** A coherent pass over the `adapters/` tool-catalog layer:
+  - **Shared conversion toolkit (#454).** New private
+    `adapters/_framework_common.py` centralises the mechanics the framework
+    adapters previously each re-implemented — `infer_namespace`,
+    `strip_namespace_prefix`, `coerce_schema_dict`, `collect_tags`,
+    `require_name_description`. The CrewAI, Agno, smolagents, Pydantic AI, and
+    ChainWeaver adapters now delegate to it with byte-identical behavior, so a
+    convention change is one edit instead of up to five.
+  - **LangChain adapter (#502).** `adapters.langchain` converts `BaseTool`
+    instances (or the plain-dict shape) into a `SelectableItem` catalog
+    (`langchain_tool_to_selectable`, `langchain_tools_to_catalog`,
+    `load_langchain_catalog`); `[langchain]` extra for live loading.
+  - **OpenAI Agents SDK adapter (#501).** `adapters.openai_agents` converts
+    function tools to a catalog and run items to `ContextItem`s with
+    tool-call → tool-output parentage (`openai_agents_tools_to_catalog`,
+    `from_openai_agents_run`); `[openai-agents]` extra.
+  - **Google ADK adapter (#547).** `adapters.google_adk` converts ADK tools to
+    a catalog and `Session.events` to `ContextItem`s with `function_call` →
+    `function_response` parentage (`google_adk_tools_to_catalog`,
+    `from_google_adk_session`); `[google-adk]` extra.
+  - **Integration table honesty (#401).** The README Framework Integrations
+    tables gain a **Code adapter** column distinguishing frameworks with an
+    importable adapter (and its extra) from guide-only entries.
+- **Context-engine tuning knobs: rendering, kinds, scoring, and overflow
+  (#410, #411, #487, #510).** A coherent pass over the context build pipeline's
+  selection / scoring / rendering / budget surface, all opt-in with
+  byte-identical defaults:
+  - **Caller-owned rendering (#410).** `ContextManager.build(...)` /
+    `build_sync(...)` accept a `renderer: Callable[[list[ContextItem]], str]`
+    hook. When supplied, the caller owns the entire prompt layout — the section
+    renderer, header, footer, and episodic/fact assembly are skipped — while
+    budget-aware selection and `pack.stats` still run. A ready-made
+    `contextweaver.context.passthrough_renderer` joins items by raw text.
+  - **Retrieval/RAG kind + presentation override (#411).** New
+    `ItemKind.retrieved_doc` gives retrieved/RAG payloads a first-class home
+    distinct from authored `doc_snippet`s. A per-item `metadata["section"]`
+    override decouples a prompt section label from the filtering `kind`, so
+    presentation can change without changing per-phase filtering.
+  - **Phase-aware scoring weights + kind priority (#487).** `ScoringConfig`
+    gains `kind_priority` (override the built-in item-kind priority table,
+    validated to `[0, 1]`) and `phase_overrides` (per-`Phase` weight configs;
+    resolution: phase override → base config → built-ins, resolved one level
+    deep — a per-phase override that itself defines `phase_overrides` is
+    rejected with `ConfigError`). `explain=True`
+    surfaces the resolved weights via `ContextBuildExplanation.resolved_weights`.
+  - **Budget-overflow policy (#510).** `ContextPolicy.overflow_action`
+    (`"drop"` default / `"warn"` / `"raise"`) plus an optional
+    `overflow_raise_kinds` scope turn silent budget drops into a logged warning
+    or a `BudgetOverflowError` (carrying the would-be `BuildStats`), so a
+    dropped mandatory item surfaces as a debuggable error instead of bad output.
+- **CI gate consolidation and expansion (#522, #518, #456, #474, #526, #539).**
+  A coherent pass over the repo's generated-artifact / convention gating
+  infrastructure:
+  - **Unified drift harness (#522).** A shared golden-file helper
+    (`scripts/_golden.py`) now backs every generated-artifact check, and a
+    single `make drift-check` / `scripts/drift_check.py` registry runs them all
+    (schemas, scorecards, recorded demos, `llms.txt`, the context-rot SVG, and
+    the new public-API manifest). Adding the next generated artifact costs one
+    registry entry instead of a fresh copy of the render/compare/exit logic.
+    Every registered generator returns a uniform exit code on a missing input
+    (the gateway-scorecard generator no longer raises `SystemExit`), so the
+    harness aggregates a missing artifact consistently instead of aborting the
+    whole run.
+  - **Public-API manifest (#518).** `api/public_api.txt` is a committed,
+    signature-level snapshot of the public surface, regenerated by `make api`
+    and gated by `make api-check` (inside `make drift-check`), so every public
+    API addition, removal, or signature change is an explicit, reviewable diff.
+  - **Module-size gate (#456).** `make module-size-check` mechanically enforces
+    the documented ≤300-line convention: new non-exempt modules must stay under
+    the limit, and pre-existing oversized modules are frozen at a grandfathered
+    baseline (`scripts/module_size_baseline.json`) that may shrink but not grow.
+  - **Doc-snippet execution (#526).** `make doc-snippets-check` extracts and
+    runs the Python blocks in `README.md` and a curated docs allowlist, so the
+    first code an adopter copies is guaranteed to run against the current API.
+    Illustrative blocks opt out with a `<!-- snippet: skip -->` marker.
+  - **`examples/` + `scripts/` type-checked (#539).** `make type` now runs
+    `mypy src/ examples/ scripts/`, extending strict typing to the most-copied
+    code and the gating CI scripts.
+  - **`make ci` ⇄ CI alignment + workflow hygiene (#474).** `make ci` now runs
+    the consolidated drift gate, module-size, doc-snippet, and README-version
+    checks, so a local pass mirrors the gating CI checks. CI gains workflow
+    `timeout-minutes`, a PR `concurrency` group, and a docs-build job that gates
+    `mkdocs build` on PRs (network-only `weaver-conformance` stays CI-only).
 - **Gateway `tool_execute` dispatch hardening (#529, #512, #483, #482, #507).**
   The gateway/proxy dispatch path gains four opt-in, deterministic controls,
   all inert by default so an unconfigured runtime behaves exactly as before:

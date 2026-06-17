@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dgenio.github.io/contextweaver/schemas/sidecar/v1/route_response.schema.json",
+  "title": "Sidecar RouteResponse (v1)",
+  "description": "Response body for POST /v1/route (issue #674).",
+  "type": "object",
+  "required": ["api_version", "candidate_ids", "scores", "is_ambiguous", "cards"],
+  "additionalProperties": false,
+  "properties": {
+    "api_version": { "type": "string", "const": "v1" },
+    "candidate_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ranked candidate item IDs (at most top_k)."
+    },
+    "scores": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Score per candidate, aligned with candidate_ids."
+    },
+    "is_ambiguous": { "type": "boolean" },
+    "clarifying_question": { "type": ["string", "null"] },
+    "cards": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "LLM-friendly ChoiceCard dicts (never full schemas)."
+    }
+  }
+}

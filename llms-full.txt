@@ -18,6 +18,7 @@
     docs/recipes/claude_code.md
     docs/integration_mcp.md
     docs/integration_a2a.md
+    docs/errors.md
     docs/agent-context/architecture.md
     docs/agent-context/invariants.md
     docs/agent-context/workflows.md
@@ -56,6 +57,7 @@ uvx contextweaver demo --scenario killer  # zero-install trial
 
 # Or install it:
 pip install contextweaver
+python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
 ```
 
@@ -365,6 +367,7 @@ pip install -e ".[dev]"
 
 ### Adopting in 5 lines from an existing OpenAI / Anthropic / Gemini agent
 
+<!-- snippet: skip (illustrative; `messages` is the caller's existing history) -->
 ```python
 from contextweaver.adapters.openai_messages import from_openai_messages
 from contextweaver.context.manager import ContextManager
@@ -410,6 +413,7 @@ print(pack.stats)    # what was kept, dropped, deduplicated
 
 ### Route a large tool catalog
 
+<!-- snippet: skip (illustrative; needs a real catalog.json on disk) -->
 ```python
 from contextweaver.routing.catalog import Catalog, load_catalog_json
 from contextweaver.routing.tree import TreeBuilder
@@ -447,20 +451,28 @@ Looking for "where does contextweaver fit alongside my runtime?" — start with 
 [How contextweaver Fits](docs/interop.md) positioning page, then jump into the
 [Cookbook](docs/cookbook.md) for copy-paste recipes.
 
-| Framework | Guide | Use Case |
-|---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
-| A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
-| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
-| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
-| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
-| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
-| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
-| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
-| smolagents | [Guide](docs/integration_smolagents.md) | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
-| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
+The **Code adapter** column lists the importable adapter module and its
+optional extra; its plain-dict conversion path works without the extra
+installed. _Guide only_ rows ship a written integration guide but no dedicated
+`tools → catalog` adapter yet (issue #401).
+
+| Framework | Guide | Code adapter | Use Case |
+|---|---|---|---|
+| MCP | [Guide](docs/integration_mcp.md) | `adapters.mcp` | Tool conversion, session loading, firewall · [Security model](docs/security_model.md) |
+| A2A | [Guide](docs/integration_a2a.md) | `adapters.a2a` | Agent cards, multi-agent sessions |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | `adapters.fastmcp` · `[fastmcp]` | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | _Guide only_ | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | `adapters.openai_agents` · `[openai-agents]` | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | `adapters.google_adk` · `[google-adk]` | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | `adapters.langchain` · `[langchain]` | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | _Guide only_ | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | `adapters.crewai` · `[crewai]` | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | Hugging Face `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
+| Microsoft Agent Framework | [Guide](docs/integration_agent_framework.md) | `adapters.agent_framework` · `[agent-framework]` | AutoGen / Semantic Kernel tools + thread history |
+| OpenAPI | [Guide](docs/integration_openapi.md) | `adapters.openapi` | Route over REST API operations (no extra) |
+| Agent Skills | [Guide](docs/integration_agent_skills.md) | `adapters.agent_skills` | Route over SKILL.md libraries with lazy body hydration |
 
 ---
 
@@ -583,20 +595,23 @@ contextweaver works with any LLM provider and any agent framework:
 - **No vendor lock-in**: stdlib-only core; no cloud dependencies; runs anywhere Python 3.10+ runs
 
 <!-- mirrors the Framework Integrations table above; keep in sync -->
-| Framework | Guide | Use Case |
-|---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | Tool conversion, session loading, firewall |
-| A2A | [Guide](docs/integration_a2a.md) | Agent cards, multi-agent sessions |
-| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | Composed MCP servers → bounded-choice routing |
-| LlamaIndex | [Guide](docs/integration_llamaindex.md) | RAG + tools with budget control |
-| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | Swarm hand-offs with unified context |
-| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | Gemini tool-use with context budgets |
-| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | Chain + graph agents with firewall |
-| Pipecat | [Guide](docs/integration_pipecat.md) | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | Role-based crews with bounded tool shortlists |
-| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | Type-safe agents with lossless message round-trip |
-| smolagents | [Guide](docs/integration_smolagents.md) | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
-| Agno | [Guide](docs/integration_agno.md) | Toolkit-routed agents; layers above Agno `Memory` |
+| Framework | Guide | Code adapter | Use Case |
+|---|---|---|---|
+| MCP | [Guide](docs/integration_mcp.md) | `adapters.mcp` | Tool conversion, session loading, firewall |
+| A2A | [Guide](docs/integration_a2a.md) | `adapters.a2a` | Agent cards, multi-agent sessions |
+| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | `adapters.fastmcp` · `[fastmcp]` | Composed MCP servers → bounded-choice routing |
+| LlamaIndex | [Guide](docs/integration_llamaindex.md) | _Guide only_ | RAG + tools with budget control |
+| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | `adapters.openai_agents` · `[openai-agents]` | Swarm hand-offs with unified context |
+| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | `adapters.google_adk` · `[google-adk]` | Gemini tool-use with context budgets |
+| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | `adapters.langchain` · `[langchain]` | Chain + graph agents with firewall |
+| Pipecat | [Guide](docs/integration_pipecat.md) | _Guide only_ | Real-time voice agents with async context build |
+| CrewAI | [Guide](docs/integration_crewai.md) | `adapters.crewai` · `[crewai]` | Role-based crews with bounded tool shortlists |
+| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
+| smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
+| Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
+| Microsoft Agent Framework | [Guide](docs/integration_agent_framework.md) | `adapters.agent_framework` · `[agent-framework]` | AutoGen / Semantic Kernel tools + thread history |
+| OpenAPI | [Guide](docs/integration_openapi.md) | `adapters.openapi` | Route over REST API operations (no extra) |
+| Agent Skills | [Guide](docs/integration_agent_skills.md) | `adapters.agent_skills` | Route over SKILL.md libraries with lazy body hydration |
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -655,7 +670,7 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.14.1**.
+Current package version: **0.15.0**.
 
 Recent milestones:
 
@@ -687,7 +702,7 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.14.1](https://pypi.org/project/contextweaver/0.14.1/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.15.0](https://pypi.org/project/contextweaver/0.15.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer` token-bounded · no phase awareness [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
@@ -787,8 +802,11 @@ to any LLM or framework. See dedicated guides for
 [Pipecat](docs/integration_pipecat.md),
 [CrewAI](docs/integration_crewai.md),
 [Pydantic AI](docs/integration_pydantic_ai.md),
-[smolagents](docs/integration_smolagents.md), and
-[Agno](docs/integration_agno.md).  If your runtime isn't listed, the
+[smolagents](docs/integration_smolagents.md),
+[Agno](docs/integration_agno.md),
+[Microsoft Agent Framework](docs/integration_agent_framework.md),
+[OpenAPI](docs/integration_openapi.md), and
+[Agent Skills](docs/integration_agent_skills.md).  If your runtime isn't listed, the
 [bring-your-own-tools cookbook recipe](docs/cookbook.md#3-bring-your-own-tools)
 is the canonical starting point.
 
@@ -1046,7 +1064,9 @@ Check out the MCP context gateway example [MCP gateway example](../examples/mcp_
 
 A `SelectableItem` is the unified representation of anything the Routing
 Engine can select — a tool, agent, skill, or internal function. The type
-alias `ToolCard` is used when emphasising the LLM-facing card framing.
+alias `ToolCard` (historically used when emphasising the LLM-facing card
+framing) is **deprecated** — use `SelectableItem`; it is scheduled for removal
+in 1.0 (see [Upgrading](upgrading.md)).
 
 Key fields: `id`, `kind`, `name`, `description`, `tags`, `namespace`,
 `side_effects`, `cost_hint`.
@@ -1204,6 +1224,7 @@ Time budget:
 If you have an OpenAI Chat Completions session saved as JSON, you can build
 a context pack in five lines (plus imports):
 
+<!-- snippet: skip (illustrative; reads the reader's own session.json) -->
 ```python
 import json
 from contextweaver.adapters.openai_messages import from_openai_messages
@@ -1223,6 +1244,7 @@ inverse for round-tripping back into the OpenAI SDK.
 
 Anthropic and Google Gemini have sibling adapters with the same shape:
 
+<!-- snippet: skip (illustrative fragment; mirrors the OpenAI block above) -->
 ```python
 from contextweaver.adapters.anthropic_messages import from_anthropic_messages
 from contextweaver.adapters.gemini_contents import from_gemini_contents
@@ -1310,8 +1332,32 @@ If you are working from a repository checkout instead, install the package in ed
 pip install -e ".[dev]"
 ```
 
-`pipx run contextweaver demo --scenario killer` is the equivalent isolated
-path for pipx users.
+Verify that the package imports from the Python environment you just activated:
+
+```bash
+python -c "import contextweaver; print(contextweaver.__version__)"
+```
+
+Expected output is the installed version, for example `0.14.0`. Then run
+the network-free demo as an end-to-end smoke test:
+
+```bash
+contextweaver demo
+```
+
+You should see the friendly walkthrough start without `ModuleNotFoundError` or
+`contextweaver: command not found`.
+
+For a quieter, faster confidence check (especially useful in CI or after
+upgrading), run the built-in verify command:
+
+```bash
+contextweaver verify
+```
+
+This checks import path, ContextManager instantiation, a minimal context
+build, token counting, and routing — all without network dependencies.
+For machine-readable output: `contextweaver verify --json`.
 
 If your network blocks `openaipublic.blob.core.windows.net`, the demo or
 token-budget helpers may print `tiktoken cl100k_base encoding unavailable`.
@@ -2804,6 +2850,288 @@ See `examples/a2a_adapter_demo.py` for the full runnable demo.
 
 ---
 
+<!-- FILE: docs/errors.md -->
+
+# Error Reference
+
+Every error contextweaver raises inherits from `ContextWeaverError`
+(in `contextweaver.exceptions`), so you can catch the whole family with one
+`except` clause. Each class also carries:
+
+- a stable, machine-readable **`code`** (e.g. `CW_CONFIG`) — branch on this
+  instead of string-matching the message; it is safe to log, alert on, and pass
+  across the gateway boundary or to non-Python clients, and
+- an optional one-line **`hint`** — a remediation pointer, often a link back to
+  the relevant section on this page.
+
+Codes are part of the public compatibility surface: they are frozen against a
+golden list in the test suite, so a rename or a missing code fails CI.
+
+```python
+from contextweaver.exceptions import ContextWeaverError
+
+try:
+    pack = manager.build_sync(phase, query)
+except ContextWeaverError as exc:
+    # exc.code is stable; exc.hint may point at the fix.
+    logger.error("contextweaver failed: %s", exc, extra={"cw_code": exc.code})
+    raise
+```
+
+`str(exc)` renders as `[<code>] <message> (hint: <hint>)` — for example
+`[CW_CONFIG] unknown preset 'fast' (hint: check the configuration value or preset name; ...)`.
+The message text itself is **not** a stable API; the code and any structured
+attributes are.
+
+## Code index
+
+| Code | Exception | Raised when |
+| --- | --- | --- |
+| `CW_ERROR` | `ContextWeaverError` | Base class; not raised directly. |
+| `CW_BUDGET_EXCEEDED` | `BudgetExceededError` | A build would exceed the configured token budget. |
+| `CW_BUDGET_OVERFLOW` | `BudgetOverflowError` | Budget pressure dropped candidates under a fail-loud policy. |
+| `CW_ARTIFACT_NOT_FOUND` | `ArtifactNotFoundError` | A requested artifact handle is absent from the store. |
+| `CW_ARTIFACT_STORE_QUOTA` | `ArtifactStoreQuotaError` | A write would breach an artifact store's size/count quota. |
+| `CW_POLICY_VIOLATION` | `PolicyViolationError` | An item violates the active `ContextPolicy`. |
+| `CW_ITEM_NOT_FOUND` | `ItemNotFoundError` | A tool/agent/skill ID is not in the catalog or store. |
+| `CW_GRAPH_BUILD` | `GraphBuildError` | The routing DAG cannot be constructed (e.g. a cycle). |
+| `CW_ROUTE` | `RouteError` | The router cannot produce a valid route. |
+| `CW_CATALOG` | `CatalogError` | An invalid catalog operation (duplicate IDs, schema). |
+| `CW_CATALOG_VALIDATION` | `CatalogValidationError` | A catalog fails cross-item referential validation. |
+| `CW_DUPLICATE_ITEM` | `DuplicateItemError` | A duplicate ID is appended to an append-only store. |
+| `CW_CONFIG` | `ConfigError` | A configuration value or preset name is invalid. |
+| `CW_VALIDATION` | `ValidationError` | A core data type fails construction-time validation. |
+| `CW_DETERMINISM` | `DeterminismError` | A `deterministic=True` firewall path would invoke an LLM. |
+| `CW_PATH_INVALID` | `PathInvalidError` | A `tool_browse` path violates the §3.2 grammar. |
+| `CW_PATH_NOT_FOUND` | `PathNotFoundError` | A well-formed `tool_browse` path resolves to no node. |
+| `CW_UPSTREAM` | `UpstreamError` | An upstream MCP tool call fails for transport/protocol reasons. |
+| `CW_STORE_CLOSED` | `StoreClosedError` | An operation is attempted on a closed store. |
+
+---
+
+## ContextWeaverError
+
+**Code:** `CW_ERROR`
+
+The base of the hierarchy. It is not raised directly; catch it to handle every
+contextweaver error in one place. Subclass it (not `Exception`) if you extend
+the library so your error stays inside the family.
+
+## BudgetExceededError
+
+**Code:** `CW_BUDGET_EXCEEDED`
+
+The public signal for a hard token-budget violation. The built-in fail-loud
+path raises the more specific [`BudgetOverflowError`](#budgetoverflowerror)
+(opt-in via `overflow_action="raise"`, issue #510), which attaches the would-be
+`BuildStats`. Catch `BudgetExceededError` if you raise budget violations from
+your own enforcement code.
+
+**Fix:** raise the per-phase token budget, or trim the candidate set before the
+build (see the [budget sizing guidance](troubleshooting.md)).
+
+## BudgetOverflowError
+
+**Code:** `CW_BUDGET_OVERFLOW`
+
+Raised by `context/build_policy.py` when `ContextPolicy.overflow_action="raise"`
+and budget pressure would drop candidates. Instead of silently shipping a
+subtly-wrong prompt (e.g. a missing mandatory policy item), the build fails
+loud. The would-be `BuildStats` is attached as `exc.stats`, and the distinct
+dropped kinds as `exc.dropped_kinds`.
+
+**Fix:** raise the phase token budget, relax the policy that marked the dropped
+item mandatory, or set `overflow_action="drop"` to accept silent trimming.
+Inspect `exc.stats` to see exactly what was kept and dropped.
+
+## ArtifactNotFoundError
+
+**Code:** `CW_ARTIFACT_NOT_FOUND`
+
+Raised by the artifact-store backends (`store/artifacts.py`,
+`store/json_file_artifacts.py`, `store/redis_artifacts.py`,
+`store/s3_artifacts.py`) when a handle cannot be resolved.
+
+**Fix:** verify the artifact ref came from the same store and has not expired or
+been evicted; re-run the build that produced it if the store is ephemeral.
+
+## ArtifactStoreQuotaError
+
+**Code:** `CW_ARTIFACT_STORE_QUOTA`
+
+Raised when a persistent `ArtifactStore` constructed with `max_bytes` /
+`max_artifacts` limits (issue #497) would breach a limit on write.
+
+**Fix:** raise the store's quota, prune old artifacts, or shorten artifact
+lifetimes so long-running gateways stay within budget.
+
+## PolicyViolationError
+
+**Code:** `CW_POLICY_VIOLATION`
+
+Raised during ingest (`context/ingest.py`) when an item violates the active
+`ContextPolicy`.
+
+**Fix:** adjust the item to satisfy the policy, or relax the policy if the
+constraint is too strict for your workload.
+
+## ItemNotFoundError
+
+**Code:** `CW_ITEM_NOT_FOUND`
+
+Raised when a requested tool/agent/skill ID is missing from the catalog
+(`routing/catalog.py`), from a store (`store/*`), or from an external-memory
+backend (`extras/memory/*`).
+
+**Fix:** confirm the ID exists in the catalog/store and matches exactly
+(IDs are case-sensitive); rebuild the catalog if it is stale.
+
+## GraphBuildError
+
+**Code:** `CW_GRAPH_BUILD`
+
+Raised by `routing/tree.py`, `routing/graph.py`, and `routing/graph_io.py` when
+the routing DAG cannot be built — for example a dependency cycle, a dangling
+edge, or a missing root. Structured detail is attached so you can act without
+parsing the message: `exc.cycle`, `exc.edge`, `exc.missing_root` (issue #523).
+
+**Fix:** break the reported cycle, remove the dangling `depends_on`/`requires`
+reference, or supply the missing root node.
+
+## RouteError
+
+**Code:** `CW_ROUTE`
+
+Raised by `routing/router.py` and `routing/selection.py` when the router cannot
+produce a valid route through the choice graph (e.g. no candidate survives the
+beam search, or the graph has no reachable selectable items).
+
+**Fix:** widen the routing budget/beam, check that the query matches indexed
+items, and confirm the graph contains reachable selectable leaves.
+
+## CatalogError
+
+**Code:** `CW_CATALOG`
+
+The base for catalog problems — duplicate IDs, schema violations, and invalid
+catalog operations — raised across `routing/catalog.py`,
+`routing/normalizer.py`, `routing/cards.py`, `routing/tool_id.py`, and the
+protocol adapters under `adapters/` when they build catalogs from external
+sources.
+
+**Fix:** validate the catalog source for duplicate IDs and schema conformance
+before loading; run `contextweaver catalog` validation on the file.
+
+## CatalogValidationError
+
+**Code:** `CW_CATALOG_VALIDATION`
+
+A `CatalogError` subclass raised by the loaders' `on_invalid="raise"` path
+(`routing/catalog.py`, issue #519) when cross-item referential validation fails.
+The full `CatalogValidationReport` is attached as `exc.report` so you can
+enumerate every dangling reference at once.
+
+**Fix:** resolve the dangling `depends_on`/`requires` references listed in
+`exc.report`, or load with `on_invalid="warn"` to triage incrementally.
+
+## DuplicateItemError
+
+**Code:** `CW_DUPLICATE_ITEM`
+
+Raised when an item with an ID that already exists is appended to an append-only
+store (`store/event_log.py`, `store/sqlite_event_log.py`,
+`store/redis_event_log.py`, `context/_manager_ingest.py`).
+
+**Fix:** use a unique ID per appended item, or check existence before appending
+if duplicates are expected.
+
+## ConfigError
+
+**Code:** `CW_CONFIG`
+
+Raised across the configuration surface (`config.py`, `profiles.py`,
+`_scoring_config.py`, `routing/*`, `context/*`, adapters) when a configuration
+value or preset name is invalid.
+
+**Fix:** check the value or preset name against the documented options; the
+message names the offending key.
+
+## ValidationError
+
+**Code:** `CW_VALIDATION`
+
+Raised by the pure-data layer (`envelope.py`, `extras/llm_summarizer.py`) when a
+core data type fails construction-time validation (issue #463). It also derives
+from the builtin `ValueError`, so existing `except ValueError` call sites keep
+working.
+
+**Fix:** correct the field that failed validation; the message names the
+constraint that was violated.
+
+## DeterminismError
+
+**Code:** `CW_DETERMINISM`
+
+Raised by the context firewall (`context/firewall.py`, `context/ingest.py`) when
+a `deterministic=True` path would have to invoke an LLM. Deterministic mode
+*fails closed* (issue #404) so regulated callers can prove no data passed
+through a summarisation model.
+
+**Fix:** disable deterministic mode if model calls are acceptable, or supply a
+deterministic (rule-based) summarizer/extractor so no LLM is needed.
+
+## PathInvalidError
+
+**Code:** `CW_PATH_INVALID`
+
+A `CatalogError` subclass raised by `routing/path.py` when a `tool_browse` path
+violates the §3.2 grammar.
+
+**Fix:** correct the path syntax against the grammar in the
+[gateway spec](gateway_spec.md).
+
+## PathNotFoundError
+
+**Code:** `CW_PATH_NOT_FOUND`
+
+A `CatalogError` subclass raised by `routing/path.py` when a well-formed
+`tool_browse` path resolves to no node.
+
+**Fix:** browse from the root to discover valid paths; the catalog may have
+changed since the path was constructed.
+
+## UpstreamError
+
+**Code:** `CW_UPSTREAM`
+
+Signals an upstream MCP tool-call failure for transport/protocol reasons. Note
+that the MCP gateway/proxy meta-tools never raise across the MCP boundary —
+they return a structured [`GatewayError`](gateway_spec.md) payload with its own
+wire codes (`UPSTREAM_TIMEOUT`, `AUTH_FAILED`, …) instead. Catch `UpstreamError`
+when calling upstream helpers directly outside the meta-tool boundary.
+
+**Fix:** check upstream connectivity/credentials; retry transient failures
+(timeouts, unavailability) per the `retryable` hint on `GatewayError`.
+
+## StoreClosedError
+
+**Code:** `CW_STORE_CLOSED`
+
+Raised by the SQLite-backed stores (`store/sqlite_facts.py`,
+`store/sqlite_event_log.py`, `store/sqlite_episodic.py`) when an operation runs
+after the backing connection was released via `close()`.
+
+**Fix:** do not use a store after closing it; open a new instance, or use the
+store as a context manager so its lifetime is scoped correctly.
+
+---
+
+See also the [Troubleshooting guide](troubleshooting.md) for symptom-first
+debugging and the [Stability page](stability.md) for the compatibility policy
+that codes participate in.
+
+---
+
 <!-- FILE: docs/agent-context/architecture.md -->
 
 # Architecture Guidance
@@ -3049,12 +3377,15 @@ Update this file when:
 ```bash
 make fmt      # ruff format src/ tests/ examples/ scripts/
 make lint     # ruff check src/ tests/ examples/ scripts/
-make type     # mypy src/
+make type     # mypy src/ examples/ scripts/  (examples + scripts gated too, #539)
 make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + schemas-check + example + demo
+make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
+make drift-check  # one gate over every generated-artifact drift check (#522; in `make ci`)
+make module-size-check  # enforce the ≤300-line convention, frozen baseline (#456; in `make ci`)
+make doc-snippets-check # execute README + curated docs Python snippets (#526; in `make ci`)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -3074,15 +3405,20 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
 
-> Gating CI steps beyond `make ci`: `make scorecard-check`,
-> `make readme-version-check` (#347/#473), `make context-rot-check` (#349),
-> `make llms-check` (#389), `make record-demos-check` (#390),
-> `make gateway-scorecard-check` (#391), and `make weaver-conformance`.
-> `make smoke-eval` (#392) also runs in CI but remains non-gating.
-> (`make schemas-check` also gates, but it runs *inside* `make ci`.)
+> As of #474, `make ci` now mirrors the gating CI checks a contributor can run
+> offline: the consolidated generated-artifact drift gate `make drift-check`
+> (#522 — schemas, scorecards, recorded demos, llms.txt, context-rot SVG, and
+> the public-API manifest #518), plus `make module-size-check` (#456),
+> `make doc-snippets-check` (#526), and `make readme-version-check` (#347).
+> The individual `*-check` targets still exist for granular use, but you no
+> longer need to remember to run them separately before a PR.
+>
+> CI-only gates (not in `make ci` because they need the network or are heavy):
+> `make weaver-conformance` (fetches schemas) and the docs build job.
+> `make smoke-eval` (#392) and the benchmark job run in CI but remain non-gating.
 
-`make ci` runs all declared targets in sequence. Run the additional gating checks
-listed above before opening a PR when the affected artifacts or integrations change.
+`make ci` runs all declared targets in sequence. The CI-only gates above run on
+every PR regardless; run them locally when the affected integrations change.
 
 ## Command-Selection Rules
 
@@ -3171,6 +3507,36 @@ A change is complete when **all** of the following are true:
 3. External format dependencies stay at the adapter boundary.
 4. Add tests in `tests/test_adapters.py`.
 5. Add an example in `examples/`.
+
+## Deprecating an API
+
+Use the runtime machinery in `src/contextweaver/_deprecation.py` (issue #517);
+do not call `warnings.warn` ad hoc.
+
+1. Add a `Deprecation(name, since, removal, instead)` entry to the `_SHIMS`
+   table in `_deprecation.py` (the single source of truth). Use the next minor
+   for `since` and `"1.0.0"` for `removal` unless decided otherwise.
+2. At the call site, emit the warning: `warn_deprecated("<name>")` inside a
+   property/method/branch, or decorate a callable with
+   `@deprecated("<name>", since=..., removal=..., instead=...)`. Keep behavior
+   identical; route in-library callers through a private helper so the canonical
+   path does not trip the warning.
+3. Migrate every in-repo caller (src, examples, docs snippets, tests) off the
+   deprecated surface; intentional shim tests assert the warning with
+   `pytest.warns(DeprecationWarning)`. The `filterwarnings` gate in
+   `pyproject.toml` escalates first-party deprecations to errors, so a leftover
+   caller fails CI.
+4. Add the surface to the inventory table in `docs/upgrading.md` and a
+   `CHANGELOG.md` "Deprecated" entry naming the replacement.
+
+**Documentation-only exception.** Do **not** add a runtime warning when the only
+call site would live in a module barred from side effects — a re-export-only
+`__init__.py` (hard rule: only re-exports) or a pure-data module such as
+`types.py` (invariant: no side effects in the data layer), or an internal
+serialization key on a hot path. Keep the surface a plain alias/accessor, skip
+steps 1–2 (no `_SHIMS` entry, no `warn_deprecated`), and record it as a
+documentation-only row in `docs/upgrading.md`. The `ToolCard` alias is the
+reference example.
 
 ## Documentation Governance
 

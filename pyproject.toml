@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "contextweaver"
-version = "0.14.1"
+version = "0.15.0"
 description = "Context firewall + tool router for MCP and tool-heavy AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -176,9 +176,41 @@ smolagents = [
 agno = [
     "agno>=1.0",
 ]
-# LangChain integration examples.
+# LangChain integration (issue #502).  Pulls ``langchain-core`` so user
+# applications can import the live-discovery helper
+# ``contextweaver.adapters.langchain.load_langchain_catalog`` and convert real
+# ``BaseTool`` instances.  The plain-dict conversion path
+# (``langchain_tool_to_selectable`` / ``langchain_tools_to_catalog``) works
+# without this extra installed.
 langchain = [
     "langchain-core>=0.3",
+]
+# OpenAI Agents SDK adapter integration (issue #501).  Pulls the
+# ``openai-agents`` runtime (import package ``agents``) so user applications can
+# import ``contextweaver.adapters.openai_agents.load_openai_agents_catalog`` and
+# convert live ``FunctionTool`` instances / run items.  The plain-dict and
+# item-dict paths work without this extra installed.
+openai-agents = [
+    "openai-agents>=0.1",
+]
+# Google ADK adapter integration (issue #547).  Pulls the ``google-adk``
+# runtime (import package ``google.adk``) so user applications can import
+# ``contextweaver.adapters.google_adk.load_google_adk_catalog`` and convert live
+# tools / session events.  The plain-dict and event-dict paths work without this
+# extra installed.
+google-adk = [
+    "google-adk>=1.0",
+]
+# Microsoft Agent Framework adapter integration (issue #430).  Pulls the
+# ``agent-framework`` runtime (import package ``agent_framework``; successor to
+# AutoGen / Semantic Kernel) so user applications can import
+# ``contextweaver.adapters.agent_framework.load_agent_framework_catalog`` and
+# convert live ``AIFunction`` tools / thread messages.  The plain-dict and
+# message-dict paths work without this extra installed; the OpenAPI
+# (``adapters.openapi``) and Agent Skills (``adapters.agent_skills``) adapters
+# need no extra at all — PyYAML and jsonschema are core dependencies.
+agent-framework = [
+    "agent-framework>=1.0",
 ]
 # LangGraph agent-loop reference architecture (issue #326).  Pulls the
 # LangGraph runtime so ``examples/architectures/langgraph_agent_loop`` can
@@ -302,6 +334,10 @@ all = [
     "contextweaver[weaver-spec]",
     "contextweaver[voice]",
     "contextweaver[langgraph]",
+    "contextweaver[langchain]",
+    "contextweaver[openai-agents]",
+    "contextweaver[google-adk]",
+    "contextweaver[agent-framework]",
     "contextweaver[e2e-eval]",
     "contextweaver[redis]",
     "contextweaver[s3]",
@@ -317,6 +353,15 @@ where = ["src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+# Escalate contextweaver's *own* deprecations to errors so the suite proves
+# that no in-repo code path (src, examples exercised under tests, the CLI)
+# trips a first-party deprecation, and that intentional legacy-shim tests
+# assert the warning explicitly via ``pytest.warns`` (issues #517 / #642).
+# The message anchor (``contextweaver deprecation:`` — see ``_deprecation.py``)
+# keeps unrelated third-party ``DeprecationWarning``s non-fatal.
+filterwarnings = [
+    "error:contextweaver deprecation:DeprecationWarning",
+]
 
 [tool.ruff]
 target-version = "py310"
@@ -394,6 +439,16 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "typer.*"
+ignore_missing_imports = true
+
+# ``referencing`` ships with jsonschema>=4.18 (a [dev] dep) and backs the
+# weaver-spec conformance script's local $ref resolver; ``langchain_core`` is
+# the [langchain] extra used by the LangChain memory demo. Both are optional
+# from the type-check's perspective (examples/ and scripts/ are now gated,
+# issue #539), so treat their imports as resolvable whether or not the extra
+# is installed in the type-check environment.
+[[tool.mypy.overrides]]
+module = ["referencing", "referencing.*", "langchain_core", "langchain_core.*"]
 ignore_missing_imports = true
 
 # Typer's ``@app.command()`` decorator is typed as a generic callable in 0.9-
