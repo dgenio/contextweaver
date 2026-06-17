@@ -57,6 +57,7 @@ from contextweaver.adapters.gateway_policy import RateLimit
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.adapters.sidecar import SidecarApp, SidecarConfig
 from contextweaver.config import ContextBudget
+from contextweaver.context._consolidation_helpers import parse_iso
 from contextweaver.context.consolidation import consolidate
 from contextweaver.context.consolidation_types import ConsolidationPolicy
 from contextweaver.context.manager import ContextManager
@@ -729,7 +730,7 @@ def consolidate_cmd(
     ] = 90,
     as_of: Annotated[
         str | None,
-        typer.Option("--as-of", help="ISO-8601 reference time for decay reporting."),
+        typer.Option("--as-of", help="ISO-8601 decay reference time (defaults to now)."),
     ] = None,
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit machine-readable JSON.")
@@ -758,12 +759,14 @@ def consolidate_cmd(
         similarity_threshold=similarity,
         decay_after_days=None if decay_after_days < 0 else decay_after_days,
     )
-    parsed_as_of = None
+    # Default the decay reference to now so --decay-after-days takes effect in
+    # the common case; an explicit --as-of (with RFC 3339 ``Z`` support) wins.
     if as_of is not None:
-        try:
-            parsed_as_of = datetime.fromisoformat(as_of)
-        except ValueError as exc:
-            raise typer.BadParameter(f"invalid --as-of timestamp: {exc}") from exc
+        parsed_as_of = parse_iso(as_of)
+        if parsed_as_of is None:
+            raise typer.BadParameter(f"invalid --as-of timestamp: {as_of!r}; expected ISO-8601")
+    else:
+        parsed_as_of = datetime.now()
 
     try:
         report = consolidate(ep_store, fact_store, policy, as_of=parsed_as_of, apply=apply)

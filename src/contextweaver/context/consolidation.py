@@ -246,20 +246,26 @@ def consolidate(
 
     if apply:
         for pf in promoted:
+            metadata: dict[str, object] = {
+                "consolidated": True,
+                "source_episode_ids": list(pf.source_episode_ids),
+                "occurrences": pf.occurrences,
+                "sessions": pf.sessions,
+                "first_seen": pf.first_seen,
+                "last_seen": pf.last_seen,
+                "merged_by_llm": pf.merged_by_llm,
+            }
+            # Stamp the policy's decay timestamp key with the fact's recency
+            # (its last-seen source time) so the promoted fact is itself
+            # eligible for decay reporting on later runs, not just its episodes.
+            if pf.last_seen is not None:
+                metadata[policy.timestamp_key] = pf.last_seen
             fact_store.put(
                 Fact(
                     fact_id=pf.fact_id,
                     key=pf.key,
                     value=pf.text,
-                    metadata={
-                        "consolidated": True,
-                        "source_episode_ids": list(pf.source_episode_ids),
-                        "occurrences": pf.occurrences,
-                        "sessions": pf.sessions,
-                        "first_seen": pf.first_seen,
-                        "last_seen": pf.last_seen,
-                        "merged_by_llm": pf.merged_by_llm,
-                    },
+                    metadata=metadata,
                     sensitivity=pf.sensitivity,
                 )
             )

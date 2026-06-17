@@ -361,3 +361,58 @@ def test_dataclass_round_trips() -> None:
         sensitivity=Sensitivity.internal,
     )
     assert PromotedFact.from_dict(fact.to_dict()) == fact
+
+
+# ---------------------------------------------------------------------------
+# Timezone / Z-suffix handling + sub-day decay (review fixes)
+# ---------------------------------------------------------------------------
+
+
+def test_decay_handles_z_suffix_and_tz_aware_as_of() -> None:
+    # RFC 3339 'Z' on the episode + a tz-aware as_of: neither should raise, and
+    # the stale episode is still reported.
+    episodes = [_ep("a", "stale note", ts="2026-01-01T00:00:00Z")]
+    policy = ConsolidationPolicy(decay_after_days=90)
+    as_of = datetime.fromisoformat("2026-06-01T00:00:00+00:00")
+    assert decay_episodes(episodes, policy, as_of=as_of) == ["a"]
+
+
+def test_decay_sub_day_granularity() -> None:
+    base = datetime(2026, 1, 1, 0, 0, 0)
+    episodes = [_ep("a", "stale", ts=base.isoformat())]
+    policy = ConsolidationPolicy(decay_after_days=90)
+    # 90 days + 23h is past the horizon (timedelta comparison, not floored days).
+    assert decay_episodes(episodes, policy, as_of=base + timedelta(days=90, hours=23)) == ["a"]
+
+
+def test_seen_bounds_preserves_original_z_strings() -> None:
+    episodes = [
+        _ep("a", _EMAIL, session="s1", ts="2026-01-05T00:00:00Z"),
+        _ep("b", _EMAIL, session="s2", ts="2026-01-01T00:00:00Z"),
+        _ep("c", _EMAIL, session="s3", ts="2026-03-09T00:00:00Z"),
+    ]
+    by_id = {e.episode_id: e for e in episodes}
+    clusters = cluster_episodes(episodes, similarity_threshold=0.4)
+    [fact] = promote_clusters(
+        clusters, by_id, ConsolidationPolicy(min_occurrences=3, min_sessions=2)
+    )
+    assert fact.first_seen == "2026-01-01T00:00:00Z"
+    assert fact.last_seen == "2026-03-09T00:00:00Z"
+
+
+def test_consolidated_fact_is_decayable_on_later_run() -> None:
+    base = datetime(2026, 1, 1)
+    store = _store(
+        *[
+            _ep(e, _EMAIL, session=f"s{i}", ts=base.isoformat())
+            for i, e in enumerate(("a", "b", "c"))
+        ]
+    )
+    facts = InMemoryFactStore()
+    pol = ConsolidationPolicy(min_occurrences=3, min_sessions=2, decay_after_days=90)
+    consolidate(store, facts, pol, apply=True)
+    stored = facts.all()[0]
+    # The promoted fact carries the policy decay key, so a later run reports it.
+    assert stored.metadata[pol.timestamp_key] == base.isoformat()
+    later = consolidate(store, facts, pol, as_of=base + timedelta(days=400))
+    assert stored.fact_id in later.decayed_fact_ids

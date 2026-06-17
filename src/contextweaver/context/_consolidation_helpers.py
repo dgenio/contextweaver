@@ -8,7 +8,7 @@ public surface is re-exported from ``consolidation``.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from contextweaver._utils import tokenize
 from contextweaver.store.episodic import Episode
@@ -63,12 +63,27 @@ def episode_iso(ep: Episode, key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Return *dt* as a naive UTC datetime (tz-aware inputs are converted)."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 def parse_iso(value: str | None) -> datetime | None:
-    """Parse an ISO-8601 *value* to a ``datetime``, or ``None`` on failure."""
+    """Parse an ISO-8601 *value* to a naive-UTC ``datetime``, or ``None``.
+
+    Mirrors the repo's ISO convention (e.g. ``RoutingDecision.from_dict``): the
+    RFC 3339 ``Z`` UTC suffix is normalised to ``+00:00`` so timestamps parse on
+    Python 3.10, and tz-aware values are converted to naive UTC so later
+    arithmetic against a naive reference time never raises. Naive inputs are
+    assumed to already be UTC.
+    """
     if not value:
         return None
+    text = value[:-1] + "+00:00" if value.endswith(("Z", "z")) else value
     try:
-        return datetime.fromisoformat(value)
+        return _to_naive_utc(datetime.fromisoformat(text))
     except ValueError:
         return None
 
@@ -91,11 +106,16 @@ def canonical_fact_id(source_ids: list[str]) -> str:
 
 
 def is_decayed(iso: str | None, as_of: datetime, decay_after_days: int) -> bool:
-    """Return ``True`` when *iso* is older than *decay_after_days* before *as_of*."""
+    """Return ``True`` when *iso* is older than *decay_after_days* before *as_of*.
+
+    Compares against a :class:`~datetime.timedelta` (not floored whole days) so a
+    timestamp older than the horizon by under 24h still decays, and normalises
+    *as_of* to naive UTC so a tz-aware ``as_of`` or stamp never raises.
+    """
     stamp = parse_iso(iso)
     if stamp is None:
         return False
-    return (as_of - stamp).days > decay_after_days
+    return _to_naive_utc(as_of) - stamp > timedelta(days=decay_after_days)
 
 
 __all__ = [

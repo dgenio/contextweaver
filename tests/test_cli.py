@@ -784,3 +784,30 @@ def test_consolidate_subcommand_bad_file(tmp_path: Path) -> None:
     missing = tmp_path / "nope.json"
     result = _run("consolidate", "--episodes", str(missing))
     assert result.returncode != 0
+
+
+def test_consolidate_subcommand_reports_decay_by_default(tmp_path: Path) -> None:
+    eps = tmp_path / "episodes.json"
+    episodes = [
+        {
+            "episode_id": f"ep{i}",
+            "summary": "customer prefers email contact for support",
+            "metadata": {"session_id": f"s{i}", "timestamp": "2020-01-01T00:00:00Z"},
+        }
+        for i in range(3)
+    ]
+    eps.write_text(json.dumps({"episodes": episodes}), encoding="utf-8")
+    # No --as-of: defaults to now, so the 2020 timestamps decay.
+    result = _run("consolidate", "--episodes", str(eps), "--json")
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert len(report["decayed_episode_ids"]) == 3
+
+
+def test_consolidate_subcommand_accepts_z_as_of(tmp_path: Path) -> None:
+    eps = tmp_path / "episodes.json"
+    _write_episodes(eps)
+    result = _run(
+        "consolidate", "--episodes", str(eps), "--as-of", "2026-06-01T00:00:00Z", "--json"
+    )
+    assert result.returncode == 0, result.stderr
