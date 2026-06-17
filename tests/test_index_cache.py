@@ -61,9 +61,17 @@ def test_fingerprint_separates_engines() -> None:
 
 
 def test_fingerprint_no_delimiter_collision() -> None:
-    # Two docs vs one concatenated doc must not collide (length + NUL framing).
+    # Two docs vs one concatenated doc must not collide (length framing).
     assert index_fingerprint(["a", "b"], engine_name="e") != index_fingerprint(
         ["a\x00b"], engine_name="e"
+    )
+
+
+def test_fingerprint_embedded_nul_same_count_distinct() -> None:
+    # Same document count but different boundaries with embedded NULs: without
+    # length framing both would serialise to ``\x00a\x00b\x00c`` and collide.
+    assert index_fingerprint(["a", "b\x00c"], engine_name="e") != index_fingerprint(
+        ["a\x00b", "c"], engine_name="e"
     )
 
 
@@ -172,6 +180,31 @@ def test_cached_retriever_incompatible_version_refits(tmp_path: Path) -> None:
     retr.fit(docs)
     assert retr.loaded_from_cache is False  # mismatched version ⇒ re-fit
     assert retr.search("one", 2)  # still usable
+
+
+class _UnserializableCodec:
+    """Codec whose state cannot be JSON-encoded — exercises store resilience."""
+
+    name = "tfidf"
+    version = 1
+
+    def dump(self, retriever: object) -> dict[str, object]:
+        return {"state": object()}  # not JSON-serialisable
+
+    def load(self, retriever: object, state: dict[str, object]) -> None:  # pragma: no cover
+        raise AssertionError("should never be reached")
+
+
+def test_store_failure_does_not_break_fit(tmp_path: Path) -> None:
+    # A codec that returns non-JSON state must not break fit() when an on-disk
+    # cache tries (and fails) to persist it — the "never break routing" guard.
+    cache = RoutingIndexCache(directory=tmp_path)
+    retr = CachedRetriever(TfIdfRetriever(), cache, codec=_UnserializableCodec())
+    retr.fit(["one two", "three four"])  # must not raise
+    assert retr.loaded_from_cache is False
+    assert retr.search("one", 2)  # base retriever still fitted and usable
+    # Nothing was persisted to disk (the encode failed and was swallowed).
+    assert not list(tmp_path.glob("idx_*.json"))
 
 
 def test_cached_retriever_round_trip_scores_match_baseline() -> None:

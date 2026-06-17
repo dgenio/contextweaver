@@ -35,6 +35,7 @@ import argparse
 import json
 import os
 import platform
+import shutil
 import sys
 import tempfile
 import time
@@ -180,6 +181,9 @@ def _profile_size(n: int, seed: int, runs: int) -> ScaleRow:
     index_files = list(cache_dir.glob("idx_*.json"))
     index_bytes = index_files[0].stat().st_size if index_files else 0
     speedup = cold_start_ms / warm_start_ms if warm_start_ms > 0 else 0.0
+
+    # Don't leak the per-size scratch dir (graph + index artifacts).
+    shutil.rmtree(work_dir, ignore_errors=True)
 
     return ScaleRow(
         catalog_size=n,

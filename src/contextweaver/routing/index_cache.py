@@ -218,20 +218,22 @@ class CachedRetriever:
         )
 
     def _store(self, fingerprint: str) -> None:
+        # The dump *and* the cache write are both guarded: a custom codec may
+        # raise or return non-JSON-serialisable state, and the disk layer may
+        # fail to encode it — none of which may break the caller's fit().
         try:
             state = self._codec.dump(self._base)
+            self._cache.put(
+                fingerprint,
+                {
+                    "envelope_version": CACHE_ENVELOPE_VERSION,
+                    "codec": self._codec.name,
+                    "version": self._codec.version,
+                    "state": state,
+                },
+            )
         except Exception as exc:  # noqa: BLE001 - never let caching break a fit
-            logger.warning("routing index cache: dump failed (%s); not caching", exc)
-            return
-        self._cache.put(
-            fingerprint,
-            {
-                "envelope_version": CACHE_ENVELOPE_VERSION,
-                "codec": self._codec.name,
-                "version": self._codec.version,
-                "state": state,
-            },
-        )
+            logger.warning("routing index cache: store failed (%s); not caching", exc)
 
     def search(self, query: str, top_k: int) -> list[tuple[int, float]]:
         """Delegate to the wrapped retriever."""

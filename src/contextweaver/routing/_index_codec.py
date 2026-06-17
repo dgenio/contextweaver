@@ -22,6 +22,11 @@ def index_fingerprint(documents: list[str], *, engine_name: str) -> str:
     against), so distinct backends never share an entry and a reordered corpus
     is a distinct key.
 
+    Every field is **length-prefixed** (8-byte big-endian) before its bytes,
+    so the encoding is unambiguous even if a document contains embedded NUL
+    bytes or shares boundaries with its neighbours — two different document
+    lists can never serialise to the same byte stream and collide.
+
     Args:
         documents: The ordered corpus passed to :meth:`Retriever.fit`.
         engine_name: Stable identifier of the retriever backend (``"tfidf"``).
@@ -30,12 +35,14 @@ def index_fingerprint(documents: list[str], *, engine_name: str) -> str:
         A hex-encoded SHA-256 digest.
     """
     hasher = hashlib.sha256()
-    hasher.update(engine_name.encode("utf-8"))
-    hasher.update(b"\x00")
-    hasher.update(str(len(documents)).encode("utf-8"))
+    name_bytes = engine_name.encode("utf-8")
+    hasher.update(len(name_bytes).to_bytes(8, "big"))
+    hasher.update(name_bytes)
+    hasher.update(len(documents).to_bytes(8, "big"))
     for doc in documents:
-        hasher.update(b"\x00")
-        hasher.update(doc.encode("utf-8"))
+        doc_bytes = doc.encode("utf-8")
+        hasher.update(len(doc_bytes).to_bytes(8, "big"))
+        hasher.update(doc_bytes)
     return hasher.hexdigest()
 
 
