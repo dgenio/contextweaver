@@ -39,6 +39,7 @@ from contextweaver.routing.hydration import (
     lazy_schema_resolver,
 )
 from contextweaver.routing.index_cache import (
+    TFIDF_CODEC,
     CachedRetriever,
     IndexCodec,
     RoutingIndexCache,
@@ -84,6 +85,7 @@ __all__ = [
     "ChoiceNode",
     "IndexCodec",
     "RoutingIndexCache",
+    "TFIDF_CODEC",
     "DEFAULT_CARD_HARD_CAP_TOKENS",
     "DEFAULT_CARD_TARGET_TOKENS",
     "DeterministicScoreProvider",

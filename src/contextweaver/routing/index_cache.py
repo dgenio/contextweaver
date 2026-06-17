@@ -68,6 +68,10 @@ class RoutingIndexCache:
     entry — an unreadable or malformed file reads as a miss so the caller
     re-fits.
 
+    The on-disk payload (the corpus tokens and IDF table) is stored as
+    plaintext JSON; point *directory* at a non-sensitive location if the
+    indexed catalog text is confidential.
+
     Args:
         directory: Optional directory for the persistent layer (created if
             absent).  ``None`` keeps the cache purely in-process.
@@ -245,7 +249,6 @@ class CachedRetriever:
 
 
 __all__ = [
-    "CACHE_ENVELOPE_VERSION",
     "CachedRetriever",
     "IndexCodec",
     "RoutingIndexCache",

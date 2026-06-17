@@ -766,6 +766,7 @@
   class SelectionValidation(status: 'SelectionStatus', selected_id: 'str | None', raw_id: 'str', repair: 'str | None' = ..., reason: 'str | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SelectionValidation'
       def to_dict(self) -> 'dict[str, Any]'
+  TFIDF_CODEC: _TfIdfCodec
   class ToolIdParts(namespace: 'str', name: 'str', version: 'str | None' = ..., hash8: 'str | None' = ...) -> None
   class TreeBuilder(max_children: 'int' = ..., labeler: 'KeywordLabeler | None' = ..., target_group_size: 'int | None' = ..., *, routing_config: 'RoutingConfig | None' = ..., clustering: 'ClusteringEngine | None' = ..., engine_registry: 'EngineRegistry | None' = ...) -> 'None'
       def build(self, items: 'list[SelectableItem]', *, use_cache: 'bool' = ...) -> 'ChoiceGraph'

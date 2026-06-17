@@ -18,8 +18,8 @@ For each catalog size it measures:
 * ``cold_speedup_x``      — ``cold_start_ms / warm_start_ms``.
 * ``graph_bytes`` / ``index_bytes`` — persisted artifact sizes on disk.
 
-Deterministic inputs (seeded catalog, fixed queries).  No LLM calls, no
-network.  Latency is wall-clock and host-dependent; the *relative* numbers
+Deterministic inputs (catalog derived from the item index, fixed queries).  No
+LLM calls, no network.  Latency is wall-clock and host-dependent; the *relative* numbers
 (build share, cold speedup) are the portable signal.
 
 Usage::
@@ -140,7 +140,7 @@ def _cold_start(items: list[SelectableItem]) -> float:
     return _time_ms(run)
 
 
-def _profile_size(n: int, seed: int, runs: int) -> ScaleRow:
+def _profile_size(n: int, runs: int) -> ScaleRow:
     items = make_scaling_catalog(n)
 
     # Time one build and keep the graph for the (untimed) warm-start setup.
@@ -268,7 +268,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=",".join(str(s) for s in _DEFAULT_SIZES),
         help="Comma-separated catalog sizes to profile.",
     )
-    parser.add_argument("--seed", type=int, default=42, help="Catalog RNG seed (reserved).")
     parser.add_argument(
         "--runs", type=int, default=5, help="Repetitions per query for warm latency."
     )
@@ -293,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rows: list[ScaleRow] = []
     for n in sizes:
-        row = _profile_size(n, seed=args.seed, runs=args.runs)
+        row = _profile_size(n, runs=args.runs)
         rows.append(row)
         print(
             f"  n={row.catalog_size:>6}  build={row.build_ms:9.1f}ms  "
@@ -304,7 +303,6 @@ def main(argv: list[str] | None = None) -> int:
 
     out = {
         "benchmark_version": "1.0",
-        "seed": args.seed,
         "environment": env,
         "routing_scale": [asdict(r) for r in rows],
     }
