@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Routing-scale index cache + profiler (#543, #624, #685, #684, #686).**
+  New `contextweaver.routing.RoutingIndexCache` + `CachedRetriever` persist and
+  reuse the fitted first-stage retriever index — the dominant cost of the first
+  `route()` call on a large catalog — keyed by a deterministic corpus
+  fingerprint. The cache has an in-process LRU layer (reuse across `Router`
+  instances in one process, folding in the cross-call reuse of #543) and an
+  optional on-disk layer (`RoutingIndexCache(directory=...)`, deterministic JSON
+  written atomically) that survives process restarts (#624). Opt in via
+  `Router(graph, items=items, retriever=CachedRetriever(TfIdfRetriever(),
+  cache))`; warm loads are **byte-identical** to a cold fit, so routing quality
+  and determinism are unchanged. The cache never raises into the routing path —
+  a corrupt or version-incompatible payload is treated as a miss and re-fitted.
+  Added `benchmarks/routing_scale.py` + `make benchmark-routing-scale`
+  (non-gating) which profiles routing up to 10k tools and writes the bottleneck
+  report at `docs/benchmarks/routing-scale.md` (#684), and a routing-quality
+  guardrail suite (`tests/test_routing_quality_guardrails.py`) pinning the
+  recall floor and cache transparency over the gold set (#686). No new
+  dependency. See `docs/benchmarks/routing-scale.md`.
+
 - **HTTP sidecar: language-agnostic route/compact API (#427, #674/#675/#676/#677/#678).**
   New `contextweaver serve-api` exposes the deterministic router and the context
   firewall over a small, versioned HTTP/JSON API so non-Python agents can use

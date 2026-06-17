@@ -72,6 +72,8 @@ It prepares context and routes tools but never calls models or executes tools.
 | `routing/normalizer.py` | `CatalogNormalizer` + `NormalizationReport` for catalog metadata hygiene (issue #44) |
 | `routing/catalog.py` (validation) | `validate_references` / `Catalog.validate_references` → `CatalogValidationReport` of dangling `depends_on`/`requires` refs; loaders take `on_invalid` (`"warn"`/`"raise"`/`"ignore"`) and raise `CatalogValidationError` in raise mode (issue #519) |
 | `routing/registry.py` | `EngineRegistry` and bundled `TfIdfRetriever` / `NoOpReranker` / `JaccardClusteringEngine` defaults (issue #47) |
+| `routing/index_cache.py` | Persistent, reusable fitted-index cache (issues #543/#624/#685): `RoutingIndexCache` (in-process LRU + optional deterministic-JSON on-disk layer) and `CachedRetriever` (a `Retriever` wrapper that loads/stores the fitted index keyed by a corpus fingerprint, transparently — warm loads score byte-identically to a cold fit). Pass via `Router(retriever=CachedRetriever(TfIdfRetriever(), cache))`. Codec + fingerprint live in `routing/_index_codec.py`. |
+| `routing/_index_codec.py` | Private helper for `index_cache.py`: `index_fingerprint()` (deterministic ordered-corpus SHA-256) + the `IndexCodec` contract and bundled `TFIDF_CODEC`. Not public API; names re-exported from `index_cache`. |
 | `routing/trace.py` | `RouteTrace` + `TraceStep` structured routing audit (issue #51) |
 | `routing/explanation.py` | `RouteResult.explanation()` Markdown / dict rendering (issue #226) |
 | `routing/pipeline.py` | `RoutingPipeline` composer — explicit retrieve → rerank → navigate → pack stages (issue #56) |

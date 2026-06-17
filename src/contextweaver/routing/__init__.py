@@ -38,6 +38,12 @@ from contextweaver.routing.hydration import (
     hydrate_with_schema,
     lazy_schema_resolver,
 )
+from contextweaver.routing.index_cache import (
+    CachedRetriever,
+    IndexCodec,
+    RoutingIndexCache,
+    index_fingerprint,
+)
 from contextweaver.routing.labeler import KeywordLabeler
 from contextweaver.routing.navigator import rank_collected
 from contextweaver.routing.normalizer import CatalogNormalizer, NormalizationReport
@@ -73,8 +79,11 @@ __all__ = [
     "Catalog",
     "CatalogNormalizer",
     "CatalogValidationReport",
+    "CachedRetriever",
     "ChoiceGraph",
     "ChoiceNode",
+    "IndexCodec",
+    "RoutingIndexCache",
     "DEFAULT_CARD_HARD_CAP_TOKENS",
     "DEFAULT_CARD_TARGET_TOKENS",
     "DeterministicScoreProvider",
@@ -106,6 +115,7 @@ __all__ = [
     "format_primitive_id",
     "format_tool_id",
     "hydrate_with_schema",
+    "index_fingerprint",
     "item_to_card",
     "lazy_schema_resolver",
     "load_graph",
