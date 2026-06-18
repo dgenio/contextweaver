@@ -162,6 +162,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and deprecation policy and carries the live inventory of active deprecations
   plus per-release "action required" notes.
 
+### Changed
+
+- **Contributor workflow & build-tooling hardening (#705, #706, #709, #710,
+  #711, #712).**
+  - `Makefile` targets now invoke `$(PYTHON)` (default `python3`, overridable
+    via `make <target> PYTHON=...`) so the documented commands run on
+    environments that ship only `python3` (#712).
+  - New `make floor-deps` and `make tool-smoke` targets (bundled as
+    `make ci-full`) reproduce locally the two gating CI jobs `make ci` cannot
+    mirror — lowest-direct dependency-floor resolution and the wheel /
+    entry-point smoke; only the macOS `tool-run-smoke` cell stays CI-only (#710).
+  - A `.gitattributes` marks `CHANGELOG.md`, `llms.txt`, and `llms-full.txt`
+    as `merge=union` so concurrent PRs stop hand-resolving conflicts in these
+    append-only / generated files; the `drift-check` gate still verifies the
+    committed output on `main` (#709).
+  - `docs/agent-context/labels.md` is rewritten to match the live label
+    taxonomy (`priority:`, `complexity:`, `area/`, `type:` families), and the
+    `docs_improvement` / `integration_request` issue templates now apply the
+    canonical `area/docs` / `integrations` labels instead of the stale
+    colon-prefixed forms (#711).
+  - `contextweaver verify` pins `heuristic_counter()` in its manager and build
+    checks, so the network-free guarantee no longer depends on
+    `ContextManager`'s default estimator (#705); the CLI failure path
+    (non-zero exit + fix-hint rendering) is now covered by tests (#706).
+
 ### Deprecated
 
 - **Pre-1.0 legacy compatibility shims (#642).** The following now emit a

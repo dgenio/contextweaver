@@ -3369,6 +3369,9 @@ make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
 make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
+make ci-full  # make ci + floor-deps + tool-smoke (the two isolated-env CI jobs; #710)
+make floor-deps # prove declared dependency floors resolve + pass tests (mirrors the floor-deps CI job; needs uv; #710)
+make tool-smoke # build the wheel + run the entry point via uvx/pipx (mirrors the Linux tool-run-smoke CI job; needs uv/pipx; #710)
 make drift-check  # one gate over every generated-artifact drift check (#522; in `make ci`)
 make module-size-check  # enforce the ≤300-line convention, frozen baseline (#456; in `make ci`)
 make doc-snippets-check # execute README + curated docs Python snippets (#526; in `make ci`)
@@ -3402,6 +3405,12 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 > CI-only gates (not in `make ci` because they need the network or are heavy):
 > `make weaver-conformance` (fetches schemas) and the docs build job.
 > `make smoke-eval` (#392) and the benchmark job run in CI but remain non-gating.
+> The two gating CI *jobs* that build isolated environments now have local
+> equivalents — `make floor-deps` and `make tool-smoke` (#710), bundled into
+> `make ci-full`; only the macOS cell of `tool-run-smoke` stays CI-only.
+>
+> All targets invoke `$(PYTHON)` (defaults to `python3`); override with
+> `make <target> PYTHON=python3.11` where no bare `python` exists (#712).
 
 `make ci` runs all declared targets in sequence. The CI-only gates above run on
 every PR regardless; run them locally when the affected integrations change.
@@ -3413,6 +3422,9 @@ every PR regardless; run them locally when the affected integrations change.
 | Quick format check | `make fmt` |
 | Quick lint check | `make lint` |
 | Full validation | `make ci` (always — do not skip targets) |
+| Full validation + isolated-env jobs | `make ci-full` (#710; adds floor-deps + tool-smoke) |
+| Verify dependency floors resolve | `make floor-deps` (#710; needs uv) |
+| Wheel / entry-point smoke | `make tool-smoke` (#710; needs uv/pipx) |
 | Run a single test | `pytest tests/test_<module>.py` or `pytest -k "test_name"` |
 | Run all tests | `make test` |
 | Verify examples work | `make example` |
