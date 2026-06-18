@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ConsolidationEvalReport` (precision / coverage + dedup ratio, #683). Pure
   stdlib; no new dependency.
 
+- **Package metadata drift guard (#473).** The existing
+  `readme-version-check` now also verifies that Python version classifiers in
+  `pyproject.toml` match the gating CI matrix, preventing PyPI metadata from
+  lagging the tested support range. Package metadata now advertises Python 3.13
+  support, removes the long-expired no-op `[cli]` extra, and drops reserved
+  `[ann]` / `[graph]` extras that installed dependencies without activating any
+  runtime code.
+
 - **Routing-scale index cache + profiler (#543, #624, #685, #684, #686).**
   New `contextweaver.routing.RoutingIndexCache` + `CachedRetriever` persist and
   reuse the fitted first-stage retriever index — the dominant cost of the first
