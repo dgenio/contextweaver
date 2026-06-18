@@ -1,16 +1,26 @@
 """Tests for the contextweaver CLI (__main__.py).
 
-Each test exercises a real subcommand via subprocess, creating any needed
-temp files on the fly.
+Most tests exercise a real subcommand via subprocess, creating any needed
+temp files on the fly.  A few drive the Typer app in-process via ``CliRunner``
+where a deterministic failure must be simulated (e.g. the ``verify`` failure
+path, issue #706).
 """
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+from rich.console import Console
+from typer.testing import CliRunner
+
+from contextweaver.__main__ import app
+from contextweaver._verify import _VerifyCheck
 
 
 def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -721,6 +731,54 @@ def test_verify_subcommand_json_mode() -> None:
     assert "routing" in check_names
     assert all(c["ok"] is True for c in payload["checks"])
     assert "next_step" in payload
+
+
+def _failing_routing_check() -> _VerifyCheck:
+    return _VerifyCheck(
+        name="routing",
+        ok=False,
+        detail="simulated routing failure",
+        fix_hint="File an issue with the full traceback",
+    )
+
+
+def test_verify_subcommand_failure_exits_nonzero_and_renders_fix_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing check yields exit 1 and prints its fix hint (issue #706).
+
+    Driven in-process so a single check can be made to fail deterministically;
+    ``_console`` is redirected to a buffer because Rich binds to the real
+    stdout at import time and would otherwise escape ``CliRunner`` capture.
+    """
+    monkeypatch.setattr("contextweaver.__main__._check_routing", _failing_routing_check)
+    buffer = io.StringIO()
+    monkeypatch.setattr(
+        "contextweaver.__main__._console",
+        Console(file=buffer, force_terminal=False, width=200),
+    )
+
+    result = CliRunner().invoke(app, ["verify"])
+
+    assert result.exit_code == 1
+    rendered = buffer.getvalue()
+    assert "FAIL" in rendered
+    assert "routing" in rendered
+    assert "File an issue with the full traceback" in rendered
+
+
+def test_verify_subcommand_failure_json_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--json reports ok=False and the failing check on the failure path (#706)."""
+    monkeypatch.setattr("contextweaver.__main__._check_routing", _failing_routing_check)
+
+    result = CliRunner().invoke(app, ["verify", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    routing = next(c for c in payload["checks"] if c["name"] == "routing")
+    assert routing["ok"] is False
+    assert routing["fix_hint"] == "File an issue with the full traceback"
 
 
 # ------------------------------------------------------------------

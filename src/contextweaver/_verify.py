@@ -33,11 +33,17 @@ def _check_import() -> _VerifyCheck:
 
 
 def _check_manager() -> _VerifyCheck:
-    """Verify ContextManager instantiates without error."""
+    """Verify ContextManager instantiates without error.
+
+    The estimator is pinned to ``heuristic_counter()`` so the network-free
+    guarantee is self-contained and does not depend on ``ContextManager``'s
+    default estimator (issue #705).
+    """
     try:
         from contextweaver.context.manager import ContextManager
+        from contextweaver.tokens import heuristic_counter
 
-        mgr = ContextManager()
+        mgr = ContextManager(estimator=heuristic_counter())
         event_count = len(mgr.event_log.all())
         artifact_count = len(mgr.artifact_store.list_refs())
         return _VerifyCheck(
@@ -55,12 +61,17 @@ def _check_manager() -> _VerifyCheck:
 
 
 def _check_build() -> _VerifyCheck:
-    """Verify a minimal context build produces a non-empty pack."""
+    """Verify a minimal context build produces a non-empty pack.
+
+    The estimator is pinned to ``heuristic_counter()`` so the build path stays
+    network-free regardless of ``ContextManager``'s default estimator (#705).
+    """
     try:
         from contextweaver.context.manager import ContextManager
+        from contextweaver.tokens import heuristic_counter
         from contextweaver.types import ContextItem, ItemKind, Phase
 
-        mgr = ContextManager()
+        mgr = ContextManager(estimator=heuristic_counter())
         mgr.ingest(
             ContextItem(
                 id="u1",
