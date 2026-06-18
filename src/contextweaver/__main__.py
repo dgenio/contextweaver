@@ -25,8 +25,8 @@ Invocable as ``python -m contextweaver`` or ``contextweaver`` (via
 ``[project.scripts]``).  Exempt from the 300-line module limit.
 
 Built on `Typer <https://typer.tiangolo.com>`_ + `Rich <https://rich.readthedocs.io>`_
-(both core dependencies as of v0.5; the legacy ``[cli]`` extra is kept as an
-empty alias for one cycle).  Issue #221.
+(both core dependencies as of v0.5; the legacy ``[cli]`` extra has been
+removed).  Issue #221.
 """
 
 from __future__ import annotations
