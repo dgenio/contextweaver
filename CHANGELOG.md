@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decay horizon without deleting them — the stores are append-only
   (`decay_episodes` / `decay_facts`, #681). An optional, fail-closed `call_fn`
   may refine a fact's canonical text, rejecting any completion that introduces
-  ungrounded tokens (#682). `consolidate(..., apply=True)` upserts the promoted
+  ungrounded tokens or a negation absent from the source notes (#682). `consolidate(..., apply=True)` upserts the promoted
   facts with content-addressed IDs, so re-running over an unchanged store is a
   no-op (idempotent). Results are returned as a `ConsolidationReport`
   (serialisable via `to_dict`/`from_dict`). New public surface in

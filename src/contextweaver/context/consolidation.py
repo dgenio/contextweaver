@@ -32,10 +32,12 @@ from contextweaver.context._consolidation_helpers import (
     CONSOLIDATED_FACT_KEY,
     canonical_fact_id,
     canonical_member,
+    coerce_iso,
     count_sessions,
     episode_iso,
     is_decayed,
     max_sensitivity,
+    parse_iso,
     seen_bounds,
 )
 from contextweaver.context._consolidation_merge import refine_canonical_text
@@ -71,6 +73,10 @@ def cluster_episodes(
     Returns:
         Clusters in creation order, each with sorted ``episode_ids`` and a
         deterministic ``canonical_text``.
+
+    Note:
+        Greedy single-pass clustering, ``O(n·k)`` for ``n`` episodes / ``k``
+        clusters (each tokenised once) — for offline batch use, not a hot path.
     """
     ordered = sorted(episodes, key=lambda ep: ep.episode_id)
     seeds: list[set[str]] = []
@@ -189,13 +195,15 @@ def decay_facts(
     *,
     as_of: datetime,
 ) -> list[str]:
-    """Return IDs of *facts* past the decay horizon (report-only; #681)."""
+    """Return IDs of *facts* past the decay horizon (report-only; #681).
+
+    Honours both ISO-8601 string and :class:`~datetime.datetime` timestamps.
+    """
     if policy.decay_after_days is None:
         return []
     stale: list[str] = []
     for fact in facts:
-        value = fact.metadata.get(policy.timestamp_key)
-        iso = value if isinstance(value, str) else None
+        iso = coerce_iso(fact.metadata.get(policy.timestamp_key))
         if is_decayed(iso, as_of, policy.decay_after_days):
             stale.append(fact.fact_id)
     return sorted(stale)
@@ -287,5 +295,6 @@ __all__ = [
     "consolidate",
     "decay_episodes",
     "decay_facts",
+    "parse_iso",
     "promote_clusters",
 ]

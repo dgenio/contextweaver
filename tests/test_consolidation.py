@@ -10,6 +10,7 @@ from contextweaver.context.consolidation import (
     cluster_episodes,
     consolidate,
     decay_episodes,
+    decay_facts,
     promote_clusters,
 )
 from contextweaver.context.consolidation_types import (
@@ -21,7 +22,7 @@ from contextweaver.context.consolidation_types import (
 )
 from contextweaver.exceptions import ConfigError
 from contextweaver.store.episodic import Episode, InMemoryEpisodicStore
-from contextweaver.store.facts import InMemoryFactStore
+from contextweaver.store.facts import Fact, InMemoryFactStore
 from contextweaver.types import Sensitivity
 
 # ---------------------------------------------------------------------------
@@ -190,6 +191,13 @@ def _hallucinating_call(_prompt: str) -> str:
     return "customer prefers carrier pigeons"
 
 
+def _negating_call(_prompt: str) -> str:
+    # Every content token is grounded; only an injected negation ("no") differs,
+    # which inverts the fact's meaning. tokenize() drops "no" as a stop-word, so
+    # the content-token check passes — the negation guardrail must catch it.
+    return "customer prefers no email contact for support"
+
+
 def test_llm_merge_accepts_grounded_completion() -> None:
     episodes = [_ep(e, _EMAIL, session=f"s{i}") for i, e in enumerate(("a", "b", "c"))]
     by_id = {e.episode_id: e for e in episodes}
@@ -232,6 +240,22 @@ def test_llm_merge_disabled_under_deterministic() -> None:
     assert fact.merged_by_llm is False
 
 
+def test_llm_merge_rejects_negation_injection() -> None:
+    # A negation absent from the source must not be accepted even when every
+    # content token is grounded — it would silently invert the durable fact.
+    episodes = [_ep(e, _EMAIL, session=f"s{i}") for i, e in enumerate(("a", "b", "c"))]
+    by_id = {e.episode_id: e for e in episodes}
+    clusters = cluster_episodes(episodes, similarity_threshold=0.4)
+    [fact] = promote_clusters(
+        clusters,
+        by_id,
+        ConsolidationPolicy(min_occurrences=3, min_sessions=2),
+        call_fn=_negating_call,
+    )
+    assert fact.merged_by_llm is False
+    assert fact.text == clusters[0].canonical_text
+
+
 # ---------------------------------------------------------------------------
 # Decay (#681)
 # ---------------------------------------------------------------------------
@@ -268,6 +292,25 @@ def test_decay_never_mutates_store() -> None:
     assert report.decayed_episode_ids == ["a"]
     # Append-only invariant: the episode is still present after a decay report.
     assert store.get("a") is not None
+
+
+def test_decay_facts_accepts_string_and_datetime_timestamps() -> None:
+    base = datetime(2026, 1, 1)
+    policy = ConsolidationPolicy(decay_after_days=90)
+    as_of = base + timedelta(days=400)
+    facts = [
+        Fact(
+            fact_id="str_ts",
+            key="consolidated",
+            value="x",
+            metadata={"timestamp": base.isoformat()},
+        ),
+        Fact(fact_id="dt_ts", key="consolidated", value="y", metadata={"timestamp": base}),
+        Fact(fact_id="int_ts", key="consolidated", value="z", metadata={"timestamp": 12345}),
+        Fact(fact_id="no_ts", key="consolidated", value="w", metadata={}),
+    ]
+    # Both the ISO string and the datetime decay; the int and missing keys do not.
+    assert decay_facts(facts, policy, as_of=as_of) == ["dt_ts", "str_ts"]
 
 
 # ---------------------------------------------------------------------------

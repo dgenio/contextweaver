@@ -57,8 +57,7 @@ from contextweaver.adapters.gateway_policy import RateLimit
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.adapters.sidecar import SidecarApp, SidecarConfig
 from contextweaver.config import ContextBudget
-from contextweaver.context._consolidation_helpers import parse_iso
-from contextweaver.context.consolidation import consolidate
+from contextweaver.context.consolidation import consolidate, parse_iso
 from contextweaver.context.consolidation_types import ConsolidationPolicy
 from contextweaver.context.manager import ContextManager
 from contextweaver.eval.dataset import EvalDataset

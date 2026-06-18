@@ -63,6 +63,17 @@ def episode_iso(ep: Episode, key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def coerce_iso(value: object) -> str | None:
+    """Coerce a metadata timestamp *value* to ISO text, or ``None``.
+
+    Accepts ISO-8601 strings and :class:`~datetime.datetime` values; any other
+    type (or an empty string) is treated as undated.
+    """
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value if isinstance(value, str) and value else None
+
+
 def _to_naive_utc(dt: datetime) -> datetime:
     """Return *dt* as a naive UTC datetime (tz-aware inputs are converted)."""
     if dt.tzinfo is not None:
@@ -122,6 +133,7 @@ __all__ = [
     "CONSOLIDATED_FACT_KEY",
     "canonical_fact_id",
     "canonical_member",
+    "coerce_iso",
     "count_sessions",
     "episode_iso",
     "is_decayed",

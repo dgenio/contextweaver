@@ -8,23 +8,43 @@ This private helper lets callers refine that text with a user-supplied
 
 * **Opt-in.** Only runs when a ``call_fn`` is supplied and the run is not in
   ``deterministic`` mode.
-* **Fail-closed.** Any exception, a non-string / blank completion, or a result
-  that introduces tokens absent from the source cluster falls back to the
-  deterministic ``canonical_text``. A model can only ever *rephrase* grounded
-  content — it can never inject a new entity into a durable fact.
+* **Fail-closed.** Any exception, a non-string / blank completion, a result
+  that introduces content tokens absent from the source cluster, or one that
+  introduces a *negation* absent from the source falls back to the deterministic
+  ``canonical_text``. A model may only ever *rephrase* grounded content — it can
+  neither inject a new entity nor flip the polarity of a durable fact.
 
-The "no new tokens" check reuses :func:`contextweaver._utils.tokenize` so the
-grounding test matches the rest of the library's text normalisation.
+The content-token check reuses :func:`contextweaver._utils.tokenize` so grounding
+matches the rest of the library's text normalisation. Because ``tokenize`` drops
+stop-words, it would not catch an injected negation (``"is safe"`` →
+``"is not safe"`` share the same content tokens); the separate negation check in
+:func:`_negations` closes that gap.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 
 from contextweaver._utils import tokenize
 
 logger = logging.getLogger("contextweaver.context")
+
+#: Polarity / negation terms that :func:`~contextweaver._utils.tokenize` discards
+#: as stop-words but which invert meaning. They must be grounded too: a merge may
+#: not introduce a negation absent from the source notes.
+_NEGATION_TERMS = frozenset({"not", "no", "never", "none", "cannot", "without", "neither", "nor"})
+
+
+def _negations(text: str) -> set[str]:
+    """Return the negation terms present in *text* (lower-cased, incl. ``n't``)."""
+    words = set(re.findall(r"[a-z']+", text.lower()))
+    found = {term for term in _NEGATION_TERMS if term in words}
+    if any(word.endswith("n't") for word in words):
+        found.add("n't")
+    return found
+
 
 #: Instruction prepended to the cluster's source summaries for the merge call.
 DEFAULT_MERGE_PROMPT = (
@@ -59,8 +79,10 @@ def refine_canonical_text(
         when the model produced a grounded, non-blank result that was accepted.
     """
     allowed = set()
+    source_negations: set[str] = set()
     for text in source_texts:
         allowed |= tokenize(text)
+        source_negations |= _negations(text)
     body = "\n".join(source_texts)[:_MAX_INPUT]
     try:
         result = call_fn(f"{system_prompt}{body}")
@@ -77,6 +99,13 @@ def refine_canonical_text(
         logger.warning(
             "consolidation merge: ungrounded tokens %s; using deterministic text",
             sorted(new_tokens),
+        )
+        return canonical_text, False
+    introduced_negations = _negations(merged) - source_negations
+    if introduced_negations:
+        logger.warning(
+            "consolidation merge: introduced negation(s) %s; using deterministic text",
+            sorted(introduced_negations),
         )
         return canonical_text, False
     return merged, True
