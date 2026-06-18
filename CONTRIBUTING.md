@@ -17,6 +17,11 @@ pre-commit install
 make ci     # the validation gate — everything below must pass
 ```
 
+> **Note:** The Makefile uses `python3` by default. If your system only has
+> `python` (not `python3`), override with `make test PYTHON=python` or
+> set `PYTHON=python` in your shell. To pin a specific interpreter, run
+> `make test PYTHON=python3.11`.
+
 **Fastest path — open in Codespaces:**
 Click "Code → Open with Codespaces" on GitHub. The dev container installs all dev dependencies and pre-commit hooks automatically.
 
