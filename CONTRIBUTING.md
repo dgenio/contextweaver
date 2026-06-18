@@ -70,10 +70,23 @@ make benchmark        # write benchmarks/results/latest.json (deterministic)
 make benchmark-matrix # full per-backend × per-size routing matrix
 make scorecard        # regenerate benchmarks/scorecard.md from latest.json
 make scorecard-check  # fail if committed scorecard.md is stale
+make floor-deps       # prove declared dependency floors resolve + pass tests
+                      #   (local equivalent of the floor-deps CI job; needs uv)
+make tool-smoke       # build the wheel and run the console entry point under
+                      #   uvx/pipx (local equivalent of the Linux tool-run-smoke
+                      #   CI job; needs uv and pipx)
+make ci-full          # make ci + floor-deps + tool-smoke
 ```
 
 `make ci` must pass before a PR can be merged. CI re-runs the same
-gate on every PR.
+gate on every PR. Two gating CI *jobs* are not part of `make ci` because
+they build isolated environments and are slow — `make floor-deps` and
+`make tool-smoke` reproduce them locally (issue #710); the macOS cell of
+`tool-run-smoke` stays CI-only.
+
+All `make` targets invoke `$(PYTHON)`, which defaults to `python3`. If your
+environment has no bare `python` on `PATH`, the targets still work; override
+the interpreter per-invocation with `make ci PYTHON=python3.11` (issue #712).
 
 If `make test` fails with `ModuleNotFoundError: No module named
 'contextweaver'` on a fresh container, `pyproject.toml` pins
@@ -117,8 +130,9 @@ Re-running after `pip install -e ".[dev]"` should resolve it.
     [`deps-latest-weekly.yml`](.github/workflows/deps-latest-weekly.yml) job
     (latest + pre-releases) is the safety net that justifies omitting upper
     caps and flags when a retained cap can move. **If you raise a floor, verify
-    it with the floor-deps job** (or `uv pip install --resolution lowest-direct
-    -e ".[dev,langchain]" && pytest`).
+    it locally with `make floor-deps`** — the local equivalent of the gating
+    floor-deps CI job (it resolves the declared lower bounds in a throwaway uv
+    venv and runs the suite).
 - **Type hints everywhere** — all public functions and methods must be fully annotated.
 - **Docstrings** — use Google-style docstrings on all public classes and functions.
 - **Line length** — 100 characters maximum (enforced by ruff).
