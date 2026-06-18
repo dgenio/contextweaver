@@ -468,7 +468,7 @@ techniques, and performance optimisation tips.
 
 contextweaver is built for production use with comprehensive quality gates:
 
-- **1100+ passing tests** across all modules — context pipeline, routing engine, firewall,
+- **Broad regression suite** across all modules — context pipeline, routing engine, firewall,
   adapters, stores, CLI, sensitivity enforcement
 - **mypy strict** type checking — zero errors across all source files
 - **ruff clean** linting — zero warnings
@@ -561,24 +561,8 @@ contextweaver works with any LLM provider and any agent framework:
   Pipecat, custom loops
 - **No vendor lock-in**: stdlib-only core; no cloud dependencies; runs anywhere Python 3.10+ runs
 
-<!-- mirrors the Framework Integrations table above; keep in sync -->
-| Framework | Guide | Code adapter | Use Case |
-|---|---|---|---|
-| MCP | [Guide](docs/integration_mcp.md) | `adapters.mcp` | Tool conversion, session loading, firewall |
-| A2A | [Guide](docs/integration_a2a.md) | `adapters.a2a` | Agent cards, multi-agent sessions |
-| FastMCP | [Cookbook recipe](docs/cookbook.md#1-fastmcp--contextweaver-routing) | `adapters.fastmcp` · `[fastmcp]` | Composed MCP servers → bounded-choice routing |
-| LlamaIndex | [Guide](docs/integration_llamaindex.md) | _Guide only_ | RAG + tools with budget control |
-| OpenAI Agents SDK | [Guide](docs/integration_openai_adk.md) | `adapters.openai_agents` · `[openai-agents]` | Swarm hand-offs with unified context |
-| Google ADK / Vertex AI | [Guide](docs/integration_google_adk.md) | `adapters.google_adk` · `[google-adk]` | Gemini tool-use with context budgets |
-| LangChain + LangGraph | [Guide](docs/integration_langchain.md) | `adapters.langchain` · `[langchain]` | Chain + graph agents with firewall |
-| Pipecat | [Guide](docs/integration_pipecat.md) | _Guide only_ | Real-time voice agents with async context build |
-| CrewAI | [Guide](docs/integration_crewai.md) | `adapters.crewai` · `[crewai]` | Role-based crews with bounded tool shortlists |
-| Pydantic AI | [Guide](docs/integration_pydantic_ai.md) | `adapters.pydantic_ai` · `[pydantic-ai]` | Type-safe agents with lossless message round-trip |
-| smolagents | [Guide](docs/integration_smolagents.md) | `adapters.smolagents` · `[smolagents]` | `CodeAgent` / `ToolCallingAgent` with step-log ingestion |
-| Agno | [Guide](docs/integration_agno.md) | `adapters.agno` · `[agno]` | Toolkit-routed agents; layers above Agno `Memory` |
-| Microsoft Agent Framework | [Guide](docs/integration_agent_framework.md) | `adapters.agent_framework` · `[agent-framework]` | AutoGen / Semantic Kernel tools + thread history |
-| OpenAPI | [Guide](docs/integration_openapi.md) | `adapters.openapi` | Route over REST API operations (no extra) |
-| Agent Skills | [Guide](docs/integration_agent_skills.md) | `adapters.agent_skills` | Route over SKILL.md libraries with lazy body hydration |
+See the [Framework Integrations](#framework-integrations) table and the
+[interop guide](docs/interop.md) for supported adapters and positioning.
 
 > You are not locked into a specific framework or LLM provider. contextweaver is a layer
 > *beneath* frameworks — context management as a composable primitive.
@@ -647,6 +631,7 @@ Recent milestones:
 | **v0.9** | ✅ complete | Provider message adapters, cache-stable routing, launch polish |
 | **v0.10** | ✅ complete | `contextweaver mcp serve`, MCP Context Gateway architecture, gateway benchmark suite, route/context explanations |
 | **v0.11** | ✅ complete | Memory-source adapter interface, session-handoff context pack, "when not to use" guidance |
+| **v0.15.0** | ✅ current (v0.15.0) | Selection contracts, framework adapters, CI gate consolidation, routing cache, sidecar API |
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
 | **v1.0** | 📋 planned | API freeze, documented deprecation policy, long-term compatibility window |
 
@@ -824,7 +809,8 @@ you have. All contributors agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 | **v0.8 — CrewAI + Mem0** (2026-05-19) | ✅ complete | CrewAI adapter (Phase 1), Mem0 external-memory backend, provider-SDK-leak invariant tests |
 | **v0.9 — Launch polish + adapters** (2026-05-20) | ✅ complete | Budget checks, provider adapters, benchmark transparency suite, launch polish |
 | **v0.10 — MCP serve + gateway polish** (2026-05-22) | ✅ complete | `contextweaver mcp serve`, schema hydration helpers, full MCP Context Gateway demos, context-build explanations |
-| **v0.11 — Memory source + session handoff** (2026-05-27) | ✅ current | `MemorySource` protocol + `JsonFixtureMemorySource`, session-handoff context pack, "when not to use" section |
+| **v0.11 — Memory source + session handoff** (2026-05-27) | ✅ complete | `MemorySource` protocol + `JsonFixtureMemorySource`, session-handoff context pack, "when not to use" section |
+| **v0.15.0 — Selection/adapters and CI hardening** (2026-06-14) | ✅ current (v0.15.0) | Selection contracts, framework adapters, CI gate consolidation, routing cache, sidecar API |
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
 | **v1.0 — API stability** | 📋 planned | API freeze, semantic-versioning commitment, long-term support window |
 | **Future** | 📋 planned | DAG visualization, LLM-assisted labeler, distributed stores, multi-agent coordination |

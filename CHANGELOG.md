@@ -331,9 +331,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     code and the gating CI scripts.
   - **`make ci` ⇄ CI alignment + workflow hygiene (#474).** `make ci` now runs
     the consolidated drift gate, module-size, doc-snippet, and README-version
-    checks, so a local pass mirrors the gating CI checks. CI gains workflow
-    `timeout-minutes`, a PR `concurrency` group, and a docs-build job that gates
-    `mkdocs build` on PRs (network-only `weaver-conformance` stays CI-only).
+  checks, so a local pass mirrors the gating CI checks. CI gains workflow
+  `timeout-minutes`, a PR `concurrency` group, and a docs-build job that gates
+  `mkdocs build` on PRs (network-only `weaver-conformance` stays CI-only).
+- **README roadmap drift guard (#531).** The README now single-sources the
+  framework integration table, marks the current roadmap row with the package
+  version, and extends `readme-version-check` so stale roadmap `current` markers
+  fail CI instead of drifting silently.
 - **Gateway `tool_execute` dispatch hardening (#529, #512, #483, #482, #507).**
   The gateway/proxy dispatch path gains four opt-in, deterministic controls,
   all inert by default so an unconfigured runtime behaves exactly as before:
