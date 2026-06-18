@@ -1,7 +1,7 @@
 name: Documentation / Example Improvement
 description: Improve docs, examples, READMEs, or any in-repo prose.
 title: "[docs] "
-labels: ["documentation", "area:docs"]
+labels: ["documentation", "area/docs"]
 body:
   - type: markdown
     attributes:

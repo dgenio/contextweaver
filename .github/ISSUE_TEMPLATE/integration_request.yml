@@ -1,7 +1,7 @@
 name: Integration Request
 description: Propose a new framework / SDK / protocol adapter for contextweaver.
 title: "[integration] "
-labels: ["enhancement", "area:integrations"]
+labels: ["enhancement", "integrations"]
 body:
   - type: markdown
     attributes:
