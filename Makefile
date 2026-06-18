@@ -140,10 +140,14 @@ ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-v
 
 # Floor-deps proof (mirrors the `floor-deps` CI job). Resolves each *direct*
 # dependency to its declared lower bound in a throwaway uv venv and runs the
-# suite, proving the `>=X` floors in pyproject.toml are truthful. Requires `uv`.
+# suite, proving the `>=X` floors in pyproject.toml are truthful. The venv is
+# pinned to the CI job's floor interpreter (Python 3.10) so the target
+# reproduces the gating surface regardless of the local default; override with
+# `make floor-deps FLOOR_PYTHON=3.11`. Requires `uv`.
 FLOOR_VENV ?= .venv-floor
+FLOOR_PYTHON ?= 3.10
 floor-deps:
-	uv venv $(FLOOR_VENV)
+	uv venv --python $(FLOOR_PYTHON) $(FLOOR_VENV)
 	uv pip install --python $(FLOOR_VENV) --resolution lowest-direct -e ".[dev,langchain]"
 	$(FLOOR_VENV)/bin/python -m pytest -q
 
@@ -153,6 +157,7 @@ floor-deps:
 # script-entry regressions an editable install hides. Requires `uv` (and `pipx`
 # for the pipx leg).
 tool-smoke:
+	rm -rf dist
 	uv build --wheel
 	@WHEEL=$$(find dist -name '*.whl' -print -quit); \
 	echo "smoke-testing $$WHEEL"; \
