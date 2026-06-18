@@ -14,16 +14,19 @@ Public API:
 
 from __future__ import annotations
 
+from contextweaver.eval.consolidation import ConsolidationEvalReport, evaluate_consolidation
 from contextweaver.eval.context import ContextEvalReport, evaluate_context
 from contextweaver.eval.dataset import EvalCase, EvalDataset
 from contextweaver.eval.metrics import precision_at_k, recall_at_k, reciprocal_rank
 from contextweaver.eval.routing import RoutingEvalReport, evaluate_routing
 
 __all__ = [
+    "ConsolidationEvalReport",
     "ContextEvalReport",
     "EvalCase",
     "EvalDataset",
     "RoutingEvalReport",
+    "evaluate_consolidation",
     "evaluate_context",
     "evaluate_routing",
     "precision_at_k",

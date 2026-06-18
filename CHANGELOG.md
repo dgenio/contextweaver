@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Memory consolidation engine (#498, #679, #680, #681, #682, #683).**
+  New `contextweaver.context.consolidate(...)` distills episodic memory into
+  durable, deduplicated, provenance-stamped facts. The deterministic core
+  clusters similar episodes (`cluster_episodes`, #679), promotes clusters that
+  meet `ConsolidationPolicy` thresholds (`min_occurrences` / `min_sessions`)
+  into `PromotedFact` records carrying full source provenance and the **maximum**
+  source sensitivity (`promote_clusters`, #680), and reports entries past the
+  decay horizon without deleting them — the stores are append-only
+  (`decay_episodes` / `decay_facts`, #681). An optional, fail-closed `call_fn`
+  may refine a fact's canonical text, rejecting any completion that introduces
+  ungrounded tokens or a negation absent from the source notes (#682). `consolidate(..., apply=True)` upserts the promoted
+  facts with content-addressed IDs, so re-running over an unchanged store is a
+  no-op (idempotent). Results are returned as a `ConsolidationReport`
+  (serialisable via `to_dict`/`from_dict`). New public surface in
+  `contextweaver.context`: `consolidate`, `cluster_episodes`, `promote_clusters`,
+  `decay_episodes`, `decay_facts`, `ConsolidationPolicy`, `ConsolidationReport`,
+  `PromotedFact`, `EpisodeCluster`. A new `contextweaver consolidate` CLI
+  subcommand runs the pipeline over JSON-serialised stores. Quality is
+  measurable offline via `contextweaver.eval.evaluate_consolidation` →
+  `ConsolidationEvalReport` (precision / coverage + dedup ratio, #683). Pure
+  stdlib; no new dependency.
+
 - **Package metadata drift guard (#473).** The existing
   `readme-version-check` now also verifies that Python version classifiers in
   `pyproject.toml` match the gating CI matrix, preventing PyPI metadata from
@@ -16,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   support, removes the long-expired no-op `[cli]` extra, and drops reserved
   `[ann]` / `[graph]` extras that installed dependencies without activating any
   runtime code.
+
 - **Routing-scale index cache + profiler (#543, #624, #685, #684, #686).**
   New `contextweaver.routing.RoutingIndexCache` + `CachedRetriever` persist and
   reuse the fitted first-stage retriever index — the dominant cost of the first

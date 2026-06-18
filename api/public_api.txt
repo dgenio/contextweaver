@@ -600,8 +600,17 @@
   def to_weaver_selectable_item(item: 'SelectableItem') -> '_ws_types.SelectableItem'
 
 ## contextweaver.context
+  CONSOLIDATION_REPORT_VERSION: str
   class CandidateExplanation(item_id: 'str', kind: 'str', sensitivity: 'str', score: 'float | None' = ..., included: 'bool' = ..., drop_reason: 'str' = ..., dependency_closure: 'bool' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'CandidateExplanation'
+      def to_dict(self) -> 'dict[str, Any]'
+  class ConsolidationPolicy(min_occurrences: 'int' = ..., min_sessions: 'int' = ..., similarity_threshold: 'float' = ..., decay_after_days: 'int | None' = ..., timestamp_key: 'str' = ..., session_key: 'str' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'ConsolidationPolicy'
+      def to_dict(self) -> 'dict[str, Any]'
+      def validate(self) -> 'None'
+  class ConsolidationReport(clusters: 'list[EpisodeCluster]' = ..., promoted: 'list[PromotedFact]' = ..., decayed_episode_ids: 'list[str]' = ..., decayed_fact_ids: 'list[str]' = ..., applied: 'bool' = ..., version: 'str' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'ConsolidationReport'
+      def summary(self) -> 'str'
       def to_dict(self) -> 'dict[str, Any]'
   class ContextBuildExplanation(version: 'int' = ..., phase: 'str' = ..., query: 'str' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dependency_closures: 'int' = ..., sensitivity_drops: 'int' = ..., dedup_removed: 'int' = ..., budget_tokens: 'int' = ..., resolved_weights: 'dict[str, float]' = ..., candidates: 'list[CandidateExplanation]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextBuildExplanation'
@@ -610,6 +619,9 @@
       def drilldown(self, handle: 'str', selector: 'dict[str, Any]', *, inject: 'bool' = ..., parent_id: 'str | None' = ...) -> 'str'
       def drilldown_sync(self, handle: 'str', selector: 'dict[str, Any]', *, inject: 'bool' = ..., parent_id: 'str | None' = ...) -> 'str'
   EXPLANATION_VERSION: int
+  class EpisodeCluster(cluster_id: 'str', episode_ids: 'list[str]' = ..., canonical_text: 'str' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'EpisodeCluster'
+      def to_dict(self) -> 'dict[str, Any]'
   HANDOFF_CATEGORIES: tuple
   HANDOFF_PACK_VERSION: str
   class HandoffEntry(id: 'str', text: 'str', category: 'str', source_ids: 'list[str]' = ..., confidence: 'float' = ..., token_estimate: 'int' = ...) -> None
@@ -627,6 +639,9 @@
       def is_expired(self, *, now: 'float | None' = ...) -> 'bool'
       def to_dict(self) -> 'dict[str, Any]'
   PHASE_SCOPE_PREFERENCES: dict
+  class PromotedFact(fact_id: 'str', key: 'str', text: 'str', source_episode_ids: 'list[str]' = ..., occurrences: 'int' = ..., sessions: 'int' = ..., first_seen: 'str | None' = ..., last_seen: 'str | None' = ..., sensitivity: 'Sensitivity' = ..., merged_by_llm: 'bool' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'PromotedFact'
+      def to_dict(self) -> 'dict[str, Any]'
   class SessionHandoffPack(decisions: 'list[HandoffEntry]' = ..., conventions: 'list[HandoffEntry]' = ..., unresolved_tasks: 'list[HandoffEntry]' = ..., pitfalls: 'list[HandoffEntry]' = ..., next_inspections: 'list[HandoffEntry]' = ..., artifact_refs: 'list[ArtifactRef]' = ..., sensitivity_dropped: 'int' = ..., token_estimate: 'int' = ..., version: 'str' = ...) -> None
       def all_entries(self) -> 'list[HandoffEntry]'
       def from_dict(cls, data: 'dict[str, Any]') -> 'SessionHandoffPack'
@@ -639,12 +654,17 @@
   def apply_sensitivity_filter(items: 'list[ContextItem]', policy: 'ContextPolicy', estimator: 'TokenEstimator | None' = ...) -> 'tuple[list[ContextItem], int]'
   def build_schema_header(hydration: 'HydrationResult', schema: 'dict[str, Any] | None' = ..., examples: 'list[str] | None' = ..., constraints: 'dict[str, Any] | None' = ...) -> 'str'
   def build_session_handoff_pack(event_log: 'EventLog', artifact_store: 'ArtifactStore', policy: 'ContextPolicy', estimator: 'TokenEstimator', *, budget_tokens: 'int' = ...) -> 'SessionHandoffPack'
+  def cluster_episodes(episodes: 'list[Episode]', *, similarity_threshold: 'float' = ...) -> 'list[EpisodeCluster]'
+  def consolidate(episodic_store: 'EpisodicStore', fact_store: 'FactStore', policy: 'ConsolidationPolicy | None' = ..., *, as_of: 'datetime | None' = ..., call_fn: 'Callable[[str], str] | None' = ..., deterministic: 'bool' = ..., apply: 'bool' = ...) -> 'ConsolidationReport'
+  def decay_episodes(episodes: 'list[Episode]', policy: 'ConsolidationPolicy', *, as_of: 'datetime') -> 'list[str]'
+  def decay_facts(facts: 'list[Fact]', policy: 'ConsolidationPolicy', *, as_of: 'datetime') -> 'list[str]'
   def deduplicate_candidates(scored: 'list[tuple[float, ContextItem]]', similarity_threshold: 'float' = ...) -> 'tuple[list[tuple[float, ContextItem]], int]'
   def drilldown_tool_spec() -> 'SelectableItem'
   def generate_candidates(event_log: 'EventLog', phase: 'Phase', policy: 'ContextPolicy') -> 'list[ContextItem]'
   def generate_views(ref: 'ArtifactRef', data: 'bytes', registry: 'ViewRegistry | None' = ...) -> 'list[ViewSpec]'
   def memory_entries_to_context_items(entries: 'list[MemoryEntry]', *, estimator: 'TokenEstimator | None' = ..., now: 'float | None' = ...) -> 'list[ContextItem]'
   def passthrough_renderer(items: 'list[ContextItem]') -> 'str'
+  def promote_clusters(clusters: 'list[EpisodeCluster]', episodes_by_id: 'dict[str, Episode]', policy: 'ConsolidationPolicy', *, call_fn: 'Callable[[str], str] | None' = ..., deterministic: 'bool' = ...) -> 'list[PromotedFact]'
   def register_redaction_hook(name: 'str', hook: 'RedactionHook') -> 'None'
   def render_context(items: 'list[ContextItem]', separator: 'str' = ..., header: 'str' = ..., footer: 'str' = ...) -> 'str'
   def render_handoff_pack(pack: 'SessionHandoffPack') -> 'str'
@@ -661,6 +681,10 @@
   def gateway_catalog_path() -> 'Path'
 
 ## contextweaver.eval
+  class ConsolidationEvalReport(clusters_found: 'int' = ..., facts_promoted: 'int' = ..., episodes_decayed: 'int' = ..., facts_decayed: 'int' = ..., dedup_ratio: 'float' = ..., precision: 'float' = ..., coverage: 'float' = ..., gold_size: 'int' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'ConsolidationEvalReport'
+      def summary(self) -> 'str'
+      def to_dict(self) -> 'dict[str, Any]'
   class ContextEvalReport(phase: 'str' = ..., prompt_tokens: 'int' = ..., budget_tokens: 'int' = ..., budget_utilization_pct: 'float' = ..., naive_tokens: 'int' = ..., token_savings: 'int' = ..., token_savings_pct: 'float' = ..., total_candidates: 'int' = ..., items_included: 'int' = ..., items_dropped: 'int' = ..., dedup_removed: 'int' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextEvalReport'
       def summary(self) -> 'str'
@@ -676,6 +700,7 @@
       def from_dict(cls, data: 'dict[str, Any]') -> 'RoutingEvalReport'
       def summary(self) -> 'str'
       def to_dict(self) -> 'dict[str, Any]'
+  def evaluate_consolidation(report: 'ConsolidationReport', expected_texts: 'Iterable[str] | None' = ..., *, total_episodes: 'int | None' = ...) -> 'ConsolidationEvalReport'
   def evaluate_context(manager: 'ContextManager', phase: 'Phase' = ..., query: 'str' = ..., *, estimator: 'TokenEstimator | None' = ...) -> 'ContextEvalReport'
   def evaluate_routing(router: 'Router', dataset: 'EvalDataset', *, catalog_ids: 'set[str] | None' = ...) -> 'RoutingEvalReport'
   def precision_at_k(predicted: 'Sequence[str]', expected: 'Collection[str]', k: 'int') -> 'float'

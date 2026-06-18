@@ -9,6 +9,20 @@ from __future__ import annotations
 
 from contextweaver.context.call_prompt import build_schema_header
 from contextweaver.context.candidates import generate_candidates, resolve_dependency_closure
+from contextweaver.context.consolidation import (
+    cluster_episodes,
+    consolidate,
+    decay_episodes,
+    decay_facts,
+    promote_clusters,
+)
+from contextweaver.context.consolidation_types import (
+    CONSOLIDATION_REPORT_VERSION,
+    ConsolidationPolicy,
+    ConsolidationReport,
+    EpisodeCluster,
+    PromotedFact,
+)
 from contextweaver.context.dedup import deduplicate_candidates
 from contextweaver.context.explanation import (
     EXPLANATION_VERSION,
@@ -44,10 +58,14 @@ from contextweaver.context.sensitivity import (
 from contextweaver.context.views import ViewRegistry, drilldown_tool_spec, generate_views
 
 __all__ = [
+    "CONSOLIDATION_REPORT_VERSION",
     "CandidateExplanation",
+    "ConsolidationPolicy",
+    "ConsolidationReport",
     "ContextBuildExplanation",
     "ContextManager",
     "EXPLANATION_VERSION",
+    "EpisodeCluster",
     "HANDOFF_CATEGORIES",
     "HANDOFF_PACK_VERSION",
     "HandoffEntry",
@@ -55,6 +73,7 @@ __all__ = [
     "MaskRedactionHook",
     "MemoryEntry",
     "PHASE_SCOPE_PREFERENCES",
+    "PromotedFact",
     "SessionHandoffPack",
     "ViewRegistry",
     "apply_firewall",
@@ -62,12 +81,17 @@ __all__ = [
     "apply_sensitivity_filter",
     "build_schema_header",
     "build_session_handoff_pack",
+    "cluster_episodes",
+    "consolidate",
+    "decay_episodes",
+    "decay_facts",
     "deduplicate_candidates",
     "drilldown_tool_spec",
     "generate_candidates",
     "generate_views",
     "memory_entries_to_context_items",
     "passthrough_renderer",
+    "promote_clusters",
     "register_redaction_hook",
     "unregister_redaction_hook",
     "render_context",
