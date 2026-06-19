@@ -121,3 +121,28 @@ def test_check_routing_failure() -> None:
         assert not check.ok
         assert "simulated routing failure" in check.detail
         assert check.fix_hint is not None
+
+
+# ------------------------------------------------------------------
+# Pinned network-free estimator (issue #705)
+# ------------------------------------------------------------------
+
+
+def test_check_manager_and_build_pin_heuristic_estimator() -> None:
+    """``verify`` must not rely on ContextManager's default estimator (#705).
+
+    Both checks pass an explicit ``heuristic_counter()``; the default
+    ``HeuristicEstimator`` constructor must therefore never run during verify.
+    Patching it to raise proves the pin holds: without the explicit estimator
+    these checks would fall through to the default and report ``ok=False``.
+    """
+    sentinel = "default estimator must not be constructed during verify"
+    with patch(
+        "contextweaver.context.manager.HeuristicEstimator",
+        side_effect=AssertionError(sentinel),
+    ):
+        manager_check = _check_manager()
+        build_check = _check_build()
+
+    assert manager_check.ok, manager_check.detail
+    assert build_check.ok, build_check.detail
