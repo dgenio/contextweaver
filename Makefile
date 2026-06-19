@@ -154,10 +154,13 @@ floor-deps:
 # Zero-install distribution smoke (mirrors the Linux cell of the `tool-run-smoke`
 # CI job; the macOS cell stays CI-only). Builds the wheel and runs the console
 # entry point from isolated uvx / pipx environments to catch packaging or
-# script-entry regressions an editable install hides. Requires `uv` (and `pipx`
-# for the pipx leg).
+# script-entry regressions an editable install hides. Requires `uv`; the `pipx`
+# legs are skipped with a notice when `pipx` is not on PATH (the uvx legs already
+# exercise the same entry points). Only stale wheels are cleared from `dist/`
+# (sdists and other artifacts are left in place), and a single fresh wheel is
+# rebuilt so the smoke always targets the just-built artifact.
 tool-smoke:
-	rm -rf dist
+	rm -f dist/*.whl
 	uv build --wheel
 	@WHEEL=$$(find dist -name '*.whl' -print -quit); \
 	echo "smoke-testing $$WHEEL"; \
@@ -165,10 +168,14 @@ tool-smoke:
 	uvx --isolated --no-config --from "$$WHEEL" contextweaver mcp serve \
 		--catalog examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json \
 		--dry-run; \
-	pipx run --no-cache --spec "$$WHEEL" contextweaver demo --scenario killer; \
-	pipx run --no-cache --spec "$$WHEEL" contextweaver mcp serve \
-		--catalog examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json \
-		--dry-run
+	if command -v pipx >/dev/null 2>&1; then \
+		pipx run --no-cache --spec "$$WHEEL" contextweaver demo --scenario killer; \
+		pipx run --no-cache --spec "$$WHEEL" contextweaver mcp serve \
+			--catalog examples/architectures/mcp_context_gateway/real_catalogs/filesystem.json \
+			--dry-run; \
+	else \
+		echo "pipx not found on PATH — skipping pipx smoke legs (uvx legs already ran)"; \
+	fi
 
 # Everything in `ci` plus the two isolated-environment jobs above. The macOS
 # tool-run-smoke cell remains the one gating surface with no local equivalent.
