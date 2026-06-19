@@ -6,6 +6,8 @@
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
 
+PYTHON ?= python3
+
 fmt:
 	ruff format src/ tests/ examples/ scripts/
 
