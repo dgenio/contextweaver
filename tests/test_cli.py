@@ -724,6 +724,58 @@ def test_verify_subcommand_json_mode() -> None:
 
 
 # ------------------------------------------------------------------
+# transport / SSE (issue #694)
+# ------------------------------------------------------------------
+
+
+def test_default_transport_is_stdio() -> None:
+    """Default transport shows stdio in dry-run output."""
+    result = _run(
+        "mcp",
+        "serve",
+        "--config",
+        "examples/recipes/gateway_config.yaml",
+        "--dry-run",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "transport=stdio" in result.stderr
+    assert "dry-run: catalog validated; not binding stdio." in result.stderr
+
+
+def test_sse_transport_dry_run() -> None:
+    """SSE transport appears in dry-run output."""
+    result = _run(
+        "mcp",
+        "serve",
+        "--config",
+        "examples/recipes/gateway_config.yaml",
+        "--transport",
+        "sse",
+        "--dry-run",
+        "--quiet",
+        "--no-quiet",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "transport=sse" in result.stderr
+    assert "dry-run: catalog validated; not binding sse." in result.stderr
+
+
+def test_invalid_transport_rejected() -> None:
+    """Non-stdio/sse transport raises BadParameter."""
+    result = _run(
+        "mcp",
+        "serve",
+        "--config",
+        "examples/recipes/gateway_config.yaml",
+        "--transport",
+        "ws",
+        "--dry-run",
+    )
+    assert result.returncode == 2, result.stderr
+    assert "transport" in (result.stdout + result.stderr).lower()
+
+
+# ------------------------------------------------------------------
 # consolidate (issue #498)
 # ------------------------------------------------------------------
 

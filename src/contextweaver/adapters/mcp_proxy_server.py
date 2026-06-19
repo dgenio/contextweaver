@@ -34,6 +34,17 @@ from mcp import types as mcp_types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
+try:
+    import uvicorn
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    from starlette.types import Receive, Scope, Send
+
+    _HAS_SSE = True
+except Exception:  # pragma: no cover
+    _HAS_SSE = False
+
 from contextweaver.adapters.mcp_proxy import (
     PROXY_META_TOOL_NAMES,
     dispatch_proxy_request,
@@ -148,3 +159,45 @@ class McpProxyServer:
                 write_stream,
                 self.server.create_initialization_options(),
             )
+
+    async def run_sse(self, host: str = "127.0.0.1", port: int = 8000) -> None:
+        """Run the proxy over SSE on *host*:*port* until interrupted.
+
+        Args:
+            host: Address to bind (default ``127.0.0.1``).
+            port: Port to listen on (default ``8000``).
+
+        Raises:
+            RuntimeError: If the MCP SDK's SSE dependencies are unavailable.
+        """
+        if not _HAS_SSE:
+            raise RuntimeError(
+                "SSE transport unavailable. The MCP SDK's SSE support requires "
+                "starlette and uvicorn, which should have been installed with "
+                "the `mcp` package."
+            )
+        sse = SseServerTransport("/messages/")
+
+        async def _handle_sse(
+            scope: Scope, receive: Receive, send: Send
+        ) -> None:
+            async with sse.connect_sse(
+                scope, receive, send
+            ) as (read_stream, write_stream):
+                await self.server.run(
+                    read_stream,
+                    write_stream,
+                    self.server.create_initialization_options(),
+                )
+
+        starlette_app = Starlette(
+            routes=[
+                Mount("/sse", app=_handle_sse),
+                Mount("/messages/", app=sse.handle_post_message),
+            ],
+        )
+        config = uvicorn.Config(
+            starlette_app, host=host, port=port, log_level="warning"
+        )
+        srv = uvicorn.Server(config)
+        await srv.serve()

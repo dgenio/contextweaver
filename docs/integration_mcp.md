@@ -394,3 +394,65 @@ delivered as `isError=true` `CallToolResult` payloads.
 - [`examples/architectures/mcp_context_gateway/main_real.py`](../examples/architectures/mcp_context_gateway/main_real.py)
   — the reference architecture run against verbatim `tools/list`
   snapshots of MIT-licensed reference MCP servers.
+
+### Transport & compatibility matrix
+
+contextweaver's MCP server supports two transport protocols. The default
+is **stdio** (used by every client recipe in the repo). **SSE** is
+available for clients that prefer an HTTP-based connection.
+
+| Transport | CLI flag | Status | First shipped |
+|---|---|---|---|
+| stdio | `--transport stdio` (default) | Stable | v0.4 |
+| SSE | `--transport sse --host 127.0.0.1 --port 8000` | Available | v0.15.0 |
+
+Both transports share the same runtime, catalog, and gateway surface —
+only the wire binding differs.
+
+#### Client compatibility (tested versions)
+
+| Client | Transport | Required capability | Verified version | Notes |
+|---|---|---|---|---|
+| Claude Desktop | stdio | `tools` | 0.8.x | macOS / Windows; no SSE support |
+| Claude Code | stdio | `tools` | 2.1.x | Project-scoped via `.mcp.json` |
+| VS Code + Copilot Chat | stdio | `tools` | 1.96+ | Workspace `.vscode/mcp.json` |
+| Cursor | stdio | `tools` | 0.45+ | `.cursor/mcp.json` |
+| Generic SSE client | SSE | `tools` | SDK 1.27+ | Any MCP client that speaks HTTP/SSE |
+
+#### Required capabilities
+
+contextweaver advertises only the `tools` capability on initialization.
+It does **not** expose `resources`, `prompts`, or `logging` through the
+MCP server surface. The gateway's own `tool_browse` / `tool_execute` /
+`tool_view` meta-tools are sufficient for every tested client.
+
+#### Choosing a transport
+
+- **stdio** — Use when the client launches the server as a subprocess
+  (Claude Desktop, VS Code Copilot, Claude Code, Cursor). This is the
+  default and requires no extra flags.
+- **SSE** — Use when the client connects to a separate HTTP endpoint
+  (e.g. a remote contextweaver instance, a browser-based client, or a
+  container sidecar). Enable with:
+
+```bash
+contextweaver mcp serve --config gateway.yaml --transport sse --port 8080
+```
+
+#### Config-file equivalent
+
+```yaml
+catalog: my_catalog.json
+mode: gateway
+transport: sse
+host: 127.0.0.1
+port: 8080
+```
+
+#### Security note for SSE
+
+SSE binds an HTTP server. By default it listens on `127.0.0.1` only.
+If you change `--host` to `0.0.0.0`, ensure a firewall or reverse proxy
+sits in front. The MCP SDK's SSE transport includes DNS-rebinding
+protection; CORS and auth are the caller's responsibility. See
+[MCP Gateway Security Model](security_model.md).

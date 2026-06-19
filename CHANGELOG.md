@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SSE transport for MCP gateway and proxy (#694).**
+  `McpGatewayServer.run_sse()` and `McpProxyServer.run_sse()` bind the
+  existing server surfaces onto an HTTP/SPE endpoint using the MCP SDK's
+  `SseServerTransport` and `uvicorn`.  The `mcp serve` CLI gains
+  `--transport stdio|sse`, `--host`, and `--port` (config-file compatible).
+  Default remains **stdio** for backward compatibility; SSE is opt-in.  A
+  transport & compatibility matrix is added to `docs/integration_mcp.md`
+  documenting tested client versions (Claude Desktop, Claude Code,
+  VS Code Copilot, Cursor) and their supported transports.  No new
+  dependencies — starlette and uvicorn are already pulled by the MCP SDK.
+
 - **Memory consolidation engine (#498, #679, #680, #681, #682, #683).**
   New `contextweaver.context.consolidate(...)` distills episodic memory into
   durable, deduplicated, provenance-stamped facts. The deterministic core
