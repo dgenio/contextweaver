@@ -772,10 +772,7 @@ def serve(
     ] = False,
     transport: Annotated[
         str,
-        typer.Option(
-            "--transport",
-            help="Transport protocol: 'stdio' or 'sse'."
-        ),
+        typer.Option("--transport", help="Transport protocol: 'stdio' or 'sse'."),
     ] = "stdio",
     host: Annotated[
         str,
@@ -864,9 +861,7 @@ def serve(
         version = __version__
 
     if transport not in {"stdio", "sse"}:
-        raise typer.BadParameter(
-            "--transport must be 'stdio' or 'sse'", param_hint="--transport"
-        )
+        raise typer.BadParameter("--transport must be 'stdio' or 'sse'", param_hint="--transport")
 
     diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
     runtime = _build_runtime(
@@ -914,9 +909,7 @@ def serve(
 
     if dry_run:
         if not quiet:
-            typer.echo(
-                f"dry-run: catalog validated; not binding {transport}.", err=True
-            )
+            typer.echo(f"dry-run: catalog validated; not binding {transport}.", err=True)
         raise typer.Exit(0)
 
     server: McpGatewayServer | McpProxyServer

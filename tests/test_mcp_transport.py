@@ -16,6 +16,7 @@ from contextweaver.adapters import ProxyRuntime, StubUpstream
 from contextweaver.adapters.mcp_gateway_server import _HAS_SSE, McpGatewayServer
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.proxy_runtime import ExposureMode
+from contextweaver.exceptions import ConfigError
 
 
 @pytest.mark.skipif(not _HAS_SSE, reason="SSE dependencies unavailable")
@@ -43,24 +44,24 @@ def test_proxy_server_run_sse_method_exists() -> None:
 @pytest.mark.asyncio
 @pytest.mark.skipif(_HAS_SSE, reason="only run when sse deps are missing")
 async def test_gateway_run_sse_raises_when_deps_missing() -> None:
-    """If SSE deps were missing, run_sse should raise RuntimeError.
+    """If SSE deps were missing, run_sse should raise ConfigError.
 
     This guard documentation is kept for completeness; in the standard
     dev environment _HAS_SSE is True and the test is skipped.
     """
     runtime = ProxyRuntime(StubUpstream([]), mode=ExposureMode.GATEWAY)
     server = McpGatewayServer(runtime, name="test")
-    with pytest.raises(RuntimeError, match="SSE transport unavailable"):
+    with pytest.raises(ConfigError, match="SSE transport unavailable"):
         await server.run_sse()
 
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(_HAS_SSE, reason="only run when sse deps are missing")
 async def test_proxy_run_sse_raises_when_deps_missing() -> None:
-    """Same RuntimeError guard for McpProxyServer."""
+    """Same ConfigError guard for McpProxyServer."""
     runtime = ProxyRuntime(StubUpstream([]), mode=ExposureMode.TRANSPARENT)
     server = McpProxyServer(runtime, name="test")
-    with pytest.raises(RuntimeError, match="SSE transport unavailable"):
+    with pytest.raises(ConfigError, match="SSE transport unavailable"):
         await server.run_sse()
 
 

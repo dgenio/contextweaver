@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SSE transport for MCP gateway and proxy (#694).**
   `McpGatewayServer.run_sse()` and `McpProxyServer.run_sse()` bind the
-  existing server surfaces onto an HTTP/SPE endpoint using the MCP SDK's
+  existing server surfaces onto an HTTP/SSE endpoint using the MCP SDK's
   `SseServerTransport` and `uvicorn`.  The `mcp serve` CLI gains
   `--transport stdio|sse`, `--host`, and `--port` (config-file compatible).
   Default remains **stdio** for backward compatibility; SSE is opt-in.  A
