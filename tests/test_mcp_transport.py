@@ -65,55 +65,54 @@ async def test_proxy_run_sse_raises_when_deps_missing() -> None:
         await server.run_sse()
 
 
-@pytest.mark.skipif(not _HAS_SSE, reason="SSE dependencies unavailable")
-def test_gateway_sse_app_instantiation() -> None:
-    """The Starlette app built inside run_sse can be created without error.
+def _mount_paths(app: object) -> set[str]:
+    """Collect the mount paths from a Starlette app's routes."""
+    return {getattr(route, "path", "") for route in app.routes}  # type: ignore[attr-defined]
 
-    We reach inside the private helper logic by replicating the app
-    construction pattern in a way that doesn't start uvicorn.
+
+@pytest.mark.skipif(not _HAS_SSE, reason="SSE dependencies unavailable")
+def test_build_sse_app_wires_routes_for_gateway() -> None:
+    """build_sse_app (used by McpGatewayServer.run_sse) wires both SSE routes.
+
+    Exercises the real helper rather than replicating its body, so a regression
+    in the route wiring is caught — without starting uvicorn.
     """
-    from mcp.server.sse import SseServerTransport
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
-    from starlette.types import Receive, Scope, Send
+    from contextweaver.adapters._sse_app import build_sse_app
 
     runtime = ProxyRuntime(StubUpstream([]), mode=ExposureMode.GATEWAY)
     server = McpGatewayServer(runtime, name="test")
-    sse = SseServerTransport("/messages/")
-
-    async def _handle_sse(scope: Scope, receive: Receive, send: Send) -> None:
-        async with sse.connect_sse(scope, receive, send) as (rs, ws):
-            await server.server.run(rs, ws, server.server.create_initialization_options())
-
-    app = Starlette(
-        routes=[
-            Mount("/sse", app=_handle_sse),
-            Mount("/messages/", app=sse.handle_post_message),
-        ],
-    )
-    assert app.routes is not None
+    app = build_sse_app(server.server, host="127.0.0.1", port=8000)
+    assert _mount_paths(app) == {"/sse", "/messages"}
 
 
 @pytest.mark.skipif(not _HAS_SSE, reason="SSE dependencies unavailable")
-def test_proxy_sse_app_instantiation() -> None:
-    """Same Starlette app construction test for McpProxyServer."""
-    from mcp.server.sse import SseServerTransport
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
-    from starlette.types import Receive, Scope, Send
+def test_build_sse_app_wires_routes_for_proxy() -> None:
+    """Same route-wiring check for the proxy server path."""
+    from contextweaver.adapters._sse_app import build_sse_app
 
     runtime = ProxyRuntime(StubUpstream([]), mode=ExposureMode.TRANSPARENT)
     server = McpProxyServer(runtime, name="test")
-    sse = SseServerTransport("/messages/")
+    app = build_sse_app(server.server, host="127.0.0.1", port=8000)
+    assert _mount_paths(app) == {"/sse", "/messages"}
 
-    async def _handle_sse(scope: Scope, receive: Receive, send: Send) -> None:
-        async with sse.connect_sse(scope, receive, send) as (rs, ws):
-            await server.server.run(rs, ws, server.server.create_initialization_options())
 
-    app = Starlette(
-        routes=[
-            Mount("/sse", app=_handle_sse),
-            Mount("/messages/", app=sse.handle_post_message),
-        ],
-    )
-    assert app.routes is not None
+@pytest.mark.skipif(not _HAS_SSE, reason="SSE dependencies unavailable")
+def test_sse_security_settings_enable_dns_rebinding_protection() -> None:
+    """SSE binding enables DNS-rebinding protection scoped to the bind host.
+
+    The MCP SDK disables this by default, so the regression guard is that
+    contextweaver turns it on and scopes the Host allowlist to host:port
+    (with localhost aliases for loopback binds).
+    """
+    from contextweaver.adapters._sse_app import sse_security_settings
+
+    settings = sse_security_settings("127.0.0.1", 8080)
+    assert settings.enable_dns_rebinding_protection is True
+    assert "127.0.0.1:8080" in settings.allowed_hosts
+    assert "localhost:8080" in settings.allowed_hosts
+
+    # A non-loopback bind is scoped to exactly that host (no localhost aliases).
+    public = sse_security_settings("example.com", 9000)
+    assert public.enable_dns_rebinding_protection is True
+    assert "example.com:9000" in public.allowed_hosts
+    assert "localhost:9000" not in public.allowed_hosts

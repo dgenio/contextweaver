@@ -30,10 +30,12 @@ from mcp.server.stdio import stdio_server
 
 try:
     import uvicorn
-    from mcp.server.sse import SseServerTransport
-    from starlette.applications import Starlette
-    from starlette.routing import Mount
-    from starlette.types import Receive, Scope, Send
+
+    # Probe the remaining soft SSE dependencies so ``_HAS_SSE`` reflects the
+    # full set the shared ``_sse_app`` helper needs; the actual binding logic
+    # is imported lazily from ``run_sse`` once this flag is True.
+    from mcp.server.sse import SseServerTransport  # noqa: F401  (availability probe)
+    from starlette.applications import Starlette  # noqa: F401  (availability probe)
 
     _HAS_SSE = True
 except ImportError:  # pragma: no cover
@@ -178,22 +180,11 @@ class McpGatewayServer:
                 "starlette and uvicorn, which should have been installed with "
                 "the `mcp` package."
             )
-        sse = SseServerTransport("/messages/")
+        # Imported lazily (not at module load) so the soft SSE dependency stays
+        # optional — this module imports fine without starlette/uvicorn.
+        from contextweaver.adapters._sse_app import build_sse_app
 
-        async def _handle_sse(scope: Scope, receive: Receive, send: Send) -> None:
-            async with sse.connect_sse(scope, receive, send) as (read_stream, write_stream):
-                await self.server.run(
-                    read_stream,
-                    write_stream,
-                    self.server.create_initialization_options(),
-                )
-
-        starlette_app = Starlette(
-            routes=[
-                Mount("/sse", app=_handle_sse),
-                Mount("/messages/", app=sse.handle_post_message),
-            ],
-        )
-        config = uvicorn.Config(starlette_app, host=host, port=port, log_level="warning")
+        app = build_sse_app(self.server, host=host, port=port)
+        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
         srv = uvicorn.Server(config)
         await srv.serve()

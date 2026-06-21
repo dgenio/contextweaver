@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing server surfaces onto an HTTP/SSE endpoint using the MCP SDK's
   `SseServerTransport` and `uvicorn`.  The `mcp serve` CLI gains
   `--transport stdio|sse`, `--host`, and `--port` (config-file compatible).
-  Default remains **stdio** for backward compatibility; SSE is opt-in.  A
+  Default remains **stdio** for backward compatibility; SSE is opt-in.  SSE
+  enables the MCP SDK's DNS-rebinding protection (off by default in the SDK),
+  scoping the `Host`/`Origin` allowlist to the bound `--host`/`--port`.  A
   transport & compatibility matrix is added to `docs/integration_mcp.md`
   documenting tested client versions (Claude Desktop, Claude Code,
   VS Code Copilot, Cursor) and their supported transports.  No new

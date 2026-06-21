@@ -791,12 +791,14 @@ def serve(
         ),
     ] = 8000,
 ) -> None:
-    """[experimental] Run contextweaver as an MCP server over stdio.
+    """[experimental] Run contextweaver as an MCP server.
 
-    The server stays in the foreground; press Ctrl+C (or close the client's
-    stdio pipe) to exit. Use ``--dry-run`` to validate the catalog and
-    print the server configuration without binding stdio (useful in CI
-    smoke tests and ``docker build`` healthchecks).
+    Serves over **stdio** by default, or over **SSE** (an HTTP endpoint) with
+    ``--transport sse --host <addr> --port <n>``. The server stays in the
+    foreground; press Ctrl+C (or close the client's stdio pipe) to exit. Use
+    ``--dry-run`` to validate the catalog and print the server configuration
+    without binding the transport (useful in CI smoke tests and ``docker
+    build`` healthchecks).
     """
     # Mutually-exclusive shortcut flags resolve to a concrete mode.
     if gateway and proxy:

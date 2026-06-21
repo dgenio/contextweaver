@@ -453,6 +453,14 @@ port: 8080
 
 SSE binds an HTTP server. By default it listens on `127.0.0.1` only.
 If you change `--host` to `0.0.0.0`, ensure a firewall or reverse proxy
-sits in front. The MCP SDK's SSE transport includes DNS-rebinding
-protection; CORS and auth are the caller's responsibility. See
-[MCP Gateway Security Model](security_model.md).
+sits in front.
+
+The MCP SDK ships DNS-rebinding protection but leaves it **disabled by
+default**. contextweaver enables it and scopes the `Host`/`Origin`
+allowlist to the address you bind (`--host`/`--port`, plus the usual
+`localhost` aliases for loopback binds). A request whose `Host` header is
+not in that allowlist is rejected with `421`. Practical consequence: when
+binding `0.0.0.0` (or a routable host) and reaching the server under a
+different hostname, put a reverse proxy in front that forwards a `Host`
+the server accepts. CORS and authentication remain the caller's
+responsibility. See [MCP Gateway Security Model](security_model.md).
