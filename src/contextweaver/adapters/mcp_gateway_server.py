@@ -28,6 +28,19 @@ from mcp import types as mcp_types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
+try:
+    import uvicorn
+
+    # Probe the remaining soft SSE dependencies so ``_HAS_SSE`` reflects the
+    # full set the shared ``_sse_app`` helper needs; the actual binding logic
+    # is imported lazily from ``run_sse`` once this flag is True.
+    from mcp.server.sse import SseServerTransport  # noqa: F401  (availability probe)
+    from starlette.applications import Starlette  # noqa: F401  (availability probe)
+
+    _HAS_SSE = True
+except ImportError:  # pragma: no cover
+    _HAS_SSE = False
+
 from contextweaver.adapters.gateway_primitives import PrimitiveGatewayRuntime
 from contextweaver.adapters.mcp_gateway import (
     GATEWAY_TOOL_NAMES,
@@ -40,6 +53,7 @@ from contextweaver.adapters.mcp_gateway_primitives import (
     make_primitive_meta_tools,
 )
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
+from contextweaver.exceptions import ConfigError
 
 logger = logging.getLogger("contextweaver.adapters.mcp_gateway_server")
 
@@ -149,3 +163,28 @@ class McpGatewayServer:
                 write_stream,
                 self.server.create_initialization_options(),
             )
+
+    async def run_sse(self, host: str = "127.0.0.1", port: int = 8000) -> None:
+        """Run the server over SSE on *host*:*port* until interrupted.
+
+        Args:
+            host: Address to bind (default ``127.0.0.1``).
+            port: Port to listen on (default ``8000``).
+
+        Raises:
+            ConfigError: If the MCP SDK's SSE dependencies are unavailable.
+        """
+        if not _HAS_SSE:
+            raise ConfigError(
+                "SSE transport unavailable. The MCP SDK's SSE support requires "
+                "starlette and uvicorn, which should have been installed with "
+                "the `mcp` package."
+            )
+        # Imported lazily (not at module load) so the soft SSE dependency stays
+        # optional — this module imports fine without starlette/uvicorn.
+        from contextweaver.adapters._sse_app import build_sse_app
+
+        app = build_sse_app(self.server, host=host, port=port)
+        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+        srv = uvicorn.Server(config)
+        await srv.serve()

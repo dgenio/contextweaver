@@ -98,6 +98,9 @@ _CONFIG_KEYS: frozenset[str] = frozenset(
         "diagnostics",
         "quiet",
         "state_dir",
+        "transport",
+        "host",
+        "port",
         "retry",
         "rate_limits",
         "cache",
@@ -767,13 +770,35 @@ def serve(
             help="Suppress lifecycle messages on stderr.",
         ),
     ] = False,
+    transport: Annotated[
+        str,
+        typer.Option("--transport", help="Transport protocol: 'stdio' or 'sse'."),
+    ] = "stdio",
+    host: Annotated[
+        str,
+        typer.Option(
+            "--host",
+            help="Host to bind when using SSE transport (default 127.0.0.1).",
+        ),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            help="Port to bind when using SSE transport (default 8000).",
+            min=1,
+            max=65535,
+        ),
+    ] = 8000,
 ) -> None:
-    """[experimental] Run contextweaver as an MCP server over stdio.
+    """[experimental] Run contextweaver as an MCP server.
 
-    The server stays in the foreground; press Ctrl+C (or close the client's
-    stdio pipe) to exit. Use ``--dry-run`` to validate the catalog and
-    print the server configuration without binding stdio (useful in CI
-    smoke tests and ``docker build`` healthchecks).
+    Serves over **stdio** by default, or over **SSE** (an HTTP endpoint) with
+    ``--transport sse --host <addr> --port <n>``. The server stays in the
+    foreground; press Ctrl+C (or close the client's stdio pipe) to exit. Use
+    ``--dry-run`` to validate the catalog and print the server configuration
+    without binding the transport (useful in CI smoke tests and ``docker
+    build`` healthchecks).
     """
     # Mutually-exclusive shortcut flags resolve to a concrete mode.
     if gateway and proxy:
@@ -818,6 +843,12 @@ def serve(
             state_dir = Path(str(cfg["state_dir"]))
         if not _from_cli("quiet") and "quiet" in cfg:
             quiet = cfg["quiet"]
+        if not _from_cli("transport") and "transport" in cfg:
+            transport = str(cfg["transport"])
+        if not _from_cli("host") and "host" in cfg:
+            host = str(cfg["host"])
+        if not _from_cli("port") and "port" in cfg:
+            port = int(cfg["port"])
 
     if catalog is None:
         raise typer.BadParameter(
@@ -830,6 +861,9 @@ def serve(
     # an explicit version was supplied via ``--version`` or the config file.
     if version is None:
         version = __version__
+
+    if transport not in {"stdio", "sse"}:
+        raise typer.BadParameter("--transport must be 'stdio' or 'sse'", param_hint="--transport")
 
     diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
     runtime = _build_runtime(
@@ -867,7 +901,8 @@ def serve(
         )
         typer.echo(
             f"contextweaver mcp serve: mode={resolved_mode.value} "
-            f"catalog={catalog} tools={tool_count} primitives={primitives} top_k={top_k} "
+            f"transport={transport} catalog={catalog} tools={tool_count} "
+            f"primitives={primitives} top_k={top_k} "
             f"beam_width={beam_width} cache_stable={cache_stable} "
             f"version={version} diagnostics={diagnostics or 'off'} "
             f"state_dir={state_dir or 'in-memory'}",
@@ -876,7 +911,7 @@ def serve(
 
     if dry_run:
         if not quiet:
-            typer.echo("dry-run: catalog validated; not binding stdio.", err=True)
+            typer.echo(f"dry-run: catalog validated; not binding {transport}.", err=True)
         raise typer.Exit(0)
 
     server: McpGatewayServer | McpProxyServer
@@ -888,7 +923,10 @@ def serve(
         server = McpProxyServer(runtime, name=name, version=version)
 
     async def _serve() -> None:
-        await server.run_stdio()
+        if transport == "sse":
+            await server.run_sse(host=host, port=port)
+        else:
+            await server.run_stdio()
 
     # Create the loop *before* the try so that a failure here surfaces as a
     # real exception rather than tripping ``UnboundLocalError`` from the
