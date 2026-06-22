@@ -5,9 +5,10 @@ version: 2
 #   * pip — keep the declared Python dependency floors and dev toolchain
 #     current. Minor/patch bumps are grouped into a single weekly PR to limit
 #     noise; majors open individually so breaking changes get their own review.
-#   * github-actions — keep workflow action references current. This is also
-#     how action versions stay fresh now that the workflows pin to tags rather
-#     than commit SHAs (see docs/security_tooling.md and issue #468).
+#   * github-actions — keep workflow action references current. The high-trust
+#     release path (publish.yml) pins actions to immutable commit SHAs (#468);
+#     Dependabot bumps the SHA and its `# vX` comment together. Other workflows
+#     track major tags. See docs/security_tooling.md.
 
 updates:
   - package-ecosystem: pip

@@ -14,10 +14,10 @@ issue.
 
 | Tool | Workflow | Gating? | Surfaces findings in |
 |------|----------|---------|----------------------|
-| CodeQL | `.github/workflows/codeql.yml` | Yes (code scanning alerts) | Security tab → Code scanning |
+| CodeQL | `.github/workflows/codeql.yml` | No (advisory — alerts surface in the Security tab; they do not fail the PR check by default) | Security tab → Code scanning |
 | OpenSSF Scorecard | `.github/workflows/ossf-scorecard.yml` | No (informational) | Security tab + README badge |
 | pip-audit (core) | `.github/workflows/pip-audit.yml` | **Yes** | Workflow logs / job summary |
-| pip-audit (dev extra) | `.github/workflows/pip-audit.yml` | No (`continue-on-error`) | Workflow logs / job summary |
+| pip-audit (dev extra) | `.github/workflows/pip-audit.yml` | No (report-only) | Workflow logs / job summary |
 | Dependabot | `.github/dependabot.yml` | No (opens PRs) | Pull requests |
 | Release integrity | `.github/workflows/publish.yml` | **Yes** (blocks publish) | Release run logs |
 

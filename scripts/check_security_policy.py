@@ -105,10 +105,17 @@ def find_supported_drift(version: str, security_text: str) -> list[str]:
 
 
 def find_broken_links(security_path: Path) -> list[str]:
-    """Return messages for repo-relative links in *security_path* that 404."""
+    """Return messages for repo-relative links in *security_path* that 404.
+
+    Only true *repo-relative* links are validated. A link is rejected — not
+    silently passed — when it is absolute (``/etc/passwd``) or escapes the repo
+    root via ``..`` traversal (``../../outside.md``): such a target is not
+    repo-relative, so even if the resolved path happens to exist on the runner
+    it must not satisfy the gate (review feedback on the initial gate).
+    """
     problems: list[str] = []
     text = security_path.read_text(encoding="utf-8")
-    repo_root = security_path.resolve().parent
+    base = security_path.resolve().parent
     for target in _MD_LINK_RE.findall(text):
         link = target.strip()
         # Skip absolute URLs, anchors, and mail links — only repo-relative
@@ -118,7 +125,18 @@ def find_broken_links(security_path: Path) -> list[str]:
         path_part = link.split("#", 1)[0]
         if not path_part:
             continue
-        resolved = (repo_root / path_part).resolve()
+        if path_part.startswith("/"):
+            problems.append(
+                f"SECURITY.md links to '{path_part}', which is an absolute path, "
+                "not a repo-relative one."
+            )
+            continue
+        resolved = (base / path_part).resolve()
+        if base not in resolved.parents and resolved != base:
+            problems.append(
+                f"SECURITY.md links to '{path_part}', which escapes the repository root."
+            )
+            continue
         if not resolved.exists():
             problems.append(f"SECURITY.md links to '{path_part}', which does not exist.")
     return problems

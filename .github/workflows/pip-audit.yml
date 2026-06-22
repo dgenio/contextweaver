@@ -64,7 +64,6 @@ jobs:
     name: Audit dev extra (report-only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -80,4 +79,10 @@ jobs:
           pip install pip-audit
 
       - name: Audit installed environment (report-only)
-        run: pip-audit --progress-spinner off
+        # Report-only: the dev tree carries known advisories that should not gate
+        # the PR (that is what the gating ``audit-core`` job is for). ``|| true``
+        # keeps this check green so it never reads as a blocking failure, while
+        # the findings stay visible in the log for triage. Promote a specific
+        # advisory to gating by fixing it in ``audit-core``, per
+        # docs/security_tooling.md.
+        run: pip-audit --progress-spinner off || true

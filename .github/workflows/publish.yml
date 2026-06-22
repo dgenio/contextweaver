@@ -1,5 +1,11 @@
 name: Publish to PyPI and MCP Registry
 
+# Release-path actions are pinned to immutable commit SHAs (issue #468). This is
+# the high-trust workflow — it holds ``id-token: write`` and
+# ``attestations: write`` — so a moving tag here is a supply-chain risk. The
+# ``# vX`` comments record the tag each SHA was resolved from; Dependabot's
+# ``github-actions`` updater (.github/dependabot.yml) keeps the SHAs current.
+
 on:
   release:
     types: [published]
@@ -21,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -60,10 +66,10 @@ jobs:
       contents: read
       attestations: write   # Required to attach build-provenance attestations (issue #690)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -77,12 +83,12 @@ jobs:
         # Generates a signed, verifiable provenance attestation for each built
         # artifact (issue #690). Verifiable later with ``gh attestation verify
         # <file> --repo dgenio/contextweaver``.
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: "dist/*"
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
 
   publish-mcp-registry:
     name: Publish to MCP Registry
@@ -92,7 +98,7 @@ jobs:
       contents: read
       id-token: write  # Required for MCP Registry GitHub OIDC authentication
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install mcp-publisher
         run: |

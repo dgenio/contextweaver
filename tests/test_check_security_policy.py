@@ -79,6 +79,27 @@ def test_find_broken_links_resolves_anchor_targets(tmp_path: Path) -> None:
     assert check_security_policy.find_broken_links(security) == []
 
 
+def test_find_broken_links_rejects_absolute_path(tmp_path: Path) -> None:
+    """An absolute-path link is rejected even though the target exists."""
+    security = tmp_path / "SECURITY.md"
+    security.write_text("[passwd](/etc/hostname)\n", encoding="utf-8")
+    problems = check_security_policy.find_broken_links(security)
+    assert len(problems) == 1
+    assert "absolute path" in problems[0]
+
+
+def test_find_broken_links_rejects_parent_traversal(tmp_path: Path) -> None:
+    """A ``..`` link that escapes the repo root is rejected, not silently passed."""
+    base = tmp_path / "repo"
+    base.mkdir()
+    (tmp_path / "outside.md").write_text("ok", encoding="utf-8")  # exists, but outside
+    security = base / "SECURITY.md"
+    security.write_text("[escape](../outside.md)\n", encoding="utf-8")
+    problems = check_security_policy.find_broken_links(security)
+    assert len(problems) == 1
+    assert "escapes the repository root" in problems[0]
+
+
 def test_repository_security_policy_is_in_sync() -> None:
     """The live SECURITY.md must match the package version and have no dead links."""
     assert check_security_policy.main([]) == 0
