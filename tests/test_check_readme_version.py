@@ -16,6 +16,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 import check_readme_version  # noqa: E402  (import after sys.path manipulation)
@@ -138,6 +140,21 @@ def test_find_drift_flags_current_marker_without_explicit_version() -> None:
     problems = check_readme_version.find_drift("0.12.0", readme)
     assert any("roadmap current marker" in p for p in problems)
     assert any("does not name" in p for p in problems)
+
+
+def test_print_version_outputs_bare_pyproject_version(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--print-version`` prints exactly the pyproject version and runs no checks.
+
+    The release-integrity gate in ``publish.yml`` (#468) compares the release tag
+    against this output (``[ "$tag" != "v$version" ]``), so it must be the bare
+    version with no surrounding text — a trailing line or banner would silently
+    break the tag-vs-version comparison.
+    """
+    expected = check_readme_version.read_pyproject_version(check_readme_version.DEFAULT_PYPROJECT)
+    assert check_readme_version.main(["--print-version"]) == 0
+    assert capsys.readouterr().out == f"{expected}\n"
 
 
 def test_repo_readme_is_in_sync() -> None:

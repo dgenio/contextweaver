@@ -1,0 +1,48 @@
+version: 2
+
+# Automated dependency updates (issue #443).
+#
+#   * pip — keep the declared Python dependency floors and dev toolchain
+#     current. Minor/patch bumps are grouped into a single weekly PR to limit
+#     noise; majors open individually so breaking changes get their own review.
+#   * github-actions — keep workflow action references current. The high-trust
+#     release path (publish.yml) pins actions to immutable commit SHAs (#468);
+#     Dependabot bumps the SHA and its `# vX` comment together. Other workflows
+#     track major tags. See docs/security_tooling.md.
+
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      actions-all:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(ci)"

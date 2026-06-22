@@ -157,11 +157,19 @@ def _version_key(version: str) -> tuple[int, ...]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Check README version references and Python classifiers."""
-    # No flags today; argv is accepted for symmetry with the other scripts and
-    # to keep the call shape stable for tests.
-    _ = argv
+    """Check README version references and Python classifiers.
+
+    With ``--print-version`` the package version from ``pyproject.toml`` is
+    printed to stdout and no checks run. The release-integrity gate in
+    ``publish.yml`` (issue #468) uses this so the tag-vs-version comparison
+    reads the version through the same single source of truth as the drift
+    guard, rather than re-parsing ``pyproject.toml`` in shell.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
     version = read_pyproject_version(DEFAULT_PYPROJECT)
+    if "--print-version" in args:
+        print(version)
+        return 0
     problems = find_drift(version, DEFAULT_README.read_text(encoding="utf-8"))
     problems.extend(
         find_classifier_drift(

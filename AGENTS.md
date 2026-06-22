@@ -213,7 +213,7 @@ make test     # python -m pytest --cov=contextweaver --cov-report=term-missing -
 make example  # run all example scripts (includes architectures via the umbrella target)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
+make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + security-policy-check + example + demo
 make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
@@ -236,6 +236,7 @@ make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks
 make context-rot       # render the context-rot demo: benchmarks/results/context_rot.json + docs/assets/context_rot.svg (#349)
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating in CI; exits non-zero on drift)
 make readme-version-check  # verify README version references match pyproject.toml (gating in CI; #347)
+make security-policy-check # verify SECURITY.md supported series + links match pyproject.toml (gating in CI; #691)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (gating in CI; #389)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter (CI gating, fetches schemas)

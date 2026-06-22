@@ -10,7 +10,7 @@ make test     # pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures)
 make architectures  # run reference architecture scripts under examples/architectures/
 make demo     # python -m contextweaver demo
-make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + example + demo
+make ci       # fmt + lint + type + test + drift-check + module-size-check + doc-snippets-check + readme-version-check + security-policy-check + example + demo
 make ci-full  # make ci + floor-deps + tool-smoke (the two isolated-env CI jobs; #710)
 make floor-deps # prove declared dependency floors resolve + pass tests (mirrors the floor-deps CI job; needs uv; #710)
 make tool-smoke # build the wheel + run the entry point via uvx/pipx (mirrors the Linux tool-run-smoke CI job; needs uv/pipx; #710)
@@ -27,6 +27,7 @@ make sweep-scoring    # weight sweep for ScoringConfig (#214); writes benchmarks
 make context-rot       # render context-rot demo JSON + docs/assets/context_rot.svg (#349)
 make context-rot-check # verify context_rot.svg matches its committed JSON (gating CI step; exits non-zero on drift)
 make readme-version-check  # verify README package/comparison/roadmap refs and Python classifiers match sources (gating CI step; #347/#473/#531)
+make security-policy-check # verify SECURITY.md supported series + relative links match pyproject.toml (gating CI step; #691)
 make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (gating CI step; exits non-zero on drift)
 make gateway-scorecard-check  # verify gateway scorecard Markdown matches its committed JSON (gating CI step)
@@ -40,7 +41,8 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 > offline: the consolidated generated-artifact drift gate `make drift-check`
 > (#522 — schemas, scorecards, recorded demos, llms.txt, context-rot SVG, and
 > the public-API manifest #518), plus `make module-size-check` (#456),
-> `make doc-snippets-check` (#526), and `make readme-version-check` (#347/#473/#531).
+> `make doc-snippets-check` (#526), `make readme-version-check` (#347/#473/#531),
+> and `make security-policy-check` (#691).
 > The individual `*-check` targets still exist for granular use, but you no
 > longer need to remember to run them separately before a PR.
 >

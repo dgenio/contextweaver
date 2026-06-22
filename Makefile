@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci ci-full floor-deps tool-smoke docs docs-serve benchmark benchmark-matrix benchmark-routing-scale benchmark-gateway benchmark-primitives sidecar-smoke token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
+.PHONY: fmt lint type test example demo ci ci-full floor-deps tool-smoke docs docs-serve benchmark benchmark-matrix benchmark-routing-scale benchmark-gateway benchmark-primitives sidecar-smoke token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check security-policy-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
 
 # Interpreter and pip front-end (issue #712). Default to `python3`, which is what
 # many modern environments ship (some have no bare `python` on PATH at all).
@@ -129,12 +129,17 @@ context-rot-check:
 readme-version-check:
 	$(PYTHON) scripts/check_readme_version.py
 
+# Fails when SECURITY.md drifts from pyproject.toml's version or links a
+# missing doc (issue #691). Stdlib-only; no install required.
+security-policy-check:
+	$(PYTHON) scripts/check_security_policy.py
+
 # The local pass bar. Mirrors the gating CI checks a contributor can run
 # offline (issue #474): the consolidated generated-artifact drift gate
 # (issue #522) plus the module-size (#456), doc-snippet (#526), and README
 # version gates. Weaver-spec conformance and the benchmarks stay CI-only —
 # they fetch remote schemas / are heavy — and are documented as such.
-ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-version-check example demo
+ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-version-check security-policy-check example demo
 
 # Local equivalents of the two gating CI *jobs* `make ci` cannot mirror cheaply
 # (issue #710, follow-up to #474). Kept out of `ci` because both build isolated
