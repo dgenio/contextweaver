@@ -6,8 +6,12 @@ Only the latest patch release in the current minor series receives security upda
 
 | Version | Supported |
 |---------|-----------|
-| 0.14.x  | Yes       |
-| < 0.14  | No        |
+| 0.16.x  | Yes       |
+| < 0.16  | No        |
+
+> This table is kept honest by `scripts/check_security_policy.py`, a gating CI
+> check that fails when the supported series drifts from the package version in
+> `pyproject.toml` or when a relative link below stops resolving.
 
 For adopter-facing deployment boundaries, data flow, artifact exposure, and
 hardening guidance, see the
@@ -66,3 +70,23 @@ The following are **not** in scope:
   exhaustion (i.e. leads to data leakage)
 - **Issues in dependencies** — report these to the upstream project directly;
   we will update affected dependencies promptly when notified
+
+## Automated Security Tooling
+
+The project runs continuous supply-chain and code-scanning automation:
+
+- **CodeQL** (`.github/workflows/codeql.yml`) — static analysis on every PR,
+  on `main`, and weekly.
+- **OpenSSF Scorecard** (`.github/workflows/ossf-scorecard.yml`) — supply-chain
+  health checks; results publish to the code-scanning dashboard and the README
+  badge.
+- **pip-audit** (`.github/workflows/pip-audit.yml`) — dependency vulnerability
+  scanning (gating on core dependencies, report-only for the dev extra).
+- **Dependabot** (`.github/dependabot.yml`) — weekly `pip` and `github-actions`
+  updates.
+- **Release integrity** (`.github/workflows/publish.yml`) — tag↔version gate,
+  pre-publish tests, and signed build-provenance attestations on every release.
+
+How findings are triaged, and how to file and document an exception for a false
+positive, is described in the
+[security tooling runbook](docs/security_tooling.md).

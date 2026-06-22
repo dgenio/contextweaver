@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Supply-chain & security CI hardening (#443, #689, #690, #691, #692, #468, #552).**
+  A coordinated security-posture pass under the supply-chain hardening umbrella (#443):
+  - **CodeQL** code scanning (`.github/workflows/codeql.yml`) with the
+    `security-extended` query pack, on PR, `main`, and a weekly schedule (#689).
+  - **pip-audit** dependency scanning (`.github/workflows/pip-audit.yml`):
+    gating on the core runtime dependency set, report-only for the heavier dev
+    extra (#689).
+  - **OpenSSF Scorecard** analysis (`.github/workflows/ossf-scorecard.yml`)
+    with results published to code scanning and a README badge; the OpenSSF
+    Best Practices badge application is tracked as a manual step (#552).
+  - **Dependabot** (`.github/dependabot.yml`) weekly `pip` and `github-actions`
+    updates, grouped to limit noise (#443).
+  - **Release-integrity gate** in `publish.yml` (#468): a `verify` job asserts
+    the release tag matches the `pyproject.toml` version, runs the test suite,
+    and `twine check`s the built distribution before the publish job runs.
+  - **Build-provenance attestations** for released artifacts via
+    `actions/attest-build-provenance` (#690).
+  - **`security-policy-check`** gate (`scripts/check_security_policy.py`, wired
+    into `make ci` and `ci.yml`): fails when `SECURITY.md`'s supported-version
+    table drifts from the package version or links a missing doc. Refreshed the
+    supported series to `0.16.x` (#691).
+  - **Security tooling runbook** (`docs/security_tooling.md`) documenting the
+    triage SLA, ownership, and the false-positive exception process (#692).
+- `scripts/check_readme_version.py` gained a `--print-version` flag so the
+  release-integrity gate reads the package version through the same single
+  source of truth as the drift guard.
+
 ## [0.16.0] - 2026-06-21
 
 ### Added

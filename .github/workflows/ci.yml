@@ -97,6 +97,12 @@ jobs:
         # version in pyproject.toml. Stdlib-only; no install required.
         run: python scripts/check_readme_version.py
 
+      - name: Security-policy drift check (gating, issue #691)
+        # Fails when SECURITY.md's supported-version table drifts from the
+        # package version in pyproject.toml, or when a relative link it
+        # references no longer resolves. Stdlib-only; no install required.
+        run: python scripts/check_security_policy.py
+
       - name: Weaver-spec conformance
         # Round-trip + JSON-Schema validation against the canonical contracts
         # published at https://weaver-spec.dev/contracts/v0/. Gating because

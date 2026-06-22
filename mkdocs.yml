@@ -94,6 +94,7 @@ nav:
   - Gateway Spec: gateway_spec.md
   - HTTP Sidecar: sidecar.md
   - Security Model: security_model.md
+  - Security Tooling: security_tooling.md
   - Guides:
       - Runtime Loop: guide_agent_loop.md
       - MCP Integration: integration_mcp.md

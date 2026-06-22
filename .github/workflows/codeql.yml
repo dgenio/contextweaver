@@ -1,0 +1,50 @@
+name: CodeQL
+
+# Static security analysis for the Python sources (issue #689, umbrella #443).
+# Runs the default + security-extended query packs on every PR, on pushes to
+# main, and on a weekly schedule so newly published queries surface findings
+# even when the code is quiet. Findings land in the repository Security tab
+# (code scanning). False positives are handled via the documented exception
+# process in docs/security_tooling.md (issue #692).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Monday 07:00 UTC. Off-hours, just after the weekly scorecard/benchmark
+    # crons, low contention with the gating CI job.
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Required for CodeQL to upload results to the code-scanning dashboard.
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          # ``security-extended`` adds the broader security query suite on top
+          # of the default pack; pure-Python project, so no build step.
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"

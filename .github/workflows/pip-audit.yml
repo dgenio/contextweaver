@@ -1,0 +1,83 @@
+name: pip-audit
+
+# Dependency vulnerability scan (issue #689, umbrella #443).
+#
+# Policy (documented in docs/security_tooling.md, issue #692):
+#   * The CORE runtime dependency set is GATING — a known-vulnerable advisory
+#     against a core dependency fails the job, because adopters put
+#     contextweaver in the data path between agents and tools.
+#   * The DEV/test extra is report-only (continue-on-error): it pulls a large
+#     transitive tree (crewai, mem0ai, fastmcp, langgraph, langchain-core) that
+#     would otherwise make the gate noisy and flaky. Findings are still printed
+#     for triage and recorded in the job summary.
+#
+# Runs on PRs that touch dependency metadata, on pushes to main, and weekly so
+# newly published advisories surface against an otherwise-quiet tree.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - ".github/workflows/pip-audit.yml"
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - ".github/workflows/pip-audit.yml"
+  schedule:
+    # Monday 07:30 UTC, after CodeQL.
+    - cron: "30 7 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pip-audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  audit-core:
+    name: Audit core dependencies (gating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install core package and pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pip-audit
+
+      - name: Audit installed environment (gating)
+        # No --ignore-vuln entries today. Document any future exception here
+        # with the advisory id and a link to its tracking issue, per the
+        # exception process in docs/security_tooling.md.
+        run: pip-audit --progress-spinner off
+
+  audit-dev:
+    name: Audit dev extra (report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dev extra and pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pip-audit
+
+      - name: Audit installed environment (report-only)
+        run: pip-audit --progress-spinner off
