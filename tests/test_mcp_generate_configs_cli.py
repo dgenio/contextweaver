@@ -151,3 +151,54 @@ def test_generate_configs_matches_shipped_recipe_fixtures(tmp_path: Path) -> Non
         generated = (tmp_path / filename).read_text(encoding="utf-8")
         expected = (_RECIPES_DIR / filename).read_text(encoding="utf-8")
         assert generated == expected
+
+
+def test_generate_configs_force_overwrites_existing(tmp_path: Path) -> None:
+    existing = tmp_path / "copilot_mcp.json"
+    existing.write_text("sentinel\n", encoding="utf-8")
+
+    config = (_RECIPES_DIR / "gateway_config.yaml").resolve()
+    result = _run(
+        "mcp",
+        "generate-configs",
+        "--config",
+        str(config),
+        "--out-dir",
+        str(tmp_path),
+        "--target",
+        "copilot",
+        "--force",
+    )
+    assert result.returncode == 0, result.stderr
+
+    overwritten = existing.read_text(encoding="utf-8")
+    assert overwritten != "sentinel\n"
+    assert "contextweaver-gateway" in overwritten
+
+
+def test_generate_configs_outside_workspace_emits_absolute_paths(tmp_path: Path) -> None:
+    # A config that lives outside the invocation cwd cannot be expressed as a
+    # ${workspaceFolder}-relative path, so the command must fall back to an
+    # absolute path and surface a compatibility warning.
+    config = tmp_path / "gateway_config.yaml"
+    config.write_text("catalog: ./catalog.json\nmode: gateway\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    result = _run(
+        "mcp",
+        "generate-configs",
+        "--config",
+        str(config),
+        "--out-dir",
+        str(out_dir),
+        "--target",
+        "copilot",
+        cwd=_REPO_ROOT,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "outside the current workspace" in _strip_ansi(result.stdout + result.stderr)
+
+    copilot = (out_dir / "copilot_mcp.json").read_text(encoding="utf-8")
+    # Absolute config path is emitted verbatim instead of a ${workspaceFolder} token.
+    assert str(config.resolve()) in copilot
+    assert "${workspaceFolder}" not in copilot
