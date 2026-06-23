@@ -79,6 +79,9 @@ class _ConfigTarget(str, Enum):
     claude_code = "claude_code"
 
 
+# Stable project slug for generated placeholders. Derived from the top-level
+# package name so output never depends on the checkout directory name.
+_PROJECT_SLUG = __name__.split(".")[0]
 _CONFIG_PACK_INPUT_SCHEMA = "mcp-serve-config/v1"
 _CONFIG_PACK_FILES: dict[_ConfigTarget, str] = {
     _ConfigTarget.copilot: "copilot_mcp.json",
@@ -335,8 +338,7 @@ def _absolute_placeholder(path: Path) -> tuple[str, str | None]:
     """Render a deterministic absolute-path placeholder for Claude Desktop."""
     rel = _relative_to_cwd(path)
     if rel is not None:
-        repo_name = Path.cwd().resolve().name
-        return f"/ABSOLUTE/PATH/TO/{repo_name}/{rel.as_posix()}", None
+        return f"/ABSOLUTE/PATH/TO/{_PROJECT_SLUG}/{rel.as_posix()}", None
     fallback = f"/ABSOLUTE/PATH/TO/{path.name}"
     return fallback, (
         "path is outside the current workspace; desktop placeholder was "
