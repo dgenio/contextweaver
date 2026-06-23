@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Multi-client MCP config-pack generator (#659).**
+  Added `contextweaver mcp generate-configs` to render client recipe files
+  (`copilot_mcp.json`, `cursor_mcp.json`, `claude_desktop_config.json`,
+  `claude_code_mcp.json`) from one canonical `mcp serve --config` input.
+  The command reuses `mcp serve` config validation, supports target selection,
+  fails closed on unknown/invalid target values, blocks overwriting unless
+  `--force`, emits target-specific compatibility warnings, and produces
+  deterministic JSON artifacts suitable for committing. Added CLI tests for
+  generation behavior and fixture-shape pinning.
+
 - **Supply-chain & security CI hardening (#443, #689, #690, #691, #692, #468, #552).**
   A coordinated security-posture pass under the supply-chain hardening umbrella (#443):
   - **CodeQL** code scanning (`.github/workflows/codeql.yml`) with the

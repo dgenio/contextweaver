@@ -59,6 +59,27 @@ Relative catalog paths are resolved from the gateway config file's directory.
 This keeps project-scoped client configs portable even when the client starts
 the server from a different working directory.
 
+## Generate Multi-Client Config Packs
+
+Generate every supported client config from one gateway source file:
+
+```bash
+contextweaver mcp generate-configs \
+  --config examples/recipes/gateway_config.yaml \
+  --out-dir ./generated-recipes
+```
+
+By default this emits:
+
+- `copilot_mcp.json`
+- `cursor_mcp.json`
+- `claude_desktop_config.json`
+- `claude_code_mcp.json`
+
+Use `--target` repeatedly to generate only selected clients. The command
+validates the gateway config before writing files, fails if outputs already
+exist (unless `--force`), and prints target-specific compatibility warnings.
+
 ## What the client sees
 
 ```text

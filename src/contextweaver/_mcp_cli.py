@@ -72,6 +72,38 @@ class _ReportFormat(str, Enum):
     markdown = "markdown"
 
 
+class _ConfigTarget(str, Enum):
+    copilot = "copilot"
+    cursor = "cursor"
+    claude_desktop = "claude_desktop"
+    claude_code = "claude_code"
+
+
+_CONFIG_PACK_INPUT_SCHEMA = "mcp-serve-config/v1"
+_CONFIG_PACK_FILES: dict[_ConfigTarget, str] = {
+    _ConfigTarget.copilot: "copilot_mcp.json",
+    _ConfigTarget.cursor: "cursor_mcp.json",
+    _ConfigTarget.claude_desktop: "claude_desktop_config.json",
+    _ConfigTarget.claude_code: "claude_code_mcp.json",
+}
+_CONFIG_PACK_WARNINGS: dict[_ConfigTarget, str] = {
+    _ConfigTarget.copilot: (
+        "VS Code expects top-level 'servers' with stdio entries under '.vscode/mcp.json'."
+    ),
+    _ConfigTarget.cursor: (
+        "Cursor workspace configs can use ${workspaceFolder}; global configs "
+        "typically require absolute paths."
+    ),
+    _ConfigTarget.claude_desktop: (
+        "Replace /ABSOLUTE/PATH/TO placeholders before use; Claude Desktop "
+        "does not reliably expand variables in this file."
+    ),
+    _ConfigTarget.claude_code: (
+        "Place this at project root as .mcp.json; Claude Code resolves ${CLAUDE_PROJECT_DIR:-.}."
+    ),
+}
+
+
 mcp_app = typer.Typer(
     name="mcp",
     help=(
@@ -275,6 +307,90 @@ def _build_dispatch_controls(
     except (ContextWeaverError, ValueError, TypeError) as exc:
         raise typer.BadParameter(str(exc), param_hint="--config") from exc
     return retry_policy, rate_limiter, result_cache
+
+
+def _relative_to_cwd(path: Path) -> Path | None:
+    """Return *path* relative to cwd when possible; otherwise ``None``."""
+    resolved = path.expanduser().resolve()
+    cwd = Path.cwd().resolve()
+    try:
+        return resolved.relative_to(cwd)
+    except ValueError:
+        return None
+
+
+def _workspace_path(path: Path, root_token: str) -> tuple[str, str | None]:
+    """Render a workspace-scoped path reference for a target config."""
+    rel = _relative_to_cwd(path)
+    if rel is not None:
+        return f"${{{root_token}}}/{rel.as_posix()}", None
+    abs_path = path.expanduser().resolve().as_posix()
+    return (
+        abs_path,
+        f"config path is outside the current workspace; emitted absolute path: {abs_path}",
+    )
+
+
+def _absolute_placeholder(path: Path) -> tuple[str, str | None]:
+    """Render a deterministic absolute-path placeholder for Claude Desktop."""
+    rel = _relative_to_cwd(path)
+    if rel is not None:
+        repo_name = Path.cwd().resolve().name
+        return f"/ABSOLUTE/PATH/TO/{repo_name}/{rel.as_posix()}", None
+    fallback = f"/ABSOLUTE/PATH/TO/{path.name}"
+    return fallback, (
+        "path is outside the current workspace; desktop placeholder was "
+        f"reduced to basename: {fallback}"
+    )
+
+
+def _render_config_payload(
+    target: _ConfigTarget,
+    *,
+    config_arg: str,
+    desktop_catalog_arg: str,
+) -> dict[str, object]:
+    """Render one client config payload from the canonical gateway config path."""
+    base_args: list[str] = ["contextweaver", "mcp", "serve", "--config", config_arg]
+    if target == _ConfigTarget.copilot:
+        return {
+            "$schema": "https://aka.ms/vscode-mcp-schema",
+            "servers": {
+                "contextweaver-gateway": {
+                    "type": "stdio",
+                    "command": "uvx",
+                    "args": base_args,
+                }
+            },
+        }
+    if target == _ConfigTarget.cursor:
+        return {
+            "mcpServers": {
+                "contextweaver-gateway": {
+                    "command": "uvx",
+                    "args": base_args,
+                }
+            }
+        }
+    if target == _ConfigTarget.claude_code:
+        return {
+            "mcpServers": {
+                "contextweaver-gateway": {
+                    "type": "stdio",
+                    "command": "uvx",
+                    "args": base_args,
+                }
+            }
+        }
+    return {
+        "mcpServers": {
+            "contextweaver-gateway": {
+                "command": "uvx",
+                "args": [*base_args, "--catalog", desktop_catalog_arg],
+                "env": {},
+            }
+        }
+    }
 
 
 def _parse_catalog_file(catalog_path: Path) -> Any:  # noqa: ANN401 — JSON/YAML payload
@@ -942,6 +1058,115 @@ def serve(
         raise typer.Exit(0) from None
     finally:
         loop.close()
+
+
+@mcp_app.command("generate-configs")
+def generate_configs(
+    config: Annotated[
+        Path,
+        typer.Option(
+            ...,
+            "--config",
+            help=(
+                "Path to the canonical mcp serve JSON/YAML config. "
+                "Validated with the same schema as mcp serve --config."
+            ),
+        ),
+    ],
+    out_dir: Annotated[
+        Path,
+        typer.Option(
+            "--out-dir",
+            help="Directory where generated client config files are written.",
+        ),
+    ] = Path("."),
+    target: Annotated[
+        list[_ConfigTarget] | None,
+        typer.Option(
+            "--target",
+            help=(
+                "Target client to generate (repeat for multiple). "
+                "Defaults to all supported targets."
+            ),
+        ),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force/--no-force",
+            help="Overwrite existing generated files in --out-dir.",
+        ),
+    ] = False,
+) -> None:
+    """Generate multi-client MCP config files from one gateway source-of-truth."""
+    loaded = _load_serve_config(config)
+    config_path = config.expanduser().resolve()
+    catalog_path = Path(str(loaded["catalog"])).expanduser().resolve()
+
+    selected_targets = list(dict.fromkeys(target)) if target else list(_ConfigTarget)
+    out_dir = out_dir.expanduser()
+
+    planned_paths = [out_dir / _CONFIG_PACK_FILES[item] for item in selected_targets]
+    existing = [path for path in planned_paths if path.exists()]
+    if existing and not force:
+        existing_names = ", ".join(path.name for path in existing)
+        raise typer.BadParameter(
+            f"refusing to overwrite existing file(s): {existing_names}; pass --force",
+            param_hint="--out-dir",
+        )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    copilot_path, copilot_note = _workspace_path(config_path, "workspaceFolder")
+    cursor_path, cursor_note = _workspace_path(config_path, "workspaceFolder")
+    claude_code_path, claude_code_note = _workspace_path(config_path, "CLAUDE_PROJECT_DIR:-.")
+    desktop_config_path, desktop_config_note = _absolute_placeholder(config_path)
+    desktop_catalog_path, desktop_catalog_note = _absolute_placeholder(catalog_path)
+
+    target_paths: dict[_ConfigTarget, str] = {
+        _ConfigTarget.copilot: copilot_path,
+        _ConfigTarget.cursor: cursor_path,
+        _ConfigTarget.claude_code: claude_code_path,
+        _ConfigTarget.claude_desktop: desktop_config_path,
+    }
+
+    notes_by_target: dict[_ConfigTarget, list[str]] = {
+        item: [_CONFIG_PACK_WARNINGS[item]] for item in _ConfigTarget
+    }
+    if copilot_note is not None:
+        notes_by_target[_ConfigTarget.copilot].append(copilot_note)
+    if cursor_note is not None:
+        notes_by_target[_ConfigTarget.cursor].append(cursor_note)
+    if claude_code_note is not None:
+        notes_by_target[_ConfigTarget.claude_code].append(claude_code_note)
+    if desktop_config_note is not None:
+        notes_by_target[_ConfigTarget.claude_desktop].append(desktop_config_note)
+    if desktop_catalog_note is not None:
+        notes_by_target[_ConfigTarget.claude_desktop].append(desktop_catalog_note)
+
+    written_paths: list[Path] = []
+    for item in selected_targets:
+        payload = _render_config_payload(
+            item,
+            config_arg=target_paths[item],
+            desktop_catalog_arg=desktop_catalog_path,
+        )
+        out_path = out_dir / _CONFIG_PACK_FILES[item]
+        out_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        written_paths.append(out_path)
+
+    typer.echo(
+        (
+            f"generated {len(written_paths)} config file(s) from {config_path} "
+            f"(input schema: {_CONFIG_PACK_INPUT_SCHEMA})"
+        ),
+        err=True,
+    )
+    for path in written_paths:
+        typer.echo(f"wrote: {path}", err=True)
+    for item in selected_targets:
+        for note in notes_by_target[item]:
+            typer.echo(f"warning [{item.value}]: {note}", err=True)
 
 
 # Re-exported for tests / advanced wiring.
