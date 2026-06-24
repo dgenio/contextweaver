@@ -1,4 +1,4 @@
-.PHONY: fmt lint type test example demo ci ci-full floor-deps tool-smoke docs docs-serve benchmark benchmark-matrix benchmark-routing-scale benchmark-gateway benchmark-primitives sidecar-smoke token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check security-policy-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
+.PHONY: fmt lint type test example demo ci ci-full floor-deps tool-smoke docs docs-serve benchmark benchmark-matrix benchmark-routing-scale benchmark-gateway benchmark-primitives benchmark-large-catalog benchmark-large-catalog-check benchmark-scenario benchmark-scenario-check trend trend-check sidecar-smoke token-calibration smoke-eval e2e-quality scorecard scorecard-check sweep-scoring architectures llms llms-check weaver-conformance schemas schemas-check context-rot context-rot-check readme-version-check security-policy-check drift drift-check api api-check module-size-check module-size-update doc-snippets-check
 
 # Interpreter and pip front-end (issue #712). Default to `python3`, which is what
 # many modern environments ship (some have no bare `python` on PATH at all).
@@ -83,6 +83,34 @@ benchmark-matrix:
 # at docs/benchmarks/routing-scale.md.
 benchmark-routing-scale:
 	$(PYTHON) benchmarks/routing_scale.py
+
+# Large-catalog routing benchmark (issue #369; non-gating). 300+ tools across 8
+# namespaces with near-duplicate distractors and destructive tools; writes
+# benchmarks/large_catalog_scorecard.md + benchmarks/results/large_catalog.json.
+# `-check` verifies the committed scorecard is in sync (deterministic accuracy).
+benchmark-large-catalog:
+	$(PYTHON) benchmarks/large_catalog.py
+
+benchmark-large-catalog-check:
+	$(PYTHON) benchmarks/large_catalog.py --check
+
+# Scenario benchmark (issue #418; non-gating): naive all-tools prompt vs bounded
+# ChoiceCard routing. Writes benchmarks/scenario_routing.md; `-check` gates drift.
+benchmark-scenario:
+	$(PYTHON) benchmarks/scenario_routing.py
+
+benchmark-scenario-check:
+	$(PYTHON) benchmarks/scenario_routing.py --check
+
+# Release-over-release benchmark trend (issue #554). `trend` re-renders
+# benchmarks/trend.md from benchmarks/results/history/*.json; `trend-check` gates
+# drift. Capture a release snapshot with:
+#   python scripts/render_trend.py --snapshot <version> --from benchmarks/results/latest.json
+trend:
+	$(PYTHON) scripts/render_trend.py
+
+trend-check:
+	$(PYTHON) scripts/render_trend.py --check
 
 benchmark-gateway:
 	$(PYTHON) benchmarks/gateway_benchmark.py

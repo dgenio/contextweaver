@@ -218,6 +218,10 @@ make docs     # mkdocs build --clean (docs site)
 make docs-serve  # mkdocs serve (live preview)
 make benchmark        # run benchmark harness (non-gating; writes benchmarks/results/latest.json)
 make benchmark-matrix # benchmark + per-backend × per-size matrix (#208) and per-namespace breakdown (#209)
+make benchmark-large-catalog  # 300+ tool routing benchmark + scorecard (#369); -check gates drift
+make benchmark-scenario       # naive all-tools vs ChoiceCard routing report (#418); -check gates drift
+make trend            # render benchmarks/trend.md from per-release history snapshots (#554)
+make trend-check      # verify benchmarks/trend.md is up to date (exits non-zero on drift)
 make gateway-scorecard-check  # verify gateway scorecard matches its committed JSON (gating CI; #391)
 make record-demos-check       # verify committed demo casts match current output (gating CI; #390)
 make smoke-eval       # non-gating CI smoke-evaluation over fixed fixtures (#331/#392); deterministic, credential-free

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "find_unpaid_invoices",
+    "query": "find unpaid invoices and draft a reminder",
+    "expected": ["billing.invoices.search"],
+    "catalog_size": 200
+  },
+  {
+    "name": "refund_a_payment",
+    "query": "refund a completed payment to the customer",
+    "expected": ["billing.payments.refund"],
+    "catalog_size": 200
+  },
+  {
+    "name": "send_slack_update",
+    "query": "post a status update to a slack channel",
+    "expected": ["comms.slack.post"],
+    "catalog_size": 200
+  },
+  {
+    "name": "find_contact",
+    "query": "find a contact by name or email address",
+    "expected": ["crm.contacts.find"],
+    "catalog_size": 300
+  },
+  {
+    "name": "revenue_report",
+    "query": "generate a revenue summary report",
+    "expected": ["billing.reports.revenue"],
+    "catalog_size": 300
+  },
+  {
+    "name": "draft_email",
+    "query": "create an email draft to a customer",
+    "expected": ["comms.email.draft"],
+    "catalog_size": 300
+  }
+]

@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Benchmark-suite maturation: scaling, scenarios, CI gating, and trend
+  (#369, #418, #491, #554, #687, #688).** A coordinated pass on the benchmark
+  subsystem, all deterministic and offline:
+  - **Large-catalog benchmark (#369).** `make benchmark-large-catalog`
+    (`benchmarks/large_catalog.py`) routes over 300+ tools across 8 namespaces
+    with near-duplicate distractor variants and destructive (side-effecting)
+    tools, reporting recall@1/3/5, MRR, ChoiceCard-vs-naive prompt-token
+    reduction, and allow/deny filtering of destructive tools. Writes a
+    committed scorecard (`benchmarks/large_catalog_scorecard.md`, latency
+    excluded for determinism) plus `benchmarks/results/large_catalog.json`;
+    `--check` gates scorecard drift and `--strict` gates regression-guard
+    thresholds.
+  - **Scenario benchmark (#418).** `make benchmark-scenario`
+    (`benchmarks/scenario_routing.py`) contrasts naive all-tools prompting
+    against bounded `ChoiceCard` routing across tool-heavy scenarios
+    (`benchmarks/scenarios/routing_choicecard.json`), reporting
+    correct-in-top-k, rank, cards shown, and token reduction to a committed
+    report (`benchmarks/scenario_routing.md`).
+  - **Quality-regression gate (#491).** `scripts/benchmark_gate.py` +
+    `benchmarks/gating.yaml` turn the informational benchmark delta into a
+    gating CI check: a PR that regresses recall@k / MRR / precision@k /
+    token-savings beyond its tolerance band fails the new `benchmark-gate` CI
+    job. Latency is never gated; the `benchmark-accepted` PR label downgrades a
+    failure to a warning for intentional trade-offs.
+  - **Release trend (#554).** `scripts/render_trend.py` captures a
+    deterministic, latency-free metric snapshot per release under
+    `benchmarks/results/history/<version>.json` and renders the
+    release-over-release view to `benchmarks/trend.md` (`make trend` /
+    `make trend-check`).
+  - **Scaling matrix docs (#687).** `docs/benchmarks/scaling-matrix.md`
+    documents the 10k-tool scaling methodology, reproducible commands, and
+    result interpretation, tying together the routing-scale, large-catalog,
+    and per-backend matrix benchmarks.
+  - **Scheduled routing-scale smoke (#688).** A non-gating
+    `.github/workflows/benchmark-scale.yml` runs the routing-scale profiler on
+    a weekly schedule and uploads its JSON + report as a per-run trend
+    artifact.
+
 - **Multi-client MCP config-pack generator (#659).**
   Added `contextweaver mcp generate-configs` to render client recipe files
   (`copilot_mcp.json`, `cursor_mcp.json`, `claude_desktop_config.json`,

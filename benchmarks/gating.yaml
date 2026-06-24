@@ -1,0 +1,25 @@
+# Benchmark quality-regression gate configuration (issue #491).
+#
+# Turns the informational benchmark-delta PR comment (scripts/benchmark_delta.py)
+# into a gating CI check: a PR that regresses a *quality* metric beyond its band
+# (vs the committed benchmarks/results/latest.json baseline) fails CI. Latency
+# stays informational — runner variance makes it unreliable as a gate.
+#
+# Band semantics (see scripts/benchmark_gate.py):
+#   - fraction metrics (recall_at_k / mrr / precision_at_k, range 0..1) regress
+#     when  head < base - max_regression_pp / 100.
+#   - percent metrics (token_savings_pct, already 0..100) regress when
+#     head < base - max_regression_pp.
+#
+# The ~0.5pp noise floor at 200 gold queries (.github/prompts/add-eval.prompt.md)
+# informs the 1.0pp quality band; token savings get a looser 2.0pp band.
+quality:
+  recall_at_k: { max_regression_pp: 1.0 }
+  mrr: { max_regression_pp: 1.0 }
+  precision_at_k: { max_regression_pp: 1.0 }
+  token_savings_pct: { max_regression_pp: 2.0 }
+latency:
+  gating: false
+# A maintainer-applied PR label that downgrades a gate failure to a warning for
+# intentional trade-offs (the rationale belongs in the PR description).
+override_label: benchmark-accepted
