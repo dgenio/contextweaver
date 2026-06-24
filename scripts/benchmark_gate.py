@@ -90,8 +90,9 @@ class GatingConfig:
 def load_gating_config(path: Path | None) -> GatingConfig:
     """Load bands from *path*; fall back to :data:`DEFAULT_BANDS` when absent.
 
-    Only the ``quality`` metrics whose band is a positive number are gated;
-    a metric set to ``gating: false`` (or omitted) is treated as informational.
+    Only the ``quality`` metrics whose band is a non-negative number are gated
+    (a ``0`` band means "no regression tolerated"); a metric set to
+    ``gating: false`` (or omitted) is treated as informational.
     """
     if path is None or not path.exists():
         return GatingConfig(bands=dict(DEFAULT_BANDS))

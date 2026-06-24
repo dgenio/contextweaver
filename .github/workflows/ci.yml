@@ -275,6 +275,7 @@ jobs:
           comment-id: ${{ steps.find.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
           body-path: benchmarks/results/delta.md
+          edit-mode: replace
 
   benchmark-gate:
     # Quality-regression gate (issue #491). Where benchmark-comment *describes*
@@ -315,7 +316,6 @@ jobs:
             --base benchmarks/results/base.json \
             --head benchmarks/results/head.json \
             --gating-config benchmarks/gating.yaml $OVERRIDE
-          edit-mode: replace
 
   docs-build:
     # Gate the docs build on PRs (issue #474). docs.yml only builds+deploys on

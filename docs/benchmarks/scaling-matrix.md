@@ -51,9 +51,10 @@ JSON artifact under `benchmarks/results/`.
   scorecard reports recall@1/3/5 against this pressure; a drop below the
   scorecard's threshold floor is flagged as a regression.
 - **Token reduction is the headline benefit.** Bounded `ChoiceCard`s shrink
-  the routing prompt by ~95–97% versus exposing every tool schema — the gap
-  widens as the catalog grows, which is exactly when naive all-tools prompting
-  becomes untenable.
+  the routing prompt by ~95–97% versus listing every tool's name + description
+  (the naive baseline these benchmarks measure; full JSON schemas would make
+  the gap larger still) — and the gap widens as the catalog grows, which is
+  exactly when naive all-tools prompting becomes untenable.
 
 ## Trend over releases
 

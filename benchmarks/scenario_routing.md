@@ -22,5 +22,5 @@ Reading the table:
 - `correct@top-k` is whether the expected tool survived into the bounded
   shortlist — the property naive prompting trivially satisfies (every tool
   is present) but at the token cost in the `naive tokens` column.
-- `reduction` is how much smaller the ChoiceCard prompt is than dumping
-  every tool schema — the headline routing benefit at scale.
+- `reduction` is how much smaller the ChoiceCard prompt is than listing
+  every tool's name + description — the headline routing benefit at scale.
