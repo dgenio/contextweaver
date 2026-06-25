@@ -82,7 +82,10 @@ def build_large_catalog(n: int, seed: int) -> list[SelectableItem]:
 
     Synthetic variants share their original's namespace and tags (preserving
     routing signal density) but carry distinct IDs, so they act as near-duplicate
-    *distractors* without ever matching a gold query.
+    *distractors* without ever matching a gold query. Variants are always
+    non-destructive (``side_effects`` defaults to ``False`` and is not copied
+    from the original), so ``destructive_tools`` in the result reflects the base
+    83-item pool only — the deny test exercises exactly that base set.
     """
     base = load_catalog_dicts(generate_sample_catalog(n=83, seed=seed))
     items: list[SelectableItem] = list(base)

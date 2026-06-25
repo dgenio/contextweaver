@@ -114,6 +114,33 @@ def test_committed_gating_config_loads() -> None:
     assert cfg.override_label == "benchmark-accepted"
 
 
+def test_config_disabling_all_gates_gates_nothing(tmp_path: Path) -> None:
+    # A present config that disables every metric must be honored (gate nothing)
+    # rather than silently reverting to DEFAULT_BANDS.
+    cfg_path = tmp_path / "gating.yaml"
+    cfg_path.write_text(
+        "quality:\n"
+        "  recall_at_k: { gating: false }\n"
+        "  mrr: { gating: false }\n"
+        "override_label: custom-accept\n",
+        encoding="utf-8",
+    )
+    cfg = load_gating_config(cfg_path)
+    assert cfg.bands == {}
+    assert cfg.override_label == "custom-accept"
+    # With no gated metrics, even a large drop cannot produce a violation.
+    assert evaluate_gate(_routing(0.50), _routing(0.10), cfg) == []
+
+
+def test_config_without_quality_block_keeps_defaults(tmp_path: Path) -> None:
+    # An incomplete config (no ``quality`` block at all) keeps the safe defaults.
+    cfg_path = tmp_path / "gating.yaml"
+    cfg_path.write_text("latency:\n  gating: false\n", encoding="utf-8")
+    cfg = load_gating_config(cfg_path)
+    assert cfg.bands["recall_at_k"] == 1.0
+    assert cfg.override_label == "benchmark-accepted"
+
+
 def test_cli_exit_codes(tmp_path: Path) -> None:
     base = tmp_path / "base.json"
     head = tmp_path / "head.json"

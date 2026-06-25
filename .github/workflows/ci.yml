@@ -307,6 +307,9 @@ jobs:
       - name: Gate on quality regressions
         # The `benchmark-accepted` label downgrades a failure to a warning for
         # intentional trade-offs; the rationale must be in the PR description.
+        # NOTE: this label string is the GitHub-Actions mirror of `override_label`
+        # in benchmarks/gating.yaml. A `${{ }}` expression cannot read that file,
+        # so the two must be kept in sync by hand if the label is ever renamed.
         run: |
           OVERRIDE=""
           if ${{ contains(github.event.pull_request.labels.*.name, 'benchmark-accepted') }}; then

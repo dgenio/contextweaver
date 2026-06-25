@@ -90,25 +90,33 @@ class GatingConfig:
 def load_gating_config(path: Path | None) -> GatingConfig:
     """Load bands from *path*; fall back to :data:`DEFAULT_BANDS` when absent.
 
-    Only the ``quality`` metrics whose band is a non-negative number are gated
-    (a ``0`` band means "no regression tolerated"); a metric set to
-    ``gating: false`` (or omitted) is treated as informational.
+    The defaults are a safety net for a *missing* or unparseable config (e.g. a
+    partial checkout), not a floor. When *path* exists, parses to a mapping, and
+    carries a ``quality`` block, that block is authoritative: only metrics whose
+    band is a non-negative number are gated (a ``0`` band means "no regression
+    tolerated"), and a config that sets every metric to ``gating: false`` (so no
+    band resolves) deliberately gates nothing rather than silently reverting to
+    the defaults. A present config that omits ``quality`` entirely is treated as
+    incomplete and keeps the defaults.
     """
     if path is None or not path.exists():
         return GatingConfig(bands=dict(DEFAULT_BANDS))
     import yaml  # lazy: keeps the import off the no-config path
 
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    quality = raw.get("quality", {}) if isinstance(raw, dict) else {}
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return GatingConfig(bands=dict(DEFAULT_BANDS))
+    override = str(raw.get("override_label", "benchmark-accepted"))
+    if "quality" not in raw:
+        return GatingConfig(bands=dict(DEFAULT_BANDS), override_label=override)
     bands: dict[str, float] = {}
-    for metric, spec in (quality or {}).items():
+    for metric, spec in (raw.get("quality") or {}).items():
         if not isinstance(spec, dict):
             continue
         band = spec.get("max_regression_pp")
         if isinstance(band, (int, float)) and band >= 0:
             bands[str(metric)] = float(band)
-    override = str(raw.get("override_label", "benchmark-accepted")) if isinstance(raw, dict) else ""
-    return GatingConfig(bands=bands or dict(DEFAULT_BANDS), override_label=override)
+    return GatingConfig(bands=bands, override_label=override)
 
 
 # ---------------------------------------------------------------------------
@@ -211,19 +219,29 @@ def evaluate_gate(
     return sorted(violations, key=lambda v: (v.metric, v.cell))
 
 
-def render_report(violations: list[GateViolation], *, overridden: bool) -> str:
-    """Render a deterministic plain-text gate report."""
+def render_report(
+    violations: list[GateViolation],
+    *,
+    overridden: bool,
+    override_label: str = "benchmark-accepted",
+) -> str:
+    """Render a deterministic plain-text gate report.
+
+    *override_label* names the configured downgrade label (from the gating
+    config) so the report points at the exact label CI checks for.
+    """
     if not violations:
         return "benchmark gate: PASS — all gated quality metrics within band."
     lines = [f"benchmark gate: {len(violations)} metric(s) regressed beyond band:"]
     lines.extend(f"  - {v.describe()}" for v in violations)
+    lines.append("")
     if overridden:
-        lines.append("")
-        lines.append("Override label present — downgrading failure to a warning.")
-    else:
-        lines.append("")
         lines.append(
-            "Fix the regression, or apply the override label with a rationale in "
+            f"Override label '{override_label}' present — downgrading failure to a warning."
+        )
+    else:
+        lines.append(
+            f"Fix the regression, or apply the '{override_label}' label with a rationale in "
             "the PR description to accept it."
         )
     return "\n".join(lines)
@@ -268,7 +286,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     config = load_gating_config(Path(args.gating_config) if args.gating_config else None)
     violations = evaluate_gate(base, head, config)
-    print(render_report(violations, overridden=args.override))
+    print(render_report(violations, overridden=args.override, override_label=config.override_label))
     if violations and not args.override:
         return 1
     return 0
