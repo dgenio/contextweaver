@@ -27,12 +27,21 @@
     "name": "revenue_report",
     "query": "generate a revenue summary report",
     "expected": ["billing.reports.revenue"],
-    "catalog_size": 300
+    "catalog_size": 300,
+    "large_result_chars": 8000
   },
   {
     "name": "draft_email",
     "query": "create an email draft to a customer",
     "expected": ["comms.email.draft"],
     "catalog_size": 300
+  },
+  {
+    "name": "ambiguous_customer_account",
+    "query": "handle customer account",
+    "expected": ["crm.activities.log"],
+    "catalog_size": 200,
+    "expect_ambiguous": true,
+    "deny_destructive": true
   }
 ]

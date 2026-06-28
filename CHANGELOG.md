@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`benchmarks/large_catalog.py`) routes over 300+ tools across 8 namespaces
     with near-duplicate distractor variants and destructive (side-effecting)
     tools, reporting recall@1/3/5, MRR, ChoiceCard-vs-naive prompt-token
-    reduction, and allow/deny filtering of destructive tools. Writes a
+    reduction, namespace/deny filtering, character counts, and a large-result
+    firewall + artifact-view round trip. Writes a
     committed scorecard (`benchmarks/large_catalog_scorecard.md`, latency
     excluded for determinism) plus `benchmarks/results/large_catalog.json`;
     `--check` gates scorecard drift and `--strict` gates regression-guard
@@ -25,19 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`benchmarks/scenario_routing.py`) contrasts naive all-tools prompting
     against bounded `ChoiceCard` routing across tool-heavy scenarios
     (`benchmarks/scenarios/routing_choicecard.json`), reporting
-    correct-in-top-k, rank, cards shown, and token reduction to a committed
-    report (`benchmarks/scenario_routing.md`).
+    correct-in-top-k, rank, cards shown, deterministic route work, ambiguity/
+    clarification behavior, destructive-card exclusion, token reduction, and raw-
+    result firewall exposure to a committed report (`benchmarks/scenario_routing.md`).
   - **Quality-regression gate (#491).** `scripts/benchmark_gate.py` +
     `benchmarks/gating.yaml` turn the informational benchmark delta into a
-    gating CI check: a PR that regresses recall@k / MRR / precision@k /
-    token-savings beyond its tolerance band fails the new `benchmark-gate` CI
-    job. Latency is never gated; the `benchmark-accepted` PR label downgrades a
+    gating CI check against the target-branch baseline: a PR that regresses
+    recall@k / MRR / precision@k / token-savings / compaction ratio, or drops
+    a previously-gated cell, fails the new `benchmark-gate` CI job. The
+    fixed-fixture smoke evaluation is also a required check on Python 3.12.
+    Latency is never gated; the `benchmark-accepted` PR label downgrades a
     failure to a warning for intentional trade-offs.
   - **Release trend (#554).** `scripts/render_trend.py` captures a
     deterministic, latency-free metric snapshot per release under
     `benchmarks/results/history/<version>.json` and renders the
     release-over-release view to `benchmarks/trend.md` (`make trend` /
-    `make trend-check`).
+    `make trend-check`); the publish workflow requires the tagged version's
+    snapshot and a drift-free trend before publishing.
   - **Scaling matrix docs (#687).** `docs/benchmarks/scaling-matrix.md`
     documents the 10k-tool scaling methodology, reproducible commands, and
     result interpretation, tying together the routing-scale, large-catalog,

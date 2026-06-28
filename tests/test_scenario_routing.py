@@ -35,10 +35,28 @@ def test_rank_consistent_with_top_k_flag() -> None:
 
 
 def test_dataset_covers_multiple_namespaces() -> None:
-    rows = run_all()
-    assert len(rows) >= 4
-    # At least one scenario must keep the expected tool reachable.
-    assert any(r.correct_in_top_k for r in rows)
+    import json
+
+    scenarios = json.loads(DEFAULT_DATASET.read_text(encoding="utf-8"))
+    namespaces = {expected.split(".", 1)[0] for row in scenarios for expected in row["expected"]}
+    assert len(namespaces) >= 3
+
+
+def test_large_result_is_firewalled_and_viewable() -> None:
+    row = {row.name: row for row in run_all()}["revenue_report"]
+    assert row.raw_result_chars == 8000
+    assert 0 < row.injected_result_chars < row.raw_result_chars
+    assert row.raw_result_exposed is False
+    assert row.artifact_created is True
+    assert row.tool_view_recovered is True
+
+
+def test_ambiguous_route_asks_and_hides_destructive_tools() -> None:
+    row = {row.name: row for row in run_all()}["ambiguous_customer_account"]
+    assert row.ambiguous is True
+    assert row.clarifying_question is True
+    assert row.destructive_cards_shown == 0
+    assert row.route_work_units > 0
 
 
 def test_render_is_deterministic_and_matches_commit() -> None:

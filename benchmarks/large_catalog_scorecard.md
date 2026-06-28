@@ -17,13 +17,24 @@
 
 ## Prompt-token reduction (ChoiceCards vs naive all-tools prompt)
 
-| naive tokens | mean card tokens | reduction |
-|---:|---:|---:|
-| 4368 | 113 | 97.41% |
+| naive chars | mean card chars | naive tokens | mean card tokens | reduction |
+|---:|---:|---:|---:|---:|
+| 17474 | 453 | 4368 | 113 | 97.41% |
 
 ## Destructive-tool filtering
 
 - Destructive tools reaching the shortlist when denied: `0` (expected `0`).
+
+## Namespace filtering
+
+- recall@5 with the gold tool's namespace allowed: `1.0000`.
+- Cross-namespace candidates after gating: `0` (expected `0`).
+
+## Result firewall and artifact view
+
+| raw chars | injected summary chars | reduction | artifact | raw inline | view recovered |
+|---:|---:|---:|:---:|:---:|:---:|
+| 11414 | 501 | 95.61% | yes | no | yes |
 
 ## Thresholds
 

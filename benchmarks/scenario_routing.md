@@ -6,21 +6,29 @@
 Naive all-tools prompting vs bounded `ChoiceCard` routing across tool-heavy
 scenarios. Token counts use `CharDivFourEstimator` (no model dependency).
 
-- Scenarios: `6` · correct tool in top-5: `4/6` · mean token reduction: `96.54%`
+- Scenarios: `7` · correct tool in top-5: `5/7` · ambiguous routes: `3/7` · mean token reduction: `96.44%`
 
-| scenario | catalog | correct@top-k | rank | cards | naive tokens | card tokens | reduction |
-|---|---:|:---:|---:|---:|---:|---:|---:|
-| draft_email | 300 | ✅ | 1 | 5 | 4083 | 111 | 97.28% |
-| find_contact | 300 | ✅ | 1 | 5 | 4083 | 111 | 97.28% |
-| find_unpaid_invoices | 200 | ❌ | — | 5 | 2618 | 110 | 95.80% |
-| refund_a_payment | 200 | ❌ | — | 5 | 2618 | 108 | 95.87% |
-| revenue_report | 300 | ✅ | 1 | 5 | 4083 | 117 | 97.13% |
-| send_slack_update | 200 | ✅ | 1 | 5 | 2618 | 108 | 95.87% |
+| scenario | catalog | correct | rank | ambiguous | cards | work units | destructive cards | reduction |
+|---|---:|:---:|---:|:---:|---:|---:|---:|---:|
+| ambiguous_customer_account | 200 | ✅ | 1 | yes | 5 | 45 | 0 | 95.84% |
+| draft_email | 300 | ✅ | 1 | no | 5 | 68 | 0 | 97.28% |
+| find_contact | 300 | ✅ | 1 | no | 5 | 68 | 2 | 97.28% |
+| find_unpaid_invoices | 200 | ❌ | — | yes | 5 | 53 | 2 | 95.80% |
+| refund_a_payment | 200 | ❌ | — | yes | 5 | 53 | 1 | 95.87% |
+| revenue_report | 300 | ✅ | 1 | no | 5 | 67 | 3 | 97.13% |
+| send_slack_update | 200 | ✅ | 1 | no | 5 | 51 | 2 | 95.87% |
 
-Reading the table:
+## Large-result firewall scenarios
 
-- `correct@top-k` is whether the expected tool survived into the bounded
-  shortlist — the property naive prompting trivially satisfies (every tool
-  is present) but at the token cost in the `naive tokens` column.
-- `reduction` is how much smaller the ChoiceCard prompt is than listing
-  every tool's name + description — the headline routing benefit at scale.
+| scenario | raw chars | injected chars | raw exposed | artifact | view recovered |
+|---|---:|---:|:---:|:---:|:---:|
+| revenue_report | 8000 | 501 | no | yes | yes |
+
+Reading the tables:
+
+- `work units` is the deterministic number of children scored in the route trace,
+  used as a stable latency/cost proxy instead of host-dependent wall-clock time.
+- Ambiguous scenarios must surface a clarifying question and, when destructive
+  tools are denied, expose zero destructive cards.
+- Large results must be replaced by a compact summary while the raw bytes remain
+  recoverable through the artifact-view path.

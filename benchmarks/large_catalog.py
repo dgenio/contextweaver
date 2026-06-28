@@ -36,7 +36,9 @@ from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT / "src"))
+sys.path.insert(0, str(_ROOT))
 
+from benchmarks._firewall_measurement import measure_firewall  # noqa: E402
 from contextweaver.eval.dataset import EvalCase, EvalDataset  # noqa: E402
 from contextweaver.eval.routing import evaluate_routing  # noqa: E402
 from contextweaver.protocols import CharDivFourEstimator  # noqa: E402
@@ -134,8 +136,18 @@ class LargeCatalogResult:
     mrr: float
     mean_naive_tokens: int
     mean_card_tokens: int
+    naive_prompt_chars: int
+    mean_card_chars: int
     token_reduction_pct: float
     destructive_in_shortlist_denied: int
+    namespace_filtered_recall_at_5: float
+    namespace_filter_leaks: int
+    firewall_raw_chars: int
+    firewall_summary_chars: int
+    firewall_reduction_pct: float
+    firewall_artifact_created: bool
+    tool_view_recovered: bool
+    raw_result_exposed_inline: bool
     latency_ms_p50: float
     latency_ms_p99: float
 
@@ -164,20 +176,52 @@ def run_benchmark(n: int = DEFAULT_CATALOG_SIZE, seed: int = DEFAULT_SEED) -> La
     # Naive prompt = every tool's name + description. Stable across queries.
     naive_text = "\n".join(f"{it.name}: {it.description}" for it in items)
     naive_tokens = _count(naive_text)
+    naive_chars = len(naive_text)
 
     card_token_samples: list[int] = []
+    card_char_samples: list[int] = []
     latencies: list[float] = []
     for case in dataset:
         start = time.perf_counter()
         result = router.route(case.query)
         latencies.append((time.perf_counter() - start) * 1000.0)
         cards = make_choice_cards(result.candidate_items)
-        card_token_samples.append(_count(render_cards_text(cards)))
+        rendered_cards = render_cards_text(cards)
+        card_token_samples.append(_count(rendered_cards))
+        card_char_samples.append(len(rendered_cards))
     mean_card = (
         round(sum(card_token_samples) / len(card_token_samples)) if card_token_samples else 0
     )
     reduction = round((1 - mean_card / naive_tokens) * 100.0, 2) if naive_tokens else 0.0
+    mean_card_chars = (
+        round(sum(card_char_samples) / len(card_char_samples)) if card_char_samples else 0
+    )
 
+    # Namespace gating should retain the expected tool while excluding every
+    # candidate from other namespaces.
+    item_by_id = {item.id: item for item in items}
+    namespace_hits = 0
+    namespace_queries = 0
+    namespace_leaks = 0
+    for case in dataset:
+        expected_id = case.expected[0]
+        expected_item = item_by_id.get(expected_id)
+        if expected_item is None or not expected_item.namespace:
+            continue
+        gated = router.route(case.query, allowed_namespaces={expected_item.namespace})
+        namespace_queries += 1
+        namespace_hits += int(expected_id in gated.candidate_ids)
+        namespace_leaks += sum(
+            item.namespace != expected_item.namespace for item in gated.candidate_items
+        )
+    namespace_recall = round(namespace_hits / namespace_queries, 4) if namespace_queries else 0.0
+
+    # Exercise the result firewall and the artifact-view path over one large
+    # deterministic tool result from the benchmarked catalog.
+    raw_result = "invoice_id,status,amount\n" + "\n".join(
+        f"INV-{index:04d},unpaid,{index}.00" for index in range(500)
+    )
+    firewall = measure_firewall(raw_result, tool_name="billing.invoices.search")
     # Allow/deny filtering: deny every destructive tool and confirm none survive.
     deny_ids = {it.id for it in destructive}
     leaked = 0
@@ -198,8 +242,18 @@ def run_benchmark(n: int = DEFAULT_CATALOG_SIZE, seed: int = DEFAULT_SEED) -> La
         mrr=round(report.mrr, 4),
         mean_naive_tokens=naive_tokens,
         mean_card_tokens=mean_card,
+        naive_prompt_chars=naive_chars,
+        mean_card_chars=mean_card_chars,
         token_reduction_pct=reduction,
         destructive_in_shortlist_denied=leaked,
+        namespace_filtered_recall_at_5=namespace_recall,
+        namespace_filter_leaks=namespace_leaks,
+        firewall_raw_chars=firewall.raw_chars,
+        firewall_summary_chars=firewall.summary_chars,
+        firewall_reduction_pct=firewall.reduction_pct,
+        firewall_artifact_created=firewall.artifact_created,
+        tool_view_recovered=firewall.tool_view_recovered,
+        raw_result_exposed_inline=firewall.raw_exposed_inline,
         latency_ms_p50=round(_percentile(latencies, 50), 3),
         latency_ms_p99=round(_percentile(latencies, 99), 3),
     )
@@ -247,8 +301,9 @@ def render_scorecard(result: LargeCatalogResult) -> str:
             "",
             "## Prompt-token reduction (ChoiceCards vs naive all-tools prompt)",
             "",
-            "| naive tokens | mean card tokens | reduction |",
-            "|---:|---:|---:|",
+            "| naive chars | mean card chars | naive tokens | mean card tokens | reduction |",
+            "|---:|---:|---:|---:|---:|",
+            f"| {result.naive_prompt_chars} | {result.mean_card_chars} "
             f"| {result.mean_naive_tokens} | {result.mean_card_tokens} "
             f"| {result.token_reduction_pct:.2f}% |",
             "",
@@ -256,6 +311,24 @@ def render_scorecard(result: LargeCatalogResult) -> str:
             "",
             f"- Destructive tools reaching the shortlist when denied: "
             f"`{result.destructive_in_shortlist_denied}` (expected `0`).",
+            "",
+            "## Namespace filtering",
+            "",
+            f"- recall@5 with the gold tool's namespace allowed: "
+            f"`{result.namespace_filtered_recall_at_5:.4f}`.",
+            f"- Cross-namespace candidates after gating: `{result.namespace_filter_leaks}` "
+            "(expected `0`).",
+            "",
+            "## Result firewall and artifact view",
+            "",
+            "| raw chars | injected summary chars | reduction | artifact | "
+            "raw inline | view recovered |",
+            "|---:|---:|---:|:---:|:---:|:---:|",
+            f"| {result.firewall_raw_chars} | {result.firewall_summary_chars} "
+            f"| {result.firewall_reduction_pct:.2f}% "
+            f"| {'yes' if result.firewall_artifact_created else 'no'} "
+            f"| {'yes' if result.raw_result_exposed_inline else 'no'} "
+            f"| {'yes' if result.tool_view_recovered else 'no'} |",
             "",
             "## Thresholds",
             "",
@@ -283,6 +356,14 @@ def _threshold_breaches(result: LargeCatalogResult) -> list[str]:
         breaches.append(
             f"{result.destructive_in_shortlist_denied} denied destructive tool(s) leaked"
         )
+    if result.namespace_filter_leaks:
+        breaches.append(f"{result.namespace_filter_leaks} cross-namespace candidate(s) leaked")
+    if not result.firewall_artifact_created:
+        breaches.append("large result did not create a firewall artifact")
+    if result.raw_result_exposed_inline:
+        breaches.append("large raw result remained exposed inline")
+    if not result.tool_view_recovered:
+        breaches.append("tool_view could not recover the stored result")
     return breaches
 
 
@@ -301,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
 
     result = run_benchmark(args.size, args.seed)
     scorecard = render_scorecard(result)
+    breaches = _threshold_breaches(result)
 
     if args.check:
         current = (
@@ -313,6 +395,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         print("large-catalog scorecard: up to date")
+        if args.strict and breaches:
+            print("WARNING: " + "; ".join(breaches), file=sys.stderr)
+            return 1
         return 0
 
     DEFAULT_JSON.parent.mkdir(parents=True, exist_ok=True)
@@ -326,7 +411,6 @@ def main(argv: list[str] | None = None) -> int:
         f"p99={result.latency_ms_p99:.3f}ms"
     )
 
-    breaches = _threshold_breaches(result)
     if breaches:
         print("WARNING: " + "; ".join(breaches), file=sys.stderr)
         if args.strict:

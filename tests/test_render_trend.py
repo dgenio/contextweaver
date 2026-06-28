@@ -96,6 +96,13 @@ def test_empty_history_renders_placeholder() -> None:
     assert "No release snapshots recorded yet" in out
 
 
+def test_publish_workflow_requires_current_release_snapshot() -> None:
+    root = Path(__file__).parent.parent
+    workflow = (root / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+    assert 'snapshot="benchmarks/results/history/${version}.json"' in workflow
+    assert "python scripts/render_trend.py --check" in workflow
+
+
 def test_committed_trend_is_in_sync() -> None:
     """The committed benchmarks/trend.md must match a fresh render of history."""
     root = Path(__file__).parent.parent

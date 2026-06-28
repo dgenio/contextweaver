@@ -92,7 +92,7 @@ benchmark-large-catalog:
 	$(PYTHON) benchmarks/large_catalog.py
 
 benchmark-large-catalog-check:
-	$(PYTHON) benchmarks/large_catalog.py --check
+	$(PYTHON) benchmarks/large_catalog.py --check --strict
 
 # Scenario benchmark (issue #418; non-gating): naive all-tools prompt vs bounded
 # ChoiceCard routing. Writes benchmarks/scenario_routing.md; `-check` gates drift.

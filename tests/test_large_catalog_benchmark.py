@@ -40,6 +40,7 @@ def test_results_are_deterministic() -> None:
 def test_choicecards_collapse_the_prompt() -> None:
     result = run_benchmark(n=160, seed=42)
     assert result.mean_card_tokens < result.mean_naive_tokens
+    assert result.mean_card_chars < result.naive_prompt_chars
     assert result.token_reduction_pct > 50.0
 
 
@@ -47,6 +48,16 @@ def test_denied_destructive_tools_never_reach_shortlist() -> None:
     result = run_benchmark(n=160, seed=42)
     assert result.destructive_tools > 0
     assert result.destructive_in_shortlist_denied == 0
+
+
+def test_namespace_filter_and_firewall_contracts() -> None:
+    result = run_benchmark(n=160, seed=42)
+    assert result.namespace_filtered_recall_at_5 >= result.recall_at_5
+    assert result.namespace_filter_leaks == 0
+    assert result.firewall_summary_chars < result.firewall_raw_chars
+    assert result.firewall_artifact_created is True
+    assert result.raw_result_exposed_inline is False
+    assert result.tool_view_recovered is True
 
 
 def test_scorecard_render_is_deterministic() -> None:

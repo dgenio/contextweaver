@@ -32,8 +32,8 @@ scale and over time:
 | What | Command | Output |
 |---|---|---|
 | Latency to 10k tools + cache speedup | `make benchmark-routing-scale` | [`scaling matrix`](benchmarks/scaling-matrix.md) |
-| Recall + token reduction at 300+ tools | `make benchmark-large-catalog` | `benchmarks/large_catalog_scorecard.md` |
-| Naive all-tools vs ChoiceCard routing | `make benchmark-scenario` | `benchmarks/scenario_routing.md` |
+| 300+ tool recall, namespace/deny filters, and firewall view | `make benchmark-large-catalog` | `benchmarks/large_catalog_scorecard.md` |
+| ChoiceCards, ambiguity/destructive filtering, and large-result exposure | `make benchmark-scenario` | `benchmarks/scenario_routing.md` |
 | Release-over-release trend | `make trend` | [`benchmarks/trend.md`](https://github.com/dgenio/contextweaver/blob/main/benchmarks/trend.md) |
 
 PR-time regressions are caught by the gating check (`benchmarks/gating.yaml` +

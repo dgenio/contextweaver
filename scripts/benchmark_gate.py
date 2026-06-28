@@ -4,7 +4,8 @@
 Companion to ``scripts/benchmark_delta.py`` (the informational sticky PR
 comment). Where the delta script *describes* head-vs-base movement, this
 script *enforces* it: a PR that regresses a gated quality metric beyond its
-band — recall@k, MRR, precision@k, token-savings — exits non-zero so CI can
+band — recall@k, MRR, precision@k, token-savings, compaction ratio — exits
+non-zero so CI can
 block the merge. Latency cells are never gated (runner variance).
 
 The gate compares a head ``latest.json`` against the committed base
@@ -34,16 +35,12 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+
+from _benchmark_gate_cells import GateViolation, band_key
+from _benchmark_gate_cells import evaluate_gate as _evaluate_gate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_GATING_CONFIG = REPO_ROOT / "benchmarks" / "gating.yaml"
-
-# Fraction metrics live on a 0..1 scale, so a band expressed in percentage
-# points (pp) is applied as ``band / 100``. Percent metrics are already 0..100
-# and the band is applied directly. Anything not listed here is informational.
-_FRACTION_METRICS = ("recall_at_k", "mrr", "precision_at_k")
-_PERCENT_METRICS = ("token_savings_pct",)
 
 # Mirrors benchmarks/gating.yaml so the gate has a safe default when no config
 # file is present (e.g. a partial checkout). Kept in sync with that file.
@@ -52,26 +49,8 @@ DEFAULT_BANDS: dict[str, float] = {
     "mrr": 1.0,
     "precision_at_k": 1.0,
     "token_savings_pct": 2.0,
+    "avg_compaction_ratio": 5.0,
 }
-
-
-@dataclass(frozen=True)
-class GateViolation:
-    """One gated cell that regressed beyond its tolerance band."""
-
-    metric: str
-    cell: str
-    base: float
-    head: float
-    regression_pp: float
-    band_pp: float
-
-    def describe(self) -> str:
-        """Return a single-line, deterministic human-readable summary."""
-        return (
-            f"{self.metric} [{self.cell}]: {self.base:.4f} -> {self.head:.4f} "
-            f"(-{self.regression_pp:.2f}pp, band {self.band_pp:.2f}pp)"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -113,110 +92,17 @@ def load_gating_config(path: Path | None) -> GatingConfig:
     for metric, spec in (raw.get("quality") or {}).items():
         if not isinstance(spec, dict):
             continue
-        band = spec.get("max_regression_pp")
+        band = spec.get(band_key(str(metric)))
         if isinstance(band, (int, float)) and band >= 0:
             bands[str(metric)] = float(band)
     return GatingConfig(bands=bands, override_label=override)
 
 
-# ---------------------------------------------------------------------------
-# Cell extraction — each gated cell is (metric, cell-label, value)
-# ---------------------------------------------------------------------------
-
-
-def _routing_cells(payload: dict[str, Any]) -> dict[tuple[str, str], float]:
-    """Gated metrics from the single-backend ``routing`` summary rows."""
-    cells: dict[tuple[str, str], float] = {}
-    for row in payload.get("routing", []):
-        if not isinstance(row, dict):
-            continue
-        size = int(row.get("catalog_size", 0))
-        for metric in _FRACTION_METRICS:
-            if metric in row:
-                cells[(metric, f"routing/size={size}")] = float(row[metric])
-    return cells
-
-
-def _matrix_cells(payload: dict[str, Any]) -> dict[tuple[str, str], float]:
-    """Gated metrics from ``routing_matrix`` cells; skip non-``ok`` cells."""
-    cells: dict[tuple[str, str], float] = {}
-    for row in payload.get("routing_matrix", []):
-        if not isinstance(row, dict) or str(row.get("status", "ok")) != "ok":
-            continue
-        backend = str(row.get("backend", ""))
-        size = int(row.get("catalog_size", 0))
-        for metric in _FRACTION_METRICS:
-            if metric in row:
-                cells[(metric, f"matrix/{backend}@{size}")] = float(row[metric])
-    return cells
-
-
-def _token_savings_cells(payload: dict[str, Any]) -> dict[tuple[str, str], float]:
-    """Token-savings cells from each context row's ``naive_delta`` block."""
-    cells: dict[tuple[str, str], float] = {}
-    for row in payload.get("context", []):
-        if not isinstance(row, dict):
-            continue
-        nd = row.get("naive_delta")
-        if isinstance(nd, dict) and "pct_reduction" in nd:
-            scenario = str(row.get("scenario", ""))
-            cells[("token_savings_pct", f"context/{scenario}")] = float(nd["pct_reduction"])
-    return cells
-
-
-def _all_cells(payload: dict[str, Any]) -> dict[tuple[str, str], float]:
-    cells: dict[tuple[str, str], float] = {}
-    cells.update(_routing_cells(payload))
-    cells.update(_matrix_cells(payload))
-    cells.update(_token_savings_cells(payload))
-    return cells
-
-
-def _regression_pp(metric: str, base: float, head: float) -> float:
-    """Return the regression in percentage points (positive = got worse)."""
-    drop = base - head
-    if metric in _PERCENT_METRICS:
-        return drop  # already on a 0..100 scale
-    return drop * 100.0  # fraction (0..1) -> pp
-
-
-# ---------------------------------------------------------------------------
-# Gate
-# ---------------------------------------------------------------------------
-
-
 def evaluate_gate(
-    base: dict[str, Any], head: dict[str, Any], config: GatingConfig
+    base: dict[str, object], head: dict[str, object], config: GatingConfig
 ) -> list[GateViolation]:
-    """Return every gated cell in *head* that regressed beyond its band vs *base*.
-
-    Cells absent from *base* (new cells) cannot regress and are skipped. Cells
-    present in *base* but absent from *head* are also skipped — a removed cell is
-    a structural change, not a quality regression, and is surfaced by the delta
-    comment, not the gate. Results are sorted for deterministic output.
-    """
-    base_cells = _all_cells(base)
-    head_cells = _all_cells(head)
-    violations: list[GateViolation] = []
-    for key, head_value in head_cells.items():
-        metric, cell = key
-        band = config.bands.get(metric)
-        if band is None or key not in base_cells:
-            continue
-        base_value = base_cells[key]
-        regression = _regression_pp(metric, base_value, head_value)
-        if regression > band:
-            violations.append(
-                GateViolation(
-                    metric=metric,
-                    cell=cell,
-                    base=base_value,
-                    head=head_value,
-                    regression_pp=regression,
-                    band_pp=band,
-                )
-            )
-    return sorted(violations, key=lambda v: (v.metric, v.cell))
+    """Return gated regressions and required cells missing from *head*."""
+    return _evaluate_gate(base, head, config.bands)
 
 
 def render_report(
@@ -232,7 +118,7 @@ def render_report(
     """
     if not violations:
         return "benchmark gate: PASS — all gated quality metrics within band."
-    lines = [f"benchmark gate: {len(violations)} metric(s) regressed beyond band:"]
+    lines = [f"benchmark gate: {len(violations)} metric violation(s):"]
     lines.extend(f"  - {v.describe()}" for v in violations)
     lines.append("")
     if overridden:

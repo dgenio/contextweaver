@@ -8,7 +8,7 @@ each measure a different slice of "does this still work at scale?"
 | Benchmark | Question it answers | Command | Output |
 |---|---|---|---|
 | Routing-scale profile | How does build/route **latency** scale to 10k tools, and how much does the persistent cache save? | `make benchmark-routing-scale` | [`routing-scale.md`](routing-scale.md) · `benchmarks/results/routing_scale.json` |
-| Large-catalog quality | At 300+ tools across many namespaces, does routing keep the right tool **reachable** while collapsing the prompt? | `make benchmark-large-catalog` | `benchmarks/large_catalog_scorecard.md` · `benchmarks/results/large_catalog.json` |
+| Large-catalog quality | At 300+ tools across many namespaces, does routing keep the right tool **reachable**, enforce filters, and firewall large results? | `make benchmark-large-catalog` | `benchmarks/large_catalog_scorecard.md` · `benchmarks/results/large_catalog.json` |
 | Per-backend matrix | How do `tfidf` / `bm25` / embedding backends compare across catalog sizes? | `make benchmark-matrix` | `benchmarks/scorecard.md` (matrix section) |
 
 ## Methodology
@@ -26,13 +26,15 @@ each measure a different slice of "does this still work at scale?"
 - **Scale points.** The routing-scale profile sweeps `100 → 1000 → 5000 →
   10000` tools. The large-catalog quality benchmark runs at 320 tools across
   8 namespaces with ~240 near-duplicate distractor tools and ~30 destructive
-  (side-effecting) tools.
+  (side-effecting) tools. It also routes a large synthetic invoice result through
+  the context firewall and verifies the raw artifact remains recoverable through
+  the artifact-view path.
 
 ## Reproducing the full matrix
 
 ```bash
 make benchmark-routing-scale   # latency + cache speedup up to 10k tools
-make benchmark-large-catalog   # recall/MRR + token reduction at 300+ tools
+make benchmark-large-catalog   # recall/filter/firewall + prompt reduction at 300+ tools
 make benchmark-matrix          # per-backend × per-size accuracy matrix
 ```
 
