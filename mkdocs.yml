@@ -115,7 +115,10 @@ nav:
       - Persistent & Remote Stores: persistent_stores.md
       - Puppetmaster: integration_puppetmaster.md
   - Architecture: architecture.md
-  - Benchmarks: benchmarks.md
+  - Benchmarks:
+      - Overview: benchmarks.md
+      - Scaling matrix: benchmarks/scaling-matrix.md
+      - Routing-scale profile: benchmarks/routing-scale.md
   - Adopter Benchmark Report: benchmark_report.md
   - Token Calibration: token_calibration.md
   - Context Rot Demo: context_rot.md

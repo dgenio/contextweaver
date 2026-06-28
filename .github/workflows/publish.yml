@@ -46,6 +46,17 @@ jobs:
           fi
           echo "Release tag '$tag' matches package version 'v$version'."
 
+      - name: Verify release benchmark snapshot
+        # Release history is prepared in the release PR. Fail before publishing
+        # when the tagged version has no deterministic snapshot or trend drifted.
+        run: |
+          version="$(python scripts/check_readme_version.py --print-version)"
+          snapshot="benchmarks/results/history/${version}.json"
+          if [ ! -f "$snapshot" ]; then
+            echo "::error::Missing release benchmark snapshot: $snapshot" >&2
+            exit 1
+          fi
+          python scripts/render_trend.py --check
       - name: Install package and test/build tooling
         run: pip install -e ".[dev]" build twine
 

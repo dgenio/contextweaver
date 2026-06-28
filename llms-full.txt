@@ -3484,7 +3484,7 @@ make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (gating CI step; exits non-zero on drift)
 make gateway-scorecard-check  # verify gateway scorecard Markdown matches its committed JSON (gating CI step)
 make record-demos-check  # verify committed asciinema casts match demo output (gating CI step)
-make smoke-eval  # deterministic, credential-free smoke evaluation (non-gating CI step)
+make smoke-eval  # deterministic, credential-free smoke evaluation (gating CI step on Python 3.12)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
@@ -3500,7 +3500,8 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 >
 > CI-only gates (not in `make ci` because they need the network or are heavy):
 > `make weaver-conformance` (fetches schemas) and the docs build job.
-> `make smoke-eval` (#392) and the benchmark job run in CI but remain non-gating.
+> `make smoke-eval` (#392/#491) is gating on the Python 3.12 CI cell;
+> the raw benchmark job remains informational.
 > The two gating CI *jobs* that build isolated environments now have local
 > equivalents — `make floor-deps` and `make tool-smoke` (#710), bundled into
 > `make ci-full`; only the macOS cell of `tool-run-smoke` stays CI-only.
@@ -3531,7 +3532,7 @@ every PR regardless; run them locally when the affected integrations change.
 | Run benchmark harness | `make benchmark` (non-gating; writes `benchmarks/results/latest.json`) |
 | Run full per-backend × per-size matrix | `make benchmark-matrix` (#208 + #209) |
 | Verify gateway benchmark scorecard | `make gateway-scorecard-check` |
-| Run deterministic smoke evaluation | `make smoke-eval` (non-gating) |
+| Run deterministic smoke evaluation | `make smoke-eval` (gating on the Python 3.12 CI cell) |
 | Run scoring-weight sweep | `make sweep-scoring` (#214; writes `benchmarks/sweep_scoring.md`) |
 | Add an eval for a feature | follow [`.github/prompts/add-eval.prompt.md`](../../.github/prompts/add-eval.prompt.md) (#216) |
 | Regenerate llms.txt / llms-full.txt | `make llms` (after editing canonical docs) |
@@ -3548,6 +3549,21 @@ pre-commit install
 
 Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks on every commit. Hooks may modify files — re-stage with `git add` if needed.
 
+## Preparing a Release
+
+Before creating the release tag, refresh and commit the deterministic benchmark
+history for the package version:
+
+```bash
+make benchmark
+python scripts/render_trend.py --snapshot <version> --from benchmarks/results/latest.json
+make trend
+make trend-check
+```
+
+The publish workflow verifies that `benchmarks/results/history/<version>.json`
+exists and that `benchmarks/trend.md` matches the committed history. Latency is
+excluded from release snapshots because it is host-dependent.
 ## Adding a Feature
 
 1. Identify the relevant module (see module map in [AGENTS.md](../../AGENTS.md)).

@@ -122,11 +122,10 @@ jobs:
         # /v1/compact over loopback. Deterministic, credential-free, no network.
         run: make sidecar-smoke
 
-      - name: "Smoke evaluation (non-gating, issue #392)"
+      - name: "Smoke evaluation (gating, issues #392/#491)"
         if: ${{ matrix.python-version == '3.12' }}
-        continue-on-error: true
-        # Deterministic and credential-free by default. Keep this informational:
-        # it exercises the evaluation path continuously but is not a release gate.
+        # Deterministic and credential-free. Issue #491 promotes this fixed-fixture
+        # quality smoke to a required PR check on the representative Python cell.
         run: python benchmarks/smoke_eval.py
 
       - name: Benchmark (informational, non-gating)
@@ -238,6 +237,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -246,9 +247,12 @@ jobs:
       - name: Generate delta
         id: delta
         continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           python benchmarks/benchmark.py --matrix --output benchmarks/results/head.json
-          cp benchmarks/results/latest.json benchmarks/results/base.json
+          git show "${BASE_SHA}:benchmarks/results/latest.json" \
+            > benchmarks/results/base.json
           python scripts/benchmark_delta.py \
             --base benchmarks/results/base.json \
             --head benchmarks/results/head.json \
@@ -276,6 +280,56 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body-path: benchmarks/results/delta.md
           edit-mode: replace
+
+  benchmark-gate:
+    # Quality-regression gate (issue #491). Where benchmark-comment *describes*
+    # head-vs-base movement, this job *enforces* it: a PR that regresses a gated
+    # quality metric (recall@k / MRR / precision@k / token-savings / compaction)
+    # beyond its
+    # band in benchmarks/gating.yaml fails CI. Latency is never gated. The
+    # baseline is read from the PR target commit, so a head commit cannot
+    # normalize its own regression by refreshing latest.json.
+    name: Benchmark quality gate
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Generate head + base snapshots
+        # Read base from the target commit, never from the checked-out PR head:
+        # otherwise a PR could refresh latest.json with its regressed values and
+        # compare the new benchmark output against itself.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git show "${BASE_SHA}:benchmarks/results/latest.json" \
+            > benchmarks/results/base.json
+          python benchmarks/benchmark.py --matrix --output benchmarks/results/head.json
+      - name: Gate on quality regressions
+        # The `benchmark-accepted` label downgrades a failure to a warning for
+        # intentional trade-offs; the rationale must be in the PR description.
+        # NOTE: this label string is the GitHub-Actions mirror of `override_label`
+        # in benchmarks/gating.yaml. A `${{ }}` expression cannot read that file,
+        # so the two must be kept in sync by hand if the label is ever renamed.
+        run: |
+          OVERRIDE=""
+          if ${{ contains(github.event.pull_request.labels.*.name, 'benchmark-accepted') }}; then
+            OVERRIDE="--override"
+          fi
+          python scripts/benchmark_gate.py \
+            --base benchmarks/results/base.json \
+            --head benchmarks/results/head.json \
+            --gating-config benchmarks/gating.yaml $OVERRIDE
 
   docs-build:
     # Gate the docs build on PRs (issue #474). docs.yml only builds+deploys on

@@ -1,0 +1,24 @@
+{
+  "metrics": {
+    "mean_token_reduction_pct": 64.31,
+    "routing_mrr": {
+      "1000": 0.1456,
+      "50": 0.4978,
+      "83": 0.3242
+    },
+    "routing_precision_at_k": {
+      "1000": 0.031,
+      "50": 0.1191,
+      "83": 0.08
+    },
+    "routing_recall_at_k": {
+      "1000": 0.1475,
+      "50": 0.5649,
+      "83": 0.3825
+    },
+    "total_dedup_removed": 4,
+    "total_items_dropped": 7
+  },
+  "release": "0.16.0",
+  "schema_version": 1
+}

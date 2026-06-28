@@ -21,10 +21,8 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
-# These siblings live in scripts/, which is on sys.path[0] when this file is run
-# directly (``python scripts/drift_check.py``) and is inserted by the test
-# harness, so the bare imports resolve in both contexts.
 import context_rot_demo
 import gen_api_manifest
 import gen_llms
@@ -32,12 +30,35 @@ import gen_schemas
 import record_demo
 import render_gateway_scorecard
 import render_scorecard
+import render_trend
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+from benchmarks import large_catalog, scenario_routing  # noqa: E402
+
+# These siblings live in scripts/, which is on sys.path[0] when this file is run
+# directly (``python scripts/drift_check.py``) and is inserted by the test
+# harness, so the bare imports resolve in both contexts.
+
+
+def _large_catalog_main(argv: Sequence[str] | None = None) -> int:
+    """Run large-catalog generation/checking with regression floors enabled."""
+    return large_catalog.main([*(argv or []), "--strict"])
+
+
+def _scenario_routing_main(argv: Sequence[str] | None = None) -> int:
+    """Adapt the scenario generator's list-based CLI signature."""
+    return scenario_routing.main(list(argv) if argv is not None else None)
+
 
 # Registry: (artifact name, main(argv) -> exit code). Adding the next generated
 # artifact is a single line here — that is the whole point of #522.
 _GENERATORS: list[tuple[str, Callable[[Sequence[str] | None], int]]] = [
     ("schemas", gen_schemas.main),
     ("scorecard", render_scorecard.main),
+    ("large-catalog", _large_catalog_main),
+    ("scenario-routing", _scenario_routing_main),
+    ("benchmark-trend", render_trend.main),
     ("gateway-scorecard", render_gateway_scorecard.main),
     ("recorded-demos", record_demo.main),
     ("llms", gen_llms.main),
