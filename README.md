@@ -27,6 +27,7 @@ uvx contextweaver demo --scenario killer  # zero-install trial
 pip install contextweaver
 python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
+contextweaver start                  # choose gateway, library, routing, or integration
 ```
 
 **Use it for real →** the **[MCP gateway quickstart](docs/recipes/index.md)**
@@ -681,6 +682,7 @@ Recent milestones:
 contextweaver ships with a CLI for quick experimentation:
 
 ```bash
+contextweaver start                                   # choose a first-run deployment path
 contextweaver demo                                    # end-to-end demonstration
 contextweaver demo --scenario killer                  # the 60-second failure mode (100 tools + huge output)
 contextweaver init                                    # scaffold config + sample catalog
