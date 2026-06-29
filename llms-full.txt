@@ -42,6 +42,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/dgenio/contextweaver/badge)](https://scorecard.dev/viewer/?uri=github.com/dgenio/contextweaver)
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
+[![Read the Weaver Stack overview on Towards AI](https://img.shields.io/badge/Read%20the%20overview-Towards%20AI-black?logo=medium&logoColor=white)](https://pub.towardsai.net/the-weaver-stack-one-contract-layer-for-safe-llm-agents-7f733cad5eac)
 
 > **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
 > front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
