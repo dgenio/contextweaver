@@ -2,6 +2,8 @@
 
 Provides sub-commands / sub-apps:
 
+start       Choose a deterministic first-run path for a deployment intent.
+
 demo        Run a built-in demonstration of both engines.
 build       Build a routing graph from a catalog JSON file.
 route       Route a query over a pre-built routing graph.
@@ -15,6 +17,9 @@ inspect     Render a payload-safe context/routing/artifact report (issue #398).
 budget-check
             Assert an ingested session's rendered prompt stays under a
             token ceiling for CI regression checks (issue #276).
+eval        Evaluate routing quality from a deterministic dataset.
+consolidate Consolidate episodic memory into durable facts.
+serve-api   Run the HTTP sidecar for language-agnostic integrations.
 verify      Verify library installation and core functionality
             without network dependencies (issue #657).
 mcp serve   [experimental] Run contextweaver as a stdio MCP server
@@ -33,6 +38,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -136,6 +142,111 @@ class _DemoScenario(str, Enum):
     killer = "killer"
 
 
+class _StartProfile(str, Enum):
+    gateway = "gateway"
+    library = "library"
+    routing = "routing"
+    integration = "integration"
+
+
+@dataclass(frozen=True)
+class _StartPath:
+    title: str
+    summary: str
+    commands: tuple[str, ...]
+    config_hint: str
+    checks: tuple[str, ...]
+    docs_url: str
+
+
+_START_PATHS: dict[_StartProfile, _StartPath] = {
+    _StartProfile.gateway: _StartPath(
+        title="MCP gateway",
+        summary="Put a bounded MCP gateway in front of a tool catalog.",
+        commands=(
+            "contextweaver verify",
+            "contextweaver demo --scenario mcp-gateway",
+            "contextweaver init",
+            "contextweaver mcp serve --catalog sample_catalog.json --dry-run",
+        ),
+        config_hint=(
+            "`contextweaver init` creates a deterministic sample catalog. "
+            "The packaged CLI serves a static catalog with a stub upstream; "
+            "use the client recipes and Python upstream composition for live tools."
+        ),
+        checks=(
+            "`contextweaver verify` reports all checks passed.",
+            "The MCP dry run reports that the catalog was validated.",
+            "Review the security model before connecting data-access or side-effecting tools.",
+        ),
+        docs_url="https://dgenio.github.io/contextweaver/recipes/",
+    ),
+    _StartProfile.library: _StartPath(
+        title="Python library",
+        summary="Compile budgeted context inside an existing Python agent loop.",
+        commands=(
+            "contextweaver verify",
+            "contextweaver demo --scenario default",
+        ),
+        config_hint=(
+            "Start with ContextManager defaults, then inspect BuildStats before tuning "
+            "phase budgets or sensitivity policy."
+        ),
+        checks=(
+            "`contextweaver verify` reports all checks passed.",
+            "The default demo reaches `Demo complete` without network access.",
+            "Your first context build returns a non-empty prompt and BuildStats.",
+        ),
+        docs_url="https://dgenio.github.io/contextweaver/quickstart/",
+    ),
+    _StartProfile.routing: _StartPath(
+        title="Routing only",
+        summary="Shortlist a large tool catalog without adopting the context pipeline.",
+        commands=(
+            "contextweaver verify",
+            "contextweaver demo --scenario large-catalog",
+            "contextweaver init",
+            "contextweaver build --catalog sample_catalog.json --out graph.json",
+            (
+                "contextweaver route --graph graph.json --catalog sample_catalog.json "
+                '--query "send an email"'
+            ),
+        ),
+        config_hint=(
+            "Replace sample_catalog.json with your tool definitions after the sample route "
+            "works; keep stable IDs and deterministic catalog ordering."
+        ),
+        checks=(
+            "The large-catalog demo prints selected candidate IDs.",
+            "The graph build reports the expected item count.",
+            "The route command returns a bounded shortlist for the sample query.",
+        ),
+        docs_url="https://dgenio.github.io/contextweaver/tool_router/",
+    ),
+    _StartProfile.integration: _StartPath(
+        title="Existing-agent integration",
+        summary="Add contextweaver to an existing provider or framework agent.",
+        commands=(
+            "contextweaver verify",
+            "contextweaver demo --scenario default",
+        ),
+        config_hint=(
+            "Choose the adapter matching your message history or runtime. Provider-message "
+            "adapters accept plain dictionaries and do not require the provider SDK."
+        ),
+        checks=(
+            "`contextweaver verify` reports all checks passed.",
+            "A representative session round-trips through the selected adapter.",
+            "The rebuilt ContextManager produces a non-empty context pack.",
+        ),
+        docs_url=(
+            "https://dgenio.github.io/contextweaver/quickstart/"
+            "#adopting-from-an-existing-chat-history-5-line-drop-in"
+        ),
+    ),
+}
+
+
 # ---------------------------------------------------------------------------
 # JSON-L session helpers
 # ---------------------------------------------------------------------------
@@ -232,6 +343,32 @@ def _write_budget_baseline(
 # ---------------------------------------------------------------------------
 # Subcommands
 # ---------------------------------------------------------------------------
+
+
+@app.command()
+def start(
+    profile: Annotated[
+        _StartProfile,
+        typer.Option(
+            "--profile",
+            prompt="Deployment intent",
+            help="Starting path: gateway, library, routing, or integration.",
+        ),
+    ],
+) -> None:
+    """Print deterministic first-run guidance for a deployment intent (issue #660)."""
+    path = _START_PATHS[profile]
+
+    typer.echo(f"contextweaver start: {path.title}")
+    typer.echo(path.summary)
+    typer.echo("\nNext commands:")
+    for index, command in enumerate(path.commands, 1):
+        typer.echo(f"  {index}. {command}")
+    typer.echo(f"\nConfiguration hint:\n  {path.config_hint}")
+    typer.echo("\nVerification checklist:")
+    for check in path.checks:
+        typer.echo(f"  [ ] {check}")
+    typer.echo(f"\nLearn more:\n  {path.docs_url}")
 
 
 @app.command()

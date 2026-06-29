@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Deployment-intent onboarding wizard (#660).** `contextweaver start` now guides
+  first-run users through four explicit paths (`gateway`, `library`, `routing`, or
+  `integration`). One local prompt—or the scriptable `--profile` option—prints an
+  exact next-command sequence, a configuration hint, a short verification checklist,
+  current gateway-runtime boundaries, and the relevant canonical guide. The command
+  is deterministic, network-free, and makes no filesystem changes.
+
 - **Benchmark-suite maturation: scaling, scenarios, CI gating, and trend
   (#369, #418, #491, #554, #687, #688).** A coordinated pass on the benchmark
   subsystem, all deterministic and offline:
