@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP incident packs (#661).** Added `contextweaver mcp incident-pack` to
+  create offline, redacted triage zip bundles with a machine-readable manifest,
+  config/catalog summaries, diagnostics summaries, redacted source excerpts,
+  and a reproducible command checklist. Command logs are included only via an
+  explicit `--command-log` file; shell history is never collected automatically.
+
 - **Supply-chain & security CI hardening (#443, #689, #690, #691, #692, #468, #552).**
   A coordinated security-posture pass under the supply-chain hardening umbrella (#443):
   - **CodeQL** code scanning (`.github/workflows/codeql.yml`) with the
