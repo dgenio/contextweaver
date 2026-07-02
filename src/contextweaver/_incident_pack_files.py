@@ -72,11 +72,16 @@ def add_redacted_source(
         warnings.append(f"cannot include {source}: {exc}")
         return
 
-    truncated = len(raw) > max_file_bytes
     sample = raw[: max_file_bytes + 8192]
     text = sample.decode("utf-8", errors="replace")
     text = _redacted_structured_text(source, text, structured)
-    data = text.encode("utf-8")[:max_file_bytes]
+    encoded = text.encode("utf-8")
+    # Truncation is computed from the emitted (redacted) bytes, not just the raw
+    # size: redaction/pretty-print expansion (e.g. JSON indenting) can push the
+    # entry past the cap even when the raw file fits, and slicing here would
+    # otherwise drop content while the manifest still claimed truncated=False.
+    truncated = len(raw) > max_file_bytes or len(encoded) > max_file_bytes
+    data = encoded[:max_file_bytes]
     if truncated:
         data += TRUNCATION_MARKER.encode("utf-8")
     add_bytes(

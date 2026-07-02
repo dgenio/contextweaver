@@ -715,7 +715,12 @@ def incident_pack(
         int,
         typer.Option(
             "--max-file-bytes",
-            help="Per-source-file byte cap after redaction; larger inputs are marked truncated.",
+            help=(
+                "Per-source-file byte cap applied to redacted content. Oversized "
+                "inputs are truncated to this cap and flagged; a short truncation "
+                "marker is then appended, so a truncated entry is slightly larger "
+                "than the cap."
+            ),
             min=1024,
         ),
     ] = DEFAULT_MAX_FILE_BYTES,
@@ -732,7 +737,10 @@ def incident_pack(
             max_file_bytes=max_file_bytes,
         )
     except ContextWeaverError as exc:
-        raise typer.BadParameter(str(exc), param_hint="--out") from exc
+        # No param_hint: failures can originate from any of --out/--config/
+        # --catalog/--diagnostics/--max-file-bytes, so attributing them all to
+        # --out would misreport which input was at fault.
+        raise typer.BadParameter(str(exc)) from exc
     typer.echo(str(result.path))
     warnings = result.manifest.get("warnings", [])
     warning_count = len(warnings) if isinstance(warnings, list) else 0

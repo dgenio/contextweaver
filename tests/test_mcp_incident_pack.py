@@ -149,6 +149,30 @@ def test_incident_pack_marks_truncated_sources(tmp_path: Path) -> None:
     assert entry["size_bytes"] <= 1024 + len("\n[contextweaver: truncated]\n")
 
 
+def test_incident_pack_marks_redaction_expanded_sources(tmp_path: Path) -> None:
+    catalog = tmp_path / "catalog.json"
+    payload = {f"k{index}": index for index in range(100)}
+    raw = json.dumps(payload, separators=(",", ":"))
+    catalog.write_text(raw, encoding="utf-8")
+    # Precondition: the raw file fits under the cap; only pretty-print/redaction
+    # expansion pushes the emitted entry past it, so this exercises the
+    # emitted-bytes truncation path rather than raw-size truncation.
+    assert len(raw.encode("utf-8")) <= 1024
+    output = tmp_path / "incident.zip"
+
+    build_incident_pack(output, catalog=catalog, max_file_bytes=1024)
+
+    manifest = _manifest(output)
+    entry = next(
+        item for item in manifest["files"] if item["path"] == "catalog/redacted_catalog.txt"
+    )
+    assert entry["truncated"] is True
+    with zipfile.ZipFile(output) as archive:
+        text = archive.read("catalog/redacted_catalog.txt").decode("utf-8")
+    assert text.endswith("[contextweaver: truncated]\n")
+    assert entry["size_bytes"] <= 1024 + len("\n[contextweaver: truncated]\n")
+
+
 def test_incident_pack_cli_creates_zip_from_config(tmp_path: Path) -> None:
     catalog = tmp_path / "catalog.json"
     catalog.write_text(

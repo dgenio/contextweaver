@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   config/catalog summaries, diagnostics summaries, redacted source excerpts,
   and a reproducible command checklist. Command logs are included only via an
   explicit `--command-log` file; shell history is never collected automatically.
+  Truncation is now flagged from the emitted redacted bytes (not just raw file
+  size), so redaction/pretty-print expansion can no longer mark a sliced entry
+  as complete; the `--max-file-bytes` help clarifies the cap applies to redacted
+  content before the truncation marker; and CLI errors no longer misattribute
+  every failure to `--out`.
 
 - **Supply-chain & security CI hardening (#443, #689, #690, #691, #692, #468, #552).**
   A coordinated security-posture pass under the supply-chain hardening umbrella (#443):
