@@ -102,6 +102,29 @@ work. Not mutually exclusive.
 > `integrations` (the more widely applied form) and fold `integration` into it
 > when relabelling.
 
+## Milestone — `milestone/<version>`
+
+Applied to issues and PRs that gate a specific release. A milestone label
+indicates the target version rather than a due-date of the work itself.
+
+| Label | Target |
+|---|---|
+| `milestone/v0.2` | Core pipeline completion. |
+| `milestone/v0.3` | Production readiness. |
+| `milestone/v1.0` | Runtime modes + security. |
+| `milestone/v0.4` | Observability & evaluation. |
+| `milestone/v0.5` | Advanced routing & scale. |
+
+## How to keep this file current
+
+Run the following to dump **all** live labels and compare against this
+file. The output includes unregistered labels that may need canonicalisation.
+
+```bash
+gh label list --limit 999 --json name,description \
+  --jq '.[] | "| \(.name) | \(.description) |"'
+```
+
 ## Creating labels on GitHub
 
 Using `gh label create` (assumes a logged-in `gh` CLI). Colours are

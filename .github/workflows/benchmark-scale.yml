@@ -1,0 +1,50 @@
+name: Routing-scale smoke benchmark
+
+# Non-gating, scheduled routing-scale benchmark for drift detection (issue #688,
+# child of #444). Runs the deterministic routing-scale profiler on a fixed seed
+# and stores its JSON as a per-run trend artifact, so scaling regressions are
+# visible over time without blocking any PR. This never gates: PR-time quality
+# gating lives in the main CI job (benchmarks/gating.yaml + benchmark_gate.py, #491).
+
+on:
+  schedule:
+    # Tuesday 06:30 UTC — off-hours, staggered from the weekly scorecard job.
+    - cron: "30 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  routing-scale:
+    name: Routing-scale profile (non-gating)
+    runs-on: ubuntu-latest
+    # The profiler is informational; a failure must never page anyone or block work.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Today
+        id: date
+        run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run routing-scale profile
+        # Reduced sizes keep the scheduled run well under the runner timeout;
+        # the local `make benchmark-routing-scale` default sweeps up to 10k.
+        run: python benchmarks/routing_scale.py --sizes 100,1000,5000
+
+      - name: Upload trend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: routing-scale-${{ steps.date.outputs.today }}
+          path: |
+            benchmarks/results/routing_scale.json
+            docs/benchmarks/routing-scale.md
+          retention-days: 90
+          if-no-files-found: error

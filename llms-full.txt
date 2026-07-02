@@ -42,6 +42,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/dgenio/contextweaver/badge)](https://scorecard.dev/viewer/?uri=github.com/dgenio/contextweaver)
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
+[![Read the Weaver Stack overview on Towards AI](https://img.shields.io/badge/Read%20the%20overview-Towards%20AI-black?logo=medium&logoColor=white)](https://pub.towardsai.net/the-weaver-stack-one-contract-layer-for-safe-llm-agents-7f733cad5eac)
 
 > **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
 > front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
@@ -60,6 +61,7 @@ uvx contextweaver demo --scenario killer  # zero-install trial
 pip install contextweaver
 python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
+contextweaver start                  # choose gateway, library, routing, or integration
 ```
 
 **Use it for real →** the **[MCP gateway quickstart](docs/recipes/index.md)**
@@ -714,6 +716,7 @@ Recent milestones:
 contextweaver ships with a CLI for quick experimentation:
 
 ```bash
+contextweaver start                                   # choose a first-run deployment path
 contextweaver demo                                    # end-to-end demonstration
 contextweaver demo --scenario killer                  # the 60-second failure mode (100 tools + huge output)
 contextweaver init                                    # scaffold config + sample catalog
@@ -1175,6 +1178,10 @@ what context was used.
 This guide gets you to a working context build, a firewall-protected tool result,
 and a routed tool shortlist in under 10 minutes.
 
+> **Not sure which path to take?** Run `contextweaver start` after installation,
+> or try `uvx contextweaver start` without installing. The deterministic wizard
+> asks one deployment-intent question and only prints guidance.
+>
 > **In a hurry?** Run the built-in demo in an isolated environment with no
 > persistent install:
 >
@@ -1203,6 +1210,23 @@ Time budget:
 - Try the context firewall: 4 minutes
 - Try tool routing: 2 minutes
 - What to try next: 1 minute
+
+## Choose a starting profile
+
+`contextweaver start` asks one local question and prints an exact command sequence,
+a configuration hint, and a verification checklist. It never executes commands,
+writes files, or contacts the network.
+
+| Profile | Start here when… | Non-interactive form |
+|---|---|---|
+| `gateway` | You want a bounded MCP surface in front of a tool catalog. | `contextweaver start --profile gateway` |
+| `library` | You want budgeted context inside a custom Python loop. | `contextweaver start --profile library` |
+| `routing` | You only need to shortlist a large tool catalog. | `contextweaver start --profile routing` |
+| `integration` | You already have a provider or framework agent. | `contextweaver start --profile integration` |
+
+The gateway profile covers deterministic static-catalog evaluation and points to the
+[MCP client recipes](recipes/index.md) for real client wiring. For symptom-based
+feature selection, use [Which pattern fits?](which_pattern.md).
 
 ## Adopting from an existing chat history (5-line drop-in)
 
@@ -2074,6 +2098,27 @@ name: contextweaver
 Relative catalog paths are resolved from the gateway config file's directory.
 This keeps project-scoped client configs portable even when the client starts
 the server from a different working directory.
+
+## Generate Multi-Client Config Packs
+
+Generate every supported client config from one gateway source file:
+
+```bash
+contextweaver mcp generate-configs \
+  --config examples/recipes/gateway_config.yaml \
+  --out-dir ./generated-recipes
+```
+
+By default this emits:
+
+- `copilot_mcp.json`
+- `cursor_mcp.json`
+- `claude_desktop_config.json`
+- `claude_code_mcp.json`
+
+Use `--target` repeatedly to generate only selected clients. The command
+validates the gateway config before writing files, fails if outputs already
+exist (unless `--force`), and prints target-specific compatibility warnings.
 
 ## What the client sees
 
@@ -3478,7 +3523,7 @@ make llms        # regenerate llms.txt and llms-full.txt from canonical docs
 make llms-check  # verify llms.txt and llms-full.txt are up to date (gating CI step; exits non-zero on drift)
 make gateway-scorecard-check  # verify gateway scorecard Markdown matches its committed JSON (gating CI step)
 make record-demos-check  # verify committed asciinema casts match demo output (gating CI step)
-make smoke-eval  # deterministic, credential-free smoke evaluation (non-gating CI step)
+make smoke-eval  # deterministic, credential-free smoke evaluation (gating CI step on Python 3.12)
 make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec adapter
                          # (fetches schemas from raw.githubusercontent.com; CI runs it as a gate)
 ```
@@ -3494,7 +3539,8 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 >
 > CI-only gates (not in `make ci` because they need the network or are heavy):
 > `make weaver-conformance` (fetches schemas) and the docs build job.
-> `make smoke-eval` (#392) and the benchmark job run in CI but remain non-gating.
+> `make smoke-eval` (#392/#491) is gating on the Python 3.12 CI cell;
+> the raw benchmark job remains informational.
 > The two gating CI *jobs* that build isolated environments now have local
 > equivalents — `make floor-deps` and `make tool-smoke` (#710), bundled into
 > `make ci-full`; only the macOS cell of `tool-run-smoke` stays CI-only.
@@ -3525,7 +3571,7 @@ every PR regardless; run them locally when the affected integrations change.
 | Run benchmark harness | `make benchmark` (non-gating; writes `benchmarks/results/latest.json`) |
 | Run full per-backend × per-size matrix | `make benchmark-matrix` (#208 + #209) |
 | Verify gateway benchmark scorecard | `make gateway-scorecard-check` |
-| Run deterministic smoke evaluation | `make smoke-eval` (non-gating) |
+| Run deterministic smoke evaluation | `make smoke-eval` (gating on the Python 3.12 CI cell) |
 | Run scoring-weight sweep | `make sweep-scoring` (#214; writes `benchmarks/sweep_scoring.md`) |
 | Add an eval for a feature | follow [`.github/prompts/add-eval.prompt.md`](../../.github/prompts/add-eval.prompt.md) (#216) |
 | Regenerate llms.txt / llms-full.txt | `make llms` (after editing canonical docs) |
@@ -3542,6 +3588,21 @@ pre-commit install
 
 Pre-commit hooks run `ruff format`, `ruff check --fix`, and file hygiene checks on every commit. Hooks may modify files — re-stage with `git add` if needed.
 
+## Preparing a Release
+
+Before creating the release tag, refresh and commit the deterministic benchmark
+history for the package version:
+
+```bash
+make benchmark
+python scripts/render_trend.py --snapshot <version> --from benchmarks/results/latest.json
+make trend
+make trend-check
+```
+
+The publish workflow verifies that `benchmarks/results/history/<version>.json`
+exists and that `benchmarks/trend.md` matches the committed history. Latency is
+excluded from release snapshots because it is host-dependent.
 ## Adding a Feature
 
 1. Identify the relevant module (see module map in [AGENTS.md](../../AGENTS.md)).

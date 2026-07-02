@@ -54,6 +54,100 @@ def test_no_args_prints_help() -> None:
 
 
 # ------------------------------------------------------------------
+# start (issue #660)
+# ------------------------------------------------------------------
+
+
+def test_start_help_lists_profiles() -> None:
+    result = CliRunner().invoke(app, ["start", "--help"])
+    assert result.exit_code == 0
+    for profile in ("gateway", "library", "routing", "integration"):
+        assert profile in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("profile", "title", "commands"),
+    [
+        (
+            "gateway",
+            "MCP gateway",
+            [
+                "contextweaver verify",
+                "contextweaver demo --scenario mcp-gateway",
+                "contextweaver init",
+                "contextweaver mcp serve --catalog sample_catalog.json --dry-run",
+            ],
+        ),
+        (
+            "library",
+            "Python library",
+            [
+                "contextweaver verify",
+                "contextweaver demo --scenario default",
+            ],
+        ),
+        (
+            "routing",
+            "Routing only",
+            [
+                "contextweaver verify",
+                "contextweaver demo --scenario large-catalog",
+                "contextweaver init",
+                "contextweaver build --catalog sample_catalog.json --out graph.json",
+                (
+                    "contextweaver route --graph graph.json --catalog sample_catalog.json "
+                    '--query "send an email"'
+                ),
+            ],
+        ),
+        (
+            "integration",
+            "Existing-agent integration",
+            [
+                "contextweaver verify",
+                "contextweaver demo --scenario default",
+            ],
+        ),
+    ],
+)
+def test_start_profile_renders_ordered_guidance_without_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    profile: str,
+    title: str,
+    commands: list[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(app, ["start", "--profile", profile])
+
+    assert result.exit_code == 0
+    assert title in result.stdout
+    assert "Next commands:" in result.stdout
+    assert "Configuration hint:" in result.stdout
+    assert "Verification checklist:" in result.stdout
+    assert "Learn more:" in result.stdout
+    positions = [result.stdout.index(command) for command in commands]
+    assert positions == sorted(positions)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_start_prompts_for_profile_when_option_is_omitted() -> None:
+    result = CliRunner().invoke(app, ["start"], input="routing\n")
+
+    assert result.exit_code == 0
+    assert "Deployment intent" in result.stdout
+    assert "Routing only" in result.stdout
+
+
+def test_start_rejects_unknown_profile() -> None:
+    result = CliRunner().invoke(app, ["start", "--profile", "unknown"])
+
+    assert result.exit_code == 2
+    assert "Invalid value" in result.output
+
+
+# ------------------------------------------------------------------
 # demo
 # ------------------------------------------------------------------
 

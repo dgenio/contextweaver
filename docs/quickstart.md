@@ -3,6 +3,10 @@
 This guide gets you to a working context build, a firewall-protected tool result,
 and a routed tool shortlist in under 10 minutes.
 
+> **Not sure which path to take?** Run `contextweaver start` after installation,
+> or try `uvx contextweaver start` without installing. The deterministic wizard
+> asks one deployment-intent question and only prints guidance.
+>
 > **In a hurry?** Run the built-in demo in an isolated environment with no
 > persistent install:
 >
@@ -31,6 +35,23 @@ Time budget:
 - Try the context firewall: 4 minutes
 - Try tool routing: 2 minutes
 - What to try next: 1 minute
+
+## Choose a starting profile
+
+`contextweaver start` asks one local question and prints an exact command sequence,
+a configuration hint, and a verification checklist. It never executes commands,
+writes files, or contacts the network.
+
+| Profile | Start here when… | Non-interactive form |
+|---|---|---|
+| `gateway` | You want a bounded MCP surface in front of a tool catalog. | `contextweaver start --profile gateway` |
+| `library` | You want budgeted context inside a custom Python loop. | `contextweaver start --profile library` |
+| `routing` | You only need to shortlist a large tool catalog. | `contextweaver start --profile routing` |
+| `integration` | You already have a provider or framework agent. | `contextweaver start --profile integration` |
+
+The gateway profile covers deterministic static-catalog evaluation and points to the
+[MCP client recipes](recipes/index.md) for real client wiring. For symptom-based
+feature selection, use [Which pattern fits?](which_pattern.md).
 
 ## Adopting from an existing chat history (5-line drop-in)
 

@@ -205,11 +205,12 @@ python benchmarks/e2e_quality.py --output benchmarks/results/e2e_quality.json
 
 ## CI integration
 
-The benchmark step runs with `continue-on-error: true` in `.github/workflows/ci.yml`.
-It is **informational only** — failures do not block merges.  This is intentional:
-baseline drift is expected and should be reviewed manually, not treated as a hard error.
+The raw timing benchmark remains informational because shared-runner latency is
+noisy. Deterministic quality checks are required: `smoke_eval.py` gates the
+representative Python 3.12 cell, while `benchmark-gate` compares routing,
+context-savings, and compaction metrics against the PR target commit.
 
 On every pull request the dedicated `benchmark-comment` job posts a sticky
-delta comment via `scripts/benchmark_delta.py` (issue #211) and the
-`scorecard-weekly.yml` cron opens a PR with refreshed numbers each Monday
-(issue #207).
+delta against that same target-commit baseline via `scripts/benchmark_delta.py`
+(issue #211), and the `scorecard-weekly.yml` cron opens a PR with refreshed
+numbers each Monday (issue #207).

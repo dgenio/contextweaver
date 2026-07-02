@@ -20,6 +20,8 @@ import drift_check  # noqa: E402  (import after sys.path manipulation)
 
 def test_registry_is_nonempty_and_callable() -> None:
     assert drift_check._GENERATORS
+    names = {name for name, _generator in drift_check._GENERATORS}
+    assert {"large-catalog", "scenario-routing", "benchmark-trend"} <= names
     for name, generator in drift_check._GENERATORS:
         assert isinstance(name, str) and name
         assert callable(generator)

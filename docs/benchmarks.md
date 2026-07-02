@@ -24,6 +24,24 @@ git diff --quiet benchmarks/scorecard.md   # passes on clean re-run with same se
 The check `git diff --quiet benchmarks/scorecard.md` is the determinism gate:
 identical inputs must produce byte-identical scorecard output.
 
+## Scaling and trend
+
+Beyond the headline scorecard, three companion benchmarks track behaviour at
+scale and over time:
+
+| What | Command | Output |
+|---|---|---|
+| Latency to 10k tools + cache speedup | `make benchmark-routing-scale` | [`scaling matrix`](benchmarks/scaling-matrix.md) |
+| 300+ tool recall, namespace/deny filters, and firewall view | `make benchmark-large-catalog` | `benchmarks/large_catalog_scorecard.md` |
+| ChoiceCards, ambiguity/destructive filtering, and large-result exposure | `make benchmark-scenario` | `benchmarks/scenario_routing.md` |
+| Release-over-release trend | `make trend` | [`benchmarks/trend.md`](https://github.com/dgenio/contextweaver/blob/main/benchmarks/trend.md) |
+
+PR-time regressions are caught by the gating check (`benchmarks/gating.yaml` +
+`scripts/benchmark_gate.py`): a PR that drops a gated quality metric beyond its
+tolerance band fails CI unless the `benchmark-accepted` label is applied with a
+rationale. See the [scaling matrix](benchmarks/scaling-matrix.md) page for the
+full methodology.
+
 ## What is measured
 
 **Routing.** Precision\@k, recall\@k, MRR, and p50/p95/p99 latency at catalog

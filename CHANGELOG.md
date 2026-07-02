@@ -21,6 +21,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every failure to `--out`. Manifest warnings are now scrubbed with
   `scrub_secrets` like every other emitted string, so raw paths and OS error
   text can no longer leak into an otherwise-redacted bundle.
+- **Deployment-intent onboarding wizard (#660).** `contextweaver start` now guides
+  first-run users through four explicit paths (`gateway`, `library`, `routing`, or
+  `integration`). One local prompt—or the scriptable `--profile` option—prints an
+  exact next-command sequence, a configuration hint, a short verification checklist,
+  current gateway-runtime boundaries, and the relevant canonical guide. The command
+  is deterministic, network-free, and makes no filesystem changes.
+
+- **Benchmark-suite maturation: scaling, scenarios, CI gating, and trend
+  (#369, #418, #491, #554, #687, #688).** A coordinated pass on the benchmark
+  subsystem, all deterministic and offline:
+  - **Large-catalog benchmark (#369).** `make benchmark-large-catalog`
+    (`benchmarks/large_catalog.py`) routes over 300+ tools across 8 namespaces
+    with near-duplicate distractor variants and destructive (side-effecting)
+    tools, reporting recall@1/3/5, MRR, ChoiceCard-vs-naive prompt-token
+    reduction, namespace/deny filtering, character counts, and a large-result
+    firewall + artifact-view round trip. Writes a
+    committed scorecard (`benchmarks/large_catalog_scorecard.md`, latency
+    excluded for determinism) plus `benchmarks/results/large_catalog.json`;
+    `--check` gates scorecard drift and `--strict` gates regression-guard
+    thresholds.
+  - **Scenario benchmark (#418).** `make benchmark-scenario`
+    (`benchmarks/scenario_routing.py`) contrasts naive all-tools prompting
+    against bounded `ChoiceCard` routing across tool-heavy scenarios
+    (`benchmarks/scenarios/routing_choicecard.json`), reporting
+    correct-in-top-k, rank, cards shown, deterministic route work, ambiguity/
+    clarification behavior, destructive-card exclusion, token reduction, and raw-
+    result firewall exposure to a committed report (`benchmarks/scenario_routing.md`).
+  - **Quality-regression gate (#491).** `scripts/benchmark_gate.py` +
+    `benchmarks/gating.yaml` turn the informational benchmark delta into a
+    gating CI check against the target-branch baseline: a PR that regresses
+    recall@k / MRR / precision@k / token-savings / compaction ratio, or drops
+    a previously-gated cell, fails the new `benchmark-gate` CI job. The
+    fixed-fixture smoke evaluation is also a required check on Python 3.12.
+    Latency is never gated; the `benchmark-accepted` PR label downgrades a
+    failure to a warning for intentional trade-offs.
+  - **Release trend (#554).** `scripts/render_trend.py` captures a
+    deterministic, latency-free metric snapshot per release under
+    `benchmarks/results/history/<version>.json` and renders the
+    release-over-release view to `benchmarks/trend.md` (`make trend` /
+    `make trend-check`); the publish workflow requires the tagged version's
+    snapshot and a drift-free trend before publishing.
+  - **Scaling matrix docs (#687).** `docs/benchmarks/scaling-matrix.md`
+    documents the 10k-tool scaling methodology, reproducible commands, and
+    result interpretation, tying together the routing-scale, large-catalog,
+    and per-backend matrix benchmarks.
+  - **Scheduled routing-scale smoke (#688).** A non-gating
+    `.github/workflows/benchmark-scale.yml` runs the routing-scale profiler on
+    a weekly schedule and uploads its JSON + report as a per-run trend
+    artifact.
+
+- **Multi-client MCP config-pack generator (#659).**
+  Added `contextweaver mcp generate-configs` to render client recipe files
+  (`copilot_mcp.json`, `cursor_mcp.json`, `claude_desktop_config.json`,
+  `claude_code_mcp.json`) from one canonical `mcp serve --config` input.
+  The command reuses `mcp serve` config validation, supports target selection,
+  fails closed on unknown/invalid target values, blocks overwriting unless
+  `--force`, emits target-specific compatibility warnings, and produces
+  deterministic JSON artifacts suitable for committing. Added CLI tests for
+  generation behavior and fixture-shape pinning.
 
 - **Supply-chain & security CI hardening (#443, #689, #690, #691, #692, #468, #552).**
   A coordinated security-posture pass under the supply-chain hardening umbrella (#443):

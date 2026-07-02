@@ -9,6 +9,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/dgenio/contextweaver/badge)](https://scorecard.dev/viewer/?uri=github.com/dgenio/contextweaver)
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-blue.svg)](https://dgenio.github.io/contextweaver)
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
+[![Read the Weaver Stack overview on Towards AI](https://img.shields.io/badge/Read%20the%20overview-Towards%20AI-black?logo=medium&logoColor=white)](https://pub.towardsai.net/the-weaver-stack-one-contract-layer-for-safe-llm-agents-7f733cad5eac)
 
 > **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
 > front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
@@ -27,6 +28,7 @@ uvx contextweaver demo --scenario killer  # zero-install trial
 pip install contextweaver
 python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer   # 60-second taste — no API key, no network
+contextweaver start                  # choose gateway, library, routing, or integration
 ```
 
 **Use it for real →** the **[MCP gateway quickstart](docs/recipes/index.md)**
@@ -681,6 +683,7 @@ Recent milestones:
 contextweaver ships with a CLI for quick experimentation:
 
 ```bash
+contextweaver start                                   # choose a first-run deployment path
 contextweaver demo                                    # end-to-end demonstration
 contextweaver demo --scenario killer                  # the 60-second failure mode (100 tools + huge output)
 contextweaver init                                    # scaffold config + sample catalog
