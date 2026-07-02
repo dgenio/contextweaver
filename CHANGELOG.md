@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   size), so redaction/pretty-print expansion can no longer mark a sliced entry
   as complete; the `--max-file-bytes` help clarifies the cap applies to redacted
   content before the truncation marker; and CLI errors no longer misattribute
-  every failure to `--out`.
+  every failure to `--out`. Manifest warnings are now scrubbed with
+  `scrub_secrets` like every other emitted string, so raw paths and OS error
+  text can no longer leak into an otherwise-redacted bundle.
 
 - **Supply-chain & security CI hardening (#443, #689, #690, #691, #692, #468, #552).**
   A coordinated security-posture pass under the supply-chain hardening umbrella (#443):

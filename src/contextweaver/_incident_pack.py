@@ -99,6 +99,10 @@ def build_incident_pack(
                 diagnostics=diagnostics,
                 command_log=command_log,
             )
+            # Warnings carry raw paths and OS/exception text; scrub them like
+            # every other emitted string so the manifest never becomes the one
+            # unredacted surface in an otherwise-redacted bundle.
+            manifest["warnings"] = [scrub_secrets(message) for message in warnings]
             archive.writestr(
                 "manifest.json",
                 json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"),

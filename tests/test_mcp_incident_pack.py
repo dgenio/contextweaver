@@ -193,6 +193,20 @@ def test_incident_pack_cli_creates_zip_from_config(tmp_path: Path) -> None:
     assert manifest["inputs"]["catalog"]["provided"] is True
 
 
+def test_incident_pack_cli_reports_error_without_param_hint(tmp_path: Path) -> None:
+    existing = tmp_path / "incident.zip"
+    existing.write_text("occupied", encoding="utf-8")
+
+    result = _run("mcp", "incident-pack", "--out", str(existing))
+
+    assert result.returncode != 0
+    assert "already exists" in result.stderr
+    # The failure originates from an existing --out target here, but errors can
+    # also come from --config/--catalog/--diagnostics/--max-file-bytes, so the
+    # CLI must not misattribute every failure to a single "--out" param hint.
+    assert "for '--out'" not in result.stderr
+
+
 def test_mcp_help_lists_incident_pack_subcommand() -> None:
     result = _run("mcp", "--help")
 
