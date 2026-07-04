@@ -173,6 +173,32 @@ def test_incident_pack_marks_redaction_expanded_sources(tmp_path: Path) -> None:
     assert entry["size_bytes"] <= 1024 + len("\n[contextweaver: truncated]\n")
 
 
+def test_incident_pack_redacts_oversized_structured_document(tmp_path: Path) -> None:
+    catalog = tmp_path / "catalog.json"
+    # A structured document larger than the decode window (max_file_bytes +
+    # 8192) whose value under a sensitive key is NOT secret-pattern-shaped.
+    # Key-based redaction requires parsing a complete document, so a truncated
+    # fragment would fail to parse and downgrade to pattern-only scrubbing,
+    # leaking the value. Full-document redaction must mask it regardless of size.
+    payload = {"api_key": "plaintextcredential", "zzz_pad": ["x" * 200 for _ in range(80)]}
+    raw = json.dumps(payload)  # insertion order keeps api_key in the first bytes
+    catalog.write_text(raw, encoding="utf-8")
+    assert len(raw.encode("utf-8")) > 1024 + 8192
+    output = tmp_path / "incident.zip"
+
+    build_incident_pack(output, catalog=catalog, max_file_bytes=1024)
+
+    manifest = _manifest(output)
+    entry = next(
+        item for item in manifest["files"] if item["path"] == "catalog/redacted_catalog.txt"
+    )
+    assert entry["truncated"] is True
+    with zipfile.ZipFile(output) as archive:
+        text = archive.read("catalog/redacted_catalog.txt").decode("utf-8")
+    assert "plaintextcredential" not in text
+    assert "[REDACTED-SECRET]" in text
+
+
 def test_incident_pack_cli_creates_zip_from_config(tmp_path: Path) -> None:
     catalog = tmp_path / "catalog.json"
     catalog.write_text(

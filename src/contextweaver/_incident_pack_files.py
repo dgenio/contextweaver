@@ -72,9 +72,21 @@ def add_redacted_source(
         warnings.append(f"cannot include {source}: {exc}")
         return
 
-    sample = raw[: max_file_bytes + 8192]
-    text = sample.decode("utf-8", errors="replace")
-    text = _redacted_structured_text(source, text, structured)
+    if structured is None:
+        # Unstructured input: secrets are pattern-detected, so scrubbing a window
+        # that comfortably exceeds the cap is enough — the emitted (capped) bytes
+        # are a prefix of the already-scrubbed sample.
+        decoded = raw[: max_file_bytes + 8192].decode("utf-8", errors="replace")
+    else:
+        # Structured input: key-based redaction depends on parsing a *complete*
+        # document, so decode the full file rather than a truncated window. A
+        # fragment would fail to parse and silently downgrade to pattern-only
+        # scrubbing, leaking values under sensitive keys that are not
+        # secret-shaped (e.g. ``password: blue``). ``raw`` is already fully in
+        # memory, so this adds no extra I/O; the cap is still enforced by the
+        # truncation of the emitted bytes below.
+        decoded = raw.decode("utf-8", errors="replace")
+    text = _redacted_structured_text(source, decoded, structured)
     encoded = text.encode("utf-8")
     # Truncation is computed from the emitted (redacted) bytes, not just the raw
     # size: redaction/pretty-print expansion (e.g. JSON indenting) can push the

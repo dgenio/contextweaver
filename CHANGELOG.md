@@ -20,7 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content before the truncation marker; and CLI errors no longer misattribute
   every failure to `--out`. Manifest warnings are now scrubbed with
   `scrub_secrets` like every other emitted string, so raw paths and OS error
-  text can no longer leak into an otherwise-redacted bundle.
+  text can no longer leak into an otherwise-redacted bundle. Structured
+  config/catalog/diagnostics inputs are key-redacted from the full parsed
+  document rather than a size-capped window, so a value under a sensitive key
+  (e.g. `password`) can no longer leak when the source exceeds the decode
+  window; and filesystem failures (e.g. an unwritable `--out`) now surface as a
+  clean CLI error instead of an uncaught traceback.
 - **Deployment-intent onboarding wizard (#660).** `contextweaver start` now guides
   first-run users through four explicit paths (`gateway`, `library`, `routing`, or
   `integration`). One local prompt—or the scriptable `--profile` option—prints an

@@ -854,10 +854,12 @@ def incident_pack(
             command_log=command_log,
             max_file_bytes=max_file_bytes,
         )
-    except ContextWeaverError as exc:
+    except (ContextWeaverError, OSError) as exc:
         # No param_hint: failures can originate from any of --out/--config/
         # --catalog/--diagnostics/--max-file-bytes, so attributing them all to
-        # --out would misreport which input was at fault.
+        # --out would misreport which input was at fault. OSError is caught too
+        # (e.g. an unwritable --out directory) so a filesystem failure surfaces
+        # as a clean CLI error instead of an uncaught traceback.
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(str(result.path))
     warnings = result.manifest.get("warnings", [])
