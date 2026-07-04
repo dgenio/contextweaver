@@ -67,6 +67,21 @@ contextweaver mcp inspect --catalog /path/to/catalog.yaml
 contextweaver mcp stats --events /path/to/logs/contextweaver.jsonl
 ```
 
+For support or incident triage, create a bounded local bundle:
+
+```bash
+contextweaver mcp incident-pack \
+  --config /path/to/gateway.yaml \
+  --diagnostics /path/to/logs/contextweaver.jsonl \
+  --out /path/to/contextweaver-incident.zip
+```
+
+The pack includes a machine-readable manifest, environment summary, redacted
+config/catalog excerpts, diagnostics summaries, redacted diagnostics, and a
+reproduction checklist. It never reads shell history automatically; pass
+`--command-log /path/to/commands.txt` only when you captured a command log
+explicitly for that incident.
+
 The packaged CLI still represents one configured static catalog source. Its
 catalog report groups tools by namespace; it does not claim live health for
 multiple upstream MCP processes.

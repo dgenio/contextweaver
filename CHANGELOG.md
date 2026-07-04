@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP incident packs (#661).** Added `contextweaver mcp incident-pack` to
+  create offline, redacted triage zip bundles with a machine-readable manifest,
+  config/catalog summaries, diagnostics summaries, redacted source excerpts,
+  and a reproducible command checklist. Command logs are included only via an
+  explicit `--command-log` file; shell history is never collected automatically.
+  Truncation is now flagged from the emitted redacted bytes (not just raw file
+  size), so redaction/pretty-print expansion can no longer mark a sliced entry
+  as complete; the `--max-file-bytes` help clarifies the cap applies to redacted
+  content before the truncation marker; and CLI errors no longer misattribute
+  every failure to `--out`. Manifest warnings are now scrubbed with
+  `scrub_secrets` like every other emitted string, so raw paths and OS error
+  text can no longer leak into an otherwise-redacted bundle. Structured
+  config/catalog/diagnostics inputs are key-redacted from the full parsed
+  document rather than a size-capped window, so a value under a sensitive key
+  (e.g. `password`) can no longer leak when the source exceeds the decode
+  window; and filesystem failures (e.g. an unwritable `--out`) now surface as a
+  clean CLI error instead of an uncaught traceback.
 - **Deployment-intent onboarding wizard (#660).** `contextweaver start` now guides
   first-run users through four explicit paths (`gateway`, `library`, `routing`, or
   `integration`). One local prompt—or the scriptable `--profile` option—prints an

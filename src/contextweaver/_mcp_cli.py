@@ -38,6 +38,8 @@ from typing import Annotated, Any
 import typer
 import yaml
 
+from contextweaver._incident_pack import build_incident_pack, default_incident_pack_path
+from contextweaver._incident_pack_files import DEFAULT_MAX_FILE_BYTES
 from contextweaver._version import __version__
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
@@ -783,6 +785,87 @@ def _install_sigint_handler(loop: asyncio.AbstractEventLoop) -> None:
     except (NotImplementedError, RuntimeError):
         # Signal handlers are not supported on Windows event loops; ignore.
         pass
+
+
+@mcp_app.command("incident-pack")
+def incident_pack(
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            "--output",
+            help=(
+                "Path for the incident-pack zip. Defaults to a timestamped "
+                "contextweaver-incident-pack-*.zip in the current directory."
+            ),
+        ),
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            help=(
+                "Optional mcp serve JSON/YAML config; catalog/diagnostics are derived when present."
+            ),
+        ),
+    ] = None,
+    catalog: Annotated[
+        Path | None,
+        typer.Option("--catalog", help="Optional JSON/YAML catalog to summarize and redact."),
+    ] = None,
+    diagnostics: Annotated[
+        Path | None,
+        typer.Option(
+            "--diagnostics", help="Optional diagnostic JSONL stream to summarize and redact."
+        ),
+    ] = None,
+    command_log: Annotated[
+        Path | None,
+        typer.Option(
+            "--command-log",
+            help=(
+                "Optional explicit command log file; shell history is never "
+                "collected automatically."
+            ),
+        ),
+    ] = None,
+    max_file_bytes: Annotated[
+        int,
+        typer.Option(
+            "--max-file-bytes",
+            help=(
+                "Per-source-file byte cap applied to redacted content. Oversized "
+                "inputs are truncated to this cap and flagged; a short truncation "
+                "marker is then appended, so a truncated entry is slightly larger "
+                "than the cap."
+            ),
+            min=1024,
+        ),
+    ] = DEFAULT_MAX_FILE_BYTES,
+) -> None:
+    """Create a local, redacted triage bundle for support/debugging."""
+    target = out if out is not None else default_incident_pack_path()
+    try:
+        result = build_incident_pack(
+            target,
+            config=config,
+            catalog=catalog,
+            diagnostics=diagnostics,
+            command_log=command_log,
+            max_file_bytes=max_file_bytes,
+        )
+    except (ContextWeaverError, OSError) as exc:
+        # No param_hint: failures can originate from any of --out/--config/
+        # --catalog/--diagnostics/--max-file-bytes, so attributing them all to
+        # --out would misreport which input was at fault. OSError is caught too
+        # (e.g. an unwritable --out directory) so a filesystem failure surfaces
+        # as a clean CLI error instead of an uncaught traceback.
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(str(result.path))
+    warnings = result.manifest.get("warnings", [])
+    warning_count = len(warnings) if isinstance(warnings, list) else 0
+    if warning_count:
+        typer.echo(f"incident pack completed with warnings={warning_count}", err=True)
 
 
 @mcp_app.command("serve")
