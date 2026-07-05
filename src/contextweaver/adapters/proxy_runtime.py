@@ -42,6 +42,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 import jsonschema.exceptions
 
+from contextweaver.adapters._bounded_browse import bounded_browse
 from contextweaver.adapters._proxy_dispatch import (
     UpstreamNameIndex,
     build_dry_run_report,
@@ -84,13 +85,10 @@ from contextweaver.exceptions import (
     CatalogError,
     ContextWeaverError,
     ItemNotFoundError,
-    PathInvalidError,
-    PathNotFoundError,
 )
-from contextweaver.routing.cards import bound_browse_response, item_to_card, make_choice_cards
+from contextweaver.routing.cards import item_to_card
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.graph import ChoiceGraph
-from contextweaver.routing.path import parse_path, resolve_path
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.store.protocols import ArtifactStore
@@ -520,16 +518,22 @@ class ProxyRuntime:
                     raw_defs=self._raw_tool_defs,
                 )
                 return limited
-        if (query is None) == (path is None):
-            result: list[ChoiceCard] | GatewayError = GatewayError(
-                code="ARGS_INVALID",
-                message="tool_browse requires exactly one of 'query' or 'path'.",
+        # Card production (query→route→cards, path→navigate→cards, redact
+        # threading) is the shared bounded-browse core (#743); the cache-stable
+        # prefix stays here as a ProxyRuntime-specific wrapper.
+        result = self._maybe_cache_stable(
+            bounded_browse(
+                router=self._router,
+                graph=self._graph,
+                catalog=self._catalog,
+                query=query,
+                path=path,
+                top_k=top_k,
+                default_top_k=self._top_k,
+                redact_secrets=self._redact_secrets,
+                surface="tool_browse",
             )
-        elif query is not None:
-            result = self._browse_by_query(query, top_k=top_k)
-        else:
-            assert path is not None  # narrowed by the XOR check above
-            result = self._browse_by_path(path)
+        )
         self._telemetry.browse_completed(
             result,
             duration_ms=(perf_counter() - started) * 1000,
@@ -538,60 +542,6 @@ class ProxyRuntime:
             raw_defs=self._raw_tool_defs,
         )
         return result
-
-    def _browse_by_query(self, query: str, *, top_k: int | None) -> list[ChoiceCard] | GatewayError:
-        if self._router is None or not self._catalog.all():
-            return []
-        effective_top_k = top_k if top_k is not None else self._top_k
-        # Router.top_k is set at construction to self._top_k; per-call
-        # overrides are applied by truncating the result via make_choice_cards.
-        # Values larger than self._top_k are silently capped at self._top_k.
-        result = self._router.route(query)
-        scores = dict(zip(result.candidate_ids, result.scores, strict=False))
-        cards = make_choice_cards(
-            result.candidate_items,
-            max_cards=effective_top_k,
-            scores=scores,
-            redact_secrets=self._redact_secrets,
-        )
-        return self._maybe_cache_stable(bound_browse_response(cards))
-
-    def _browse_by_path(self, path: str) -> list[ChoiceCard] | GatewayError:
-        if self._graph is None:
-            return GatewayError(
-                code="PATH_NOT_FOUND",
-                message="No catalog registered.",
-                path=path,
-            )
-        try:
-            segments = parse_path(path)
-        except PathInvalidError as exc:
-            return GatewayError(code="PATH_INVALID", message=str(exc), path=path)
-        try:
-            child_ids = resolve_path(self._graph, segments)
-        except PathInvalidError as exc:
-            return GatewayError(code="PATH_INVALID", message=str(exc), path=path)
-        except PathNotFoundError as exc:
-            return GatewayError(code="PATH_NOT_FOUND", message=str(exc), path=path)
-        cards: list[ChoiceCard] = []
-        for child_id in child_ids:
-            try:
-                cards.append(
-                    item_to_card(self._catalog.get(child_id), redact_secrets=self._redact_secrets)
-                )
-            except ItemNotFoundError:
-                # Navigation node, not a leaf — synthesise a cluster card.
-                node = self._graph.get_node(child_id)
-                cards.append(
-                    ChoiceCard(
-                        id=child_id,
-                        name=node.label or child_id,
-                        description=node.routing_hint or "Cluster",
-                        kind="internal",
-                        namespace=child_id.split(":", 1)[0] if ":" in child_id else "",
-                    )
-                )
-        return self._maybe_cache_stable(bound_browse_response(cards))
 
     # ------------------------------------------------------------------
     # tool_hydrate (§4.1)

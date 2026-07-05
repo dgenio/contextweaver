@@ -699,6 +699,7 @@ def _build_primitive_runtime(
     *,
     top_k: int,
     beam_width: int,
+    redact_secrets: bool = False,
 ) -> PrimitiveGatewayRuntime | None:
     """Construct a :class:`PrimitiveGatewayRuntime` from *catalog_path* (#669 / #670).
 
@@ -733,6 +734,7 @@ def _build_primitive_runtime(
         context_manager=runtime.context_manager,
         beam_width=beam_width,
         top_k=top_k,
+        redact_secrets=redact_secrets,
     )
     primitive_runtime.register_sync(resource_defs, prompt_defs)
     return primitive_runtime
@@ -1133,7 +1135,7 @@ def serve(
     primitive_runtime: PrimitiveGatewayRuntime | None = None
     if resolved_mode == _ServeMode.gateway:
         primitive_runtime = _build_primitive_runtime(
-            catalog, runtime, top_k=top_k, beam_width=beam_width
+            catalog, runtime, top_k=top_k, beam_width=beam_width, redact_secrets=redact
         )
 
     if not quiet:

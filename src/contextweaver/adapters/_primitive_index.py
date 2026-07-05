@@ -14,13 +14,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from contextweaver.adapters._bounded_browse import bounded_browse
 from contextweaver.adapters.gateway_error import GatewayError
 from contextweaver.envelope import ChoiceCard
-from contextweaver.exceptions import ItemNotFoundError, PathInvalidError, PathNotFoundError
-from contextweaver.routing.cards import bound_browse_response, item_to_card, make_choice_cards
 from contextweaver.routing.catalog import Catalog
 from contextweaver.routing.graph import ChoiceGraph
-from contextweaver.routing.path import parse_path, resolve_path
 from contextweaver.routing.router import Router
 from contextweaver.routing.tree import TreeBuilder
 from contextweaver.types import SelectableItem
@@ -28,10 +26,20 @@ from contextweaver.types import SelectableItem
 
 @dataclass
 class PrimitiveIndex:
-    """A single-kind catalog + routing graph + router with bounded browse."""
+    """A single-kind catalog + routing graph + router with bounded browse.
+
+    Args:
+        redact_secrets: When ``True`` (#428/#743) prompt-bound card text is
+            scrubbed via :func:`~contextweaver.secrets.scrub_secrets`, matching
+            the tool runtime so resource/prompt cards are never a scrub gap.
+        surface: Meta-tool name used in ``ARGS_INVALID`` messages
+            (e.g. ``"resource_browse"`` / ``"prompt_browse"``).
+    """
 
     beam_width: int = 3
     top_k: int = 10
+    redact_secrets: bool = False
+    surface: str = "browse"
     catalog: Catalog = field(default_factory=Catalog)
     graph: ChoiceGraph | None = None
     router: Router | None = None
@@ -54,15 +62,17 @@ class PrimitiveIndex:
     def browse(
         self, *, query: str | None, path: str | None, top_k: int | None
     ) -> list[ChoiceCard] | GatewayError:
-        """Browse this index by *query* (routed) or *path* (graph navigation)."""
-        if (query is None) == (path is None):
-            return GatewayError(
-                code="ARGS_INVALID",
-                message="browse requires exactly one of 'query' or 'path'.",
-            )
+        """Browse this index by *query* (routed) or *path* (graph navigation).
+
+        Delegates to the shared :func:`~contextweaver.adapters._bounded_browse.bounded_browse`
+        core so tool and primitive card production — including ``redact_secrets``
+        scrubbing — stay a single implementation (#743).
+        """
         # `top_k` arrives straight from an MCP client; reject non-integer or
         # non-positive values here rather than letting a bad type reach
         # make_choice_cards and raise TypeError across the meta-tool boundary.
+        # (Kept in the primitive wrapper so the tool path's behavior is
+        # unchanged by the shared-helper extraction, #743.)
         if top_k is not None and (
             isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1
         ):
@@ -70,40 +80,14 @@ class PrimitiveIndex:
                 code="ARGS_INVALID",
                 message="'top_k' must be a positive integer.",
             )
-        if query is not None:
-            if self.router is None:
-                return []
-            result = self.router.route(query)
-            scores = dict(zip(result.candidate_ids, result.scores, strict=False))
-            cards = make_choice_cards(
-                result.candidate_items,
-                max_cards=top_k if top_k is not None else self.top_k,
-                scores=scores,
-            )
-            return bound_browse_response(cards)
-        return self._browse_path(path or "")
-
-    def _browse_path(self, path: str) -> list[ChoiceCard] | GatewayError:
-        if self.graph is None:
-            return GatewayError(code="PATH_NOT_FOUND", message="No catalog registered.", path=path)
-        try:
-            child_ids = resolve_path(self.graph, parse_path(path))
-        except PathInvalidError as exc:
-            return GatewayError(code="PATH_INVALID", message=str(exc), path=path)
-        except PathNotFoundError as exc:
-            return GatewayError(code="PATH_NOT_FOUND", message=str(exc), path=path)
-        cards: list[ChoiceCard] = []
-        for child_id in child_ids:
-            try:
-                cards.append(item_to_card(self.catalog.get(child_id)))
-            except ItemNotFoundError:
-                node = self.graph.get_node(child_id)
-                cards.append(
-                    ChoiceCard(
-                        id=child_id,
-                        name=node.label or child_id,
-                        description=node.routing_hint or "Cluster",
-                        kind="internal",
-                    )
-                )
-        return bound_browse_response(cards)
+        return bounded_browse(
+            router=self.router,
+            graph=self.graph,
+            catalog=self.catalog,
+            query=query,
+            path=path,
+            top_k=top_k,
+            default_top_k=self.top_k,
+            redact_secrets=self.redact_secrets,
+            surface=self.surface,
+        )
