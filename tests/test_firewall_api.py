@@ -306,3 +306,22 @@ def test_redact_passthrough_stats_match_unredacted_when_off() -> None:
     out = compact_tool_result(data, redact_secrets=False)
     assert out.stats.summary_chars == out.stats.original_chars
     assert out.stats.summary_tokens == out.stats.original_tokens
+
+
+def test_redact_structured_stats_measure_post_scrub_summary() -> None:
+    # Regression test (PR #771 audit): the structured branch must also recompute
+    # stats.summary_chars/summary_tokens on the post-scrub summary, mirroring the
+    # passthrough/summary branches. apply_firewall measures stats on the
+    # pre-scrub summary, so without the recompute the #405 token-counter
+    # invariant (and the sidecar's tokens_saved) would be wrong under redaction
+    # for structured output.
+    big = {"rows": [{"secret": _TOKEN, "id": i} for i in range(80)]}
+    out = compact_tool_result(
+        big, threshold_chars=100, keep=["rows[].secret", "rows[].id"], redact_secrets=True
+    )
+    assert out.firewalled is True
+    assert out.stats.strategy == "structured"
+    assert out.summary is not None
+    assert _TOKEN not in out.summary
+    assert out.stats.summary_chars == len(out.summary)
+    assert out.stats.summary_tokens == count_tokens(out.summary)

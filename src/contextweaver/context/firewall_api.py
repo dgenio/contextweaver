@@ -271,6 +271,13 @@ def compact_tool_result(
         if redact_secrets:  # scrub prompt-bound projection; shape unchanged (#745)
             projected = scrub_secrets_in_obj(projected)
             summary = scrub_secrets(summary)
+            # Stats must reflect the post-scrub summary actually returned, not
+            # apply_firewall's pre-scrub value — the mask length differs from the
+            # secret, so recomputing here keeps the #405 token-counter invariant
+            # (and the sidecar's tokens_saved) accurate on the structured branch
+            # too, matching the passthrough/summary branches (PR #771 audit).
+            stats.summary_chars = len(summary)
+            stats.summary_tokens = count_tokens(summary, model=token_model)
         if isinstance(projected, dict):
             payload = {**projected, CW_SIDECAR_KEY: _sidecar(stats)}
         else:
