@@ -10,6 +10,7 @@ from contextweaver import compact_tool_result, firewalled_tool_result
 from contextweaver.context.firewall_api import CW_SIDECAR_KEY, CompactResult
 from contextweaver.exceptions import ConfigError, DeterminismError
 from contextweaver.store.artifacts import InMemoryArtifactStore
+from contextweaver.tokens import count as count_tokens
 
 _BIG = {"invoices": [{"invoiceNumber": f"A-{i}", "amount": i, "status": "due"} for i in range(200)]}
 
@@ -281,3 +282,27 @@ def test_redact_scrubs_structured_projection() -> None:
     assert out.firewalled is True
     assert _TOKEN not in json.dumps(out.payload)
     assert _MASK in json.dumps(out.payload)
+
+
+def test_redact_passthrough_stats_measure_actual_returned_payload() -> None:
+    # Regression test (PR #771 review): stats.summary_chars/summary_tokens
+    # must reflect the payload actually returned (post-scrub), not the
+    # pre-redaction input — otherwise the #405 token-counter invariant (and
+    # the sidecar's tokens_saved) would be wrong under redaction.
+    data = {"note": f"key {_TOKEN}"}
+    out = compact_tool_result(data, redact_secrets=True)
+    assert out.firewalled is False
+    scrubbed_body = {"note": f"key {_MASK}"}
+    expected_text = json.dumps(scrubbed_body, sort_keys=True)
+    assert out.stats.summary_chars == len(expected_text)
+    assert out.stats.summary_tokens == count_tokens(expected_text)
+    # The mask text differs in length from the scrubbed secret, so the
+    # redacted payload size must diverge from the original input size.
+    assert out.stats.summary_chars != out.stats.original_chars
+
+
+def test_redact_passthrough_stats_match_unredacted_when_off() -> None:
+    data = {"note": f"key {_TOKEN}"}
+    out = compact_tool_result(data, redact_secrets=False)
+    assert out.stats.summary_chars == out.stats.original_chars
+    assert out.stats.summary_tokens == out.stats.original_tokens

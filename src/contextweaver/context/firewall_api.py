@@ -198,19 +198,30 @@ def compact_tool_result(
     passthrough = strategy == "passthrough" or original_chars <= threshold_chars
 
     if passthrough:
+        # Shape-preserving: field/key structure is always unchanged so
+        # downstream field access never breaks (#403). Without redaction the
+        # returned value is byte-identical to *data*; with redact_secrets=True,
+        # string leaves are scrubbed in place (#745), so it is shape- but not
+        # byte-identical — stats below are measured on what is actually
+        # returned, not on the pre-redaction input, so the token-counter
+        # invariant (#405) and sidecar `tokens_saved` stay accurate.
+        body = scrub_secrets_in_obj(data) if redact_secrets else data
+        if redact_secrets:
+            body_text, _ = _to_text(body)
+            summary_chars = len(body_text)
+            summary_tokens = count_tokens(body_text, model=token_model)
+        else:
+            summary_chars = original_chars
+            summary_tokens = original_tokens
         stats = FirewallStats(
             triggered=False,
             strategy="passthrough",
             threshold_chars=threshold_chars,
             original_chars=original_chars,
             original_tokens=original_tokens,
-            summary_chars=original_chars,
-            summary_tokens=original_tokens,
+            summary_chars=summary_chars,
+            summary_tokens=summary_tokens,
         )
-        # Shape-preserving: attach the sidecar only to dicts; lists/strings are
-        # returned byte-identical so downstream field access never breaks (#403).
-        # When redacting, scrub string leaves first (shape/keys unchanged, #745).
-        body = scrub_secrets_in_obj(data) if redact_secrets else data
         if isinstance(body, dict):
             payload: Any = {**body, CW_SIDECAR_KEY: _sidecar(stats)}
         else:

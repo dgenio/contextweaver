@@ -27,10 +27,13 @@ def _user_cache_dir() -> Path:
     system temp dir only when no home/XDG location is resolvable.
     """
     xdg = os.environ.get("XDG_CACHE_HOME")
-    base = Path(xdg) if xdg else Path.home() / ".cache"
     try:
+        base = Path(xdg) if xdg else Path.home() / ".cache"
         return base / "contextweaver"
     except (RuntimeError, OSError):  # pragma: no cover — home unresolvable
+        # Path.home() raises RuntimeError when no home directory can be
+        # determined (e.g. $HOME unset and no password-database entry) —
+        # that must land in this fallback too, not bubble up.
         # Namespaced by uid so it is not a shared, guessable path.
         uid = getattr(os, "getuid", lambda: "user")()
         return Path(tempfile.gettempdir()) / f"contextweaver-{uid}"

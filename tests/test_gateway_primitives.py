@@ -258,12 +258,20 @@ def test_prompt_cards_scrubbed_when_redact_enabled() -> None:
 def test_primitive_cards_not_scrubbed_by_default() -> None:
     # Default posture is off (owned by #744); the flag must actually gate the
     # scrub — this is the regression the shared helper (#743) guards.
+    #
+    # Card rendering also applies an unrelated §2.3 token budget
+    # (routing/cards._enforce_card_budget) that can truncate the tail of a
+    # long description regardless of redaction, and the exact cut point
+    # depends on the active tokenizer (real tiktoken in CI vs. the offline
+    # heuristic fallback locally). So this checks a truncation-safe leading
+    # fragment of the secret rather than the full string, plus the mask's
+    # absence — sufficient to prove redaction did not fire.
     rt = PrimitiveGatewayRuntime(StubPrimitiveUpstream())
     rt.register_sync(_SECRET_RESOURCES, _SECRET_PROMPTS)
     cards = rt.browse_resources(query="creds")
     assert isinstance(cards, list) and cards
     joined = " ".join(c.description for c in cards)
-    assert _SECRET in joined
+    assert _SECRET[:12] in joined
     assert _SECRET_MASK not in joined
 
 

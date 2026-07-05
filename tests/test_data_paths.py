@@ -16,6 +16,7 @@ contract:
 from __future__ import annotations
 
 import importlib.resources as _resources
+import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
@@ -62,6 +63,25 @@ def test_user_cache_dir_prefers_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     """``XDG_CACHE_HOME`` wins and lands under a ``contextweaver`` subdir (#742)."""
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     assert _user_cache_dir() == tmp_path / "contextweaver"
+
+
+def test_user_cache_dir_falls_back_when_home_unresolvable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Path.home()`` raising must land in the tempdir fallback, not bubble up.
+
+    Regression test (PR #771 review): the fallback previously only wrapped the
+    ``base / "contextweaver"`` join in ``try``, while ``Path.home()`` itself —
+    the call that actually raises ``RuntimeError`` when no home directory can
+    be determined — was evaluated outside it.
+    """
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    monkeypatch.setattr(
+        Path, "home", lambda: (_ for _ in ()).throw(RuntimeError("no home directory"))
+    )
+    result = _user_cache_dir()
+    assert str(result).startswith(tempfile.gettempdir())
+    assert result.name.startswith("contextweaver-")
 
 
 def test_owned_by_current_user_true_for_self_created(tmp_path: Path) -> None:
