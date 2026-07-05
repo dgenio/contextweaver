@@ -332,6 +332,7 @@ the gateway):
   "error": "PATH_INVALID" | "PATH_NOT_FOUND" | "ARGS_INVALID" | "SCHEMA_INVALID"
          | "UPSTREAM_ERROR" | "UPSTREAM_TIMEOUT" | "UPSTREAM_UNAVAILABLE"
          | "AUTH_FAILED" | "PERMISSION_DENIED" | "RATE_LIMITED"
+         | "POLICY_DENIED" | "AUTH_REQUIRED"
          | "HYDRATE_FAILED" | "VIEW_FAILED",
   "message": "<human-readable, redacted>",
   "path": "<offending path or empty>",
@@ -342,6 +343,16 @@ the gateway):
 
 `PATH_INVALID` covers malformed paths (§3.2 violations); `PATH_NOT_FOUND`
 covers well-formed paths that do not exist in the current `ChoiceGraph`.
+
+**Runtime authorization (issue #373).** Before any upstream dispatch
+(`tool_execute`) or raw artifact egress (`tool_view`), the runtime evaluates
+an optional policy gate. `POLICY_DENIED` means the policy refused the call —
+the upstream tool is never invoked and no raw content is returned.
+`AUTH_REQUIRED` means the policy needs out-of-band human approval before the
+call may proceed; `details.approval = "required"` and `details.meta_tool`
+name the gated surface. Both are non-retryable. MCP annotations
+(`readOnlyHint` / `destructiveHint`) are untrusted hints and are **not** the
+enforcement mechanism; the policy is. See `docs/security_model.md`.
 
 **Upstream-error taxonomy (issue #485).** Failures from the wrapped MCP
 server are classified so agents can branch without string-matching:

@@ -37,7 +37,8 @@ contextweaver start                  # choose gateway, library, routing, or inte
 Already have a loop and not sure which piece you need? The two engines also work
 [routing-only or firewall-only](docs/which_pattern.md).
 For day-to-day operating guidance, see the [Daily Driver guide](docs/daily_driver.md);
-for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md).
+for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md)
+and the least-privilege [MCP Gateway Security Guide](docs/security_mcp_gateway.md).
 
 <p align="center">
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>

@@ -38,6 +38,8 @@ LLMS_FULL_FILES: list[str] = [
     "docs/quickstart.md",
     "docs/daily_driver.md",
     "docs/security_model.md",
+    "docs/security_mcp_gateway.md",
+    "docs/sensitivity.md",
     "docs/recipes/index.md",
     "docs/recipes/claude_code.md",
     "docs/integration_mcp.md",
@@ -109,6 +111,16 @@ LLMS_INDEX: list[tuple[str, list[tuple[str, str, str]]]] = [
                 "MCP Security Model",
                 "docs/security_model.md",
                 "Gateway data flow, trust boundaries, artifact exposure, and hardening",
+            ),
+            (
+                "MCP Gateway Security Guide",
+                "docs/security_mcp_gateway.md",
+                "Least-privilege gateway ops: secrets, destructive tools, policy gate",
+            ),
+            (
+                "Sensitivity & Redaction",
+                "docs/sensitivity.md",
+                "Levels, floor/action, redaction hooks, verification, and limits",
             ),
             (
                 "MCP Client Recipes",

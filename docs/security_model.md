@@ -10,6 +10,79 @@ This page describes deployment boundaries. Vulnerability reporting remains in
 the repository's
 [`SECURITY.md`](https://github.com/dgenio/contextweaver/blob/main/SECURITY.md).
 
+For a task-oriented walkthrough of running the gateway in front of powerful
+MCP servers (secrets, destructive tools, least privilege), see
+[MCP Gateway Security Guide](security_mcp_gateway.md). For configuring the
+sensitivity/redaction subsystem, see the
+[Sensitivity & Redaction guide](sensitivity.md).
+
+## Default security posture
+
+The serving entrypoints are **secure by default** (issue #744). `contextweaver
+mcp serve` runs with the deterministic
+[`HeuristicSensitivityClassifier`](sensitivity.md) and secret scrubbing
+(`redact_secrets`) enabled, so unlabelled tool output that carries
+credential-shaped or PII-shaped content is classified and scrubbed before it
+reaches a prompt-bound summary or a `ChoiceCard`. This is a deliberate
+divergence from the library-level `ContextManager`, whose defaults stay
+permissive for embedding in existing pipelines — the hardening is applied at
+the gateway boundary, where an operator reasonably expects the firewall's
+headline protections to be on.
+
+Turn the protections off with `contextweaver mcp serve --no-redact` (or
+`redact: false` in the config file). Doing so prints a one-line startup
+**warning** to stderr, so an unprotected posture is always a visible choice,
+never a silent default.
+
+The HTTP sidecar (`contextweaver serve-api`) is a thinner surface: its
+`/v1/compact` endpoint does **not** yet scrub secrets end-to-end (tracked in
+issue #745). Binding it without `--api-key` prints a startup warning; do not
+send secret-bearing payloads to an unauthenticated sidecar over an untrusted
+network.
+
+This decision is recorded here so it is not "simplified" away: the serving
+defaults must stay secure-by-default, and any change that weakens them is a
+security-relevant change requiring review.
+
+## Runtime authorization: the policy gate
+
+Reducing a large MCP surface to `tool_browse` / `tool_execute` / `tool_view`
+moves the practical safety boundary into the gateway. contextweaver therefore
+provides an explicit, deterministic **policy gate** evaluated before any
+upstream dispatch and before any raw artifact egress (issue #373).
+
+A `ToolPolicy` is an ordered list of match → action rules with a default
+action. Each rule may match on the upstream `namespace`, a case-sensitive glob
+over the tool id/name (`tool`), catalog `tags`, `read_only`, and the surface
+(`meta_tool`: `tool_execute` or `tool_view`). The first matching rule wins;
+otherwise the `default` applies. Actions are:
+
+- `allow` — proceed normally.
+- `deny` — return a `POLICY_DENIED` `GatewayError`; the upstream tool is
+  **never** called and no raw content is returned.
+- `require_approval` — return an `AUTH_REQUIRED` `GatewayError` (with
+  `details.approval = "required"`) so a host or custom loop can surface it for
+  human sign-off.
+
+The default (`ToolPolicy()` / no policy configured) allows everything, so
+existing deployments are unchanged; opt into `deny` / `require_approval` rules,
+or set `default: deny` for an allowlist posture. Configure it under the
+`policy` key of `mcp serve --config`:
+
+```yaml
+policy:
+  default: allow
+  rules:
+    - { namespace: github, tool: "issues.*", action: allow }
+    - { tags: [destructive], action: require_approval }
+    - { tool: "*delete*", action: deny }
+    - { meta_tool: tool_view, namespace: secrets, action: deny }  # block raw egress
+```
+
+MCP annotations such as `readOnlyHint` / `destructiveHint` are untrusted hints
+and are **not** the enforcement mechanism — the policy is. Annotations may
+inform a rule's authoring, but the gate decides.
+
 ## Data flow
 
 ```text
@@ -122,7 +195,14 @@ loss prevention system or security sandbox.
 - Summaries and extracted facts can still contain sensitive values unless a
   sensitivity or redaction policy removes them.
 - `tool_view` deliberately re-exposes selected artifact content to the MCP
-  client and therefore potentially to the model provider.
+  client and therefore potentially to the model provider. It is the intentional
+  raw-recovery surface, governed by the same `ToolPolicy` as `tool_execute`
+  (issue #746): a `meta_tool: tool_view` rule can `deny` or `require_approval`
+  raw egress per namespace/tool. Note that gateway artifacts are stored
+  unredacted **at rest** (the scrubbing applies to prompt-bound summaries and
+  cards, not the raw bytes), so the policy gate — not the firewall — is what
+  bounds raw egress; attribution is best-effort for handles that do not encode
+  a tool id.
 - The current in-memory gateway store has no TTL, total-size quota, or
   per-handle authorization policy.
 - Current selectors accept caller-provided ranges; deployments should use
@@ -130,11 +210,13 @@ loss prevention system or security sandbox.
 - The gateway does not neutralize prompt injection contained in a tool result.
   The host prompt and execution policy must treat tool content as untrusted.
 
-Artifact TTLs, size limits, bounded views, redaction, provenance, and a view
-policy hook are tracked in
-[#375](https://github.com/dgenio/contextweaver/issues/375). Until those
-controls ship, high-sensitivity deployments should wrap or disable raw view
-access in their host integration.
+A policy gate for `tool_view` egress now exists (issue #746, above). Artifact
+TTLs, size limits, bounded-view selectors, store-time redaction, and
+provenance remain tracked in
+[#375](https://github.com/dgenio/contextweaver/issues/375). Until those ship,
+high-sensitivity deployments should deny raw `tool_view` via policy (or in
+their host integration) rather than relying on artifacts being scrubbed at
+rest — they are not.
 
 ## Non-goals
 

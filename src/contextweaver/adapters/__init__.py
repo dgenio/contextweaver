@@ -67,6 +67,12 @@ from contextweaver.adapters.fastmcp import (
     make_discovery_tool,
 )
 from contextweaver.adapters.gateway_args import Repair, normalize_args
+from contextweaver.adapters.gateway_authz import (
+    PolicyContext,
+    PolicyDecision,
+    PolicyRule,
+    ToolPolicy,
+)
 from contextweaver.adapters.gateway_controls import (
     RateLimiter,
     ToolResultCache,
@@ -201,6 +207,9 @@ __all__ = [
     "McpClientUpstream",
     "MultiplexUpstream",
     "PROXY_META_TOOL_NAMES",
+    "PolicyContext",
+    "PolicyDecision",
+    "PolicyRule",
     "ProxyRuntime",
     "RateLimit",
     "RateLimitPolicy",
@@ -217,6 +226,7 @@ __all__ = [
     "SkillBodySource",
     "SkippedTool",
     "StubUpstream",
+    "ToolPolicy",
     "ToolResultCache",
     "UpstreamCall",
     "call_with_retry",

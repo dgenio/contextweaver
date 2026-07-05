@@ -464,6 +464,88 @@ def test_build_runtime_proxy_mode_registers_all_tools() -> None:
     assert len(runtime.list_tool_ids()) == 60
 
 
+def test_build_runtime_secure_by_default_enables_redaction() -> None:
+    """#744: serving is secure-by-default — redaction + classifier are on."""
+    runtime = _build_runtime(
+        gateway_catalog_path(),
+        mode=_ServeMode.gateway,
+        top_k=10,
+        beam_width=3,
+        cache_stable=False,
+    )
+    assert runtime._redact_secrets is True
+    assert runtime.context_manager._redact_secrets is True
+    assert runtime.context_manager._sensitivity_classifier is not None
+
+
+def test_build_runtime_no_redact_opts_out() -> None:
+    runtime = _build_runtime(
+        gateway_catalog_path(),
+        mode=_ServeMode.gateway,
+        top_k=10,
+        beam_width=3,
+        cache_stable=False,
+        secure=False,
+    )
+    assert runtime._redact_secrets is False
+    assert runtime.context_manager._sensitivity_classifier is None
+
+
+def test_build_runtime_wires_policy() -> None:
+    from contextweaver.adapters.gateway_authz import PolicyRule, ToolPolicy
+
+    policy = ToolPolicy(rules=[PolicyRule(action="deny", tool="*delete*")])
+    runtime = _build_runtime(
+        gateway_catalog_path(),
+        mode=_ServeMode.gateway,
+        top_k=10,
+        beam_width=3,
+        cache_stable=False,
+        policy=policy,
+    )
+    assert runtime._policy is policy
+
+
+def test_load_serve_config_parses_redact_and_policy(tmp_path: Path) -> None:
+    cfg = tmp_path / "gateway.yaml"
+    cfg.write_text(
+        "catalog: cat.json\n"
+        "redact: false\n"
+        "policy:\n"
+        "  default: allow\n"
+        "  rules:\n"
+        "    - action: deny\n"
+        "      tool: '*delete*'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "cat.json").write_text("[]", encoding="utf-8")
+    loaded = _load_serve_config(cfg)
+    assert loaded["redact"] is False
+    assert loaded["policy"]["rules"][0]["action"] == "deny"
+
+
+def test_load_serve_config_rejects_non_mapping_policy(tmp_path: Path) -> None:
+    cfg = tmp_path / "gateway.yaml"
+    cfg.write_text("catalog: cat.json\npolicy: not-a-mapping\n", encoding="utf-8")
+    (tmp_path / "cat.json").write_text("[]", encoding="utf-8")
+    with pytest.raises(typer.BadParameter):
+        _load_serve_config(cfg)
+
+
+def test_serve_no_redact_warns_loudly(tmp_path: Path) -> None:
+    """#744: the insecure opt-out is a visible startup warning."""
+    result = _run(
+        "mcp",
+        "serve",
+        "--catalog",
+        str(gateway_catalog_path()),
+        "--no-redact",
+        "--dry-run",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "redaction is OFF" in result.stderr
+
+
 def test_mcp_inspect_reports_catalog_savings_json() -> None:
     result = _run(
         "mcp",

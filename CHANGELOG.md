@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime authorization / policy gate for the MCP gateway (#373).** New
+  `ToolPolicy` (ordered `PolicyRule`s + default action) evaluated inside
+  `ProxyRuntime.execute` after schema validation and **before** any upstream
+  dispatch, and — via `meta_tool="tool_view"` rules — before `tool_view` raw
+  artifact egress (#746). Actions are `allow` / `deny` (typed `POLICY_DENIED`
+  error, upstream never called) / `require_approval` (typed `AUTH_REQUIRED`
+  error for host sign-off). Matching is pure/deterministic on namespace, a
+  case-sensitive tool glob, tags, `read_only`, and surface. Default is allow-all
+  (inert), so existing deployments are unchanged; configure it under the
+  `policy` key of `mcp serve --config` or `ProxyRuntime(policy=...)`. Exported
+  from `contextweaver.adapters`; two new `GatewayError` codes (`POLICY_DENIED`,
+  `AUTH_REQUIRED`) added to `gateway_spec.md` §3.4.
+- **Secure-by-default serving posture (#744).** `contextweaver mcp serve` now
+  enables the `HeuristicSensitivityClassifier` and secret scrubbing
+  (`redact_secrets`) by default, so unlabelled tool output carrying
+  secret/PII-shaped content is classified and scrubbed before it reaches a
+  prompt. Opt out with `--no-redact` (or `redact: false` in config), which
+  prints a loud startup warning. The HTTP sidecar prints a startup warning when
+  bound without `--api-key`. The library-level `ContextManager` defaults are
+  unchanged; the decision is recorded in `docs/security_model.md`.
+- **Operator security docs.** New `docs/security_mcp_gateway.md` (least-privilege
+  gateway operation: secrets, destructive tools, the policy gate; #372) and
+  `docs/sensitivity.md` (sensitivity levels, floor/action, redaction hooks,
+  verification, and limits; #640), linked from the docs nav and
+  `security_model.md`.
 - **MCP incident packs (#661).** Added `contextweaver mcp incident-pack` to
   create offline, redacted triage zip bundles with a machine-readable manifest,
   config/catalog summaries, diagnostics summaries, redacted source excerpts,

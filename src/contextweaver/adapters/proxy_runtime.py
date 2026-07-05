@@ -34,17 +34,24 @@ none of these primitives raise across the MCP boundary.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from enum import Enum
 from time import perf_counter
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import jsonschema.exceptions
 
+from contextweaver.adapters._proxy_dispatch import (
+    UpstreamNameIndex,
+    build_dry_run_report,
+    execute_policy_error,
+    persist_result_artifacts,
+    rate_limited_error,
+    view_policy_error,
+)
 from contextweaver.adapters.gateway_args import Repair, normalize_args
+from contextweaver.adapters.gateway_authz import ToolPolicy
 from contextweaver.adapters.gateway_controls import (
     RateLimitDecision,
     RateLimiter,
@@ -124,18 +131,6 @@ class UpstreamCall(Protocol):
         ...
 
 
-@dataclass
-class _UpstreamNameIndex:
-    """Maps canonical ``tool_id`` → upstream raw tool name.
-
-    Required because :func:`mcp_tool_to_selectable` strips namespace
-    prefixes from the canonical id (§1.4), but the upstream MCP server
-    only accepts the original name.
-    """
-
-    by_tool_id: dict[str, str] = field(default_factory=dict)
-
-
 # Sentinel ``ChoiceCard.id`` emitted between the seen-prefix and the new-suffix
 # when ``ProxyRuntime(cache_stable=True)`` reorders a browse response. The
 # marker is a real :class:`ChoiceCard` (``kind="internal"``) so it survives any
@@ -157,32 +152,6 @@ _TOOL_VIEW = "tool_view"
 # execute path always flows through ``call_with_retry`` (one attempt = today's
 # behaviour) and keeps a single upstream-error-to-``GatewayError`` mapping.
 _SINGLE_ATTEMPT = RetryPolicy()
-
-
-def _rate_limited_error(path: str, decision: RateLimitDecision) -> GatewayError:
-    """Build the structured ``RATE_LIMITED`` error for a quota breach (#482)."""
-    details: dict[str, Any] = {"scope": decision.scope}
-    if decision.retry_after is not None:
-        details["retry_after"] = round(decision.retry_after, 3)
-    return GatewayError(
-        code="RATE_LIMITED",
-        message=f"rate limit exceeded ({decision.scope})",
-        path=path,
-        retryable=True,
-        details=details,
-    )
-
-
-def _unverified_annotations(raw_def: dict[str, Any]) -> dict[str, Any]:
-    """Return upstream MCP annotations stamped ``verified=False`` (#483).
-
-    The gateway never trusts upstream-declared hints (``readOnlyHint`` /
-    ``destructiveHint`` / ...), so the dry-run report labels them explicitly.
-    """
-    annotations = raw_def.get("annotations")
-    out = dict(annotations) if isinstance(annotations, dict) else {}
-    out["verified"] = False
-    return out
 
 
 class ProxyRuntime:
@@ -256,6 +225,7 @@ class ProxyRuntime:
         diagnostic_sink: DiagnosticSink | None = None,
         session_id: str | None = None,
         redact_secrets: bool = False,
+        policy: ToolPolicy | None = None,
         on_invalid: Literal["skip", "raise"] = "skip",
         schema_limits: SchemaLimits | None = None,
         tolerant_args: bool = False,
@@ -290,6 +260,9 @@ class ProxyRuntime:
         #: When ``True`` the gateway scrubs secret shapes from ChoiceCard text
         #: (name/description/tags) before they reach the prompt (issue #428).
         self._redact_secrets = redact_secrets
+        #: Runtime authorization gate for ``tool_execute`` / ``tool_view``
+        #: (issues #373 / #746). ``None`` (default) allows every call, as before.
+        self._policy = policy
         self._browsed_tool_ids: set[str] = set()
         # First-sighting frozen card content keyed by ``tool_id``. Used by
         # ``_maybe_cache_stable`` so the byte-stable prefix really is
@@ -301,7 +274,7 @@ class ProxyRuntime:
         self._catalog: Catalog = Catalog()
         self._graph: ChoiceGraph | None = None
         self._router: Router | None = None
-        self._upstream_names = _UpstreamNameIndex()
+        self._upstream_names = UpstreamNameIndex()
         self._raw_tool_defs: dict[str, dict[str, Any]] = {}
         self._telemetry = GatewayTelemetry(diagnostic_sink, session_id=session_id)
         #: Ingest-time hardening configuration (issues #464 / #484 / #488).
@@ -407,7 +380,7 @@ class ProxyRuntime:
         self._catalog = Catalog()
         for item in items:
             self._catalog.register(item)
-        self._upstream_names = _UpstreamNameIndex(by_tool_id=upstream_index)
+        self._upstream_names = UpstreamNameIndex(by_tool_id=upstream_index)
         self._raw_tool_defs = raw_defs
         if items:
             self._graph = self._tree_builder.build(items)
@@ -538,7 +511,7 @@ class ProxyRuntime:
         if self._rate_limiter is not None:
             decision = self._rate_limiter.check(_TOOL_BROWSE)
             if not decision.allowed:
-                limited = _rate_limited_error("", decision)
+                limited = rate_limited_error("", decision)
                 self._telemetry.browse_completed(
                     limited,
                     duration_ms=(perf_counter() - started) * 1000,
@@ -790,6 +763,30 @@ class ProxyRuntime:
         upstream_name = self._upstream_names.by_tool_id.get(tool_id, hydrated.item.name)
         read_only = not hydrated.item.side_effects
 
+        # Runtime authorization gate (issue #373): decide allow/deny/approval
+        # after schema validation and *before* any upstream dispatch. A denied or
+        # approval-required tool is never called upstream. Dry runs skip the gate.
+        if not dry_run and self._policy is not None:
+            policy_error = execute_policy_error(
+                self._policy,
+                hydrated.item,
+                tool_id=tool_id,
+                upstream_name=upstream_name,
+                args=args,
+                read_only=read_only,
+                raw_def=self._raw_tool_defs.get(tool_id, {}),
+                exposure_mode=self._mode.value,
+            )
+            if policy_error is not None:
+                self._telemetry.execute_failed(
+                    tool_id,
+                    policy_error,
+                    duration_ms=(perf_counter() - started) * 1000,
+                    namespace=namespace,
+                    arg_keys=arg_keys,
+                )
+                return policy_error
+
         # Per-session quota (issue #482). Dry runs evaluate the limit for the
         # report but never consume quota.
         rate_decision = RateLimitDecision(allowed=True)
@@ -798,7 +795,7 @@ class ProxyRuntime:
                 _TOOL_EXECUTE, tool_id=tool_id, record=not dry_run
             )
         if not dry_run and not rate_decision.allowed:
-            error = _rate_limited_error(tool_id, rate_decision)
+            error = rate_limited_error(tool_id, rate_decision)
             self._telemetry.execute_failed(
                 tool_id,
                 error,
@@ -811,15 +808,11 @@ class ProxyRuntime:
         # Dry run (issue #483): every pre-dispatch check ran above; report the
         # would-be call without dispatching upstream or writing artifacts.
         if dry_run:
-            report = DryRunReport(
-                tool_id=tool_id,
-                upstream_name=upstream_name,
-                args_valid=True,
-                annotations=_unverified_annotations(self._raw_tool_defs.get(tool_id, {})),
-                checks=[
-                    {"name": "schema_validation", "status": "pass"},
-                    {"name": "rate_limit", "status": "pass" if rate_decision.allowed else "fail"},
-                ],
+            report = build_dry_run_report(
+                tool_id,
+                upstream_name,
+                self._raw_tool_defs.get(tool_id, {}),
+                rate_allowed=rate_decision.allowed,
             )
             self._telemetry.execute_dry_run(
                 tool_id,
@@ -886,28 +879,11 @@ class ProxyRuntime:
         raw = outcome.raw
         assert raw is not None  # narrow: outcome.error is None ⇒ raw is populated
         envelope, binaries, full_text = mcp_result_to_envelope(raw, upstream_name)
-        # Persist binaries on the session's artifact store so subsequent
-        # tool_view calls can drill in.  Text content larger than the
-        # firewall threshold is also persisted under a deterministic
-        # handle so the gateway's view path can address it.
-        artifact_store = self._context_manager.artifact_store
-        for handle, (data, mime, label) in binaries.items():
-            if not artifact_store.exists(handle):
-                artifact_store.put(handle=handle, content=data, media_type=mime, label=label)
-        if full_text:
-            content_bytes = full_text.encode("utf-8")
-            text_hash = hashlib.sha256(content_bytes).hexdigest()[:16]
-            text_handle = f"text:{tool_id}:{text_hash}"
-            if artifact_store.exists(text_handle):
-                text_ref = artifact_store.ref(text_handle)
-            else:
-                text_ref = artifact_store.put(
-                    handle=text_handle,
-                    content=content_bytes,
-                    media_type="text/plain",
-                    label=f"text result from {tool_id}",
-                )
-            envelope.artifacts.append(text_ref)
+        # Persist binaries + oversized text so subsequent tool_view calls can
+        # drill in (#34); helper keeps this module within its size ceiling.
+        persist_result_artifacts(
+            self._context_manager.artifact_store, envelope, binaries, full_text, tool_id
+        )
         envelope.provenance.setdefault("tool_id", tool_id)
         if repairs:
             # Surface every applied normalization so the behaviour is auditable
@@ -938,15 +914,30 @@ class ProxyRuntime:
     def view(self, handle: str, selector: dict[str, Any]) -> str | GatewayError:
         """Drill into a previously stored artifact (#34).
 
-        Returns the sliced text content, or a :class:`GatewayError` with
-        code ``VIEW_FAILED`` if the handle is unknown or the selector is
-        invalid.
+        Returns the sliced text content, or a :class:`GatewayError`: ``VIEW_FAILED``
+        for an unknown handle/invalid selector, or ``POLICY_DENIED`` /
+        ``AUTH_REQUIRED`` when the runtime :class:`ToolPolicy` forbids raw egress
+        for this handle — ``tool_view`` is the intentional raw-recovery surface and
+        is governed by the same policy as ``tool_execute`` (issue #746; see
+        ``docs/security_model.md``).
         """
         started = perf_counter()
+        if self._policy is not None:
+            policy_error = view_policy_error(
+                self._policy, handle, selector, exposure_mode=self._mode.value
+            )
+            if policy_error is not None:
+                self._telemetry.view_completed(
+                    handle,
+                    str(selector.get("type", "")),
+                    policy_error,
+                    duration_ms=(perf_counter() - started) * 1000,
+                )
+                return policy_error
         if self._rate_limiter is not None:
             decision = self._rate_limiter.check(_TOOL_VIEW)
             if not decision.allowed:
-                limited = _rate_limited_error(handle, decision)
+                limited = rate_limited_error(handle, decision)
                 self._telemetry.view_completed(
                     handle,
                     str(selector.get("type", "")),
