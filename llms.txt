@@ -14,6 +14,8 @@ Python ≥ 3.10.
 - [Quickstart](docs/quickstart.md): 10-minute guide to context builds, firewall, and routing
 - [Daily Driver](docs/daily_driver.md): Operator workflow, client instructions, fit guidance, and debugging
 - [MCP Security Model](docs/security_model.md): Gateway data flow, trust boundaries, artifact exposure, and hardening
+- [MCP Gateway Security Guide](docs/security_mcp_gateway.md): Least-privilege gateway ops: secrets, destructive tools, policy gate
+- [Sensitivity & Redaction](docs/sensitivity.md): Levels, floor/action, redaction hooks, verification, and limits
 - [MCP Client Recipes](docs/recipes/index.md): Claude Desktop, Claude Code, GitHub Copilot, and Cursor setup
 - [MCP Integration](docs/integration_mcp.md): MCP adapter functions, JSONL format, end-to-end example
 - [A2A Integration](docs/integration_a2a.md): A2A adapter functions, multi-agent sessions

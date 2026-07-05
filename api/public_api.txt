@@ -443,7 +443,13 @@
       def call_tool(self, tool_name: 'str', arguments: 'dict[str, Any]') -> 'dict[str, Any]'
       def list_tools(self) -> 'list[dict[str, Any]]'
   PROXY_META_TOOL_NAMES: tuple
-  class ProxyRuntime(upstream: 'UpstreamCall', *, mode: 'ExposureMode' = ..., context_manager: 'ContextManager | None' = ..., tree_builder: 'TreeBuilder | None' = ..., beam_width: 'int' = ..., top_k: 'int' = ..., cache_stable: 'bool' = ..., diagnostic_sink: 'DiagnosticSink | None' = ..., session_id: 'str | None' = ..., redact_secrets: 'bool' = ..., on_invalid: "Literal['skip', 'raise']" = ..., schema_limits: 'SchemaLimits | None' = ..., tolerant_args: 'bool' = ..., retry_policy: 'RetryPolicy | None' = ..., rate_limiter: 'RateLimiter | None' = ..., result_cache: 'ToolResultCache | None' = ..., retry_sleep: 'Sleeper | None' = ..., jitter_source: 'Callable[[], float] | None' = ...) -> 'None'
+  class PolicyContext(meta_tool: 'MetaTool', tool_id: 'str' = ..., namespace: 'str' = ..., tool_name: 'str' = ..., args: 'dict[str, Any]' = ..., read_only: 'bool' = ..., annotations: 'dict[str, Any]' = ..., tags: 'tuple[str, ...]' = ..., exposure_mode: 'str' = ...) -> None
+  class PolicyDecision(action: 'PolicyAction', reason: 'str', rule_index: 'int | None' = ...) -> None
+  class PolicyRule(action: 'PolicyAction', meta_tool: 'MetaTool | None' = ..., namespace: 'str | None' = ..., tool: 'str | None' = ..., tags: 'tuple[str, ...]' = ..., read_only: 'bool | None' = ..., reason: 'str' = ...) -> None
+      def from_dict(cls, data: 'dict[str, Any]') -> 'PolicyRule'
+      def matches(self, ctx: 'PolicyContext') -> 'bool'
+      def to_dict(self) -> 'dict[str, Any]'
+  class ProxyRuntime(upstream: 'UpstreamCall', *, mode: 'ExposureMode' = ..., context_manager: 'ContextManager | None' = ..., tree_builder: 'TreeBuilder | None' = ..., beam_width: 'int' = ..., top_k: 'int' = ..., cache_stable: 'bool' = ..., diagnostic_sink: 'DiagnosticSink | None' = ..., session_id: 'str | None' = ..., redact_secrets: 'bool' = ..., policy: 'ToolPolicy | None' = ..., on_invalid: "Literal['skip', 'raise']" = ..., schema_limits: 'SchemaLimits | None' = ..., tolerant_args: 'bool' = ..., retry_policy: 'RetryPolicy | None' = ..., rate_limiter: 'RateLimiter | None' = ..., result_cache: 'ToolResultCache | None' = ..., retry_sleep: 'Sleeper | None' = ..., jitter_source: 'Callable[[], float] | None' = ...) -> 'None'
       def browse(self, *, query: 'str | None' = ..., path: 'str | None' = ..., top_k: 'int | None' = ...) -> 'list[ChoiceCard] | GatewayError'
       def execute(self, tool_id: 'str', args: 'dict[str, Any]', *, dry_run: 'bool' = ...) -> 'ResultEnvelope | GatewayError | DryRunReport'
       def hydrate(self, tool_id: 'str') -> 'HydrationResult | GatewayError'
@@ -491,6 +497,10 @@
   class StubUpstream(tool_defs: 'list[dict[str, Any]]', handler: 'Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None' = ...) -> 'None'
       def call_tool(self, tool_name: 'str', arguments: 'dict[str, Any]') -> 'dict[str, Any]'
       def list_tools(self) -> 'list[dict[str, Any]]'
+  class ToolPolicy(default: 'PolicyAction' = ..., rules: 'list[PolicyRule]' = ...) -> None
+      def decide(self, ctx: 'PolicyContext') -> 'PolicyDecision'
+      def from_dict(cls, data: 'dict[str, Any]') -> 'ToolPolicy'
+      def to_dict(self) -> 'dict[str, Any]'
   class ToolResultCache(*, ttl_seconds: 'float' = ..., max_entries: 'int' = ..., allow: 'frozenset[str] | None' = ..., clock: 'Clock' = ...) -> 'None'
       def admits(self, tool_id: 'str') -> 'bool'
       def get(self, key: 'str') -> 'ResultEnvelope | None'

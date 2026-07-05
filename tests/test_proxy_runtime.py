@@ -1123,3 +1123,139 @@ async def test_duplicate_raw_name_across_upstreams_collapses_to_first() -> None:
     # catalog never holds an ambiguous canonical-id → upstream-name mapping.
     assert registered == 1
     assert len(runtime.list_tool_ids()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Runtime authorization gate — tool_execute (#373) + tool_view parity (#746)
+# ---------------------------------------------------------------------------
+
+
+def _recording_upstream() -> tuple[StubUpstream, list[str]]:
+    """A stub upstream that records every tool name it is asked to dispatch."""
+    dispatched: list[str] = []
+
+    async def handler(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        dispatched.append(name)
+        return {"content": [{"type": "text", "text": f"ran {name}"}], "isError": False}
+
+    return StubUpstream(_tool_defs(), handler=handler), dispatched
+
+
+async def test_execute_policy_deny_never_dispatches_upstream() -> None:
+    from contextweaver.adapters.gateway_authz import PolicyRule, ToolPolicy
+
+    upstream, dispatched = _recording_upstream()
+    policy = ToolPolicy(rules=[PolicyRule(action="deny", tool="*create*")])
+    runtime = ProxyRuntime(upstream, policy=policy)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+
+    err = await runtime.execute(tool_id, {"title": "Bug report"})
+
+    assert isinstance(err, GatewayError)
+    assert err.code == "POLICY_DENIED"
+    assert dispatched == []  # the upstream tool was never called
+
+
+async def test_execute_policy_require_approval_returns_auth_required() -> None:
+    from contextweaver.adapters.gateway_authz import PolicyRule, ToolPolicy
+
+    upstream, dispatched = _recording_upstream()
+    policy = ToolPolicy(rules=[PolicyRule(action="require_approval", namespace="github")])
+    runtime = ProxyRuntime(upstream, policy=policy)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+
+    err = await runtime.execute(tool_id, {"title": "Bug report"})
+
+    assert isinstance(err, GatewayError)
+    assert err.code == "AUTH_REQUIRED"
+    assert dispatched == []
+
+
+async def test_execute_policy_allow_dispatches_normally() -> None:
+    from contextweaver.adapters.gateway_authz import PolicyRule, ToolPolicy
+
+    upstream, dispatched = _recording_upstream()
+    # Deny only the filesystem namespace; github tools stay allowed.
+    policy = ToolPolicy(rules=[PolicyRule(action="deny", namespace="filesystem")])
+    runtime = ProxyRuntime(upstream, policy=policy)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+
+    result = await runtime.execute(tool_id, {"title": "Bug report"})
+
+    assert isinstance(result, ResultEnvelope)
+    assert result.status == "ok"
+    assert len(dispatched) == 1
+
+
+async def test_view_policy_denies_raw_egress_but_execute_still_works() -> None:
+    """A view-scoped deny blocks tool_view while leaving tool_execute allowed."""
+    from contextweaver.adapters.gateway_authz import PolicyRule, ToolPolicy
+
+    long_text = "secret line one\nsecret line two"
+
+    async def textual(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": long_text}], "isError": False}
+
+    defs = _tool_defs()
+    policy = ToolPolicy(rules=[PolicyRule(action="deny", meta_tool="tool_view")])
+    runtime = ProxyRuntime(StubUpstream(defs, handler=textual), policy=policy)
+    runtime.register_tool_defs_sync(defs)
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+
+    envelope = await runtime.execute(tool_id, {"title": "x"})
+    assert isinstance(envelope, ResultEnvelope)  # execute is allowed
+    handle = envelope.artifacts[0].handle
+
+    err = runtime.view(handle, {"type": "head", "chars": 8})
+    assert isinstance(err, GatewayError)
+    assert err.code == "POLICY_DENIED"
+    # The error path is the handle the caller passed, so the denial is attributable.
+    assert err.path == handle
+    # The raw bytes are still in the store; the gate — not absence — blocks egress.
+    assert runtime.context_manager.artifact_store.exists(handle)
+
+
+async def test_execute_dry_run_reports_policy_verdict_without_dispatch() -> None:
+    """dry_run reflects the authorization decision (a "policy" check) but never dispatches."""
+    from contextweaver.adapters.gateway_authz import PolicyRule, ToolPolicy
+
+    upstream, dispatched = _recording_upstream()
+    policy = ToolPolicy(rules=[PolicyRule(action="deny", tool="*create*")])
+    runtime = ProxyRuntime(upstream, policy=policy)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+
+    report = await runtime.execute(tool_id, {"title": "x"}, dry_run=True)
+
+    assert isinstance(report, DryRunReport)
+    policy_checks = [c for c in report.checks if c["name"] == "policy"]
+    assert policy_checks == [{"name": "policy", "status": "POLICY_DENIED"}]
+    assert dispatched == []  # dry run never dispatches
+
+
+async def test_execute_dry_run_policy_check_absent_without_policy() -> None:
+    runtime = _make_runtime()
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    report = await runtime.execute(tool_id, {"title": "x"}, dry_run=True)
+    assert isinstance(report, DryRunReport)
+    assert not any(c["name"] == "policy" for c in report.checks)
+
+
+async def test_view_allowed_without_policy() -> None:
+    """Without a policy, tool_view returns the slice as before (no regression)."""
+    long_text = "line one\nline two"
+
+    async def textual(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": long_text}], "isError": False}
+
+    defs = _tool_defs()
+    runtime = ProxyRuntime(StubUpstream(defs, handler=textual))
+    runtime.register_tool_defs_sync(defs)
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    envelope = await runtime.execute(tool_id, {"title": "x"})
+    handle = envelope.artifacts[0].handle  # type: ignore[union-attr]
+
+    assert runtime.view(handle, {"type": "head", "chars": 8}) == "line one"

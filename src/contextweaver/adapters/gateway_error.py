@@ -32,6 +32,8 @@ GatewayErrorCode = Literal[
     "AUTH_FAILED",
     "PERMISSION_DENIED",
     "RATE_LIMITED",
+    "POLICY_DENIED",
+    "AUTH_REQUIRED",
     "HYDRATE_FAILED",
     "VIEW_FAILED",
     "RESOURCE_NOT_FOUND",
@@ -56,7 +58,9 @@ class GatewayError:
             ``AUTH_FAILED`` / ``PERMISSION_DENIED`` / ``RATE_LIMITED`` codes
             classify failures from the wrapped MCP server (issue #485);
             ``SCHEMA_INVALID`` flags an upstream tool schema that failed
-            ingest-time validation (issue #484); ``HYDRATE_FAILED`` and
+            ingest-time validation (issue #484); ``POLICY_DENIED`` /
+            ``AUTH_REQUIRED`` are the runtime authorization verdicts returned
+            before dispatch/egress (issue #373); ``HYDRATE_FAILED`` and
             ``VIEW_FAILED`` cover the gateway's other two meta-tools.
         message: A short, human-readable description of the failure.  For
             upstream failures this is redacted detail safe for model context.

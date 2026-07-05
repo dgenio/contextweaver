@@ -1175,6 +1175,18 @@ def serve_api_command(
     rate_limit = RateLimit(max_calls_per_minute=rate_per_minute) if rate_per_minute else None
     config = SidecarConfig(api_key=api_key, rate_limit=rate_limit, max_body_bytes=max_body_bytes)
     app_obj = SidecarApp(router=router, config=config)
+    # Loud opt-out (#744): the sidecar's /v1/compact does not yet scrub secrets
+    # end-to-end (tracked in #745), and an unauthenticated bind exposes it to any
+    # local caller. Surface both as an explicit startup warning so an unprotected
+    # deployment is a visible choice, not a silent default.
+    if api_key is None:
+        print(
+            "WARNING: sidecar bound without --api-key (CONTEXTWEAVER_SIDECAR_API_KEY) — "
+            "/v1/route and /v1/compact are unauthenticated. /v1/compact does not scrub "
+            "secrets in tool output (see issue #745); do not send secret-bearing payloads "
+            "over an untrusted network.",
+            file=sys.stderr,
+        )
     print(f"contextweaver sidecar listening on http://{host}:{port} (Ctrl-C to stop)")
     serve_api(app_obj, host=host, port=port)
 

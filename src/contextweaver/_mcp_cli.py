@@ -41,6 +41,7 @@ import yaml
 from contextweaver._incident_pack import build_incident_pack, default_incident_pack_path
 from contextweaver._incident_pack_files import DEFAULT_MAX_FILE_BYTES
 from contextweaver._version import __version__
+from contextweaver.adapters.gateway_authz import ToolPolicy
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
 from contextweaver.adapters.gateway_policy import RateLimitPolicy, RetryPolicy
@@ -50,6 +51,7 @@ from contextweaver.adapters.mcp_primitive_upstream import StubPrimitiveUpstream
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
+from contextweaver.context.classify import HeuristicSensitivityClassifier
 from contextweaver.context.manager import ContextManager
 from contextweaver.diagnostics import (
     DiagnosticSink,
@@ -141,6 +143,8 @@ _CONFIG_KEYS: frozenset[str] = frozenset(
         "retry",
         "rate_limits",
         "cache",
+        "redact",
+        "policy",
     }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
@@ -245,9 +249,13 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
     for int_key in ("top_k", "beam_width"):
         if int_key in data:
             data[int_key] = _coerce_config_int(int_key, data[int_key])
-    for bool_key in ("cache_stable", "quiet"):
+    for bool_key in ("cache_stable", "quiet", "redact"):
         if bool_key in data:
             data[bool_key] = _coerce_config_bool(bool_key, data[bool_key])
+    if "policy" in data and not isinstance(data["policy"], dict):
+        raise typer.BadParameter(
+            f"policy must be a mapping, got {data['policy']!r}", param_hint="--config"
+        )
     if "diagnostics" in data:
         diagnostics_path = Path(str(data["diagnostics"])).expanduser()
         if not diagnostics_path.is_absolute():
@@ -619,6 +627,8 @@ def _build_runtime(
     cache_stable: bool,
     diagnostic_sink: DiagnosticSink | None = None,
     state_dir: Path | None = None,
+    secure: bool = True,
+    policy: ToolPolicy | None = None,
     retry_policy: RetryPolicy | None = None,
     rate_limiter: RateLimiter | None = None,
     result_cache: ToolResultCache | None = None,
@@ -637,6 +647,14 @@ def _build_runtime(
             with file-backed stores so artifact handles and event history
             survive a restart; when ``None`` (default), in-memory stores are
             used and state is lost on exit.
+        secure: Secure-by-default serving posture (issue #744).  When ``True``
+            (default) the runtime's :class:`ContextManager` runs the
+            :class:`~contextweaver.context.classify.HeuristicSensitivityClassifier`
+            and ``redact_secrets`` so unlabelled tool output carrying secrets/PII
+            is classified and scrubbed before reaching the prompt.  ``False``
+            (``--no-redact``) serves with those firewall protections off.
+        policy: Optional runtime authorization gate (issue #373) applied before
+            ``tool_execute`` dispatch and ``tool_view`` egress.
         retry_policy: Optional upstream-retry policy (issue #529).
         rate_limiter: Optional per-session quota enforcer (issue #482).
         result_cache: Optional read-only response cache (issue #512).
@@ -646,8 +664,14 @@ def _build_runtime(
     """
     tool_defs = _load_tool_defs_from_catalog(catalog_path)
     exposure = ExposureMode.GATEWAY if mode == _ServeMode.gateway else ExposureMode.TRANSPARENT
-    context_manager = (
-        ContextManager(stores=_build_state_stores(state_dir)) if state_dir is not None else None
+    # Secure-by-default (#744): classify + scrub at the serving entrypoint so the
+    # firewall's headline protections are on unless the operator opts out. The
+    # library-level ``ContextManager`` defaults stay permissive; this hardening is
+    # applied here, at the gateway boundary.
+    context_manager = ContextManager(
+        stores=_build_state_stores(state_dir) if state_dir is not None else None,
+        sensitivity_classifier=HeuristicSensitivityClassifier() if secure else None,
+        redact_secrets=secure,
     )
     runtime = ProxyRuntime(
         StubUpstream(tool_defs, handler=_stub_handler),
@@ -657,6 +681,8 @@ def _build_runtime(
         cache_stable=cache_stable,
         diagnostic_sink=diagnostic_sink,
         context_manager=context_manager,
+        redact_secrets=secure,
+        policy=policy,
         retry_policy=retry_policy,
         rate_limiter=rate_limiter,
         result_cache=result_cache,
@@ -971,6 +997,17 @@ def serve(
             help="Suppress lifecycle messages on stderr.",
         ),
     ] = False,
+    redact: Annotated[
+        bool,
+        typer.Option(
+            "--redact/--no-redact",
+            help=(
+                "Secure-by-default: classify and scrub secrets/PII in tool output "
+                "before it reaches the prompt (issue #744). --no-redact serves with "
+                "the firewall's secret/PII protections OFF."
+            ),
+        ),
+    ] = True,
     transport: Annotated[
         str,
         typer.Option("--transport", help="Transport protocol: 'stdio' or 'sse'."),
@@ -1012,11 +1049,15 @@ def serve(
     retry_policy: RetryPolicy | None = None
     rate_limiter: RateLimiter | None = None
     result_cache: ToolResultCache | None = None
+    # Runtime authorization gate (#373) is config-only; stays None unless set.
+    policy: ToolPolicy | None = None
 
     # Config file fills any option not passed explicitly on the command line.
     if config is not None:
         cfg = _load_serve_config(config)
         retry_policy, rate_limiter, result_cache = _build_dispatch_controls(cfg)
+        if "policy" in cfg:
+            policy = ToolPolicy.from_dict(cfg["policy"])
 
         def _from_cli(param: str) -> bool:
             source = ctx.get_parameter_source(param)
@@ -1044,6 +1085,8 @@ def serve(
             state_dir = Path(str(cfg["state_dir"]))
         if not _from_cli("quiet") and "quiet" in cfg:
             quiet = cfg["quiet"]
+        if not _from_cli("redact") and "redact" in cfg:
+            redact = cfg["redact"]
         if not _from_cli("transport") and "transport" in cfg:
             transport = str(cfg["transport"])
         if not _from_cli("host") and "host" in cfg:
@@ -1075,6 +1118,8 @@ def serve(
         cache_stable=cache_stable,
         diagnostic_sink=diagnostic_sink,
         state_dir=state_dir,
+        secure=redact,
+        policy=policy,
         retry_policy=retry_policy,
         rate_limiter=rate_limiter,
         result_cache=result_cache,
@@ -1105,8 +1150,20 @@ def serve(
             f"transport={transport} catalog={catalog} tools={tool_count} "
             f"primitives={primitives} top_k={top_k} "
             f"beam_width={beam_width} cache_stable={cache_stable} "
+            f"redact={'on' if redact else 'off'} policy={'on' if policy else 'off'} "
             f"version={version} diagnostics={diagnostics or 'off'} "
             f"state_dir={state_dir or 'in-memory'}",
+            err=True,
+        )
+
+    # Loud opt-out (#744): a serving posture with the firewall's secret/PII
+    # protections disabled is a deliberate downgrade — make it visible at startup
+    # even when lifecycle chatter is otherwise suppressed.
+    if not redact:
+        typer.echo(
+            "contextweaver mcp serve: WARNING secret/PII redaction is OFF "
+            "(--no-redact) — unlabelled tool output may reach the prompt "
+            "unscrubbed. Omit --no-redact to serve secure-by-default.",
             err=True,
         )
 

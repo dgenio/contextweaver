@@ -14,6 +14,8 @@
     docs/quickstart.md
     docs/daily_driver.md
     docs/security_model.md
+    docs/security_mcp_gateway.md
+    docs/sensitivity.md
     docs/recipes/index.md
     docs/recipes/claude_code.md
     docs/integration_mcp.md
@@ -70,7 +72,8 @@ contextweaver start                  # choose gateway, library, routing, or inte
 Already have a loop and not sure which piece you need? The two engines also work
 [routing-only or firewall-only](docs/which_pattern.md).
 For day-to-day operating guidance, see the [Daily Driver guide](docs/daily_driver.md);
-for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md).
+for deployment boundaries, see the [MCP Gateway Security Model](docs/security_model.md)
+and the least-privilege [MCP Gateway Security Guide](docs/security_mcp_gateway.md).
 
 <p align="center">
   <img src="docs/assets/hero.svg" alt="contextweaver architecture: Context Engine plus Routing Engine, with the Context Firewall storing large tool outputs out of band and the Routing Engine narrowing a 100-tool catalog to 5 ChoiceCards."/>
@@ -1854,6 +1857,79 @@ This page describes deployment boundaries. Vulnerability reporting remains in
 the repository's
 [`SECURITY.md`](https://github.com/dgenio/contextweaver/blob/main/SECURITY.md).
 
+For a task-oriented walkthrough of running the gateway in front of powerful
+MCP servers (secrets, destructive tools, least privilege), see
+[MCP Gateway Security Guide](security_mcp_gateway.md). For configuring the
+sensitivity/redaction subsystem, see the
+[Sensitivity & Redaction guide](sensitivity.md).
+
+## Default security posture
+
+The serving entrypoints are **secure by default** (issue #744). `contextweaver
+mcp serve` runs with the deterministic
+[`HeuristicSensitivityClassifier`](sensitivity.md) and secret scrubbing
+(`redact_secrets`) enabled, so unlabelled tool output that carries
+credential-shaped or PII-shaped content is classified and scrubbed before it
+reaches a prompt-bound summary or a `ChoiceCard`. This is a deliberate
+divergence from the library-level `ContextManager`, whose defaults stay
+permissive for embedding in existing pipelines — the hardening is applied at
+the gateway boundary, where an operator reasonably expects the firewall's
+headline protections to be on.
+
+Turn the protections off with `contextweaver mcp serve --no-redact` (or
+`redact: false` in the config file). Doing so prints a one-line startup
+**warning** to stderr, so an unprotected posture is always a visible choice,
+never a silent default.
+
+The HTTP sidecar (`contextweaver serve-api`) is a thinner surface: its
+`/v1/compact` endpoint does **not** yet scrub secrets end-to-end (tracked in
+issue #745). Binding it without `--api-key` prints a startup warning; do not
+send secret-bearing payloads to an unauthenticated sidecar over an untrusted
+network.
+
+This decision is recorded here so it is not "simplified" away: the serving
+defaults must stay secure-by-default, and any change that weakens them is a
+security-relevant change requiring review.
+
+## Runtime authorization: the policy gate
+
+Reducing a large MCP surface to `tool_browse` / `tool_execute` / `tool_view`
+moves the practical safety boundary into the gateway. contextweaver therefore
+provides an explicit, deterministic **policy gate** evaluated before any
+upstream dispatch and before any raw artifact egress (issue #373).
+
+A `ToolPolicy` is an ordered list of match → action rules with a default
+action. Each rule may match on the upstream `namespace`, a case-sensitive glob
+over the tool id/name (`tool`), catalog `tags`, `read_only`, and the surface
+(`meta_tool`: `tool_execute` or `tool_view`). The first matching rule wins;
+otherwise the `default` applies. Actions are:
+
+- `allow` — proceed normally.
+- `deny` — return a `POLICY_DENIED` `GatewayError`; the upstream tool is
+  **never** called and no raw content is returned.
+- `require_approval` — return an `AUTH_REQUIRED` `GatewayError` (with
+  `details.approval = "required"`) so a host or custom loop can surface it for
+  human sign-off.
+
+The default (`ToolPolicy()` / no policy configured) allows everything, so
+existing deployments are unchanged; opt into `deny` / `require_approval` rules,
+or set `default: deny` for an allowlist posture. Configure it under the
+`policy` key of `mcp serve --config`:
+
+```yaml
+policy:
+  default: allow
+  rules:
+    - { namespace: github, tool: "issues.*", action: allow }
+    - { tags: [destructive], action: require_approval }
+    - { tool: "*delete*", action: deny }
+    - { meta_tool: tool_view, namespace: secrets, action: deny }  # block raw egress
+```
+
+MCP annotations such as `readOnlyHint` / `destructiveHint` are untrusted hints
+and are **not** the enforcement mechanism — the policy is. Annotations may
+inform a rule's authoring, but the gate decides.
+
 ## Data flow
 
 ```text
@@ -1966,7 +2042,14 @@ loss prevention system or security sandbox.
 - Summaries and extracted facts can still contain sensitive values unless a
   sensitivity or redaction policy removes them.
 - `tool_view` deliberately re-exposes selected artifact content to the MCP
-  client and therefore potentially to the model provider.
+  client and therefore potentially to the model provider. It is the intentional
+  raw-recovery surface, governed by the same `ToolPolicy` as `tool_execute`
+  (issue #746): a `meta_tool: tool_view` rule can `deny` or `require_approval`
+  raw egress per namespace/tool. Note that gateway artifacts are stored
+  unredacted **at rest** (the scrubbing applies to prompt-bound summaries and
+  cards, not the raw bytes), so the policy gate — not the firewall — is what
+  bounds raw egress; attribution is best-effort for handles that do not encode
+  a tool id.
 - The current in-memory gateway store has no TTL, total-size quota, or
   per-handle authorization policy.
 - Current selectors accept caller-provided ranges; deployments should use
@@ -1974,11 +2057,13 @@ loss prevention system or security sandbox.
 - The gateway does not neutralize prompt injection contained in a tool result.
   The host prompt and execution policy must treat tool content as untrusted.
 
-Artifact TTLs, size limits, bounded views, redaction, provenance, and a view
-policy hook are tracked in
-[#375](https://github.com/dgenio/contextweaver/issues/375). Until those
-controls ship, high-sensitivity deployments should wrap or disable raw view
-access in their host integration.
+A policy gate for `tool_view` egress now exists (issue #746, above). Artifact
+TTLs, size limits, bounded-view selectors, store-time redaction, and
+provenance remain tracked in
+[#375](https://github.com/dgenio/contextweaver/issues/375). Until those ship,
+high-sensitivity deployments should deny raw `tool_view` via policy (or in
+their host integration) rather than relying on artifacts being scrubbed at
+rest — they are not.
 
 ## Non-goals
 
@@ -2033,6 +2118,287 @@ Before exposing a gateway to users, answer:
 
 If these answers are undefined, the deployment is not made safe by adding a
 context firewall.
+
+---
+
+<!-- FILE: docs/security_mcp_gateway.md -->
+
+# MCP Gateway Security Guide
+
+A local MCP gateway launches upstream servers that may receive secrets through
+environment variables and expose tools that read files, modify repositories,
+call APIs, or delete resources. This guide is the task-oriented companion to the
+[Security Model](security_model.md): how to run contextweaver in front of
+powerful MCP servers with least privilege.
+
+For the conceptual trust boundaries and non-goals, read the
+[Security Model](security_model.md) first. For tuning the sensitivity/redaction
+subsystem, see the [Sensitivity & Redaction guide](sensitivity.md).
+
+## Threats this addresses
+
+- Secrets passed to upstream servers via environment variables.
+- Destructive tools exposed to the model by default.
+- Workspace filesystem access broader than intended.
+- Confusion between read-only and write-capable tools.
+- Raw tool output (with embedded secrets) reachable via `tool_view`.
+- Secrets leaking into diagnostics or error messages.
+
+## Start secure by default
+
+`contextweaver mcp serve` is secure by default (issue #744): it classifies and
+scrubs secret/PII-shaped content in tool output before it reaches the prompt.
+Keep it that way — only pass `--no-redact` when you have a specific reason, and
+note it prints a startup warning when you do.
+
+```bash
+contextweaver mcp serve --config gateway.yaml   # secure by default
+```
+
+## Least privilege: deny destructive tools before they can be called
+
+The runtime [policy gate](security_model.md#runtime-authorization-the-policy-gate)
+is the enforcement point. Prefer a **default-deny allowlist** for untrusted or
+high-blast-radius estates, and require approval for destructive operations:
+
+```yaml
+# gateway.yaml
+catalog: ./catalog.json
+redact: true          # explicit; this is also the default
+policy:
+  default: deny       # allowlist posture — nothing runs unless matched
+  rules:
+    - { namespace: github, tool: "issues.*", action: allow }
+    - { namespace: github, tool: "pull_requests.*", action: allow }
+    - { namespace: filesystem, tool: "read_*", action: allow }
+    - { tags: [destructive], action: require_approval }
+    - { tool: "*delete*", action: deny }
+    - { meta_tool: tool_view, namespace: secrets, action: deny }
+```
+
+`deny` means the upstream tool is never invoked; `require_approval` returns an
+`AUTH_REQUIRED` error a host can surface for human sign-off. This is enforced by
+contextweaver regardless of whether the upstream server implements its own
+controls — do not rely on MCP `readOnlyHint`/`destructiveHint` annotations as
+policy; they are untrusted hints.
+
+## Keep secrets out of committed config
+
+Upstream servers often need tokens (e.g. a GitHub PAT). Never commit them.
+Reference environment variables from the client/launcher and keep the values in
+your shell or a secret manager:
+
+```jsonc
+// .vscode/mcp.json — the token lives in the environment, not the file
+{
+  "servers": {
+    "github": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"]
+    }
+  }
+}
+```
+
+Add gateway configs, persistent state directories (`--state-dir`), and artifact
+directories to `.gitignore` when they can contain machine paths or credentials.
+
+## Bound raw egress
+
+`tool_view` re-exposes raw artifact bytes and is the intentional
+raw-recovery surface. Gateway artifacts are stored **unredacted at rest** — the
+scrubbing applies to prompt-bound summaries and cards, not the raw bytes. For
+sensitive estates, deny or approval-gate raw egress with a `meta_tool: tool_view`
+policy rule (see the example above) rather than assuming artifacts are scrubbed.
+
+## Diagnostics do not print secret values
+
+The built-in JSONL diagnostics stream (`mcp serve --diagnostics FILE`) records
+canonical tool/artifact handles, namespaces, argument *key names*, sizes,
+timings, and error codes — **not** query text, argument values, result text, or
+artifact bytes. Upstream exception text (which can carry hostnames, paths, or
+tokens) is control-character-stripped and length-capped before it reaches
+model-visible context; the full detail stays operator-side in logs. Still,
+treat the diagnostics file as operationally sensitive: restrict its permissions
+and define a retention policy. Use `--quiet` only to suppress lifecycle chatter,
+not as an access-control substitute.
+
+## The HTTP sidecar
+
+`contextweaver serve-api` is a thinner surface. Its `/v1/compact` endpoint does
+not yet scrub secrets end-to-end (issue #745), and an unauthenticated bind
+exposes it to any local caller. Set `--api-key` (or
+`CONTEXTWEAVER_SIDECAR_API_KEY`), bind to a trusted interface, and do not send
+secret-bearing payloads over an untrusted network. Binding without a key prints
+a startup warning.
+
+## Checklist
+
+- [ ] Serve with redaction on (default); justify any `--no-redact`.
+- [ ] Use a `default: deny` policy for untrusted estates; `require_approval` for
+      destructive tools; `deny` `*delete*`-style tools.
+- [ ] Deny or approval-gate `tool_view` for sensitive namespaces.
+- [ ] Keep tokens in the environment/secret manager, never in committed config.
+- [ ] `.gitignore` gateway config, `--state-dir`, and artifact directories.
+- [ ] Restrict permissions/retention on the diagnostics file.
+- [ ] Authenticate the sidecar (`--api-key`) and keep it off untrusted networks.
+- [ ] Remember: authorization and side-effect execution still ultimately rest
+      with the upstream server and host — the gateway narrows and gates, it does
+      not replace them.
+
+---
+
+<!-- FILE: docs/sensitivity.md -->
+
+# Sensitivity & Redaction
+
+Sensitivity enforcement is contextweaver's security-grade subsystem. It decides
+which context items may reach a prompt and which are dropped or redacted first.
+This page is the operator's configuration manual: the levels, the floor/action
+knobs, how to write a redaction hook, how enforcement interacts with the
+firewall and drilldown, how to verify it, and its limits.
+
+> Misconfiguration here is a data-exposure risk. Every behavioural claim below
+> is checked against the source; do not assume defaults are more permissive than
+> stated.
+
+## The four levels
+
+`Sensitivity` is an ordered enum (lowest → highest):
+
+| Level | Meaning (suggested) |
+|---|---|
+| `public` | Safe to send anywhere. **Default for unlabelled items.** |
+| `internal` | Team-internal; not for external model providers without review. |
+| `confidential` | Sensitive business/PII data. |
+| `restricted` | Credential-shaped / regulated content; the tightest class. |
+
+Map these onto your organisation's classification scheme; the ordering is what
+enforcement relies on, not the names.
+
+## Floor and action
+
+Enforcement is driven by two `ContextPolicy` fields:
+
+- `sensitivity_floor` (default **`confidential`**): items **at or above** the
+  floor are enforced.
+- `sensitivity_action` (default **`drop`**): what enforcement does — `"drop"`
+  removes the item entirely; `"redact"` replaces its text via the configured
+  redaction hooks and keeps a scrubbed placeholder.
+
+```python
+from contextweaver import ContextManager
+from contextweaver.config import ContextPolicy
+from contextweaver.types import Sensitivity
+
+# Redact (not drop) anything confidential-or-higher, using the built-in mask hook.
+policy = ContextPolicy(
+    sensitivity_floor=Sensitivity.confidential,
+    sensitivity_action="redact",
+    redaction_hooks=["mask"],
+)
+manager = ContextManager(policy=policy)
+```
+
+| Goal | floor | action |
+|---|---|---|
+| Drop anything sensitive silently (default) | `confidential` | `drop` |
+| Keep structure but scrub sensitive text | `confidential` | `redact` |
+| Only ever drop credential-shaped content | `restricted` | `drop` |
+
+The defaults are deliberately conservative. **Do not weaken them** without
+review — see the sensitivity rule in the repo's agent guidance.
+
+## Labelling: don't rely on defaults
+
+Unlabelled items default to `public`, so enforcement never sees content the
+caller forgot to classify. Two mechanisms raise labels before enforcement:
+
+- **`HeuristicSensitivityClassifier`** (opt-in, deterministic) inspects item
+  text and *raises* the label to `restricted` for credential-shaped content or
+  `confidential` for PII-shaped markers (email/SSN/card). It can only raise,
+  never lower. `contextweaver mcp serve` enables it by default (secure-by-default,
+  issue #744); pass it to a library `ContextManager` explicitly:
+
+  ```python
+  from contextweaver.context.classify import HeuristicSensitivityClassifier
+  manager = ContextManager(sensitivity_classifier=HeuristicSensitivityClassifier())
+  ```
+
+- **`redact_secrets=True`** runs a deterministic secret-scrubbing pass over
+  firewall summaries and extracted facts before they reach the prompt.
+
+## Redaction hooks
+
+`sensitivity_action="redact"` applies the hooks named in
+`ContextPolicy.redaction_hooks`, in order. Two are built in and registered at
+import:
+
+- `"mask"` — `MaskRedactionHook`: replaces the item's text with a masked
+  placeholder and drops its `artifact_ref` so the rendered prompt cannot
+  advertise a handle that drilldown could dereference back to the original.
+- `"secret"` — `SecretRedactor`: substring-scrubs secret shapes from the text
+  (complements, does not replace, the mask hook).
+
+Register your own hook (it must implement the `RedactionHook` protocol —
+`redact(item) -> ContextItem`):
+
+```python
+from dataclasses import replace
+
+from contextweaver.context.sensitivity import register_redaction_hook
+from contextweaver.types import ContextItem
+
+
+class BlankRedactor:
+    """Mirror MaskRedactionHook's contract: replace text, clear the artifact ref,
+    and stamp metadata["redacted"] so the handle can't be dereferenced back."""
+
+    def redact(self, item: ContextItem) -> ContextItem:
+        metadata = dict(item.metadata)
+        metadata["redacted"] = True
+        return replace(item, text="[REDACTED]", artifact_ref=None, metadata=metadata)
+
+
+register_redaction_hook("blank", BlankRedactor())
+# then reference it: ContextPolicy(sensitivity_action="redact", redaction_hooks=["blank"])
+```
+
+## How it interacts with the rest of the pipeline
+
+- **Filter runs before the firewall.** In the context pipeline, the sensitivity
+  filter (stage 3) runs *before* `apply_firewall` (stage 4), so sensitive
+  payloads are dropped/redacted before any summariser or extractor sees them.
+- **Drilldown cannot launder content back in.** `ContextManager.drilldown`
+  enforces the floor against the artifact's source item: recovering the raw
+  bytes of a dropped/redacted item raises `PolicyViolationError` unless
+  `ContextPolicy.allow_redacted_drilldown=True` (issue #451).
+- **Gateway `tool_view` is governed by the policy gate, not this filter.**
+  Gateway artifacts are stored unredacted at rest; bound raw egress with a
+  `meta_tool: tool_view` rule in the [security model](security_model.md), not by
+  assuming they are scrubbed.
+
+## Verifying your configuration
+
+The repo ships classification fixtures under `tests/fixtures/sensitivity/`
+(`public`, `internal`, `confidential`, `restricted`, `pii_like`, `secret_like`).
+Use them (or your own) to assert that your floor/action behave as intended, and
+add a test that a known-sensitive payload never appears in a built pack's
+rendered prompt.
+
+## Limitations
+
+- **Enforcement is label-dependent.** Without a classifier, an unlabelled
+  sensitive item is treated as `public`. Enable
+  `HeuristicSensitivityClassifier` (or label at ingest) for defence in depth.
+- **No content inspection by default.** The classifier is pattern-based and
+  deterministic — it is not a full DLP engine and will miss novel secret shapes.
+- **`redact` keeps structure.** Redaction replaces text but the item still
+  occupies a slot; use `drop` when the item must not appear at all.
+- Sensitivity routing does not authenticate users or authorize tool execution —
+  those remain host/upstream responsibilities (see
+  [Security Model](security_model.md)).
 
 ---
 
