@@ -170,6 +170,32 @@ def test_from_dict_rejects_bad_action() -> None:
         ToolPolicy.from_dict({"rules": [{"action": "maybe"}]})
 
 
+def test_from_dict_rejects_string_tags() -> None:
+    # A bare string would otherwise iterate into per-character tags.
+    with pytest.raises(ConfigError):
+        ToolPolicy.from_dict({"rules": [{"action": "deny", "tags": "destructive"}]})
+
+
+def test_from_dict_rejects_non_bool_read_only() -> None:
+    with pytest.raises(ConfigError):
+        ToolPolicy.from_dict({"rules": [{"action": "deny", "read_only": "yes"}]})
+
+
+def test_from_dict_rejects_non_list_rules() -> None:
+    with pytest.raises(ConfigError):
+        ToolPolicy.from_dict({"rules": {"action": "deny"}})
+
+
+def test_from_dict_rejects_non_mapping_rule() -> None:
+    with pytest.raises(ConfigError):
+        ToolPolicy.from_dict({"rules": ["deny"]})
+
+
+def test_from_dict_accepts_list_tags() -> None:
+    policy = ToolPolicy.from_dict({"rules": [{"action": "deny", "tags": ["destructive", "write"]}]})
+    assert policy.rules[0].tags == ("destructive", "write")
+
+
 def test_from_dict_rejects_bad_meta_tool() -> None:
     with pytest.raises(ConfigError):
         ToolPolicy.from_dict({"rules": [{"action": "deny", "meta_tool": "tool_frobnicate"}]})

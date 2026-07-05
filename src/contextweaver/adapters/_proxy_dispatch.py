@@ -103,18 +103,32 @@ def rate_limited_error(path: str, decision: RateLimitDecision) -> GatewayError:
 
 
 def build_dry_run_report(
-    tool_id: str, upstream_name: str, raw_def: dict[str, Any], *, rate_allowed: bool
+    tool_id: str,
+    upstream_name: str,
+    raw_def: dict[str, Any],
+    *,
+    rate_allowed: bool,
+    policy_status: str | None = None,
 ) -> DryRunReport:
-    """Build the ``tool_execute(dry_run=True)`` report (#483) — no dispatch."""
+    """Build the ``tool_execute(dry_run=True)`` report (#483) — no dispatch.
+
+    ``policy_status`` mirrors the runtime authorization verdict so a dry run
+    reflects real execution authorization (issue #373): ``"pass"`` when the
+    policy would allow, otherwise the blocking code (``"POLICY_DENIED"`` /
+    ``"AUTH_REQUIRED"``).  ``None`` (no policy configured) omits the check.
+    """
+    checks = [
+        {"name": "schema_validation", "status": "pass"},
+        {"name": "rate_limit", "status": "pass" if rate_allowed else "fail"},
+    ]
+    if policy_status is not None:
+        checks.append({"name": "policy", "status": policy_status})
     return DryRunReport(
         tool_id=tool_id,
         upstream_name=upstream_name,
         args_valid=True,
         annotations=unverified_annotations(raw_def),
-        checks=[
-            {"name": "schema_validation", "status": "pass"},
-            {"name": "rate_limit", "status": "pass" if rate_allowed else "fail"},
-        ],
+        checks=checks,
     )
 
 
@@ -169,4 +183,9 @@ def view_policy_error(
         read_only=True,
         exposure_mode=exposure_mode,
     )
-    return policy_gate_error(policy, ctx)
+    error = policy_gate_error(policy, ctx)
+    if error is not None:
+        # The handle is what the caller passed and what they need to attribute
+        # the denial to — always report it, even when the tool_id is unknown.
+        error.path = handle
+    return error

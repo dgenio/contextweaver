@@ -764,9 +764,12 @@ class ProxyRuntime:
         read_only = not hydrated.item.side_effects
 
         # Runtime authorization gate (issue #373): decide allow/deny/approval
-        # after schema validation and *before* any upstream dispatch. A denied or
-        # approval-required tool is never called upstream. Dry runs skip the gate.
-        if not dry_run and self._policy is not None:
+        # after schema validation and *before* any upstream dispatch. The verdict
+        # is computed for dry runs too, so a dry run reflects real authorization
+        # (surfaced as a "policy" check below); only a real call is blocked here,
+        # and a denied/approval-required tool is never dispatched upstream.
+        policy_error: GatewayError | None = None
+        if self._policy is not None:
             policy_error = execute_policy_error(
                 self._policy,
                 hydrated.item,
@@ -777,7 +780,7 @@ class ProxyRuntime:
                 raw_def=self._raw_tool_defs.get(tool_id, {}),
                 exposure_mode=self._mode.value,
             )
-            if policy_error is not None:
+            if not dry_run and policy_error is not None:
                 self._telemetry.execute_failed(
                     tool_id,
                     policy_error,
@@ -813,6 +816,11 @@ class ProxyRuntime:
                 upstream_name,
                 self._raw_tool_defs.get(tool_id, {}),
                 rate_allowed=rate_decision.allowed,
+                policy_status=(
+                    None
+                    if self._policy is None
+                    else ("pass" if policy_error is None else policy_error.code)
+                ),
             )
             self._telemetry.execute_dry_run(
                 tool_id,

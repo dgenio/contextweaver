@@ -160,7 +160,15 @@ class PolicyRule:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PolicyRule:
-        """Deserialise from a config dict, validating enum-shaped fields."""
+        """Deserialise from a config dict, validating shape and enum fields.
+
+        Fails fast with :class:`~contextweaver.exceptions.ConfigError` on
+        malformed input rather than silently misbehaving — e.g. a bare
+        ``tags: destructive`` string (which would otherwise iterate into
+        per-character tags) or a non-boolean ``read_only``.
+        """
+        if not isinstance(data, dict):
+            raise ConfigError(f"PolicyRule entry must be a mapping, got {data!r}")
         action = data.get("action")
         if action not in POLICY_ACTIONS:
             raise ConfigError(f"PolicyRule.action must be one of {POLICY_ACTIONS}, got {action!r}")
@@ -170,13 +178,20 @@ class PolicyRule:
                 f"PolicyRule.meta_tool must be one of {META_TOOLS} or omitted, got {meta_tool!r}"
             )
         tags = data.get("tags") or []
+        # A str/bytes is iterable, so ``tags: destructive`` would become
+        # per-character tags — reject it explicitly.
+        if isinstance(tags, (str, bytes)) or not isinstance(tags, (list, tuple)):
+            raise ConfigError(f"PolicyRule.tags must be a list of strings, got {tags!r}")
+        read_only = data.get("read_only")
+        if read_only is not None and not isinstance(read_only, bool):
+            raise ConfigError(f"PolicyRule.read_only must be a boolean, got {read_only!r}")
         return cls(
             action=action,
             meta_tool=meta_tool,
             namespace=data.get("namespace"),
             tool=data.get("tool"),
             tags=tuple(str(tag) for tag in tags),
-            read_only=data.get("read_only"),
+            read_only=read_only,
             reason=str(data.get("reason", "")),
         )
 
@@ -221,7 +236,10 @@ class ToolPolicy:
             raise ConfigError(
                 f"ToolPolicy.default must be one of {POLICY_ACTIONS}, got {default!r}"
             )
-        rules = [PolicyRule.from_dict(rule) for rule in (data.get("rules") or [])]
+        rules_raw = data.get("rules") or []
+        if not isinstance(rules_raw, list):
+            raise ConfigError(f"ToolPolicy.rules must be a list, got {rules_raw!r}")
+        rules = [PolicyRule.from_dict(rule) for rule in rules_raw]
         return cls(default=default, rules=rules)
 
 

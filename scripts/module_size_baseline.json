@@ -7,7 +7,7 @@
   "adapters/gateway_diagnostics.py": 323,
   "adapters/gemini_contents.py": 307,
   "adapters/mcp.py": 401,
-  "adapters/proxy_runtime.py": 1031,
+  "adapters/proxy_runtime.py": 1039,
   "adapters/pydantic_ai.py": 348,
   "adapters/smolagents.py": 527,
   "adapters/weaver_contracts.py": 537,

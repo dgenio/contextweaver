@@ -1212,8 +1212,36 @@ async def test_view_policy_denies_raw_egress_but_execute_still_works() -> None:
     err = runtime.view(handle, {"type": "head", "chars": 8})
     assert isinstance(err, GatewayError)
     assert err.code == "POLICY_DENIED"
+    # The error path is the handle the caller passed, so the denial is attributable.
+    assert err.path == handle
     # The raw bytes are still in the store; the gate — not absence — blocks egress.
     assert runtime.context_manager.artifact_store.exists(handle)
+
+
+async def test_execute_dry_run_reports_policy_verdict_without_dispatch() -> None:
+    """dry_run reflects the authorization decision (a "policy" check) but never dispatches."""
+    from contextweaver.adapters.gateway_authz import PolicyRule, ToolPolicy
+
+    upstream, dispatched = _recording_upstream()
+    policy = ToolPolicy(rules=[PolicyRule(action="deny", tool="*create*")])
+    runtime = ProxyRuntime(upstream, policy=policy)
+    runtime.register_tool_defs_sync(_tool_defs())
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+
+    report = await runtime.execute(tool_id, {"title": "x"}, dry_run=True)
+
+    assert isinstance(report, DryRunReport)
+    policy_checks = [c for c in report.checks if c["name"] == "policy"]
+    assert policy_checks == [{"name": "policy", "status": "POLICY_DENIED"}]
+    assert dispatched == []  # dry run never dispatches
+
+
+async def test_execute_dry_run_policy_check_absent_without_policy() -> None:
+    runtime = _make_runtime()
+    tool_id = next(i for i in runtime.list_tool_ids() if i.startswith("github:create_issue"))
+    report = await runtime.execute(tool_id, {"title": "x"}, dry_run=True)
+    assert isinstance(report, DryRunReport)
+    assert not any(c["name"] == "policy" for c in report.checks)
 
 
 async def test_view_allowed_without_policy() -> None:
