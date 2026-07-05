@@ -32,6 +32,11 @@
       "items": { "type": "string" },
       "default": [],
       "description": "JSON-path allow-list for the structured projection strategy."
+    },
+    "redact_secrets": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, scrub well-known secret shapes from the returned payload, summary, and facts (issue #745)."
     }
   }
 }

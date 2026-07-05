@@ -212,3 +212,57 @@ def test_config_round_trip_omits_secret() -> None:
     restored = SidecarConfig.from_dict({**out, "rate_limit": {"max_calls_per_minute": 5}})
     assert restored.rate_limit is not None
     assert restored.rate_limit.max_calls_per_minute == 5
+
+
+# --- secret scrubbing on /v1/compact (issue #745) ---------------------------
+
+_SC_TOKEN = "sk-ant-" + "api03-" + "zY9xW8vU" * 4
+_SC_MASK = "[REDACTED-SECRET]"
+
+
+def test_compact_scrubs_when_request_opts_in() -> None:
+    app = SidecarApp(router=None)
+    status, body = app.dispatch(
+        "POST",
+        "/v1/compact",
+        {},
+        _body({"data": {"note": f"key {_SC_TOKEN}"}, "redact_secrets": True}),
+    )
+    assert status == 200
+    assert _SC_TOKEN not in json.dumps(body["payload"])
+    assert _SC_MASK in json.dumps(body["payload"])
+
+
+def test_compact_not_scrubbed_by_default() -> None:
+    app = SidecarApp(router=None)
+    status, body = app.dispatch(
+        "POST", "/v1/compact", {}, _body({"data": {"note": f"key {_SC_TOKEN}"}})
+    )
+    assert status == 200
+    assert _SC_TOKEN in json.dumps(body["payload"])
+
+
+def test_compact_server_default_forces_scrub() -> None:
+    # Config redact_secrets=True scrubs even when the request omits the flag.
+    app = SidecarApp(router=None, config=SidecarConfig(redact_secrets=True))
+    status, body = app.dispatch(
+        "POST", "/v1/compact", {}, _body({"data": {"note": f"key {_SC_TOKEN}"}})
+    )
+    assert status == 200
+    assert _SC_TOKEN not in json.dumps(body["payload"])
+    assert _SC_MASK in json.dumps(body["payload"])
+
+
+def test_compact_scrubs_summarizing_branch_over_threshold() -> None:
+    app = SidecarApp(router=None)
+    big = f"{_SC_TOKEN} " + "words " * 400
+    status, body = app.dispatch(
+        "POST",
+        "/v1/compact",
+        {},
+        _body({"data": big, "threshold_chars": 100, "redact_secrets": True}),
+    )
+    assert status == 200
+    assert body["firewalled"] is True
+    assert _SC_TOKEN not in json.dumps(body["payload"])
+    assert _SC_TOKEN not in (body["summary"] or "")

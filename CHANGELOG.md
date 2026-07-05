@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Secret-scrubbing parity across every prompt-bound surface (#742, #743, #745).**
+  A coordinated pass closing three gaps where secret scrubbing reached only one
+  of several parallel paths:
+  - **Broader secret detection (#742).** `secrets.py` gains provider/SaaS token
+    patterns — OpenAI (`sk-…`/`sk-proj-…`), Anthropic (`sk-ant-…`), GitHub
+    fine-grained PATs (`github_pat_…`), Slack app tokens (`xapp-…`), Stripe
+    (`sk_live_`/`rk_live_`), and SendGrid (`SG.…`) — so `contains_secret` and
+    `scrub_secrets` catch the credential classes most likely to appear in
+    AI-agent tool output. New `scrub_secrets_in_obj` recursively scrubs string
+    leaves of a JSON-like value with its shape unchanged. The zipimport catalog
+    cache moves from world-writable `tempfile.gettempdir()/contextweaver/` to a
+    per-user cache dir (`$XDG_CACHE_HOME`/`~/.cache`) with an ownership check
+    before reuse (catalog-poisoning / TOCTOU hardening on shared POSIX hosts).
+  - **Resource/prompt gateway browse scrubbing (#743).** `PrimitiveGatewayRuntime`
+    / `PrimitiveIndex` now accept `redact_secrets`, matching the tool
+    `ProxyRuntime`, so resource/prompt ChoiceCards are scrubbed on the same
+    runtime. The query/path card-production logic is unified into one shared
+    `adapters/_bounded_browse.bounded_browse` helper that both runtimes call, so
+    future card-path hardening can no longer reach only one copy. `mcp serve`
+    threads its `--redact` choice into the primitive runtime. The tool path is
+    behavior-preserving (its `top_k` guard stays in the primitive wrapper).
+  - **Sidecar `/v1/compact` scrubbing (#745).** `compact_tool_result` gains a
+    `redact_secrets` option that scrubs the pass-through payload (string leaves,
+    shape unchanged), the text summary, the structured projection, and extracted
+    facts (the offloaded raw artifact is left intact). It is threaded through
+    `CompactRequest`, `SidecarConfig` (server-side default), and the published
+    `schemas/sidecar/v1/compact_request.schema.json`. Defaults off on every
+    surface (posture owned by #744).
 - **Runtime authorization / policy gate for the MCP gateway (#373).** New
   `ToolPolicy` (ordered `PolicyRule`s + default action) evaluated inside
   `ProxyRuntime.execute` after schema validation and **before** any upstream

@@ -15,6 +15,18 @@ from typing import Any
 
 from contextweaver.exceptions import ConfigError
 
+#: HTTP status code per :data:`~contextweaver.adapters.sidecar_contract.SidecarErrorCode`.
+STATUS_BY_CODE: dict[str, int] = {
+    "BAD_REQUEST": 400,
+    "UNAUTHORIZED": 401,
+    "RATE_LIMITED": 429,
+    "NOT_FOUND": 404,
+    "METHOD_NOT_ALLOWED": 405,
+    "PAYLOAD_TOO_LARGE": 413,
+    "ROUTING_UNAVAILABLE": 503,
+    "INTERNAL": 500,
+}
+
 
 def require_str(payload: dict[str, Any], key: str) -> str:
     """Return ``payload[key]`` as a non-empty ``str`` or raise ``ConfigError``."""
@@ -32,6 +44,16 @@ def opt_int(payload: dict[str, Any], key: str, default: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(f"sidecar request field {key!r} must be an integer")
     return int(value)
+
+
+def opt_bool(payload: dict[str, Any], key: str, default: bool) -> bool:
+    """Return ``payload[key]`` as a ``bool`` (default when absent/null)."""
+    value = payload.get(key, default)
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ConfigError(f"sidecar request field {key!r} must be a boolean")
+    return value
 
 
 def opt_str_list(payload: dict[str, Any], key: str) -> list[str]:

@@ -25,7 +25,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from contextweaver.adapters._sidecar_validation import bearer_token, parse_json_object
+from contextweaver.adapters._sidecar_validation import (
+    STATUS_BY_CODE,
+    bearer_token,
+    parse_json_object,
+)
 from contextweaver.adapters.gateway_controls import RateLimiter
 from contextweaver.adapters.gateway_policy import RateLimit, RateLimitPolicy
 from contextweaver.adapters.sidecar_contract import (
@@ -48,18 +52,6 @@ _RATE_BUCKET = "sidecar"
 #: client churning identities (rotating IPs/tokens) cannot grow the map unbounded.
 _MAX_LIMITERS = 4096
 
-#: HTTP status code per :data:`~contextweaver.adapters.sidecar_contract.SidecarErrorCode`.
-_STATUS_BY_CODE: dict[str, int] = {
-    "BAD_REQUEST": 400,
-    "UNAUTHORIZED": 401,
-    "RATE_LIMITED": 429,
-    "NOT_FOUND": 404,
-    "METHOD_NOT_ALLOWED": 405,
-    "PAYLOAD_TOO_LARGE": 413,
-    "ROUTING_UNAVAILABLE": 503,
-    "INTERNAL": 500,
-}
-
 
 @dataclass
 class SidecarConfig:
@@ -75,18 +67,23 @@ class SidecarConfig:
             ``PAYLOAD_TOO_LARGE`` error before parsing.
         deterministic: Forwarded to the firewall facade — when ``True``
             (default) ``/v1/compact`` fails closed rather than calling an LLM.
+        redact_secrets: Server-side default for ``/v1/compact`` scrubbing (#745).
+            When ``True`` every compaction is scrubbed; when ``False`` (default) a
+            request may still opt in via ``CompactRequest.redact_secrets``.
     """
 
     api_key: str | None = None
     rate_limit: RateLimit | None = None
     max_body_bytes: int = 1_048_576
     deterministic: bool = True
+    redact_secrets: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict (``api_key`` is omitted)."""
         out: dict[str, Any] = {
             "max_body_bytes": self.max_body_bytes,
             "deterministic": self.deterministic,
+            "redact_secrets": self.redact_secrets,
             "auth_required": self.api_key is not None,
         }
         if self.rate_limit is not None:
@@ -105,6 +102,7 @@ class SidecarConfig:
             rate_limit=RateLimit.from_dict(rate_raw) if isinstance(rate_raw, dict) else None,
             max_body_bytes=int(data.get("max_body_bytes", 1_048_576)),
             deterministic=bool(data.get("deterministic", True)),
+            redact_secrets=bool(data.get("redact_secrets", False)),
         )
 
 
@@ -230,6 +228,8 @@ class SidecarApp:
             strategy=req.strategy,
             keep=req.keep or None,
             deterministic=self.config.deterministic,
+            # Server default forces scrubbing on; a request may also opt in (#745).
+            redact_secrets=self.config.redact_secrets or req.redact_secrets,
         )
         saved = max(0, out.stats.original_tokens - out.stats.summary_tokens)
         return CompactResponse(
@@ -297,4 +297,4 @@ class SidecarApp:
             retryable=retryable,
             details=details or {},
         )
-        return _STATUS_BY_CODE[code], err.to_dict()
+        return STATUS_BY_CODE[code], err.to_dict()

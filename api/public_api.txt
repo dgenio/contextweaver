@@ -383,7 +383,7 @@
   def aggregate_feedback(entries: 'Iterable[ExecutionFeedback]') -> 'dict[str, ExecutionFeedback]'
   def build_inspection_report(pack: 'ContextPack', *, explanation: 'ContextBuildExplanation | None' = ..., artifacts: 'Iterable[dict[str, Any]]' = ..., routing: 'dict[str, Any] | None' = ..., budget: 'int | None' = ...) -> 'dict[str, Any]'
   def build_session_handoff_pack(event_log: 'EventLog', artifact_store: 'ArtifactStore', policy: 'ContextPolicy', estimator: 'TokenEstimator', *, budget_tokens: 'int' = ...) -> 'SessionHandoffPack'
-  def compact_tool_result(data: 'dict[str, Any] | list[Any] | str', *, threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'Strategy' = ..., keep: 'list[str] | None' = ..., artifact_store: 'ArtifactStore | None' = ..., summarizer: 'Summarizer | None' = ..., extractor: 'Extractor | None' = ..., deterministic: 'bool' = ..., token_model: 'str | None' = ..., overwrite_sidecar: 'bool' = ...) -> 'CompactResult'
+  def compact_tool_result(data: 'dict[str, Any] | list[Any] | str', *, threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'Strategy' = ..., keep: 'list[str] | None' = ..., artifact_store: 'ArtifactStore | None' = ..., summarizer: 'Summarizer | None' = ..., extractor: 'Extractor | None' = ..., deterministic: 'bool' = ..., token_model: 'str | None' = ..., overwrite_sidecar: 'bool' = ..., redact_secrets: 'bool' = ...) -> 'CompactResult'
   def compute_catalog_hash(items: 'list[SelectableItem]') -> 'str'
   config: module
   default_registry: EngineRegistry
@@ -392,7 +392,7 @@
   def drilldown_tool_spec() -> 'SelectableItem'
   envelope: module
   exceptions: module
-  def firewalled_tool_result(data: 'dict[str, Any] | list[Any] | str', *, threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'Strategy' = ..., keep: 'list[str] | None' = ..., artifact_store: 'ArtifactStore | None' = ..., summarizer: 'Summarizer | None' = ..., extractor: 'Extractor | None' = ..., deterministic: 'bool' = ..., token_model: 'str | None' = ..., overwrite_sidecar: 'bool' = ...) -> 'CompactResult'
+  def firewalled_tool_result(data: 'dict[str, Any] | list[Any] | str', *, threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'Strategy' = ..., keep: 'list[str] | None' = ..., artifact_store: 'ArtifactStore | None' = ..., summarizer: 'Summarizer | None' = ..., extractor: 'Extractor | None' = ..., deterministic: 'bool' = ..., token_model: 'str | None' = ..., overwrite_sidecar: 'bool' = ..., redact_secrets: 'bool' = ...) -> 'CompactResult'
   def generate_sample_catalog(n: 'int' = ..., seed: 'int' = ...) -> 'list[dict[str, Any]]'
   def generate_views(ref: 'ArtifactRef', data: 'bytes', registry: 'ViewRegistry | None' = ...) -> 'list[ViewSpec]'
   inspection: module
@@ -423,7 +423,7 @@
 ## contextweaver.adapters
   class CatalogRefreshReport(registered: 'int' = ..., skipped: 'list[SkippedTool]' = ..., schema_findings: 'list[SchemaFinding]' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
-  class CompactRequest(data: 'dict[str, Any] | list[Any] | str', threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'CompactStrategy' = ..., keep: 'list[str]' = ...) -> None
+  class CompactRequest(data: 'dict[str, Any] | list[Any] | str', threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'CompactStrategy' = ..., keep: 'list[str]' = ..., redact_secrets: 'bool' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'CompactRequest'
       def to_dict(self) -> 'dict[str, Any]'
   class CompactResponse(firewalled: 'bool', payload: 'Any', summary: 'str | None' = ..., facts: 'list[str]' = ..., artifact_ref: 'str | None' = ..., tokens_saved: 'int' = ..., api_version: 'str' = ...) -> None
@@ -481,7 +481,7 @@
   class SchemaLimits(max_bytes: 'int' = ..., max_depth: 'int' = ..., max_properties: 'int' = ...) -> None
   class SidecarApp(router: 'Router | None' = ..., config: 'SidecarConfig' = ..., clock: 'Callable[[], float]' = ...) -> None
       def dispatch(self, method: 'str', path: 'str', headers: 'dict[str, str]', body: 'bytes', *, client_id: 'str' = ...) -> 'tuple[int, dict[str, Any]]'
-  class SidecarConfig(api_key: 'str | None' = ..., rate_limit: 'RateLimit | None' = ..., max_body_bytes: 'int' = ..., deterministic: 'bool' = ...) -> None
+  class SidecarConfig(api_key: 'str | None' = ..., rate_limit: 'RateLimit | None' = ..., max_body_bytes: 'int' = ..., deterministic: 'bool' = ..., redact_secrets: 'bool' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'SidecarConfig'
       def to_dict(self) -> 'dict[str, Any]'
   class SidecarError(code: 'SidecarErrorCode', message: 'str', retryable: 'bool' = ..., details: 'dict[str, Any]' = ...) -> None

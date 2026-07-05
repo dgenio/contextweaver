@@ -42,9 +42,13 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from contextweaver.context._firewall_api_helpers import sidecar as _sidecar
+from contextweaver.context._firewall_api_helpers import to_text as _to_text
+from contextweaver.context._firewall_api_helpers import truncate_to_budget as _truncate_to_budget
 from contextweaver.envelope import FirewallStats
 from contextweaver.exceptions import ConfigError, ContextWeaverError
 from contextweaver.protocols import ArtifactStore, Extractor, Summarizer
+from contextweaver.secrets import scrub_secrets, scrub_secrets_in_obj
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.tokens import count as count_tokens
 from contextweaver.types import ContextItem, ItemKind
@@ -94,39 +98,6 @@ class CompactResult:
         }
 
 
-def _to_text(data: Any) -> tuple[str, str]:  # noqa: ANN401 — arbitrary JSON tool result
-    """Return ``(text, media_type)`` for *data* (deterministic JSON for non-str).
-
-    Raises:
-        ConfigError: If *data* is not JSON-serialisable.  We deliberately do
-            *not* fall back to ``json.dumps(default=str)`` — silently
-            stringifying arbitrary objects would break the determinism promise
-            (e.g. ``str(set)`` ordering) and could leak ``repr`` details such as
-            memory addresses into the prompt.
-    """
-    if isinstance(data, str):
-        return data, "text/plain"
-    try:
-        return json.dumps(data, sort_keys=True), "application/json"
-    except TypeError as exc:
-        raise ConfigError(
-            "compact_tool_result requires JSON-serialisable data (dict / list / "
-            f"str); got a non-serialisable value: {exc}"
-        ) from exc
-
-
-def _sidecar(stats: FirewallStats) -> dict[str, Any]:
-    """Build the reserved ``_cw`` sidecar payload from *stats*."""
-    return {
-        "firewalled": stats.triggered,
-        "strategy": stats.strategy,
-        "artifact_ref": stats.artifact_ref,
-        "original_chars": stats.original_chars,
-        "summary_chars": stats.summary_chars,
-        "summarized_by_llm": stats.summarized_by_llm,
-    }
-
-
 def compact_tool_result(
     data: dict[str, Any] | list[Any] | str,
     *,
@@ -140,6 +111,7 @@ def compact_tool_result(
     deterministic: bool = True,
     token_model: str | None = None,
     overwrite_sidecar: bool = False,
+    redact_secrets: bool = False,
 ) -> CompactResult:
     """Compact a single tool result in one call (firewall-only pattern).
 
@@ -174,6 +146,13 @@ def compact_tool_result(
             (reserved-namespace rule, issue #467).  Set ``True`` to opt into
             overwriting — useful when round-tripping prior contextweaver output
             back through the facade.
+        redact_secrets: When ``True`` (issue #745) well-known secret shapes are
+            scrubbed from every prompt-bound surface this call returns — the
+            schema-preserving pass-through payload (string leaves only, shape
+            unchanged), the inline text summary, and the projected structured
+            payload — via :func:`~contextweaver.secrets.scrub_secrets`. Defaults
+            to ``False`` (posture is owned by #744). The raw payload offloaded to
+            the *artifact_store* is left intact (out-of-band, gated by ``drilldown``).
 
     Returns:
         A :class:`CompactResult`.
@@ -230,10 +209,12 @@ def compact_tool_result(
         )
         # Shape-preserving: attach the sidecar only to dicts; lists/strings are
         # returned byte-identical so downstream field access never breaks (#403).
-        if isinstance(data, dict):
-            payload: Any = {**data, CW_SIDECAR_KEY: _sidecar(stats)}
+        # When redacting, scrub string leaves first (shape/keys unchanged, #745).
+        body = scrub_secrets_in_obj(data) if redact_secrets else data
+        if isinstance(body, dict):
+            payload: Any = {**body, CW_SIDECAR_KEY: _sidecar(stats)}
         else:
-            payload = data
+            payload = body
         return CompactResult(
             firewalled=False, payload=payload, summary=None, artifact_ref=None, stats=stats
         )
@@ -276,11 +257,16 @@ def compact_tool_result(
             projected = json.loads(summary)
         except (json.JSONDecodeError, ValueError):
             projected = summary
+        if redact_secrets:  # scrub prompt-bound projection; shape unchanged (#745)
+            projected = scrub_secrets_in_obj(projected)
+            summary = scrub_secrets(summary)
         if isinstance(projected, dict):
             payload = {**projected, CW_SIDECAR_KEY: _sidecar(stats)}
         else:
             payload = {"_cw_data": projected, CW_SIDECAR_KEY: _sidecar(stats)}
     else:
+        if redact_secrets:  # scrub before truncation so no partial secret survives
+            summary = scrub_secrets(summary)
         summary = _truncate_to_budget(summary, budget, token_model)
         stats.summary_chars = len(summary)
         stats.summary_tokens = count_tokens(summary, model=token_model)
@@ -290,25 +276,17 @@ def compact_tool_result(
             CW_SIDECAR_KEY: _sidecar(stats),
         }
 
+    facts = list(envelope.facts)
+    if redact_secrets:
+        facts = [scrub_secrets(fact) for fact in facts]
     return CompactResult(
         firewalled=True,
         payload=payload,
         summary=summary,
-        facts=list(envelope.facts),
+        facts=facts,
         artifact_ref=handle,
         stats=stats,
     )
-
-
-def _truncate_to_budget(summary: str, budget: int, token_model: str | None) -> str:
-    """Truncate *summary* so its token count stays within *budget* (soft cap)."""
-    if budget <= 0 or count_tokens(summary, model=token_model) <= budget:
-        return summary
-    # Approximate: ~4 chars/token, then trim until under budget.
-    trimmed = summary[: max(budget * 4, 1)]
-    while trimmed and count_tokens(trimmed, model=token_model) > budget:
-        trimmed = trimmed[: max(len(trimmed) - 64, 0)]
-    return trimmed + "…"
 
 
 #: Alias matching the name suggested in issue #399.

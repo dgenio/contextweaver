@@ -232,3 +232,52 @@ def test_structured_is_model_free_under_deterministic() -> None:
     )
     assert out.stats.strategy == "structured"
     assert out.stats.summarized_by_llm is False
+
+
+# --- secret scrubbing (issue #745) ------------------------------------------
+
+# Assembled from fragments (secret-scanner push protection), as in test_secrets.
+_TOKEN = "sk-ant-" + "api03-" + "zY9xW8vU" * 4
+_MASK = "[REDACTED-SECRET]"
+
+
+def test_redact_scrubs_passthrough_dict_leaves() -> None:
+    # Sub-threshold dict is passed through shape-unchanged, but string leaves
+    # are scrubbed when redact_secrets=True (#745).
+    out = compact_tool_result({"note": f"key {_TOKEN}", "n": 7}, redact_secrets=True)
+    assert out.firewalled is False
+    assert _TOKEN not in out.payload["note"]
+    assert _MASK in out.payload["note"]
+    assert out.payload["n"] == 7  # non-string scalar untouched, shape preserved
+
+
+def test_redact_off_by_default_leaves_passthrough_intact() -> None:
+    out = compact_tool_result({"note": f"key {_TOKEN}"})
+    assert out.payload["note"] == f"key {_TOKEN}"
+
+
+def test_redact_scrubs_passthrough_string() -> None:
+    out = compact_tool_result(f"here is {_TOKEN} done", redact_secrets=True)
+    assert out.firewalled is False
+    assert _TOKEN not in out.payload
+    assert _MASK in out.payload
+
+
+def test_redact_scrubs_text_summary_branch() -> None:
+    # Force the summarizing branch with a large secret-bearing text payload.
+    big = f"{_TOKEN} " + "context words here " * 200
+    out = compact_tool_result(big, threshold_chars=100, redact_secrets=True)
+    assert out.firewalled is True
+    assert out.summary is not None
+    assert _TOKEN not in out.summary
+    assert _TOKEN not in json.dumps(out.payload)
+
+
+def test_redact_scrubs_structured_projection() -> None:
+    big = {"rows": [{"secret": _TOKEN, "id": i} for i in range(80)]}
+    out = compact_tool_result(
+        big, threshold_chars=100, keep=["rows[].secret", "rows[].id"], redact_secrets=True
+    )
+    assert out.firewalled is True
+    assert _TOKEN not in json.dumps(out.payload)
+    assert _MASK in json.dumps(out.payload)

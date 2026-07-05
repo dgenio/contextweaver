@@ -35,10 +35,11 @@ Turn the protections off with `contextweaver mcp serve --no-redact` (or
 never a silent default.
 
 The HTTP sidecar (`contextweaver serve-api`) is a thinner surface: its
-`/v1/compact` endpoint does **not** yet scrub secrets end-to-end (tracked in
-issue #745). Binding it without `--api-key` prints a startup warning; do not
-send secret-bearing payloads to an unauthenticated sidecar over an untrusted
-network.
+`/v1/compact` endpoint **can** scrub secrets end-to-end (issue #745) — enable it
+with `redact_secrets: true` in the sidecar config (server-side default) or
+`"redact_secrets": true` per request; it is off by default (posture owned by
+#744). Binding it without `--api-key` prints a startup warning; do not send
+secret-bearing payloads to an unauthenticated sidecar over an untrusted network.
 
 This decision is recorded here so it is not "simplified" away: the serving
 defaults must stay secure-by-default, and any change that weakens them is a
