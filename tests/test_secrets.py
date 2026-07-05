@@ -18,6 +18,15 @@ GITHUB_TOKEN = "ghp_" + "a" * 36
 SLACK_TOKEN = "xoxb-" + "0" * 12 + "-" + "x" * 16
 GOOGLE_KEY = "AIza" + "B" * 35
 JWT = "eyJ" + "abcDEF123" * 2 + ".eyJ" + "ghiJKL456" * 2 + "." + "mnoPQR789" * 2
+# AI-provider and modern SaaS token shapes (issue #742).  Assembled from
+# fragments for the same secret-scanner reason as the fixtures above.
+OPENAI_KEY = "sk-" + "T3BlbkFJ" * 4  # sk- + 32 chars, no ``ant-``/``proj-`` prefix
+OPENAI_PROJECT_KEY = "sk-proj-" + "aB3dEfGh" * 4
+ANTHROPIC_KEY = "sk-ant-" + "api03" + "-" + "zY9xW8vU" * 4
+GITHUB_PAT = "github_pat_" + "1A" * 12  # github_pat_ + 24 chars
+SLACK_APP_TOKEN = "xapp-1-" + "A0" * 6 + "-" + "b1" * 8
+STRIPE_KEY = "sk_live_" + "51H8xQ2eZv" * 2  # sk_live_ + 20 chars
+SENDGRID_KEY = "SG." + "aB3dEfGh12" * 2 + "." + "zY9xW8vU76" * 5
 
 
 def test_aws_access_key_is_masked() -> None:
@@ -32,6 +41,41 @@ def test_github_slack_google_jwt_masked() -> None:
         out = scrub_secrets(f"token: {secret}")
         assert secret not in out
         assert DEFAULT_SECRET_MASK in out
+
+
+def test_ai_provider_and_saas_tokens_masked() -> None:
+    # Each new #742 shape must be both detected and masked.
+    for secret in (
+        OPENAI_KEY,
+        OPENAI_PROJECT_KEY,
+        ANTHROPIC_KEY,
+        GITHUB_PAT,
+        SLACK_APP_TOKEN,
+        STRIPE_KEY,
+        SENDGRID_KEY,
+    ):
+        text = f"tool output: {secret} end"
+        assert contains_secret(text), f"contains_secret missed {secret!r}"
+        out = scrub_secrets(text)
+        assert secret not in out, f"scrub_secrets left {secret!r} intact"
+        assert DEFAULT_SECRET_MASK in out
+        assert out.startswith("tool output: ") and out.endswith(" end")
+
+
+def test_anthropic_key_not_swallowed_by_openai_rule() -> None:
+    # The ``sk-ant-`` family is masked whole; no ``ant-...`` suffix leaks past
+    # a partial OpenAI-rule match.
+    out = scrub_secrets(f"key={ANTHROPIC_KEY}")
+    assert "ant-" not in out
+    assert ANTHROPIC_KEY not in out
+
+
+def test_bare_sk_prefix_below_length_floor_is_not_flagged() -> None:
+    # Short ``sk-`` slugs (e.g. a kebab-case identifier) stay below the 20-char
+    # floor so ordinary text is not over-matched.
+    text = "checkout the sk-demo branch"
+    assert not contains_secret(text)
+    assert scrub_secrets(text) == text
 
 
 def test_private_key_block_masked() -> None:
