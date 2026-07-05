@@ -187,6 +187,7 @@ class ProxyRuntime:
             hydrate, execute, and artifact-view events.
         session_id: Optional stable identifier attached to diagnostic events.
             A random identifier is generated when omitted.
+        policy: Optional authorization gate (issues #373 / #746); ``None`` allows every call.
         on_invalid: How to handle malformed upstream tool definitions and
             schemas at catalog ingest (issues #464 / #484).  ``"skip"`` (default)
             drops the offending tool and records it on
@@ -260,8 +261,7 @@ class ProxyRuntime:
         #: When ``True`` the gateway scrubs secret shapes from ChoiceCard text
         #: (name/description/tags) before they reach the prompt (issue #428).
         self._redact_secrets = redact_secrets
-        #: Runtime authorization gate for ``tool_execute`` / ``tool_view``
-        #: (issues #373 / #746). ``None`` (default) allows every call, as before.
+        #: Runtime authorization gate (see ``policy`` in the class docstring).
         self._policy = policy
         self._browsed_tool_ids: set[str] = set()
         # First-sighting frozen card content keyed by ``tool_id``. Used by
