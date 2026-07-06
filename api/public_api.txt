@@ -421,6 +421,8 @@
   def validate_selection(selected_id: 'str | None', candidate_ids: 'list[str]', *, repair: 'bool' = ...) -> 'SelectionValidation'
 
 ## contextweaver.adapters
+  class CacheConfig(read_only: 'bool' = ..., ttl_seconds: 'float' = ..., max_entries: 'int' = ..., allow: 'frozenset[str] | None' = ...) -> None
+      def to_dict(self) -> 'dict[str, Any]'
   class CatalogRefreshReport(registered: 'int' = ..., skipped: 'list[SkippedTool]' = ..., schema_findings: 'list[SchemaFinding]' = ...) -> None
       def to_dict(self) -> 'dict[str, Any]'
   class CompactRequest(data: 'dict[str, Any] | list[Any] | str', threshold_chars: 'int' = ..., budget: 'int' = ..., strategy: 'CompactStrategy' = ..., keep: 'list[str]' = ..., redact_secrets: 'bool' = ...) -> None
@@ -432,9 +434,14 @@
       def to_dict(self) -> 'dict[str, Any]'
   class ExposureMode(str, Enum)
       enum members: TRANSPARENT, GATEWAY
+  GATEWAY_PRESET_NAMES: tuple
+  GATEWAY_PRESET_SCHEMA: str
   GATEWAY_TOOL_NAMES: tuple
   class GatewayError(code: 'GatewayErrorCode', message: 'str', path: 'str' = ..., retryable: 'bool' = ..., details: 'dict[str, Any]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'GatewayError'
+      def to_dict(self) -> 'dict[str, Any]'
+  class GatewayPreset(name: 'str', schema: 'str', policy: 'ToolPolicy', retry: 'RetryPolicy', rate_limits: 'RateLimitPolicy', cache: 'CacheConfig') -> None
+      def from_preset(cls, name: 'str') -> 'GatewayPreset'
       def to_dict(self) -> 'dict[str, Any]'
   class McpClientUpstream(session: 'Any', *, timeout: 'float | None' = ...) -> 'None'
       def call_tool(self, tool_name: 'str', arguments: 'dict[str, Any]') -> 'dict[str, Any]'
@@ -460,8 +467,10 @@
       def view(self, handle: 'str', selector: 'dict[str, Any]') -> 'str | GatewayError'
   class RateLimit(max_calls_per_minute: 'int | None' = ..., max_calls_per_session: 'int | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'RateLimit'
+      def to_dict(self) -> 'dict[str, Any]'
   class RateLimitPolicy(per_meta_tool: 'dict[str, RateLimit]' = ..., per_tool: 'dict[str, RateLimit]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'RateLimitPolicy'
+      def to_dict(self) -> 'dict[str, Any]'
   class RateLimiter(policy: 'RateLimitPolicy', *, clock: 'Clock' = ...) -> 'None'
       def check(self, meta_tool: 'str', *, tool_id: 'str | None' = ..., record: 'bool' = ...) -> 'RateLimitDecision'
   class Repair(path: 'str', rule: 'str') -> None

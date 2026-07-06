@@ -159,6 +159,13 @@ class RateLimit:
             max_calls_per_session=_opt_int(data.get("max_calls_per_session")),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "max_calls_per_minute": self.max_calls_per_minute,
+            "max_calls_per_session": self.max_calls_per_session,
+        }
+
 
 @dataclass(frozen=True)
 class RateLimitPolicy:
@@ -202,6 +209,13 @@ class RateLimitPolicy:
                 raise ConfigError(f"unknown rate_limits key {key!r}; allowed: {allowed}, per_tool")
             per_meta_tool[key] = RateLimit.from_dict(value)
         return cls(per_meta_tool=per_meta_tool, per_tool=per_tool)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a dict mirroring the ``rate_limits`` config shape."""
+        result: dict[str, Any] = {k: v.to_dict() for k, v in sorted(self.per_meta_tool.items())}
+        if self.per_tool:
+            result["per_tool"] = {k: v.to_dict() for k, v in sorted(self.per_tool.items())}
+        return result
 
 
 @dataclass

@@ -89,6 +89,12 @@ from contextweaver.adapters.gateway_policy import (
     RateLimitPolicy,
     RetryPolicy,
 )
+from contextweaver.adapters.gateway_presets import (
+    GATEWAY_PRESET_NAMES,
+    GATEWAY_PRESET_SCHEMA,
+    CacheConfig,
+    GatewayPreset,
+)
 from contextweaver.adapters.gateway_validation import (
     CatalogRefreshReport,
     SchemaFinding,
@@ -197,13 +203,17 @@ from contextweaver.adapters.weaver_contracts import (
 
 __all__ = [
     "SIDECAR_API_VERSION",
+    "CacheConfig",
     "CatalogRefreshReport",
     "CompactRequest",
     "CompactResponse",
     "DryRunReport",
     "ExposureMode",
+    "GATEWAY_PRESET_NAMES",
+    "GATEWAY_PRESET_SCHEMA",
     "GATEWAY_TOOL_NAMES",
     "GatewayError",
+    "GatewayPreset",
     "McpClientUpstream",
     "MultiplexUpstream",
     "PROXY_META_TOOL_NAMES",

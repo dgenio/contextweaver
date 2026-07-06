@@ -45,6 +45,12 @@ from contextweaver.adapters.gateway_authz import ToolPolicy
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
 from contextweaver.adapters.gateway_policy import RateLimitPolicy, RetryPolicy
+from contextweaver.adapters.gateway_presets import (
+    GATEWAY_PRESET_NAMES,
+    GATEWAY_PRESET_SCHEMA,
+    CacheConfig,
+    GatewayPreset,
+)
 from contextweaver.adapters.gateway_primitives import PrimitiveGatewayRuntime
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 from contextweaver.adapters.mcp_primitive_upstream import StubPrimitiveUpstream
@@ -81,6 +87,14 @@ class _ConfigTarget(str, Enum):
     cursor = "cursor"
     claude_desktop = "claude_desktop"
     claude_code = "claude_code"
+
+
+class _PolicyPreset(str, Enum):
+    """Mirrors :data:`contextweaver.adapters.gateway_presets.GATEWAY_PRESET_NAMES`."""
+
+    safe = "safe"
+    balanced = "balanced"
+    throughput = "throughput"
 
 
 # Stable project slug for generated placeholders. Derived from the top-level
@@ -145,6 +159,7 @@ _CONFIG_KEYS: frozenset[str] = frozenset(
         "cache",
         "redact",
         "policy",
+        "policy_preset",
     }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
@@ -246,6 +261,12 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         raise typer.BadParameter(
             f"mode must be 'gateway' or 'proxy', got {data['mode']!r}", param_hint="--config"
         )
+    if "policy_preset" in data and str(data["policy_preset"]) not in GATEWAY_PRESET_NAMES:
+        valid = ", ".join(sorted(GATEWAY_PRESET_NAMES))
+        raise typer.BadParameter(
+            f"policy_preset must be one of {valid}, got {data['policy_preset']!r}",
+            param_hint="--config",
+        )
     for int_key in ("top_k", "beam_width"):
         if int_key in data:
             data[int_key] = _coerce_config_int(int_key, data[int_key])
@@ -272,38 +293,37 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
     return data
 
 
-def _build_dispatch_controls(
+def _build_dispatch_config(
     cfg: dict[str, Any],
-) -> tuple[RetryPolicy | None, RateLimiter | None, ToolResultCache | None]:
-    """Build the opt-in dispatch-path controls from config blocks (issues #529/#482/#512).
+) -> tuple[RetryPolicy | None, RateLimitPolicy | None, CacheConfig | None]:
+    """Build the opt-in dispatch-path *config* from config blocks (issues #529/#482/#512).
 
     Reads the optional ``retry``, ``rate_limits``, and ``cache`` config blocks
-    and constructs the matching policy objects, validating them at startup.
-    A ``cache`` block only builds a cache when ``read_only`` is truthy
-    (caching is opt-in; the gateway still gates on the upstream read-only hint).
+    and constructs the matching pure-data config objects, validating them at
+    startup. Returns config, not runtime behaviour, so a
+    :class:`~contextweaver.adapters.gateway_presets.GatewayPreset` block can
+    fill in for any block that is absent before :func:`_dispatch_behaviors`
+    builds the actual :class:`RateLimiter` / :class:`ToolResultCache`
+    (issue #664).
 
     Args:
         cfg: The validated config mapping from :func:`_load_serve_config`.
 
     Returns:
-        ``(retry_policy, rate_limiter, result_cache)`` — each ``None`` when its
-        block is absent.
+        ``(retry, rate_limits, cache)`` — each ``None`` when its block is
+        absent from *cfg*.
 
     Raises:
         typer.BadParameter: If any block is malformed.
     """
     try:
-        retry_policy = RetryPolicy.from_dict(cfg["retry"]) if "retry" in cfg else None
-        rate_limiter = (
-            RateLimiter(RateLimitPolicy.from_dict(cfg["rate_limits"]))
-            if "rate_limits" in cfg
-            else None
+        retry = RetryPolicy.from_dict(cfg["retry"]) if "retry" in cfg else None
+        rate_limits = (
+            RateLimitPolicy.from_dict(cfg["rate_limits"]) if "rate_limits" in cfg else None
         )
-        result_cache: ToolResultCache | None = None
+        cache: CacheConfig | None = None
         cache_cfg = cfg.get("cache")
-        if isinstance(cache_cfg, dict) and _coerce_config_bool(
-            "cache.read_only", cache_cfg.get("read_only", False)
-        ):
+        if isinstance(cache_cfg, dict):
             allow = cache_cfg.get("allow")
             if allow is not None and (
                 isinstance(allow, str)
@@ -312,14 +332,33 @@ def _build_dispatch_controls(
             ):
                 # A bare string would otherwise become a set of characters.
                 raise ConfigError("cache.allow must be a list of tool_id strings")
-            result_cache = ToolResultCache(
+            cache = CacheConfig(
+                read_only=_coerce_config_bool("cache.read_only", cache_cfg.get("read_only", False)),
                 ttl_seconds=float(cache_cfg.get("ttl_seconds", 60.0)),
                 max_entries=int(cache_cfg.get("max_entries", 256)),
                 allow=frozenset(allow) if allow is not None else None,
             )
     except (ContextWeaverError, ValueError, TypeError) as exc:
         raise typer.BadParameter(str(exc), param_hint="--config") from exc
-    return retry_policy, rate_limiter, result_cache
+    return retry, rate_limits, cache
+
+
+def _dispatch_behaviors(
+    rate_limits: RateLimitPolicy | None, cache: CacheConfig | None
+) -> tuple[RateLimiter | None, ToolResultCache | None]:
+    """Build the runtime behaviour objects from resolved (preset-or-explicit) config.
+
+    A ``cache`` config only builds a :class:`ToolResultCache` when
+    :attr:`CacheConfig.enabled` is true (caching is opt-in; the gateway still
+    gates on the upstream read-only hint).
+    """
+    rate_limiter = RateLimiter(rate_limits) if rate_limits is not None else None
+    result_cache: ToolResultCache | None = None
+    if cache is not None and cache.enabled:
+        result_cache = ToolResultCache(
+            ttl_seconds=cache.ttl_seconds, max_entries=cache.max_entries, allow=cache.allow
+        )
+    return rate_limiter, result_cache
 
 
 def _relative_to_cwd(path: Path) -> Path | None:
@@ -1010,6 +1049,31 @@ def serve(
             ),
         ),
     ] = True,
+    policy_preset: Annotated[
+        _PolicyPreset | None,
+        typer.Option(
+            "--policy-preset",
+            help=(
+                "Named starting point bundling the authorization policy, retry, "
+                "rate-limit, and cache config (issue #664): 'safe' (every "
+                "tool_execute requires approval), 'balanced' (allow-all, "
+                "moderate quotas), or 'throughput' (allow-all, no quotas, "
+                "read-only caching on). An explicit policy/retry/rate_limits/"
+                "cache config block still wins over the preset for that block."
+            ),
+        ),
+    ] = None,
+    print_effective_policy: Annotated[
+        bool,
+        typer.Option(
+            "--print-effective-policy",
+            help=(
+                "Print the resolved (preset-or-overridden) policy/retry/"
+                "rate_limits/cache config as JSON and exit. Does not require "
+                "the catalog to exist on disk."
+            ),
+        ),
+    ] = False,
     transport: Annotated[
         str,
         typer.Option("--transport", help="Transport protocol: 'stdio' or 'sse'."),
@@ -1046,18 +1110,21 @@ def serve(
             "--gateway and --proxy are mutually exclusive", param_hint="--gateway"
         )
 
-    # Opt-in dispatch-path controls are config-file only (no CLI flags); they
-    # stay None unless a config block supplies them.
+    # Opt-in dispatch-path config is config-file only (no CLI flags); it stays
+    # None unless a config block or --policy-preset/policy_preset supplies it.
     retry_policy: RetryPolicy | None = None
-    rate_limiter: RateLimiter | None = None
-    result_cache: ToolResultCache | None = None
+    rate_limits_policy: RateLimitPolicy | None = None
+    cache_config: CacheConfig | None = None
     # Runtime authorization gate (#373) is config-only; stays None unless set.
     policy: ToolPolicy | None = None
+    # Named preset (#664); an explicit policy/retry/rate_limits/cache block
+    # still wins over the preset for that block (resolved further below).
+    preset_name: str | None = policy_preset.value if policy_preset is not None else None
 
     # Config file fills any option not passed explicitly on the command line.
     if config is not None:
         cfg = _load_serve_config(config)
-        retry_policy, rate_limiter, result_cache = _build_dispatch_controls(cfg)
+        retry_policy, rate_limits_policy, cache_config = _build_dispatch_config(cfg)
         if "policy" in cfg:
             policy = ToolPolicy.from_dict(cfg["policy"])
 
@@ -1069,6 +1136,8 @@ def serve(
         # _load_serve_config, so consume them directly.
         if catalog is None and not _from_cli("catalog"):
             catalog = Path(str(cfg["catalog"]))
+        if not _from_cli("policy_preset") and "policy_preset" in cfg:
+            preset_name = str(cfg["policy_preset"])
         if not _from_cli("mode") and "mode" in cfg:
             mode = _ServeMode(str(cfg["mode"]))
         if not _from_cli("top_k") and "top_k" in cfg:
@@ -1096,6 +1165,31 @@ def serve(
         if not _from_cli("port") and "port" in cfg:
             port = int(cfg["port"])
 
+    # A preset only fills blocks that are still unset — an explicit
+    # policy/retry/rate_limits/cache block always wins wholesale (#664).
+    if preset_name is not None:
+        preset = GatewayPreset.from_preset(preset_name)
+        if policy is None:
+            policy = preset.policy
+        if retry_policy is None:
+            retry_policy = preset.retry
+        if rate_limits_policy is None:
+            rate_limits_policy = preset.rate_limits
+        if cache_config is None:
+            cache_config = preset.cache
+
+    if print_effective_policy:
+        effective = GatewayPreset(
+            name=preset_name if preset_name is not None else "custom",
+            schema=GATEWAY_PRESET_SCHEMA,
+            policy=policy if policy is not None else ToolPolicy(),
+            retry=retry_policy if retry_policy is not None else RetryPolicy(),
+            rate_limits=rate_limits_policy if rate_limits_policy is not None else RateLimitPolicy(),
+            cache=cache_config if cache_config is not None else CacheConfig(),
+        )
+        typer.echo(json.dumps(effective.to_dict(), indent=2, sort_keys=True))
+        raise typer.Exit(0)
+
     if catalog is None:
         raise typer.BadParameter(
             "provide a catalog via --catalog or a config file via --config",
@@ -1110,6 +1204,8 @@ def serve(
 
     if transport not in {"stdio", "sse"}:
         raise typer.BadParameter("--transport must be 'stdio' or 'sse'", param_hint="--transport")
+
+    rate_limiter, result_cache = _dispatch_behaviors(rate_limits_policy, cache_config)
 
     diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
     runtime = _build_runtime(
@@ -1153,6 +1249,7 @@ def serve(
             f"primitives={primitives} top_k={top_k} "
             f"beam_width={beam_width} cache_stable={cache_stable} "
             f"redact={'on' if redact else 'off'} policy={'on' if policy else 'off'} "
+            f"preset={preset_name or 'none'} "
             f"version={version} diagnostics={diagnostics or 'off'} "
             f"state_dir={state_dir or 'in-memory'}",
             err=True,
