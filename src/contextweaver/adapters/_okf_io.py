@@ -21,6 +21,12 @@ from typing import Any
 
 import yaml
 
+from contextweaver.adapters._okf_coerce import (
+    coerce_expires,
+    coerce_float,
+    coerce_str_list,
+    json_safe,
+)
 from contextweaver.exceptions import ConfigError
 from contextweaver.types import Sensitivity
 
@@ -125,7 +131,7 @@ class KnowledgeNode:
             "expires_at": self.expires_at,
             "links": list(self.links),
             "sensitivity": self.sensitivity.value,
-            "frontmatter": dict(self.frontmatter),
+            "frontmatter": json_safe(self.frontmatter),
         }
 
     @classmethod
@@ -198,21 +204,6 @@ def read_markdown_text(path: Path) -> str:
     return path.read_bytes().decode("utf-8", errors="replace")
 
 
-def _coerce_str_list(value: Any) -> list[str]:  # noqa: ANN401 -- opaque frontmatter value
-    if isinstance(value, list):
-        return [str(v) for v in value]
-    if value in (None, ""):
-        return []
-    return [str(value)]
-
-
-def _coerce_float(value: Any, default: float) -> float:  # noqa: ANN401 -- opaque frontmatter value
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def node_from_markdown(
     text: str, *, source_path: str
 ) -> tuple[KnowledgeNode, LoadDiagnostic | None]:
@@ -226,7 +217,7 @@ def node_from_markdown(
     diagnostic = LoadDiagnostic(level="warning", path=source_path, message=error) if error else None
 
     raw_id = frontmatter.get("id")
-    node_id = str(raw_id) if raw_id else f"okf:{source_path}"
+    node_id = str(raw_id) if raw_id else source_path
 
     raw_title = frontmatter.get("title")
     if not raw_title:
@@ -243,8 +234,15 @@ def node_from_markdown(
     except ValueError:
         sensitivity = Sensitivity.internal
 
-    extra = {k: v for k, v in frontmatter.items() if k not in _KNOWN_KEYS}
-    expires_raw = frontmatter.get("expires_at")
+    extra = {k: json_safe(v) for k, v in frontmatter.items() if k not in _KNOWN_KEYS}
+
+    expires_at, expires_ok = coerce_expires(frontmatter.get("expires_at"))
+    if not expires_ok:
+        diagnostic = diagnostic or LoadDiagnostic(
+            level="warning",
+            path=source_path,
+            message="uncoercible 'expires_at' (expected epoch seconds); treating as no expiry",
+        )
 
     node = KnowledgeNode(
         id=node_id,
@@ -252,13 +250,13 @@ def node_from_markdown(
         text=body,
         node_type=str(frontmatter.get("type", "")),
         source_path=source_path,
-        tags=_coerce_str_list(frontmatter.get("tags")),
+        tags=coerce_str_list(frontmatter.get("tags")),
         scope=str(frontmatter.get("scope", "")),
         status=str(frontmatter.get("status", "")),
-        confidence=_coerce_float(frontmatter.get("confidence"), 1.0),
-        timestamp=_coerce_float(frontmatter.get("timestamp"), 0.0),
-        expires_at=(None if expires_raw is None else _coerce_float(expires_raw, 0.0)),
-        links=_coerce_str_list(frontmatter.get("links")),
+        confidence=coerce_float(frontmatter.get("confidence"), 1.0),
+        timestamp=coerce_float(frontmatter.get("timestamp"), 0.0),
+        expires_at=expires_at,
+        links=coerce_str_list(frontmatter.get("links")),
         sensitivity=sensitivity,
         frontmatter=extra,
     )

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
-from contextweaver.adapters._okf_io import parse_markdown_frontmatter
+from contextweaver.adapters._okf_io import KnowledgeNode, parse_markdown_frontmatter
 from contextweaver.adapters.okf import (
     load_okf_bundle,
     okf_nodes_to_context_items,
@@ -221,3 +222,94 @@ def test_load_okf_bundle_non_utf8_index_md_does_not_raise(tmp_path: Path) -> Non
     bundle = load_okf_bundle(tmp_path)
     assert bundle.index is not None
     assert "�" in bundle.index.text
+
+
+# ---------------------------------------------------------------------------
+# JSON-compatibility of preserved frontmatter (date-typed values)
+# ---------------------------------------------------------------------------
+
+
+def test_to_dict_is_json_serialisable_with_date_frontmatter(tmp_path: Path) -> None:
+    """An unquoted YAML date in a custom frontmatter key must not break json.dumps.
+
+    yaml.safe_load parses ``created: 2026-01-01`` into ``datetime.date``, which
+    is not JSON-serialisable; ``to_dict()`` promises a JSON-compatible dict, so
+    the value is coerced to its ISO string.
+    """
+    (tmp_path / "dated.md").write_text(
+        "---\nid: dated\ntitle: Dated\ncreated: 2026-01-01\n---\nBody.", encoding="utf-8"
+    )
+    bundle = load_okf_bundle(tmp_path)
+    node = bundle.nodes[0]
+    assert node.frontmatter["created"] == "2026-01-01"
+    # The documented contract: json.dumps must not raise.
+    json.dumps(node.to_dict())
+    json.dumps(bundle.to_dict())
+
+
+def test_context_item_metadata_is_json_serialisable_with_date_frontmatter(tmp_path: Path) -> None:
+    (tmp_path / "dated.md").write_text(
+        "---\nid: dated\ntitle: Dated\nreviewed_on: 2026-02-02\n---\nBody.", encoding="utf-8"
+    )
+    bundle = load_okf_bundle(tmp_path)
+    items = okf_nodes_to_context_items(bundle.nodes)
+    # Mirrors the SQLite/Redis event-log stores (json.dumps with no default=str).
+    json.dumps(items[0].metadata, sort_keys=True)
+    assert items[0].metadata["frontmatter"]["reviewed_on"] == "2026-02-02"
+
+
+def test_knowledge_node_to_dict_from_dict_round_trip(tmp_path: Path) -> None:
+    """#736 acceptance criterion: to_dict/from_dict round-trip is stable."""
+    (tmp_path / "c.md").write_text(
+        "---\nid: c\ntitle: C\ntype: Concept\ntags: [a, b]\nconfidence: 0.5\n"
+        "custom: keep-me\n---\nBody text.",
+        encoding="utf-8",
+    )
+    bundle = load_okf_bundle(tmp_path)
+    original = bundle.nodes[0]
+    round_tripped = KnowledgeNode.from_dict(original.to_dict())
+    assert round_tripped.to_dict() == original.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Frontmatter coercion + id fallback + expiry boundary (shared core)
+# ---------------------------------------------------------------------------
+
+
+def test_node_id_falls_back_to_source_path_not_okf_prefix(tmp_path: Path) -> None:
+    """A concept file with no frontmatter ``id`` derives its id from the path,
+    with no hardcoded ``okf:`` prefix (which mislabels non-OKF sources)."""
+    (tmp_path / "no_id.md").write_text("---\ntitle: No Id\n---\nBody.", encoding="utf-8")
+    bundle = load_okf_bundle(tmp_path)
+    assert bundle.nodes[0].id == "no_id.md"
+
+
+def test_frontmatter_scalar_tags_and_string_confidence_are_coerced(tmp_path: Path) -> None:
+    (tmp_path / "s.md").write_text(
+        "---\nid: s\ntitle: S\ntags: solo\nconfidence: '0.25'\n---\nBody.", encoding="utf-8"
+    )
+    node = load_okf_bundle(tmp_path).nodes[0]
+    assert node.tags == ["solo"]  # scalar coerced to single-element list
+    assert node.confidence == 0.25  # numeric string coerced to float
+
+
+def test_expires_at_natural_date_stays_live_and_is_flagged(tmp_path: Path) -> None:
+    """A YAML date under ``expires_at`` can't become epoch seconds; the node
+    must stay live (not silently dropped) and a diagnostic must surface."""
+    (tmp_path / "e.md").write_text(
+        "---\nid: e\ntitle: E\nexpires_at: 2026-12-31\n---\nBody.", encoding="utf-8"
+    )
+    bundle = load_okf_bundle(tmp_path)
+    node = bundle.nodes[0]
+    assert node.expires_at is None
+    assert node.is_expired(now=1_700_000_000.0) is False
+    assert any("expires_at" in d.message for d in bundle.diagnostics)
+    # Still materialises rather than being silently filtered out.
+    assert len(okf_nodes_to_context_items(bundle.nodes, now=1_700_000_000.0)) == 1
+
+
+def test_is_expired_boundary_now_equals_expires_at() -> None:
+    node = KnowledgeNode(id="x", title="X", text="b", expires_at=100.0)
+    assert node.is_expired(now=100.0) is True  # `now >= expires_at` boundary
+    assert node.is_expired(now=99.9) is False
+    assert node.is_expired(now=None) is False  # no wall-clock fallback (#617)

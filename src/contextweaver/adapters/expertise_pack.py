@@ -129,7 +129,7 @@ def load_expertise_pack(
         )
         if diagnostic:
             _record(diagnostics, diagnostic, on_invalid=on_invalid, label="load_expertise_pack")
-        if "key" not in node.frontmatter:
+        if not node.frontmatter.get("key"):
             missing_key = LoadDiagnostic(
                 level="warning",
                 path=source_path,
@@ -240,14 +240,21 @@ def expertise_pack_to_context_items(
     """Materialise applicable, live, structurally-valid nodes into :class:`ContextItem` candidates.
 
     Expired nodes, (when *task_tags* is given) inapplicable nodes, and nodes
-    missing the required ``key`` (flagged at load time as "not a valid
-    constraint node") are excluded — pack sections enter context "only when
-    relevant" (issue #776 acceptance criteria), never unconditionally.
+    without a usable ``key`` (missing or empty — flagged at load time as "not a
+    valid constraint node") are excluded — pack sections enter context "only
+    when relevant" (issue #776 acceptance criteria), never unconditionally.
+
+    A node's ``key`` must be truthy to count as valid; the same predicate gates
+    load-time validation, materialisation here, and :func:`detect_conflicts`,
+    so an empty-string ``key`` can never be materialised yet skipped by conflict
+    detection.
     """
     return [
         node_to_context_item(node, source_kind=SOURCE_KIND, estimator=estimator)
         for node in pack.nodes
-        if "key" in node.frontmatter and not node.is_expired(now=now) and _applies(node, task_tags)
+        if node.frontmatter.get("key")
+        and not node.is_expired(now=now)
+        and _applies(node, task_tags)
     ]
 
 

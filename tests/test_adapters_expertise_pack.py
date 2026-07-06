@@ -170,3 +170,17 @@ def test_load_expertise_pack_non_utf8_index_md_does_not_raise(tmp_path: Path) ->
     (tmp_path / "index.md").write_bytes(b'---\nversion: "1.0"\n---\n\xff\xfe')
     pack = load_expertise_pack(tmp_path)
     assert pack.version == "1.0"
+
+
+def test_empty_string_key_is_treated_as_invalid_consistently(tmp_path: Path) -> None:
+    """An empty-string ``key`` is invalid everywhere: flagged at load, excluded
+    from materialisation, and never grouped for conflict detection — so a node
+    can never be materialised into context yet skipped by conflict detection."""
+    (tmp_path / "index.md").write_text('---\nversion: "1.0"\n---\nx', encoding="utf-8")
+    (tmp_path / "a.md").write_text('---\nid: a\nkey: ""\n---\nUse tabs.', encoding="utf-8")
+    (tmp_path / "b.md").write_text('---\nid: b\nkey: ""\n---\nUse spaces.', encoding="utf-8")
+    pack = load_expertise_pack(tmp_path)
+
+    assert any("key" in d.message for d in pack.diagnostics)  # flagged at load
+    assert expertise_pack_to_context_items(pack) == []  # excluded from context
+    assert detect_conflicts(pack.nodes) == []  # empty key never grouped

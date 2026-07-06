@@ -123,11 +123,13 @@ def load_repo_knowledge(
     nodes: list[KnowledgeNode] = []
     total_bytes = 0
     for file_path in files:
-        raw = file_path.read_bytes()
-        total_bytes += len(raw)
-        if total_bytes > max_total_bytes:
+        # Check size *before* reading so the byte cap also bounds peak memory —
+        # a single oversized file must not be slurped whole just to be rejected.
+        if total_bytes + file_path.stat().st_size > max_total_bytes:
             truncated = True
             break
+        raw = file_path.read_bytes()
+        total_bytes += len(raw)
         source_path = file_path.relative_to(root).as_posix()
         node, diagnostic = node_from_markdown(
             raw.decode("utf-8", errors="replace"), source_path=source_path

@@ -175,3 +175,26 @@ def test_select_repo_knowledge_deterministic(tmp_path: Path) -> None:
     first = select_repo_knowledge(bundle.nodes, "zzz-no-match", budget_tokens=10_000)
     second = select_repo_knowledge(bundle.nodes, "zzz-no-match", budget_tokens=10_000)
     assert [i.id for i in first] == [i.id for i in second]
+
+
+def test_load_repo_knowledge_single_oversized_file_yields_zero_nodes(tmp_path: Path) -> None:
+    """A single file larger than max_total_bytes is rejected by the size
+    pre-check, so the guardrail bounds peak memory, not just the retained total."""
+    _write(tmp_path, "huge.md", "z" * 4000)
+    bundle = load_repo_knowledge(tmp_path, max_total_bytes=1000)
+    assert bundle.nodes == []
+    assert bundle.truncated is True
+
+
+def test_classify_usage_returns_multiple_tags_in_keyword_order() -> None:
+    from contextweaver.adapters._okf_io import KnowledgeNode
+
+    node = KnowledgeNode(
+        id="x",
+        title="Debugging the release changelog",
+        text="body",
+        tags=["architecture"],
+    )
+    # 'debug' (title), 'architecture' (tag), 'release'/'changelog' (title) hit
+    # three keyword groups, returned in _USAGE_KEYWORDS declaration order.
+    assert classify_usage(node) == ["debugging", "architecture-review", "release-prep"]
