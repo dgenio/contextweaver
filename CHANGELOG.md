@@ -9,6 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Knowledge-bundle context sources: OKF, repository knowledge, lessons, and
+  expertise packs (#736, #763, #767, #776).** Four adapters let contextweaver
+  ingest external knowledge stored as OKF-style Markdown-plus-YAML-frontmatter
+  bundles and expose it as bounded, selectable `ContextItem` candidates that
+  flow through the existing candidate-selection/budget/dedup/sensitivity/
+  rendering pipeline unchanged (no pipeline stage was modified; no new
+  `ItemKind` was introduced — nodes materialise as `doc_snippet` with
+  provenance under the `_contextweaver` metadata namespace).
+  - **OKF bundle loader (#736).** `contextweaver.adapters.okf.load_okf_bundle`
+    parses a directory of OKF concept files; `index.md`/`log.md` are
+    recognised bundle metadata/history, excluded from concept content by
+    default. `select_knowledge` ranks and packs nodes deterministically
+    against a query and token budget.
+  - **Repository knowledge (#763).** `contextweaver.adapters.repo_knowledge`
+    narrows the OKF loader to generated repo docs: plain Markdown without
+    frontmatter still loads (filename-derived title), `max_files`/
+    `max_total_bytes` guardrails bound large trees, and `classify_usage`
+    assigns deterministic usage tags (`"debugging"`, `"onboarding"`, ...) —
+    plain metadata strings, not `Phase` enum values. Links are never
+    auto-followed, so a documentation tree cannot force-load content beyond
+    its own root.
+  - **Lessons (#767).** `contextweaver.adapters.lessons` adds
+    lifecycle-aware eligibility on top of the shared parsing core:
+    `LessonSelectionPolicy` excludes `rejected`/`deprecated` lessons and
+    unreviewed `candidate` lessons by default (opt in via
+    `include_candidates=True`), and every exclusion is reported with an
+    explicit reason (`select_lessons` → `(items, exclusions)`).
+  - **Expertise packs (#776).** `contextweaver.adapters.expertise_pack`
+    validates pack *structure* (an `index.md` declaring `version`, every
+    node carrying a `key`) rather than the full external weaver-spec schema
+    (`dgenio/weaver-spec#184`, tracked as a follow-up seam) and adds
+    deterministic conflict detection (`detect_conflicts`): constraints
+    sharing a `key` that disagree on text, scoped by `task_tags` and
+    liveness — no LLM-backed contradiction inference.
+  - The four adapters' private parsing core (`adapters/_okf_io.py` +
+    `_okf_materialize.py`) is not re-exported at the `contextweaver.adapters`
+    package level — mirroring how the `mcp_primitives`/`gateway_primitives`
+    family is kept at submodule level — since `adapters/__init__.py` is a
+    frozen, grandfathered module already at its size ceiling. Import
+    directly from each submodule, e.g.
+    `from contextweaver.adapters.okf import load_okf_bundle`.
+  - See `docs/recipes/okf_bundle.md` and
+    `examples/knowledge_bundles_demo.py` for a runnable walkthrough of all
+    four adapters.
+
 - **Secret-scrubbing parity across every prompt-bound surface (#742, #743, #745).**
   A coordinated pass closing three gaps where secret scrubbing reached only one
   of several parallel paths:

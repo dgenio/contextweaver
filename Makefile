@@ -39,6 +39,7 @@ example:
 	$(PYTHON) examples/agent_framework_adapter_demo.py
 	$(PYTHON) examples/openapi_routing_demo.py
 	$(PYTHON) examples/skills_routing_demo.py
+	$(PYTHON) examples/knowledge_bundles_demo.py
 	$(PYTHON) examples/fastmcp_discovery_demo.py
 	$(PYTHON) examples/langchain_memory_demo.py
 	$(PYTHON) examples/cookbook/byot_recipe.py
