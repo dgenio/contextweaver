@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           # Newest *supported* Python (3.14 is pending — the heavy dev/adapter
           # stack still caps at Requires-Python <3.14). Bump to 3.14 once that
