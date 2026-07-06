@@ -35,6 +35,7 @@ from contextweaver.adapters._okf_io import (
     LoadDiagnostic,
     discover_concept_files,
     node_from_markdown,
+    read_markdown_text,
 )
 from contextweaver.adapters._okf_materialize import node_to_context_item
 from contextweaver.exceptions import ConfigError
@@ -124,7 +125,7 @@ def load_expertise_pack(
     for file_path in discover_concept_files(root):
         source_path = file_path.relative_to(root).as_posix()
         node, diagnostic = node_from_markdown(
-            file_path.read_text(encoding="utf-8"), source_path=source_path
+            read_markdown_text(file_path), source_path=source_path
         )
         if diagnostic:
             _record(diagnostics, diagnostic, on_invalid=on_invalid, label="load_expertise_pack")
@@ -166,7 +167,7 @@ def _load_pack_version(
         )
         return None
     node, diagnostic = node_from_markdown(
-        index_path.read_text(encoding="utf-8"), source_path=VERSION_FILENAME
+        read_markdown_text(index_path), source_path=VERSION_FILENAME
     )
     if diagnostic:
         _record(diagnostics, diagnostic, on_invalid=on_invalid, label="load_expertise_pack")
@@ -236,16 +237,17 @@ def expertise_pack_to_context_items(
     estimator: TokenEstimator | None = None,
     now: float | None = None,
 ) -> list[ContextItem]:
-    """Materialise applicable, live pack nodes into :class:`ContextItem` candidates.
+    """Materialise applicable, live, structurally-valid nodes into :class:`ContextItem` candidates.
 
-    Expired nodes and (when *task_tags* is given) inapplicable nodes are
-    excluded — pack sections enter context "only when relevant" (issue #776
-    acceptance criteria), never unconditionally.
+    Expired nodes, (when *task_tags* is given) inapplicable nodes, and nodes
+    missing the required ``key`` (flagged at load time as "not a valid
+    constraint node") are excluded — pack sections enter context "only when
+    relevant" (issue #776 acceptance criteria), never unconditionally.
     """
     return [
         node_to_context_item(node, source_kind=SOURCE_KIND, estimator=estimator)
         for node in pack.nodes
-        if not node.is_expired(now=now) and _applies(node, task_tags)
+        if "key" in node.frontmatter and not node.is_expired(now=now) and _applies(node, task_tags)
     ]
 
 

@@ -202,3 +202,22 @@ def test_select_knowledge_tie_break_by_id_is_deterministic() -> None:
         == [i.id for i in second]
         == ["okf_bundle:concept-a", "okf_bundle:concept-b"]
     )
+
+
+# ---------------------------------------------------------------------------
+# Non-UTF-8 content must degrade, never raise (review fix)
+# ---------------------------------------------------------------------------
+
+
+def test_load_okf_bundle_non_utf8_concept_file_does_not_raise(tmp_path: Path) -> None:
+    (tmp_path / "bad_encoding.md").write_bytes(b"---\nid: bad-enc\n---\nLatin-1 bytes: \xe9\xe8")
+    bundle = load_okf_bundle(tmp_path)
+    assert len(bundle.nodes) == 1
+    assert "�" in bundle.nodes[0].text  # replacement char, not a crash
+
+
+def test_load_okf_bundle_non_utf8_index_md_does_not_raise(tmp_path: Path) -> None:
+    (tmp_path / "index.md").write_bytes(b"---\ntitle: idx\n---\nBad bytes: \xff\xfe")
+    bundle = load_okf_bundle(tmp_path)
+    assert bundle.index is not None
+    assert "�" in bundle.index.text

@@ -25,6 +25,7 @@ from contextweaver.adapters._okf_io import (
     LoadDiagnostic,
     discover_concept_files,
     node_from_markdown,
+    read_markdown_text,
     validate_links,
 )
 from contextweaver.adapters._okf_materialize import node_to_context_item, score_node
@@ -90,7 +91,7 @@ def load_okf_bundle(
     for file_path in discover_concept_files(root):
         source_path = file_path.relative_to(root).as_posix()
         node, diagnostic = node_from_markdown(
-            file_path.read_text(encoding="utf-8"), source_path=source_path
+            read_markdown_text(file_path), source_path=source_path
         )
         if diagnostic:
             if on_invalid == "raise":
@@ -110,9 +111,7 @@ def _load_bundle_file(root: Path, filename: str) -> KnowledgeNode | None:
     file_path = root / filename
     if not file_path.is_file():
         return None
-    node, _diagnostic = node_from_markdown(
-        file_path.read_text(encoding="utf-8"), source_path=filename
-    )
+    node, _diagnostic = node_from_markdown(read_markdown_text(file_path), source_path=filename)
     return node
 
 

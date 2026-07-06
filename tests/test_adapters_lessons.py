@@ -144,3 +144,10 @@ def test_lesson_nodes_to_context_items_preserves_provenance() -> None:
     assert provenance["status"] == "active"
     assert provenance["scope"] == "project"
     assert provenance["confidence"] == 0.9
+
+
+def test_load_lesson_bundle_non_utf8_file_does_not_raise(tmp_path: Path) -> None:
+    (tmp_path / "bad_encoding.md").write_bytes(b"---\nid: bad-enc\nstatus: active\n---\n\xff\xfe")
+    nodes, _diagnostics = load_lesson_bundle(tmp_path)
+    assert len(nodes) == 1
+    assert "�" in nodes[0].text

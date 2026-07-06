@@ -115,6 +115,22 @@ def test_classify_usage_no_match_returns_empty() -> None:
     assert classify_usage(node) == []
 
 
+def test_classify_usage_does_not_false_positive_on_substring() -> None:
+    """ "test" must not match inside "latest" (word-boundary matching, not substring)."""
+    from contextweaver.adapters._okf_io import KnowledgeNode
+
+    node = KnowledgeNode(id="x", title="Deploying to the Latest Environment", text="body")
+    assert classify_usage(node) == []
+
+
+def test_classify_usage_prefix_match_still_works() -> None:
+    """ "debug" must still match as a prefix of "debugging" (not exact-word-only)."""
+    from contextweaver.adapters._okf_io import KnowledgeNode
+
+    node = KnowledgeNode(id="x", title="Debugging tips", text="body")
+    assert classify_usage(node) == ["debugging"]
+
+
 def test_repo_knowledge_nodes_to_context_items_stamps_usage_tags(tmp_path: Path) -> None:
     _write(
         tmp_path,
@@ -137,6 +153,19 @@ def test_select_repo_knowledge_filters_by_usage_tag(tmp_path: Path) -> None:
     )
     assert len(debugging_only) == 1
     assert debugging_only[0].metadata["_contextweaver"]["knowledge_source"]["id"] == "d"
+
+
+def test_select_repo_knowledge_stamps_usage_tags_like_the_other_materialisation_path(
+    tmp_path: Path,
+) -> None:
+    """select_repo_knowledge must stamp the same usage tags as
+    repo_knowledge_nodes_to_context_items, so both materialisation paths
+    produce a consistent metadata shape for the same node."""
+    _write(tmp_path, "debug_doc.md", "---\nid: d\ntitle: Debugging Guide\n---\nDebug guide.")
+    bundle = load_repo_knowledge(tmp_path)
+
+    selected = select_repo_knowledge(bundle.nodes, "debug", budget_tokens=10_000)
+    assert "debugging" in selected[0].metadata["tags"]
 
 
 def test_select_repo_knowledge_deterministic(tmp_path: Path) -> None:

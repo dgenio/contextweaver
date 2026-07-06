@@ -3,15 +3,14 @@
 Shared by :mod:`.okf`, :mod:`.repo_knowledge`, :mod:`.lessons`, and
 :mod:`.expertise_pack` (issues #736/#763/#767/#776): a permissive
 Markdown-plus-YAML-frontmatter node parser and a deterministic directory
-walk. Kept private and separate (with materialisation split out to
-:mod:`._okf_materialize`) so each public adapter module stays within the
-≤300-line convention.
+walk. Kept private (materialisation split out to :mod:`._okf_materialize`)
+so each public adapter module stays within the ≤300-line convention.
 
-Parsing is deliberately permissive (issue #736 design constraint): a missing
-fence, an unparsable frontmatter block, or a non-mapping frontmatter value
-degrades to a :class:`LoadDiagnostic` plus a best-effort node, never an
-exception. Callers that want fail-fast behavior pass ``on_invalid="raise"``
-to the public loaders, which turn diagnostics into :class:`ConfigError`.
+Parsing is deliberately permissive (issue #736): a missing fence, invalid
+YAML, a non-mapping frontmatter value, or a non-UTF-8 file degrades to a
+:class:`LoadDiagnostic` plus a best-effort node, never an exception.
+Callers wanting fail-fast behavior pass ``on_invalid="raise"`` to the
+public loaders, which turn diagnostics into :class:`ConfigError`.
 """
 
 from __future__ import annotations
@@ -74,21 +73,16 @@ class LoadDiagnostic:
 class KnowledgeNode:
     """A single concept/lesson/expertise node parsed from a frontmatter bundle.
 
-    Field vocabulary deliberately mirrors
-    :class:`~contextweaver.context.memory_types.MemoryEntry`
+    Field vocabulary mirrors :class:`~contextweaver.context.memory_types.MemoryEntry`
     (``scope``/``confidence``/``expires_at``/``sensitivity``) so lifecycle-aware
-    selection (issue #767) reuses the same shape rather than inventing a
-    parallel one. ``id`` is the frontmatter ``id`` when present, else derived
-    from ``source_path``. ``title`` falls back to the filename stem when
-    absent. ``node_type`` (frontmatter ``type``) is preserved verbatim — no
-    fixed enum, per issue #736's "avoid overfitting" constraint. ``status``
-    (candidate/reviewed/active/deprecated/rejected) is primarily consumed by
-    issue #767. ``sensitivity`` defaults to
-    :attr:`~contextweaver.types.Sensitivity.internal` — loaded external
-    content is untrusted until reviewed, never ``public`` by default.
-    ``frontmatter`` holds every key not mapped onto a named field above,
-    preserved verbatim (issue #736: "unknown fields ... preserved in
-    metadata").
+    selection (#767) reuses the same shape. ``id`` is the frontmatter ``id``
+    when present, else derived from ``source_path``. ``title`` falls back to
+    the filename stem when absent. ``node_type`` (frontmatter ``type``) is
+    preserved verbatim — no fixed enum (#736 "avoid overfitting"). ``status``
+    is primarily consumed by #767. ``sensitivity`` defaults to
+    :attr:`~contextweaver.types.Sensitivity.internal` — never ``public`` by
+    default. ``frontmatter`` holds every key not mapped onto a named field
+    above, preserved verbatim.
     """
 
     id: str
@@ -199,6 +193,11 @@ def discover_concept_files(root: Path) -> list[Path]:
     )
 
 
+def read_markdown_text(path: Path) -> str:
+    """Read *path* permissively — never raises ``UnicodeDecodeError``."""
+    return path.read_bytes().decode("utf-8", errors="replace")
+
+
 def _coerce_str_list(value: Any) -> list[str]:  # noqa: ANN401 -- opaque frontmatter value
     if isinstance(value, list):
         return [str(v) for v in value]
@@ -296,5 +295,6 @@ __all__ = [
     "discover_concept_files",
     "node_from_markdown",
     "parse_markdown_frontmatter",
+    "read_markdown_text",
     "validate_links",
 ]

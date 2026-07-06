@@ -20,6 +20,7 @@ the bundle the caller pointed it at.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -77,9 +78,17 @@ def classify_usage(node: KnowledgeNode) -> list[str]:
     Matches keywords against the node's type, title, and tags. A node may
     match zero, one, or several tags; matches are returned in
     :data:`_USAGE_KEYWORDS` order, never randomised.
+
+    Matching is word-boundary-anchored (not a raw substring search), so
+    ``"test"`` matches ``"testing"``/``"test-writing"`` but not the ``"test"``
+    inside ``"latest"``.
     """
     haystack = " ".join([node.node_type, node.title, *node.tags]).lower()
-    return [tag for tag, keywords in _USAGE_KEYWORDS if any(kw in haystack for kw in keywords)]
+    return [
+        tag
+        for tag, keywords in _USAGE_KEYWORDS
+        if any(re.search(rf"\b{re.escape(kw)}", haystack) for kw in keywords)
+    ]
 
 
 def load_repo_knowledge(
@@ -133,6 +142,23 @@ def load_repo_knowledge(
     return RepoKnowledgeBundle(nodes, diagnostics=diagnostics, truncated=truncated)
 
 
+def _to_context_item_with_usage_tags(
+    node: KnowledgeNode, *, estimator: TokenEstimator | None
+) -> ContextItem:
+    """Materialise *node*, stamping :func:`classify_usage` tags onto it.
+
+    Shared by :func:`repo_knowledge_nodes_to_context_items` and
+    :func:`select_repo_knowledge` so both materialisation paths produce the
+    same ``metadata["tags"]`` shape for a given node.
+    """
+    item = node_to_context_item(node, source_kind=SOURCE_KIND, estimator=estimator)
+    usage_tags = classify_usage(node)
+    if usage_tags:
+        existing = item.metadata.get("tags", [])
+        item.metadata["tags"] = existing + [t for t in usage_tags if t not in existing]
+    return item
+
+
 def repo_knowledge_nodes_to_context_items(
     nodes: list[KnowledgeNode],
     *,
@@ -145,17 +171,11 @@ def repo_knowledge_nodes_to_context_items(
     tags (deduplicated, order-preserving) so downstream selection can filter
     by intended use without a separate lookup pass.
     """
-    items: list[ContextItem] = []
-    for node in nodes:
-        if node.is_expired(now=now):
-            continue
-        item = node_to_context_item(node, source_kind=SOURCE_KIND, estimator=estimator)
-        usage_tags = classify_usage(node)
-        if usage_tags:
-            existing = item.metadata.get("tags", [])
-            item.metadata["tags"] = existing + [t for t in usage_tags if t not in existing]
-        items.append(item)
-    return items
+    return [
+        _to_context_item_with_usage_tags(node, estimator=estimator)
+        for node in nodes
+        if not node.is_expired(now=now)
+    ]
 
 
 def select_repo_knowledge(
@@ -183,7 +203,7 @@ def select_repo_knowledge(
     packed: list[ContextItem] = []
     remaining = budget_tokens
     for node in ranked:
-        item = node_to_context_item(node, source_kind=SOURCE_KIND, estimator=estimator)
+        item = _to_context_item_with_usage_tags(node, estimator=estimator)
         cost = max(1, int(item.token_estimate))
         if cost > remaining:
             continue

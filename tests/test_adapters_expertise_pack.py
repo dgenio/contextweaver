@@ -93,6 +93,15 @@ def test_load_expertise_pack_malformed_raises_when_strict() -> None:
         load_expertise_pack(FIXTURE_DIR / "malformed_pack", on_invalid="raise")
 
 
+def test_expertise_pack_to_context_items_excludes_nodes_missing_key() -> None:
+    """A node flagged 'not a valid constraint node' must never enter context."""
+    pack = load_expertise_pack(FIXTURE_DIR / "malformed_pack")
+    items = expertise_pack_to_context_items(pack)
+    ids = {i.metadata["_contextweaver"]["knowledge_source"]["id"] for i in items}
+    assert "constraint-no-key" not in ids
+    assert ids == set()  # malformed_pack's only node lacks 'key'
+
+
 def test_load_expertise_pack_stale_constraint_excluded_from_context() -> None:
     """'stale' case: an expired constraint is loaded but excluded at materialisation."""
     pack = load_expertise_pack(FIXTURE_DIR / "stale_pack")
@@ -142,3 +151,22 @@ def test_detect_conflicts_respects_task_tag_applicability(tmp_path: Path) -> Non
 
     assert detect_conflicts(pack.nodes) != []  # no task context -> compare everything
     assert detect_conflicts(pack.nodes, task_tags={"scope-a"}) == []  # only "a" applies
+
+
+# ---------------------------------------------------------------------------
+# Non-UTF-8 content must degrade, never raise (review fix)
+# ---------------------------------------------------------------------------
+
+
+def test_load_expertise_pack_non_utf8_constraint_file_does_not_raise(tmp_path: Path) -> None:
+    (tmp_path / "index.md").write_text('---\nversion: "1.0"\n---\nx', encoding="utf-8")
+    (tmp_path / "bad.md").write_bytes(b"---\nid: bad-enc\nkey: k\n---\n\xff\xfe")
+    pack = load_expertise_pack(tmp_path)
+    assert len(pack.nodes) == 1
+    assert "�" in pack.nodes[0].text
+
+
+def test_load_expertise_pack_non_utf8_index_md_does_not_raise(tmp_path: Path) -> None:
+    (tmp_path / "index.md").write_bytes(b'---\nversion: "1.0"\n---\n\xff\xfe')
+    pack = load_expertise_pack(tmp_path)
+    assert pack.version == "1.0"
