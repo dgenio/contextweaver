@@ -22,8 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Selecting no preset is inert — behaviour is byte-identical to today. New
   `mcp serve --print-effective-policy` prints the resolved (preset-or-overridden)
   bundle as deterministic, sorted JSON via `GatewayPreset.to_dict()` and exits,
-  without requiring the catalog to exist on disk. Exported from
-  `contextweaver.adapters`. Documented in `docs/security_mcp_gateway.md`.
+  without requiring the catalog to exist on disk. `CacheConfig.allow` accepts
+  any iterable of `tool_id` strings and is normalised to a `frozenset`, so the
+  runtime value matches its annotation and instances stay hashable. Exported
+  from `contextweaver.adapters`. Documented in `docs/security_mcp_gateway.md`.
 - **Secret-scrubbing parity across every prompt-bound surface (#742, #743, #745).**
   A coordinated pass closing three gaps where secret scrubbing reached only one
   of several parallel paths:

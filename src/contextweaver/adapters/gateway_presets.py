@@ -69,6 +69,12 @@ class CacheConfig:
             # A bare string is iterable, so it would otherwise be treated as
             # a per-character allow-list rather than a single tool_id.
             raise ConfigError("CacheConfig.allow must be an iterable of strings")
+        if self.allow is not None and not isinstance(self.allow, frozenset):
+            # Coerce any accepted string iterable (set/list/tuple) to frozenset
+            # so the runtime value matches the ``frozenset[str]`` annotation and
+            # the frozen dataclass stays hashable (a list-valued field would make
+            # instances unhashable, breaking ``frozen=True``'s contract).
+            object.__setattr__(self, "allow", frozenset(self.allow))
 
     @property
     def enabled(self) -> bool:

@@ -62,6 +62,22 @@ def test_cache_config_accepts_any_string_iterable_for_allow() -> None:
     assert CacheConfig(allow={"a:tool"}).to_dict()["allow"] == ["a:tool"]
 
 
+def test_cache_config_coerces_allow_to_frozenset() -> None:
+    # allow is annotated frozenset[str]; any accepted iterable is coerced so the
+    # runtime value matches the annotation regardless of construction site.
+    assert CacheConfig(allow=["a:tool", "b:tool"]).allow == frozenset({"a:tool", "b:tool"})
+    for iterable in (["a:tool"], ("a:tool",), {"a:tool"}):
+        assert isinstance(CacheConfig(allow=iterable).allow, frozenset)  # type: ignore[arg-type]
+
+
+def test_cache_config_stays_hashable_with_list_allow() -> None:
+    # A frozen dataclass must stay hashable; a non-coerced list-valued allow
+    # would raise ``TypeError: unhashable type: 'list'`` here.
+    assert hash(CacheConfig(allow=["a:tool"])) == hash(  # type: ignore[arg-type]
+        CacheConfig(allow=frozenset({"a:tool"}))
+    )
+
+
 def test_cache_config_to_dict_sorts_allow() -> None:
     cache = CacheConfig(read_only=True, allow=frozenset({"b:tool", "a:tool"}))
     assert cache.to_dict()["allow"] == ["a:tool", "b:tool"]
