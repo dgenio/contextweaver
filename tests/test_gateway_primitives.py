@@ -221,3 +221,64 @@ def test_prompt_args_schema_marks_required() -> None:
     item = mcp_prompt_to_selectable(PROMPTS[0])
     assert item.args_schema["required"] == ["number", "repo"]
     assert item.kind == "prompt"
+
+
+# --- secret-scrub parity with the tool path (issue #743) --------------------
+
+# Assembled from fragments so the literal never appears verbatim in source
+# (secret-scanner push protection), matching tests/test_secrets.py.
+_SECRET = "sk-ant-" + "api03-" + "zY9xW8vU" * 3
+_SECRET_MASK = "[REDACTED-SECRET]"
+_SECRET_RESOURCES = [
+    {"uri": "file:///creds.txt", "name": "creds", "description": f"leaked {_SECRET} here"}
+]
+_SECRET_PROMPTS = [{"name": "creds", "description": f"leaked {_SECRET} here"}]
+
+
+def test_resource_cards_scrubbed_when_redact_enabled() -> None:
+    rt = PrimitiveGatewayRuntime(StubPrimitiveUpstream(), redact_secrets=True)
+    rt.register_sync(_SECRET_RESOURCES, _SECRET_PROMPTS)
+    cards = rt.browse_resources(query="creds")
+    assert isinstance(cards, list) and cards, "expected a routed card"
+    joined = " ".join(c.description for c in cards)
+    assert _SECRET not in joined
+    assert _SECRET_MASK in joined
+
+
+def test_prompt_cards_scrubbed_when_redact_enabled() -> None:
+    rt = PrimitiveGatewayRuntime(StubPrimitiveUpstream(), redact_secrets=True)
+    rt.register_sync(_SECRET_RESOURCES, _SECRET_PROMPTS)
+    cards = rt.browse_prompts(query="creds")
+    assert isinstance(cards, list) and cards
+    joined = " ".join(c.description for c in cards)
+    assert _SECRET not in joined
+    assert _SECRET_MASK in joined
+
+
+def test_primitive_cards_not_scrubbed_by_default() -> None:
+    # Default posture is off (owned by #744); the flag must actually gate the
+    # scrub — this is the regression the shared helper (#743) guards.
+    #
+    # Card rendering also applies an unrelated §2.3 token budget
+    # (routing/cards._enforce_card_budget) that can truncate the tail of a
+    # long description regardless of redaction, and the exact cut point
+    # depends on the active tokenizer (real tiktoken in CI vs. the offline
+    # heuristic fallback locally). So this checks a truncation-safe leading
+    # fragment of the secret rather than the full string, plus the mask's
+    # absence — sufficient to prove redaction did not fire.
+    rt = PrimitiveGatewayRuntime(StubPrimitiveUpstream())
+    rt.register_sync(_SECRET_RESOURCES, _SECRET_PROMPTS)
+    cards = rt.browse_resources(query="creds")
+    assert isinstance(cards, list) and cards
+    joined = " ".join(c.description for c in cards)
+    assert _SECRET[:12] in joined
+    assert _SECRET_MASK not in joined
+
+
+def test_browse_surface_name_in_args_invalid_message() -> None:
+    # The shared helper reports the primitive surface (not "tool_browse").
+    rt = _runtime()
+    res_err = rt.browse_resources(query="x", path="y")
+    prm_err = rt.browse_prompts(query="x", path="y")
+    assert isinstance(res_err, GatewayError) and "resource_browse" in res_err.message
+    assert isinstance(prm_err, GatewayError) and "prompt_browse" in prm_err.message

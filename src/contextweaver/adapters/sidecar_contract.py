@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
-from contextweaver.adapters._sidecar_validation import opt_int, opt_str_list, require_str
+from contextweaver.adapters._sidecar_validation import opt_bool, opt_int, opt_str_list, require_str
 from contextweaver.exceptions import ConfigError
 
 #: Current sidecar API version.  Bumped only on a breaking wire change; the
@@ -144,6 +144,8 @@ class CompactRequest:
         budget: Soft token budget for the inline text summary.
         strategy: Firewall strategy (see :data:`CompactStrategy`).
         keep: JSON-path allow-list for the structured projection strategy.
+        redact_secrets: When ``True`` the compaction scrubs secret shapes from
+            the returned payload/summary/facts (opt-in, issue #745).
     """
 
     data: dict[str, Any] | list[Any] | str
@@ -151,6 +153,7 @@ class CompactRequest:
     budget: int = 800
     strategy: CompactStrategy = "auto"
     keep: list[str] = field(default_factory=list)
+    redact_secrets: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -160,6 +163,7 @@ class CompactRequest:
             "budget": self.budget,
             "strategy": self.strategy,
             "keep": list(self.keep),
+            "redact_secrets": self.redact_secrets,
         }
 
     @classmethod
@@ -194,6 +198,7 @@ class CompactRequest:
             budget=budget,
             strategy=strategy,
             keep=opt_str_list(data, "keep"),
+            redact_secrets=opt_bool(data, "redact_secrets", False),
         )
 
 

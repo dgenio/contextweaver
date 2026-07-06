@@ -10,6 +10,7 @@ from contextweaver import compact_tool_result, firewalled_tool_result
 from contextweaver.context.firewall_api import CW_SIDECAR_KEY, CompactResult
 from contextweaver.exceptions import ConfigError, DeterminismError
 from contextweaver.store.artifacts import InMemoryArtifactStore
+from contextweaver.tokens import count as count_tokens
 
 _BIG = {"invoices": [{"invoiceNumber": f"A-{i}", "amount": i, "status": "due"} for i in range(200)]}
 
@@ -232,3 +233,95 @@ def test_structured_is_model_free_under_deterministic() -> None:
     )
     assert out.stats.strategy == "structured"
     assert out.stats.summarized_by_llm is False
+
+
+# --- secret scrubbing (issue #745) ------------------------------------------
+
+# Assembled from fragments (secret-scanner push protection), as in test_secrets.
+_TOKEN = "sk-ant-" + "api03-" + "zY9xW8vU" * 4
+_MASK = "[REDACTED-SECRET]"
+
+
+def test_redact_scrubs_passthrough_dict_leaves() -> None:
+    # Sub-threshold dict is passed through shape-unchanged, but string leaves
+    # are scrubbed when redact_secrets=True (#745).
+    out = compact_tool_result({"note": f"key {_TOKEN}", "n": 7}, redact_secrets=True)
+    assert out.firewalled is False
+    assert _TOKEN not in out.payload["note"]
+    assert _MASK in out.payload["note"]
+    assert out.payload["n"] == 7  # non-string scalar untouched, shape preserved
+
+
+def test_redact_off_by_default_leaves_passthrough_intact() -> None:
+    out = compact_tool_result({"note": f"key {_TOKEN}"})
+    assert out.payload["note"] == f"key {_TOKEN}"
+
+
+def test_redact_scrubs_passthrough_string() -> None:
+    out = compact_tool_result(f"here is {_TOKEN} done", redact_secrets=True)
+    assert out.firewalled is False
+    assert _TOKEN not in out.payload
+    assert _MASK in out.payload
+
+
+def test_redact_scrubs_text_summary_branch() -> None:
+    # Force the summarizing branch with a large secret-bearing text payload.
+    big = f"{_TOKEN} " + "context words here " * 200
+    out = compact_tool_result(big, threshold_chars=100, redact_secrets=True)
+    assert out.firewalled is True
+    assert out.summary is not None
+    assert _TOKEN not in out.summary
+    assert _TOKEN not in json.dumps(out.payload)
+
+
+def test_redact_scrubs_structured_projection() -> None:
+    big = {"rows": [{"secret": _TOKEN, "id": i} for i in range(80)]}
+    out = compact_tool_result(
+        big, threshold_chars=100, keep=["rows[].secret", "rows[].id"], redact_secrets=True
+    )
+    assert out.firewalled is True
+    assert _TOKEN not in json.dumps(out.payload)
+    assert _MASK in json.dumps(out.payload)
+
+
+def test_redact_passthrough_stats_measure_actual_returned_payload() -> None:
+    # Regression test (PR #771 review): stats.summary_chars/summary_tokens
+    # must reflect the payload actually returned (post-scrub), not the
+    # pre-redaction input — otherwise the #405 token-counter invariant (and
+    # the sidecar's tokens_saved) would be wrong under redaction.
+    data = {"note": f"key {_TOKEN}"}
+    out = compact_tool_result(data, redact_secrets=True)
+    assert out.firewalled is False
+    scrubbed_body = {"note": f"key {_MASK}"}
+    expected_text = json.dumps(scrubbed_body, sort_keys=True)
+    assert out.stats.summary_chars == len(expected_text)
+    assert out.stats.summary_tokens == count_tokens(expected_text)
+    # The mask text differs in length from the scrubbed secret, so the
+    # redacted payload size must diverge from the original input size.
+    assert out.stats.summary_chars != out.stats.original_chars
+
+
+def test_redact_passthrough_stats_match_unredacted_when_off() -> None:
+    data = {"note": f"key {_TOKEN}"}
+    out = compact_tool_result(data, redact_secrets=False)
+    assert out.stats.summary_chars == out.stats.original_chars
+    assert out.stats.summary_tokens == out.stats.original_tokens
+
+
+def test_redact_structured_stats_measure_post_scrub_summary() -> None:
+    # Regression test (PR #771 audit): the structured branch must also recompute
+    # stats.summary_chars/summary_tokens on the post-scrub summary, mirroring the
+    # passthrough/summary branches. apply_firewall measures stats on the
+    # pre-scrub summary, so without the recompute the #405 token-counter
+    # invariant (and the sidecar's tokens_saved) would be wrong under redaction
+    # for structured output.
+    big = {"rows": [{"secret": _TOKEN, "id": i} for i in range(80)]}
+    out = compact_tool_result(
+        big, threshold_chars=100, keep=["rows[].secret", "rows[].id"], redact_secrets=True
+    )
+    assert out.firewalled is True
+    assert out.stats.strategy == "structured"
+    assert out.summary is not None
+    assert _TOKEN not in out.summary
+    assert out.stats.summary_chars == len(out.summary)
+    assert out.stats.summary_tokens == count_tokens(out.summary)

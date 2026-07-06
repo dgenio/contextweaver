@@ -16,7 +16,6 @@ contract:
 from __future__ import annotations
 
 import importlib.resources as _resources
-import shutil
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
@@ -24,7 +23,11 @@ from pathlib import Path
 import pytest
 
 from contextweaver.data import gateway_catalog_path
-from contextweaver.data._paths import GATEWAY_CATALOG_FILENAME
+from contextweaver.data._paths import (
+    GATEWAY_CATALOG_FILENAME,
+    _owned_by_current_user,
+    _user_cache_dir,
+)
 
 
 def test_returns_real_path_for_editable_install() -> None:
@@ -56,11 +59,103 @@ def test_returned_path_is_readable() -> None:
     assert "id:" in contents or "name:" in contents
 
 
-def test_zipimport_fallback_uses_persistent_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_user_cache_dir_prefers_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``XDG_CACHE_HOME`` wins and lands under a ``contextweaver`` subdir (#742)."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    assert _user_cache_dir() == tmp_path / "contextweaver"
+
+
+def test_user_cache_dir_falls_back_when_home_unresolvable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Path.home()`` raising must land in the tempdir fallback, not bubble up.
+
+    Regression test (PR #771 review): the fallback previously only wrapped the
+    ``base / "contextweaver"`` join in ``try``, while ``Path.home()`` itself —
+    the call that actually raises ``RuntimeError`` when no home directory can
+    be determined — was evaluated outside it.
+    """
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    monkeypatch.setattr(
+        Path, "home", lambda: (_ for _ in ()).throw(RuntimeError("no home directory"))
+    )
+    result = _user_cache_dir()
+    assert str(result).startswith(tempfile.gettempdir())
+    assert result.name.startswith("contextweaver-")
+
+
+def test_owned_by_current_user_true_for_self_created(tmp_path: Path) -> None:
+    """A file the test process just created is owned by the current user."""
+    f = tmp_path / "x"
+    f.write_text("data", encoding="utf-8")
+    assert _owned_by_current_user(f) is True
+
+
+def test_owned_by_current_user_false_for_foreign_uid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A file whose ``st_uid`` differs from the current uid is not trusted."""
+    import os
+
+    if not hasattr(os, "getuid"):  # pragma: no cover — non-POSIX
+        pytest.skip("ownership check is POSIX-only")
+    f = tmp_path / "x"
+    f.write_text("data", encoding="utf-8")
+    monkeypatch.setattr(os, "getuid", lambda: f.stat().st_uid + 1)
+    assert _owned_by_current_user(f) is False
+
+
+def test_zipimport_foreign_owned_cache_is_rematerialised(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A pre-existing but foreign-owned cache file is overwritten, not trusted (#742)."""
+    import os
+
+    if not hasattr(os, "getuid"):  # pragma: no cover — non-POSIX
+        pytest.skip("ownership check is POSIX-only")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    real = _resources.files("contextweaver.data").joinpath(GATEWAY_CATALOG_FILENAME)
+    assert isinstance(real, Path)
+
+    cache_dir = tmp_path / "contextweaver"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / GATEWAY_CATALOG_FILENAME
+    cached.write_text("POISONED", encoding="utf-8")
+
+    class _NotAPath:
+        def __str__(self) -> str:
+            return f"contextweaver/data/{GATEWAY_CATALOG_FILENAME}"
+
+    wrapped = _NotAPath()
+
+    import contextlib
+
+    @contextlib.contextmanager
+    def _fake_as_file(traversable: object) -> Generator[Path, None, None]:
+        yield real
+
+    monkeypatch.setattr(
+        "contextweaver.data._paths._resources.files",
+        lambda _: type("_J", (), {"joinpath": lambda _s, _n: wrapped})(),
+    )
+    monkeypatch.setattr("contextweaver.data._paths._resources.as_file", _fake_as_file)
+    # Force the ownership check to treat the existing cache file as foreign.
+    monkeypatch.setattr("contextweaver.data._paths._owned_by_current_user", lambda _p: False)
+
+    result = gateway_catalog_path()
+    assert result == cached
+    assert result.read_text(encoding="utf-8") == real.read_text(encoding="utf-8")
+    assert "POISONED" not in result.read_text(encoding="utf-8")
+
+
+def test_zipimport_fallback_uses_persistent_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Simulate the zipimport branch by replacing the real on-disk
     traversable with a non-``Path`` wrapper. The helper must extract the
-    asset to a persistent cache (not a context-manager-scoped temp file)
-    so the returned ``Path`` stays valid after the helper returns."""
+    asset to a persistent per-user cache (not a context-manager-scoped temp
+    file) so the returned ``Path`` stays valid after the helper returns."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     real_traversable = _resources.files("contextweaver.data").joinpath(GATEWAY_CATALOG_FILENAME)
     assert isinstance(real_traversable, Path), (
         "test prerequisite: editable install must expose a real Path; "
@@ -100,25 +195,16 @@ def test_zipimport_fallback_uses_persistent_cache(monkeypatch: pytest.MonkeyPatc
     )
     monkeypatch.setattr("contextweaver.data._paths._resources.as_file", _fake_as_file)
 
-    # Make sure no stale cache file is present from a prior run.
-    cache_dir = Path(tempfile.gettempdir()) / "contextweaver"
+    # The per-user cache dir is isolated under the monkeypatched XDG root.
+    cache_dir = tmp_path / "contextweaver"
     cached = cache_dir / GATEWAY_CATALOG_FILENAME
-    if cached.exists():
-        cached.unlink()
-    try:
-        result = gateway_catalog_path()
-        assert isinstance(result, Path)
-        assert result == cached
-        assert result.is_file(), "cached catalog was not materialised"
-        # Returned Path must outlive the helper call — read it back.
-        assert result.read_text(encoding="utf-8") == real_traversable.read_text(encoding="utf-8")
+    result = gateway_catalog_path()
+    assert isinstance(result, Path)
+    assert result == cached
+    assert result.is_file(), "cached catalog was not materialised"
+    # Returned Path must outlive the helper call — read it back.
+    assert result.read_text(encoding="utf-8") == real_traversable.read_text(encoding="utf-8")
 
-        # Calling the helper again hits the cached file (no re-copy needed).
-        again = gateway_catalog_path()
-        assert again == result
-    finally:
-        if cached.exists():
-            cached.unlink()
-        # Best-effort cache-dir cleanup; ignore if other tests left files.
-        if cache_dir.exists():
-            shutil.rmtree(cache_dir, ignore_errors=True)
+    # Calling the helper again hits the cached file (no re-copy needed).
+    again = gateway_catalog_path()
+    assert again == result

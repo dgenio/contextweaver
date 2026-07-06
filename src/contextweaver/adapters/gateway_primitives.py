@@ -75,6 +75,11 @@ class PrimitiveGatewayRuntime:
             firewall and ``tool_view`` works across every primitive.
         beam_width: Router beam width for both indices.
         top_k: Max cards per browse.
+        redact_secrets: When ``True`` (#428/#743) prompt-bound resource/prompt
+            card text is scrubbed via :func:`~contextweaver.secrets.scrub_secrets`,
+            matching the tool :class:`ProxyRuntime` so the two surfaces never
+            diverge on secret scrubbing. Defaults to ``False`` (posture owned by
+            #744); ``mcp serve`` passes the operator's ``--redact`` choice.
     """
 
     def __init__(
@@ -84,11 +89,22 @@ class PrimitiveGatewayRuntime:
         context_manager: ContextManager | None = None,
         beam_width: int = 3,
         top_k: int = 10,
+        redact_secrets: bool = False,
     ) -> None:
         self._upstream = upstream
         self._context_manager = context_manager or ContextManager()
-        self._resources = PrimitiveIndex(beam_width=beam_width, top_k=top_k)
-        self._prompts = PrimitiveIndex(beam_width=beam_width, top_k=top_k)
+        self._resources = PrimitiveIndex(
+            beam_width=beam_width,
+            top_k=top_k,
+            redact_secrets=redact_secrets,
+            surface="resource_browse",
+        )
+        self._prompts = PrimitiveIndex(
+            beam_width=beam_width,
+            top_k=top_k,
+            redact_secrets=redact_secrets,
+            surface="prompt_browse",
+        )
 
     @property
     def context_manager(self) -> ContextManager:

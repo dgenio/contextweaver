@@ -13,9 +13,10 @@ Detection is **deterministic and pattern-based** — no model, no randomness, no
 entropy thresholds that would vary by input encoding — so a scrubbed surface is
 reproducible and auditable, matching the project's no-LLM-in-the-loop guarantee.
 
-The patterns target *well-known secret shapes* (cloud access keys, provider
-tokens, private-key blocks, JWTs, credential-bearing connection strings, and
-``key = value`` assignments for credential-named keys).  Detection is
+The patterns target *well-known secret shapes* (cloud access keys, AI-provider
+and SaaS API keys — OpenAI/Anthropic ``sk-`` families, GitHub PATs, Slack,
+Stripe, SendGrid — private-key blocks, JWTs, credential-bearing connection
+strings, and ``key = value`` assignments for credential-named keys).  Detection is
 intentionally conservative: it never claims to find *every* secret, and the
 scrubber only ever *removes* characters — it can tighten a surface but never
 widen or weaken it.
@@ -76,8 +77,27 @@ _DEFAULT_PATTERNS: tuple[SecretPattern, ...] = (
     SecretPattern("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
     # GitHub personal-access / OAuth / app tokens.
     SecretPattern("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
-    # Slack tokens.
+    # Slack tokens (user/bot/workspace).
     SecretPattern("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
+    # ---- AI-provider and modern SaaS token shapes (issue #742) ----
+    # Anthropic API keys (``sk-ant-...``).  Matched before the generic OpenAI
+    # rule so the ``ant-`` family gets its own named detection.
+    SecretPattern("anthropic_api_key", re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}")),
+    # OpenAI API keys (``sk-...`` / ``sk-proj-...``).  The negative lookahead
+    # keeps this from double-claiming the Anthropic shape above.
+    SecretPattern("openai_api_key", re.compile(r"\bsk-(?!ant-)(?:proj-)?[A-Za-z0-9_\-]{20,}")),
+    # GitHub fine-grained PATs (``github_pat_...``); the legacy ``gh[pousr]_``
+    # shapes are covered by ``github_token`` above.
+    SecretPattern("github_fine_grained_pat", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,}")),
+    # Slack app-level tokens (``xapp-1-...``); distinct prefix from ``xox*``.
+    SecretPattern("slack_app_token", re.compile(r"\bxapp-[0-9]-[A-Za-z0-9-]{10,}")),
+    # Stripe live secret / restricted keys (``sk_live_`` / ``rk_live_``).
+    SecretPattern("stripe_key", re.compile(r"\b(?:sk|rk)_live_[A-Za-z0-9]{16,}")),
+    # SendGrid API keys (``SG.<22>.<43>``).
+    SecretPattern(
+        "sendgrid_key",
+        re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}"),
+    ),
     # JSON Web Token (header.payload.signature).
     SecretPattern(
         "jwt",
@@ -161,6 +181,40 @@ def scrub_secrets_in_list(
     return [scrub_secrets(item, mask=mask, patterns=patterns) for item in items]
 
 
+def scrub_secrets_in_obj(
+    obj: object,
+    *,
+    mask: str = DEFAULT_SECRET_MASK,
+    patterns: tuple[SecretPattern, ...] = _DEFAULT_PATTERNS,
+) -> object:
+    """Recursively scrub secret shapes in the string leaves of *obj*.
+
+    Walks ``dict`` / ``list`` containers and applies :func:`scrub_secrets` to
+    every ``str`` leaf, leaving non-string scalars and the overall shape
+    (keys, nesting, list length) untouched.  Used by the firewall facade to
+    scrub schema-preserving pass-through payloads without changing their shape
+    (issue #745).  Deterministic; only ever removes characters.
+
+    Args:
+        obj: An arbitrary JSON-like value (dict / list / str / scalar).
+        mask: Replacement string for each detected secret.
+        patterns: Detection rules to apply.
+
+    Returns:
+        A structurally identical value with secret shapes masked in strings.
+    """
+    if isinstance(obj, str):
+        return scrub_secrets(obj, mask=mask, patterns=patterns)
+    if isinstance(obj, list):
+        return [scrub_secrets_in_obj(item, mask=mask, patterns=patterns) for item in obj]
+    if isinstance(obj, dict):
+        return {
+            key: scrub_secrets_in_obj(value, mask=mask, patterns=patterns)
+            for key, value in obj.items()
+        }
+    return obj
+
+
 def contains_secret(
     text: str,
     *,
@@ -183,4 +237,5 @@ __all__ = [
     "contains_secret",
     "scrub_secrets",
     "scrub_secrets_in_list",
+    "scrub_secrets_in_obj",
 ]

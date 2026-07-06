@@ -101,12 +101,14 @@ not as an access-control substitute.
 
 ## The HTTP sidecar
 
-`contextweaver serve-api` is a thinner surface. Its `/v1/compact` endpoint does
-not yet scrub secrets end-to-end (issue #745), and an unauthenticated bind
-exposes it to any local caller. Set `--api-key` (or
-`CONTEXTWEAVER_SIDECAR_API_KEY`), bind to a trusted interface, and do not send
-secret-bearing payloads over an untrusted network. Binding without a key prints
-a startup warning.
+`contextweaver serve-api` is a thinner surface. Its `/v1/compact` endpoint can
+scrub secrets end-to-end (issue #745): set `redact_secrets: true` in the sidecar
+config to force it on for every request, or let a client opt in per request with
+`"redact_secrets": true` in the `/v1/compact` body. It is off by default (posture
+owned by #744). An unauthenticated bind still exposes the surface to any local
+caller — set `--api-key` (or `CONTEXTWEAVER_SIDECAR_API_KEY`), bind to a trusted
+interface, and avoid sending secret-bearing payloads over an untrusted network.
+Binding without a key prints a startup warning.
 
 ## Checklist
 
