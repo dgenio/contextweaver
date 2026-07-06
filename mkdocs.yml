@@ -91,6 +91,7 @@ nav:
       - Claude Code: recipes/claude_code.md
       - GitHub Copilot: recipes/github_copilot.md
       - Cursor: recipes/cursor.md
+      - Knowledge Bundles (OKF, Lessons, Expertise Packs): recipes/okf_bundle.md
   - Gateway Spec: gateway_spec.md
   - HTTP Sidecar: sidecar.md
   - Security Model: security_model.md

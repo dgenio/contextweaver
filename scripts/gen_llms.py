@@ -42,6 +42,7 @@ LLMS_FULL_FILES: list[str] = [
     "docs/sensitivity.md",
     "docs/recipes/index.md",
     "docs/recipes/claude_code.md",
+    "docs/recipes/okf_bundle.md",
     "docs/integration_mcp.md",
     "docs/integration_a2a.md",
     "docs/errors.md",
@@ -126,6 +127,11 @@ LLMS_INDEX: list[tuple[str, list[tuple[str, str, str]]]] = [
                 "MCP Client Recipes",
                 "docs/recipes/index.md",
                 "Claude Desktop, Claude Code, GitHub Copilot, and Cursor setup",
+            ),
+            (
+                "Knowledge Bundle Recipes",
+                "docs/recipes/okf_bundle.md",
+                "OKF, repository knowledge, lessons, and expertise-pack context sources",
             ),
             (
                 "MCP Integration",
