@@ -44,6 +44,24 @@ def test_cache_config_rejects_non_positive_max_entries() -> None:
         CacheConfig(max_entries=0)
 
 
+def test_cache_config_rejects_bare_string_allow() -> None:
+    # A bare string is iterable, so it would otherwise collapse into a
+    # per-character allow-list rather than a single tool_id.
+    with pytest.raises(ConfigError):
+        CacheConfig(allow="files:read")  # type: ignore[arg-type]
+
+
+def test_cache_config_rejects_non_string_allow_entries() -> None:
+    with pytest.raises(ConfigError):
+        CacheConfig(allow=frozenset({"files:read", 1}))  # type: ignore[arg-type]
+
+
+def test_cache_config_accepts_any_string_iterable_for_allow() -> None:
+    assert CacheConfig(allow=["b:tool", "a:tool"]).to_dict()["allow"] == ["a:tool", "b:tool"]
+    assert CacheConfig(allow=("a:tool",)).to_dict()["allow"] == ["a:tool"]
+    assert CacheConfig(allow={"a:tool"}).to_dict()["allow"] == ["a:tool"]
+
+
 def test_cache_config_to_dict_sorts_allow() -> None:
     cache = CacheConfig(read_only=True, allow=frozenset({"b:tool", "a:tool"}))
     assert cache.to_dict()["allow"] == ["a:tool", "b:tool"]

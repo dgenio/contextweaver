@@ -61,6 +61,14 @@ class CacheConfig:
             raise ConfigError("CacheConfig.ttl_seconds must be positive")
         if self.max_entries < 1:
             raise ConfigError("CacheConfig.max_entries must be >= 1")
+        if self.allow is not None and (
+            isinstance(self.allow, str)
+            or not isinstance(self.allow, (frozenset, set, list, tuple))
+            or not all(isinstance(item, str) for item in self.allow)
+        ):
+            # A bare string is iterable, so it would otherwise be treated as
+            # a per-character allow-list rather than a single tool_id.
+            raise ConfigError("CacheConfig.allow must be an iterable of strings")
 
     @property
     def enabled(self) -> bool:
