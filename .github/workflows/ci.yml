@@ -274,7 +274,7 @@ jobs:
         # every push. Falls through silently if the delta step failed —
         # benchmark feedback never gates the PR.
         if: ${{ steps.delta.outcome == 'success' && hashFiles('benchmarks/results/delta.md') != '' }}
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
