@@ -57,6 +57,45 @@ contextweaver regardless of whether the upstream server implements its own
 controls — do not rely on MCP `readOnlyHint`/`destructiveHint` annotations as
 policy; they are untrusted hints.
 
+## Policy presets: a faster starting point
+
+Hand-writing a `policy` / `retry` / `rate_limits` / `cache` block from scratch
+is a lot of trial-and-error for a first deployment. `mcp serve --policy-preset
+<name>` (or the `policy_preset` config key) selects a named `GatewayPreset`
+(issue #664) bundling all four:
+
+| Preset       | Authorization                                                              | Retry              | Rate limit (`tool_execute`) | Cache                          |
+| ------------ | --------------------------------------------------------------------------- | ------------------ | ---------------------------- | ------------------------------- |
+| `safe`       | **Every** `tool_execute` call requires approval — does not rely on the (unverified) `read_only` hint | 2 attempts          | 30/min                       | off                              |
+| `balanced`   | Allow-all                                                                  | 3 attempts          | 120/min                      | off                              |
+| `throughput` | Allow-all                                                                  | 5 attempts, jittered | none                        | read-only, no allow-list         |
+
+Selecting no preset is inert — behaviour is unchanged. An explicit
+`policy` / `retry` / `rate_limits` / `cache` config block still wins over the
+preset **for that block** (block-level override, not a field-by-field merge):
+start from `safe` and override just `retry` while keeping the preset's
+approval-gated policy and quota:
+
+```yaml
+# gateway.yaml
+catalog: ./catalog.json
+policy_preset: safe
+retry:
+  max_attempts: 5   # overrides the preset's retry block only
+```
+
+⚠️ `throughput`'s cache trusts every upstream's self-declared `read_only`
+hint with no `allow` list (same caveat as [Bound raw egress](#bound-raw-egress)
+below) — do not point it at untrusted or partially-trusted upstreams. Pair
+caching with an explicit `cache.allow` list, or use `safe`/`balanced` instead,
+for safety-critical estates.
+
+Preview the resolved policy before serving — no catalog required:
+
+```bash
+contextweaver mcp serve --policy-preset safe --print-effective-policy
+```
+
 ## Keep secrets out of committed config
 
 Upstream servers often need tokens (e.g. a GitHub PAT). Never commit them.
@@ -115,6 +154,8 @@ Binding without a key prints a startup warning.
 - [ ] Serve with redaction on (default); justify any `--no-redact`.
 - [ ] Use a `default: deny` policy for untrusted estates; `require_approval` for
       destructive tools; `deny` `*delete*`-style tools.
+- [ ] For a first deployment, start from a named preset (`--policy-preset`)
+      and review its `--print-effective-policy` output before going live.
 - [ ] Deny or approval-gate `tool_view` for sensitive namespaces.
 - [ ] Keep tokens in the environment/secret manager, never in committed config.
 - [ ] `.gitignore` gateway config, `--state-dir`, and artifact directories.

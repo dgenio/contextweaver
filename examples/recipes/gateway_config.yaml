@@ -43,6 +43,15 @@ quiet: false
 # MCP server display name advertised on init.
 name: contextweaver
 
+# Named starting point bundling policy/retry/rate_limits/cache in one go
+# (issue #664): "safe" (every tool_execute requires approval), "balanced"
+# (allow-all, moderate quotas), or "throughput" (allow-all, no quotas,
+# read-only caching on). Selecting no preset is inert. Any policy/retry/
+# rate_limits/cache block set below still wins over the preset for that
+# block. Preview the resolved policy with:
+#   contextweaver mcp serve --config gateway_config.yaml --print-effective-policy
+# policy_preset: balanced
+
 # --- Opt-in dispatch-path controls (off unless set) -------------------------
 # Bounded retry for transient upstream failures (issue #529). max_attempts: 1
 # (default) means no retries. Only transport-level failures are retried.

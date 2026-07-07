@@ -20,14 +20,16 @@ import pytest
 import typer
 
 from contextweaver._mcp_cli import (
-    _build_dispatch_controls,
+    _build_dispatch_config,
     _build_primitive_runtime,
     _build_runtime,
+    _dispatch_behaviors,
     _load_primitive_defs_from_catalog,
     _load_serve_config,
     _load_tool_defs_from_catalog,
     _ServeMode,
 )
+from contextweaver.adapters.gateway_presets import GATEWAY_PRESET_NAMES, GatewayPreset
 from contextweaver.adapters.proxy_runtime import ExposureMode
 from contextweaver.data import gateway_catalog_path
 
@@ -46,9 +48,13 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_SGR_RE.sub("", text)
 
 
-def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str, cwd: str | None = None, env_overrides: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
+    if env_overrides:
+        env.update(env_overrides)
     return subprocess.run(
         [sys.executable, "-m", "contextweaver", *args],
         capture_output=True,
@@ -590,8 +596,8 @@ def test_mcp_stats_aggregates_jsonl(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_build_dispatch_controls_builds_each_block() -> None:
-    retry, limiter, cache = _build_dispatch_controls(
+def test_build_dispatch_config_builds_each_block() -> None:
+    retry, rate_limits, cache = _build_dispatch_config(
         {
             "retry": {"max_attempts": 3, "base_delay": 0.2},
             "rate_limits": {"tool_execute": {"max_calls_per_session": 5}},
@@ -599,25 +605,38 @@ def test_build_dispatch_controls_builds_each_block() -> None:
         }
     )
     assert retry is not None and retry.max_attempts == 3
+    assert rate_limits is not None and rate_limits.enabled is True
+    assert cache is not None and cache.enabled is True
+    assert cache.allow is not None and "files:read@1#0badc0de" in cache.allow
+
+    limiter, result_cache = _dispatch_behaviors(rate_limits, cache)
     assert limiter is not None
-    assert cache is not None
-    assert cache.admits("files:read@1#0badc0de") is True
-    assert cache.admits("other:tool") is False
+    assert result_cache is not None
+    assert result_cache.admits("files:read@1#0badc0de") is True
+    assert result_cache.admits("other:tool") is False
 
 
-def test_build_dispatch_controls_absent_blocks_are_none() -> None:
-    assert _build_dispatch_controls({}) == (None, None, None)
+def test_build_dispatch_config_absent_blocks_are_none() -> None:
+    assert _build_dispatch_config({}) == (None, None, None)
+    assert _dispatch_behaviors(None, None) == (None, None)
 
 
-def test_build_dispatch_controls_rejects_string_cache_allow() -> None:
+def test_dispatch_behaviors_skips_cache_when_not_read_only() -> None:
+    _, _, cache = _build_dispatch_config({"cache": {"ttl_seconds": 30}})
+    assert cache is not None and cache.enabled is False
+    _, result_cache = _dispatch_behaviors(None, cache)
+    assert result_cache is None
+
+
+def test_build_dispatch_config_rejects_string_cache_allow() -> None:
     # A bare string would otherwise collapse into a set of single characters.
     with pytest.raises(typer.BadParameter):
-        _build_dispatch_controls({"cache": {"read_only": True, "allow": "files:read"}})
+        _build_dispatch_config({"cache": {"read_only": True, "allow": "files:read"}})
 
 
-def test_build_dispatch_controls_rejects_bad_retryable_codes() -> None:
+def test_build_dispatch_config_rejects_bad_retryable_codes() -> None:
     with pytest.raises(typer.BadParameter):
-        _build_dispatch_controls({"retry": {"retryable_codes": "UPSTREAM_TIMEOUT"}})
+        _build_dispatch_config({"retry": {"retryable_codes": "UPSTREAM_TIMEOUT"}})
 
 
 # ------------------------------------------------------------------
@@ -727,3 +746,154 @@ def test_serve_proxy_mode_does_not_wire_primitives(tmp_path: Path) -> None:
     result = _run("mcp", "serve", "--catalog", str(catalog), "--proxy", "--dry-run")
     assert result.returncode == 0, result.stderr
     assert "primitives=off" in (result.stderr + result.stdout)
+
+
+# ------------------------------------------------------------------
+# Gateway policy presets (#664)
+# ------------------------------------------------------------------
+
+
+def test_mcp_serve_help_shows_preset_flags() -> None:
+    # Rich truncates long flag names/choice-lists at the default 80-column
+    # width (no tty), so force a wide terminal to see the full flag text.
+    result = _run("mcp", "serve", "--help", env_overrides={"COLUMNS": "200"})
+    assert result.returncode == 0
+    out = _strip_ansi(result.stdout)
+    assert "--policy-preset" in out
+    assert "--print-effective-policy" in out
+    for name in GATEWAY_PRESET_NAMES:
+        assert name in out
+
+
+def test_load_serve_config_accepts_valid_policy_preset(tmp_path: Path) -> None:
+    cfg = tmp_path / "gateway.yaml"
+    cfg.write_text("catalog: cat.json\npolicy_preset: balanced\n", encoding="utf-8")
+    (tmp_path / "cat.json").write_text("[]", encoding="utf-8")
+    assert _load_serve_config(cfg)["policy_preset"] == "balanced"
+
+
+def test_load_serve_config_rejects_unknown_policy_preset(tmp_path: Path) -> None:
+    cfg = tmp_path / "gateway.yaml"
+    cfg.write_text("catalog: cat.json\npolicy_preset: nope\n", encoding="utf-8")
+    (tmp_path / "cat.json").write_text("[]", encoding="utf-8")
+    with pytest.raises(typer.BadParameter):
+        _load_serve_config(cfg)
+
+
+def test_print_effective_policy_no_preset_is_inert_defaults() -> None:
+    """No preset/config selected: the export mirrors byte-identical inert defaults."""
+    result = _run("mcp", "serve", "--print-effective-policy")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["name"] == "custom"
+    assert payload["policy"] == {"default": "allow", "rules": []}
+    assert payload["retry"]["max_attempts"] == 1
+    assert payload["rate_limits"] == {}
+    assert payload["cache"]["read_only"] is False
+
+
+def test_print_effective_policy_with_preset_does_not_require_catalog() -> None:
+    result = _run("mcp", "serve", "--policy-preset", "safe", "--print-effective-policy")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["name"] == "safe"
+    assert payload["policy"]["rules"][0]["action"] == "require_approval"
+    assert payload["retry"]["max_attempts"] == 2
+    assert payload["rate_limits"]["tool_execute"]["max_calls_per_minute"] == 30
+    assert payload["cache"]["read_only"] is False
+
+
+def test_print_effective_policy_matches_gateway_preset_to_dict() -> None:
+    result = _run("mcp", "serve", "--policy-preset", "throughput", "--print-effective-policy")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    expected = GatewayPreset.from_preset("throughput").to_dict()
+    assert payload == expected
+
+
+def test_explicit_config_block_overrides_preset_wholesale(tmp_path: Path) -> None:
+    """An explicit block wins over the preset's block; other blocks stay preset-sourced."""
+    cfg = tmp_path / "gateway.yaml"
+    cfg.write_text(
+        "catalog: cat.json\n"
+        "policy_preset: safe\n"
+        "policy:\n"
+        "  default: allow\n"
+        "  rules: []\n"
+        "retry:\n"
+        "  max_attempts: 9\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "cat.json").write_text("[]", encoding="utf-8")
+    result = _run("mcp", "serve", "--config", str(cfg), "--print-effective-policy")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    # Explicit `policy`/`retry` blocks win wholesale.
+    assert payload["policy"] == {"default": "allow", "rules": []}
+    assert payload["retry"]["max_attempts"] == 9
+    # `rate_limits`/`cache` were not overridden — still sourced from 'safe'.
+    assert payload["rate_limits"]["tool_execute"]["max_calls_per_minute"] == 30
+    assert payload["cache"]["read_only"] is False
+
+
+def test_cli_policy_preset_wins_over_config_policy_preset(tmp_path: Path) -> None:
+    """Explicit --policy-preset on the command line wins over the config key."""
+    cfg = tmp_path / "gateway.yaml"
+    cfg.write_text("catalog: cat.json\npolicy_preset: safe\n", encoding="utf-8")
+    (tmp_path / "cat.json").write_text("[]", encoding="utf-8")
+    result = _run(
+        "mcp",
+        "serve",
+        "--config",
+        str(cfg),
+        "--policy-preset",
+        "throughput",
+        "--print-effective-policy",
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["name"] == "throughput"
+
+
+def test_serve_dry_run_summary_reports_preset() -> None:
+    catalog = gateway_catalog_path()
+    result = _run(
+        "mcp", "serve", "--catalog", str(catalog), "--policy-preset", "balanced", "--dry-run"
+    )
+    assert result.returncode == 0, result.stderr
+    assert "preset=balanced" in (result.stderr + result.stdout)
+
+
+def test_serve_dry_run_summary_reports_no_preset() -> None:
+    catalog = gateway_catalog_path()
+    result = _run("mcp", "serve", "--catalog", str(catalog), "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert "preset=none" in (result.stderr + result.stdout)
+
+
+def test_build_runtime_wires_rate_limiter_and_cache_from_preset_config() -> None:
+    """`_build_runtime` wires the RateLimiter/ToolResultCache _dispatch_behaviors builds."""
+    preset = GatewayPreset.from_preset("throughput")
+    rate_limiter, result_cache = _dispatch_behaviors(preset.rate_limits, preset.cache)
+    assert rate_limiter is not None
+    assert result_cache is not None
+    runtime = _build_runtime(
+        gateway_catalog_path(),
+        mode=_ServeMode.gateway,
+        top_k=10,
+        beam_width=3,
+        cache_stable=False,
+        retry_policy=preset.retry,
+        rate_limiter=rate_limiter,
+        result_cache=result_cache,
+    )
+    assert runtime._retry_policy is preset.retry
+    assert runtime._rate_limiter is rate_limiter
+    assert runtime._result_cache is result_cache
+
+
+def test_unknown_policy_preset_cli_value_rejected() -> None:
+    result = _run(
+        "mcp", "serve", "--catalog", str(gateway_catalog_path()), "--policy-preset", "nope"
+    )
+    assert result.returncode != 0
+    assert "safe" in result.stderr and "balanced" in result.stderr

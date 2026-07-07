@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Gateway policy presets (#664).** New `contextweaver.adapters.gateway_presets`
+  module: `GatewayPreset.from_preset("safe" | "balanced" | "throughput")` bundles
+  the authorization policy (`ToolPolicy`), retry policy, rate limits, and the
+  new `CacheConfig` into one named starting point. `safe` requires approval on
+  every `tool_execute` call regardless of the (unverified) upstream read-only
+  hint; `balanced` is allow-all with moderate quotas; `throughput` is allow-all
+  with no quotas and read-only caching on. Selectable via `mcp serve
+  --policy-preset <name>` or the `policy_preset` config key; an explicit
+  `policy` / `retry` / `rate_limits` / `cache` config block still wins over the
+  preset **for that block** (block-level override, not a field merge).
+  Selecting no preset is inert — behaviour is byte-identical to today. New
+  `mcp serve --print-effective-policy` prints the resolved (preset-or-overridden)
+  bundle as deterministic, sorted JSON via `GatewayPreset.to_dict()` and exits,
+  without requiring the catalog to exist on disk. `CacheConfig.allow` accepts
+  any iterable of `tool_id` strings and is normalised to a `frozenset`, so the
+  runtime value matches its annotation and instances stay hashable. Exported
+  from `contextweaver.adapters`. Documented in `docs/security_mcp_gateway.md`.
 - **Knowledge-bundle context sources: OKF, repository knowledge, lessons, and
   expertise packs (#736, #763, #767, #776).** Four adapters let contextweaver
   ingest external knowledge stored as OKF-style Markdown-plus-YAML-frontmatter
