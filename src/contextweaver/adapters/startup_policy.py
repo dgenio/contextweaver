@@ -143,7 +143,12 @@ class StartupReport:
         """Render one human-readable status line per upstream, for stderr logging."""
         lines = []
         for s in self.statuses:
-            detail = f" tools={s.tool_count}" if s.status == "loaded" else f" error={s.error}"
+            if s.status == "loaded":
+                detail = f" tools={s.tool_count}"
+            elif s.error is not None:
+                detail = f" error={s.error}"
+            else:
+                detail = ""
             lines.append(f"upstream {s.name!r}: {s.status}{detail}")
         for collision in self.collisions:
             lines.append(f"collision: {collision}")

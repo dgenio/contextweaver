@@ -28,6 +28,6 @@
   "routing/navigator.py": 347,
   "routing/router.py": 879,
   "routing/tree.py": 406,
-  "store/json_file_artifacts.py": 342,
+  "store/json_file_artifacts.py": 346,
   "store/testing.py": 341
 }

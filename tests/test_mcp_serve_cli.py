@@ -927,6 +927,41 @@ def test_load_serve_config_rejects_non_mapping_upstreams_block(tmp_path: Path) -
         _load_serve_config(config_path)
 
 
+def test_load_serve_config_rejects_both_catalog_and_upstreams(tmp_path: Path) -> None:
+    # docs/gateway_spec.md §4.7 documents these as mutually exclusive; silently
+    # preferring one over the other would be surprising behavior.
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "catalog": str(gateway_catalog_path()),
+                "upstreams": {"fs": {"type": "stdio", "command": "echo"}},
+            }
+        )
+    )
+    with pytest.raises(typer.BadParameter, match="must not set both 'catalog' and 'upstreams'"):
+        _load_serve_config(config_path)
+
+
+def test_serve_live_upstream_malformed_config_reports_clean_error(tmp_path: Path) -> None:
+    # A malformed `upstreams`/`startup`/`artifacts` block raises ConfigError
+    # deep in parse_upstreams_config/StartupPolicy.from_dict/ArtifactPolicy.from_dict;
+    # the CLI must convert it to a clean --config error, not a raw traceback.
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(
+        json.dumps({"upstreams": {"fs": {"type": "carrier-pigeon", "command": "echo"}}})
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "contextweaver", "mcp", "serve", "--config", str(config_path)],
+        capture_output=True,
+        text=True,
+        timeout=25,
+    )
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "type must be one of" in result.stderr
+
+
 def test_find_upstream_startup_error_bare_instance() -> None:
     from contextweaver.exceptions import UpstreamStartupError
 

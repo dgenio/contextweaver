@@ -228,8 +228,11 @@ class JsonFileArtifactStore:
             # Sweep TTL-expired entries first (#375): otherwise a stale slot
             # could block a new put under max_artifacts even though it would
             # already read back as gone, defeating TTL's point as quota relief.
-            for existing_handle in list(self._index):
-                self._evict_if_expired(existing_handle)
+            # Guarded on ttl_seconds so a store without TTL configured never
+            # pays this O(n) sweep on every put.
+            if self._lifecycle.ttl_seconds is not None:
+                for existing_handle in list(self._index):
+                    self._evict_if_expired(existing_handle)
             self._check_quota(handle, len(content))
             # Data first, then metadata: a crash between the two leaves an
             # orphan ``.data`` file that no index entry references (harmless),
@@ -282,8 +285,9 @@ class JsonFileArtifactStore:
         sweeps any TTL-expired entries (#375) before listing.
         """
         with self._lock:
-            for handle in list(self._index):
-                self._evict_if_expired(handle)
+            if self._lifecycle.ttl_seconds is not None:
+                for handle in list(self._index):
+                    self._evict_if_expired(handle)
             return [self._index[k] for k in sorted(self._index)]
 
     def delete(self, handle: str) -> None:

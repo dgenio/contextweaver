@@ -70,6 +70,15 @@ def test_report_healthy_count_and_total_tools() -> None:
     assert report.total_tools == 5
 
 
+def test_render_lines_omits_error_suffix_when_no_error_detail() -> None:
+    # A timed-out upstream carries no `error` string; the line must not read
+    # "error=None" — regression for a confusing startup diagnostic.
+    report = StartupReport(statuses=(UpstreamStatus(name="slow", status="timed_out"),))
+    lines = report.render_lines()
+    assert lines == ["upstream 'slow': timed_out"]
+    assert "error=None" not in lines[0]
+
+
 def test_report_render_lines_includes_collisions() -> None:
     report = StartupReport(
         statuses=(UpstreamStatus(name="a", status="loaded", tool_count=1),),

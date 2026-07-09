@@ -1,14 +1,15 @@
 """Live multi-upstream MCP launch behaviour (#366/#368/#374).
 
 Pairs with the pure-data config in
-:mod:`contextweaver.adapters.upstream_config`. This module owns the actual
-network/process I/O: connecting to each configured
+:mod:`contextweaver.adapters.upstream_config` (per-upstream spec) and
+:mod:`contextweaver.adapters.startup_policy` (fault-tolerance policy). This
+module owns the actual network/process I/O: connecting to each configured
 :class:`~contextweaver.adapters.upstream_config.UpstreamSpec` over its
 transport, wrapping the resulting session in the existing
 :class:`~contextweaver.adapters.mcp_upstream.McpClientUpstream`, applying
 namespace/include/exclude filtering, and composing the survivors behind
 :class:`~contextweaver.adapters.mcp_upstream.MultiplexUpstream` under the
-configured :class:`~contextweaver.adapters.upstream_config.StartupPolicy`.
+configured :class:`~contextweaver.adapters.startup_policy.StartupPolicy`.
 
 All child processes and network connections are entered into a caller-owned
 :class:`contextlib.AsyncExitStack`, so a single ``await stack.aclose()`` tears

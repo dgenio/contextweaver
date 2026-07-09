@@ -77,6 +77,13 @@ def test_build_plan_no_recognised_servers_key_raises() -> None:
         build_migration_plan({"unrelated": {}})
 
 
+def test_build_plan_all_servers_unsupported_raises() -> None:
+    # Every entry unsupported must fail fast rather than silently produce an
+    # empty, unusable upstreams: block.
+    with pytest.raises(ConfigError, match="no server could be migrated"):
+        build_migration_plan({"servers": {"bad": {"unknown": "shape"}}})
+
+
 def test_render_gateway_config_is_upstreams_only() -> None:
     plan = build_migration_plan(_SIMPLE_CONFIG)
     gateway_config = render_gateway_config(plan)
@@ -89,6 +96,22 @@ def test_render_replacement_config_embeds_config_arg() -> None:
     server = replacement["servers"]["contextweaver-gateway"]
     assert server["args"][-1] == "${workspaceFolder}/gw.json"
     assert "--config" in server["args"]
+
+
+def test_render_replacement_config_vscode_shape_has_schema_and_type() -> None:
+    plan = build_migration_plan(_SIMPLE_CONFIG)  # "servers" key
+    replacement = render_replacement_config(plan, gateway_config_arg="gw.json")
+    assert replacement["$schema"] == "https://aka.ms/vscode-mcp-schema"
+    assert replacement["servers"]["contextweaver-gateway"]["type"] == "stdio"
+
+
+def test_render_replacement_config_mcp_servers_shape_omits_schema_and_type() -> None:
+    plan = build_migration_plan({"mcpServers": {"a": {"command": "echo"}}})
+    replacement = render_replacement_config(plan, gateway_config_arg="gw.json")
+    assert "$schema" not in replacement
+    server = replacement["mcpServers"]["contextweaver-gateway"]
+    assert "type" not in server
+    assert server["command"] == "uvx"
 
 
 def test_dry_run_report_lists_servers_and_skips(tmp_path: Path) -> None:

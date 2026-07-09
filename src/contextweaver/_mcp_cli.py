@@ -264,6 +264,12 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         raise typer.BadParameter(
             f"config file {config_path} must set 'catalog' or 'upstreams'", param_hint="--config"
         )
+    if "catalog" in data and "upstreams" in data:
+        raise typer.BadParameter(
+            f"config file {config_path} must not set both 'catalog' and 'upstreams' "
+            "(they are mutually exclusive — see docs/gateway_spec.md §4.7)",
+            param_hint="--config",
+        )
     if "catalog" in data:
         catalog_path = Path(str(data["catalog"])).expanduser()
         if not catalog_path.is_absolute():
@@ -1366,9 +1372,16 @@ def serve(
                 "unscrubbed. Omit --no-redact to serve secure-by-default.",
                 err=True,
             )
-        upstream_specs = parse_upstreams_config(upstreams_cfg or {})
-        startup_policy = StartupPolicy.from_dict(startup_cfg) if startup_cfg else StartupPolicy()
-        live_artifact_policy = ArtifactPolicy.from_dict(artifacts_cfg) if artifacts_cfg else None
+        try:
+            upstream_specs = parse_upstreams_config(upstreams_cfg or {})
+            startup_policy = (
+                StartupPolicy.from_dict(startup_cfg) if startup_cfg else StartupPolicy()
+            )
+            live_artifact_policy = (
+                ArtifactPolicy.from_dict(artifacts_cfg) if artifacts_cfg else None
+            )
+        except (ContextWeaverError, ValueError, TypeError) as exc:
+            raise typer.BadParameter(str(exc), param_hint="--config") from exc
         loop = asyncio.new_event_loop()
         try:
             asyncio.set_event_loop(loop)

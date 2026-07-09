@@ -124,7 +124,14 @@ def _server_to_upstream(
 
 
 def build_migration_plan(vscode_config: dict[str, Any]) -> VscodeMigrationPlan:
-    """Transform a parsed VS Code MCP config into a :class:`VscodeMigrationPlan`."""
+    """Transform a parsed VS Code MCP config into a :class:`VscodeMigrationPlan`.
+
+    Raises:
+        ConfigError: If every server entry is unsupported, which would
+            otherwise silently produce a gateway config with an empty
+            ``upstreams`` block and a replacement client config that cannot
+            serve anything.
+    """
     server_map_key, servers = _extract_server_map(vscode_config)
     upstreams: dict[str, dict[str, Any]] = {}
     warnings: list[str] = []
@@ -137,6 +144,11 @@ def build_migration_plan(vscode_config: dict[str, Any]) -> VscodeMigrationPlan:
                 warnings.append(warning)
             continue
         upstreams[str(name)] = upstream
+    if not upstreams:
+        raise ConfigError(
+            f"no server could be migrated; skipped: {', '.join(sorted(skipped))} "
+            f"({'; '.join(warnings)})"
+        )
     return VscodeMigrationPlan(
         server_map_key=server_map_key, upstreams=upstreams, warnings=warnings, skipped=skipped
     )
@@ -159,17 +171,24 @@ def render_replacement_config(
             gateway config is actually written (the caller decides this;
             see :func:`contextweaver._mcp_cli._workspace_path` for the
             rendering convention the rest of the CLI already uses).
+
+    The VS Code-specific ``"$schema"`` and ``"type": "stdio"`` fields are
+    only emitted for a ``"servers"``-keyed source config (VS Code's own
+    schema); an ``"mcpServers"``-keyed source (Cursor / Claude Desktop
+    shapes, per :func:`contextweaver._mcp_cli._render_config_payload`'s
+    ``cursor`` target) gets the simpler entry those clients expect instead.
     """
-    return {
-        "$schema": "https://aka.ms/vscode-mcp-schema",
-        plan.server_map_key: {
-            _GATEWAY_SERVER_NAME: {
-                "type": "stdio",
-                "command": "uvx",
-                "args": ["contextweaver", "mcp", "serve", "--config", gateway_config_arg],
-            }
-        },
+    is_vscode = plan.server_map_key == "servers"
+    server_entry: dict[str, Any] = {
+        **({"type": "stdio"} if is_vscode else {}),
+        "command": "uvx",
+        "args": ["contextweaver", "mcp", "serve", "--config", gateway_config_arg],
     }
+    payload: dict[str, Any] = {
+        **({"$schema": "https://aka.ms/vscode-mcp-schema"} if is_vscode else {}),
+        plan.server_map_key: {_GATEWAY_SERVER_NAME: server_entry},
+    }
+    return payload
 
 
 def render_dry_run_report(
@@ -210,7 +229,8 @@ def write_migration(
             is copied to ``{output_path}.bak`` before being overwritten.
 
     Returns:
-        Every path written, in write order (backup first, if made).
+        Every path written, in write order: the gateway config, then the
+        backup (if one was made), then the replacement client config.
     """
     written: list[Path] = []
     gateway_config_path.parent.mkdir(parents=True, exist_ok=True)
