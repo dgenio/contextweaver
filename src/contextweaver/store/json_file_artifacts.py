@@ -26,6 +26,12 @@ filenames, so a handle legal as a handle but hostile as a filename — chiefly
 ``:`` (which opens an NTFS alternate data stream on Windows; the firewall emits
 ``artifact:result:call_1``) — is stored portably. See
 :mod:`contextweaver.store._json_file_io`.
+
+Lifecycle hardening (issue #375, :mod:`contextweaver.store._json_file_ttl`):
+optional ``ttl_seconds`` expires an artifact after ``put``, process-lifetime
+scoped like ``ToolResultCache``'s clock (not persisted across a restart —
+issue #617). Optional ``redact_secrets`` scrubs UTF-8 content before writing,
+so ``content_hash`` matches the redacted bytes.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ import hashlib
 import json
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +51,7 @@ from contextweaver.store._json_file_io import atomic_write as _atomic_write
 from contextweaver.store._json_file_io import consistent_data_size as _consistent_data_size
 from contextweaver.store._json_file_io import encode_handle as _encode_handle
 from contextweaver.store._json_file_io import validate_handle as _validate_handle
+from contextweaver.store._json_file_ttl import ArtifactLifecycle, Clock
 from contextweaver.store.artifacts import _apply_selector
 from contextweaver.types import ArtifactRef
 
@@ -71,6 +79,8 @@ class JsonFileArtifactStore:
             bytes.  ``None`` (default) means unbounded.
         max_artifacts: Optional ceiling on the number of stored artifacts.
             ``None`` (default) means unbounded.
+        ttl_seconds / redact_secrets / clock: Artifact-lifecycle policy
+            knobs (issue #375) — see :class:`ArtifactLifecycle`.
     """
 
     def __init__(
@@ -79,11 +89,17 @@ class JsonFileArtifactStore:
         *,
         max_bytes: int | None = None,
         max_artifacts: int | None = None,
+        ttl_seconds: float | None = None,
+        redact_secrets: bool = False,
+        clock: Clock = time.monotonic,
     ) -> None:
         self._base_dir = Path(base_dir)
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._max_bytes = max_bytes
         self._max_artifacts = max_artifacts
+        self._lifecycle = ArtifactLifecycle(
+            ttl_seconds=ttl_seconds, redact_secrets=redact_secrets, clock=clock
+        )
         self._index: dict[str, ArtifactRef] = {}
         self._total_bytes = 0
         # Serialises put/delete/list_refs so a single-process gateway can share
@@ -96,6 +112,11 @@ class JsonFileArtifactStore:
             len(self._index),
             self._total_bytes,
         )
+
+    def _evict_if_expired(self, handle: str) -> None:
+        """Delete *handle* if its TTL has elapsed (lazy eviction, no sweep thread)."""
+        if handle in self._index and self._lifecycle.is_expired(handle):
+            self._delete_locked(handle)
 
     @property
     def base_dir(self) -> Path:
@@ -184,9 +205,9 @@ class JsonFileArtifactStore:
 
         The data and metadata files are each written atomically (temp file +
         :func:`os.replace`), so a crash never leaves a half-written pair.  The
-        returned ref carries a populated ``content_hash`` (sha256 of *content*,
-        #466), which is persisted with the metadata and powers the firewall's
-        cross-restart idempotency short-circuit (#190).
+        returned ref's ``content_hash`` is sha256 of the *stored* bytes —
+        i.e. after redaction (#375) — so it always matches what is on disk
+        and keeps powering the firewall's idempotency short-circuit (#190).
 
         Raises:
             ContextWeaverError: If *handle* contains a path separator,
@@ -195,6 +216,7 @@ class JsonFileArtifactStore:
                 or ``max_artifacts``.
         """
         _validate_handle(handle)
+        content = self._lifecycle.prepare(content)
         ref = ArtifactRef(
             handle=handle,
             media_type=media_type,
@@ -203,6 +225,11 @@ class JsonFileArtifactStore:
             content_hash=hashlib.sha256(content).hexdigest(),
         )
         with self._lock:
+            # Sweep TTL-expired entries first (#375): otherwise a stale slot
+            # could block a new put under max_artifacts even though it would
+            # already read back as gone, defeating TTL's point as quota relief.
+            for existing_handle in list(self._index):
+                self._evict_if_expired(existing_handle)
             self._check_quota(handle, len(content))
             # Data first, then metadata: a crash between the two leaves an
             # orphan ``.data`` file that no index entry references (harmless),
@@ -215,6 +242,7 @@ class JsonFileArtifactStore:
             previous = self._index.get(handle)
             self._total_bytes += len(content) - (previous.size_bytes if previous else 0)
             self._index[handle] = ref
+            self._lifecycle.record_put(handle)
         logger.debug("json_file_artifacts.put: handle=%s, size=%d", handle, len(content))
         return ref
 
@@ -222,8 +250,10 @@ class JsonFileArtifactStore:
         """Retrieve the raw bytes for *handle*.
 
         Raises:
-            ArtifactNotFoundError: If *handle* is not in the store.
+            ArtifactNotFoundError: If *handle* is unknown or TTL-expired (#375).
         """
+        with self._lock:
+            self._evict_if_expired(handle)
         data_path = self._data_path(handle)
         if not data_path.is_file():
             raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
@@ -235,20 +265,25 @@ class JsonFileArtifactStore:
         Served from the in-memory index (#497).
 
         Raises:
-            ArtifactNotFoundError: If *handle* is not in the store.
+            ArtifactNotFoundError: If *handle* is unknown or TTL-expired (#375).
         """
         _validate_handle(handle)
-        ref = self._index.get(handle)
+        with self._lock:
+            self._evict_if_expired(handle)
+            ref = self._index.get(handle)
         if ref is None:
             raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
         return ref
 
     def list_refs(self) -> list[ArtifactRef]:
-        """Return all stored :class:`ArtifactRef` objects, sorted by handle.
+        """Return all stored, non-expired :class:`ArtifactRef` objects, sorted by handle.
 
-        Reads the in-memory index rather than rescanning the directory (#497).
+        Reads the in-memory index rather than rescanning the directory (#497);
+        sweeps any TTL-expired entries (#375) before listing.
         """
         with self._lock:
+            for handle in list(self._index):
+                self._evict_if_expired(handle)
             return [self._index[k] for k in sorted(self._index)]
 
     def delete(self, handle: str) -> None:
@@ -266,16 +301,23 @@ class JsonFileArtifactStore:
         with self._lock:
             if handle not in self._index and not meta.is_file() and not data.is_file():
                 raise ArtifactNotFoundError(f"Artifact not found: {handle!r}")
-            meta.unlink(missing_ok=True)
-            data.unlink(missing_ok=True)
-            previous = self._index.pop(handle, None)
-            if previous is not None:
-                self._total_bytes -= previous.size_bytes
+            self._delete_locked(handle)
+
+    def _delete_locked(self, handle: str) -> None:
+        """Remove *handle*'s files/index entry. Caller must hold ``self._lock``."""
+        self._meta_path(handle).unlink(missing_ok=True)
+        self._data_path(handle).unlink(missing_ok=True)
+        previous = self._index.pop(handle, None)
+        self._lifecycle.forget(handle)
+        if previous is not None:
+            self._total_bytes -= previous.size_bytes
 
     def exists(self, handle: str) -> bool:
-        """Return ``True`` if *handle* is in the store."""
+        """Return ``True`` if *handle* is in the store and not TTL-expired (#375)."""
         _validate_handle(handle)
-        return handle in self._index
+        with self._lock:
+            self._evict_if_expired(handle)
+            return handle in self._index
 
     def metadata(self, handle: str) -> ArtifactRef:
         """Return the :class:`ArtifactRef` for *handle*.

@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
+    from contextweaver.adapters.startup_policy import StartupReport
     from contextweaver.envelope import BuildStats
     from contextweaver.routing.catalog import CatalogValidationReport
 
@@ -288,3 +289,25 @@ class StoreClosedError(ContextWeaverError):
     """
 
     code: ClassVar[str] = "CW_STORE_CLOSED"
+
+
+class UpstreamStartupError(ContextWeaverError):
+    """Raised when live multi-upstream startup fails under the configured
+    ``StartupPolicy`` (issue #374): a required upstream failed under
+    ``mode="strict"``, too few upstreams started, or the catalog is empty.
+
+    Attributes:
+        report: The ``StartupReport`` describing every upstream's outcome.
+    """
+
+    code: ClassVar[str] = "CW_UPSTREAM_STARTUP"
+    default_hint: ClassVar[str | None] = (
+        f"inspect the attached report, or relax startup.mode/min_healthy_upstreams; "
+        f"see {_ERRORS_DOC}/#upstreamstartuperror"
+    )
+
+    def __init__(
+        self, message: str, *, report: StartupReport | None = None, hint: str | None = None
+    ) -> None:
+        super().__init__(message, hint=hint)
+        self.report = report

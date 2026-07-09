@@ -207,7 +207,7 @@
   class ItemNotFoundError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class JaccardClusteringEngine()
       def cluster(self, items: 'list[SelectableItem]', *, k: 'int') -> 'dict[str, list[SelectableItem]]'
-  class JsonFileArtifactStore(base_dir: 'str | Path', *, max_bytes: 'int | None' = ..., max_artifacts: 'int | None' = ...) -> 'None'
+  class JsonFileArtifactStore(base_dir: 'str | Path', *, max_bytes: 'int | None' = ..., max_artifacts: 'int | None' = ..., ttl_seconds: 'float | None' = ..., redact_secrets: 'bool' = ..., clock: 'Clock' = ...) -> 'None'
       def delete(self, handle: 'str') -> 'None'
       def drilldown(self, handle: 'str', selector: 'dict[str, Any]') -> 'str'
       def exists(self, handle: 'str') -> 'bool'
@@ -891,7 +891,7 @@
       def list_keys(self, prefix: 'str' = ...) -> 'list[str]'
       def put(self, fact: 'Fact') -> 'None'
       def to_dict(self) -> 'dict[str, Any]'
-  class JsonFileArtifactStore(base_dir: 'str | Path', *, max_bytes: 'int | None' = ..., max_artifacts: 'int | None' = ...) -> 'None'
+  class JsonFileArtifactStore(base_dir: 'str | Path', *, max_bytes: 'int | None' = ..., max_artifacts: 'int | None' = ..., ttl_seconds: 'float | None' = ..., redact_secrets: 'bool' = ..., clock: 'Clock' = ...) -> 'None'
       def delete(self, handle: 'str') -> 'None'
       def drilldown(self, handle: 'str', selector: 'dict[str, Any]') -> 'str'
       def exists(self, handle: 'str') -> 'bool'
