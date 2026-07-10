@@ -131,11 +131,11 @@ class UpstreamSpec:
         name, so patterns like ``"read_*"`` describe what the upstream calls
         its tools, not the namespaced id contextweaver later derives.
         """
-        if any(fnmatch.fnmatchcase(upstream_tool_name, p) for p in self.exclude_tools):
-            return False
-        if self.include_tools:
-            return any(fnmatch.fnmatchcase(upstream_tool_name, p) for p in self.include_tools)
-        return True
+        return tool_matches_filters(
+            upstream_tool_name,
+            include_tools=self.include_tools,
+            exclude_tools=self.exclude_tools,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a JSON-compatible dict."""
@@ -185,6 +185,27 @@ class UpstreamSpec:
         )
 
 
+def tool_matches_filters(
+    tool_name: str,
+    *,
+    include_tools: tuple[str, ...],
+    exclude_tools: tuple[str, ...],
+) -> bool:
+    """Return whether *tool_name* passes glob include/exclude filters (#368).
+
+    Exclude patterns win over include patterns; an empty *include_tools*
+    admits everything not excluded. Shared by :meth:`UpstreamSpec.matches_tool`
+    (the tested surface) and
+    :meth:`~contextweaver.adapters.upstream_launch.NamespacedFilteredUpstream._matches`
+    (the runtime surface) so the two can never diverge.
+    """
+    if any(fnmatch.fnmatchcase(tool_name, p) for p in exclude_tools):
+        return False
+    if include_tools:
+        return any(fnmatch.fnmatchcase(tool_name, p) for p in include_tools)
+    return True
+
+
 def parse_upstreams_config(raw: dict[str, Any]) -> list[UpstreamSpec]:
     """Parse the ``upstreams`` config block into a list of :class:`UpstreamSpec`.
 
@@ -202,4 +223,5 @@ __all__ = [
     "UPSTREAM_TYPES",
     "UpstreamSpec",
     "parse_upstreams_config",
+    "tool_matches_filters",
 ]

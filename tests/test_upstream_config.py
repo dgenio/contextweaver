@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from contextweaver.adapters.upstream_config import UpstreamSpec, parse_upstreams_config
+from contextweaver.adapters.upstream_config import (
+    UpstreamSpec,
+    parse_upstreams_config,
+    tool_matches_filters,
+)
 from contextweaver.exceptions import ConfigError
 
 # ---------------------------------------------------------------------------
@@ -63,6 +67,33 @@ def test_matches_tool_exclude_wins_over_include() -> None:
     )
     assert spec.matches_tool("read_file") is True
     assert spec.matches_tool("delete_file") is False
+
+
+def test_tool_matches_filters_shared_helper() -> None:
+    # The free function is the single source of truth shared by
+    # UpstreamSpec.matches_tool and NamespacedFilteredUpstream._matches, so it
+    # must reproduce their contract exactly (exclude wins; empty include admits).
+    assert tool_matches_filters("anything", include_tools=(), exclude_tools=()) is True
+    assert tool_matches_filters("read_file", include_tools=("read_*",), exclude_tools=()) is True
+    assert tool_matches_filters("delete_file", include_tools=("read_*",), exclude_tools=()) is False
+    assert (
+        tool_matches_filters("delete_file", include_tools=("*",), exclude_tools=("delete_*",))
+        is False
+    )
+
+
+def test_matches_tool_delegates_to_shared_helper() -> None:
+    spec = UpstreamSpec(
+        name="fs",
+        type="stdio",
+        command="echo",
+        include_tools=("read_*",),
+        exclude_tools=("*_secret",),
+    )
+    for name in ("read_file", "read_secret", "write_file"):
+        assert spec.matches_tool(name) == tool_matches_filters(
+            name, include_tools=spec.include_tools, exclude_tools=spec.exclude_tools
+        )
 
 
 # ---------------------------------------------------------------------------

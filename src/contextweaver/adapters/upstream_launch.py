@@ -19,7 +19,6 @@ every upstream down cleanly regardless of how many succeeded.
 from __future__ import annotations
 
 import asyncio
-import fnmatch
 import logging
 from contextlib import AsyncExitStack
 from typing import Any
@@ -37,7 +36,7 @@ from contextweaver.adapters.startup_policy import (
     UpstreamStatus,
     detect_tool_name_collisions,
 )
-from contextweaver.adapters.upstream_config import UpstreamSpec
+from contextweaver.adapters.upstream_config import UpstreamSpec, tool_matches_filters
 from contextweaver.exceptions import UpstreamStartupError
 
 logger = logging.getLogger("contextweaver.adapters.upstream_launch")
@@ -76,11 +75,11 @@ class NamespacedFilteredUpstream:
         self._name_map: dict[str, str] = {}
 
     def _matches(self, upstream_name: str) -> bool:
-        if any(fnmatch.fnmatchcase(upstream_name, p) for p in self._exclude_tools):
-            return False
-        if self._include_tools:
-            return any(fnmatch.fnmatchcase(upstream_name, p) for p in self._include_tools)
-        return True
+        return tool_matches_filters(
+            upstream_name,
+            include_tools=self._include_tools,
+            exclude_tools=self._exclude_tools,
+        )
 
     async def list_tools(self) -> list[dict[str, Any]]:
         """Return the filtered, namespaced tool defs from the wrapped upstream."""
@@ -158,7 +157,7 @@ async def launch_upstreams(
     Each upstream is connected under its own :attr:`~UpstreamSpec.timeout`-and
     :attr:`~StartupPolicy.upstream_timeout_seconds`-bounded attempt; a
     connect failure, timeout, or ``tools/list`` failure is recorded in the
-    returned :class:`~contextweaver.adapters.upstream_config.StartupReport`
+    returned :class:`~contextweaver.adapters.startup_policy.StartupReport`
     rather than propagated, so one bad upstream cannot take down the others.
     Once every attempt has resolved, :attr:`~StartupPolicy.mode`,
     :attr:`~StartupPolicy.min_healthy_upstreams`, and

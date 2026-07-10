@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   duplicating them. Resources/prompts are not yet supported over live
   upstreams (tools only); serve-side Streamable HTTP (as opposed to
   upstream-side, added here) remains tracked separately under #422.
+  `catalog` and `upstreams` are mutually exclusive: rejected both in a
+  config file and as a command-line `--catalog` paired with an `upstreams`
+  config (rather than silently ignoring the flag). Include/exclude glob
+  filtering is centralised in a shared `upstream_config.tool_matches_filters`
+  helper so `UpstreamSpec.matches_tool` (tested) and the runtime
+  `NamespacedFilteredUpstream` filter can never diverge.
 - **`contextweaver mcp import-vscode` (#367).** Migrates an existing VS
   Code-family MCP config (`servers` or `mcpServers`) into a gateway
   `upstreams:` config plus a replacement client config exposing only
@@ -59,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   original issue's scope — the `tool_view` policy gate and size-quota
   machinery it also asked for already shipped via issues #373/#746/#497;
   implementing them again here would have duplicated that shipped code.
+  `artifacts.redact_secrets` is deliberately independent of the `--redact`
+  prompt-time firewall: a secure-by-default gateway with `--state-dir` still
+  persists raw artifact bytes unless `artifacts.redact_secrets: true` is set
+  (documented in `docs/gateway_spec.md` §4.7).
 - **Gateway policy presets (#664).** New `contextweaver.adapters.gateway_presets`
   module: `GatewayPreset.from_preset("safe" | "balanced" | "throughput")` bundles
   the authorization policy (`ToolPolicy`), retry policy, rate limits, and the

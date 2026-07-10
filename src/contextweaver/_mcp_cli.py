@@ -1345,6 +1345,19 @@ def serve(
         raise typer.Exit(0)
 
     live_mode = upstreams_cfg is not None
+    if live_mode:
+        # 'catalog' and 'upstreams' are mutually exclusive. _load_serve_config
+        # already rejects both appearing in the config file, but an explicit
+        # --catalog on the command line paired with an 'upstreams' config would
+        # otherwise be silently ignored in favour of the live path. Reject it
+        # so the precedence is never a surprise (docs/gateway_spec.md §4.7).
+        catalog_source = ctx.get_parameter_source("catalog")
+        if catalog_source is not None and catalog_source.name == "COMMANDLINE":
+            raise typer.BadParameter(
+                "--catalog cannot be combined with a config file that sets 'upstreams' "
+                "(they are mutually exclusive — see docs/gateway_spec.md §4.7)",
+                param_hint="--catalog",
+            )
     if not live_mode and catalog is None:
         raise typer.BadParameter(
             "provide a catalog via --catalog, or a config file setting "

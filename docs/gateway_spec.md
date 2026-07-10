@@ -646,6 +646,22 @@ task`). Bounding only the RPC calls avoids this while still catching the
 practically meaningful hang points (a server that never completes the
 handshake or never answers `tools/list`).
 
+**`catalog` and `upstreams` are mutually exclusive.** A config file may set
+one or the other, never both (a config setting both is rejected at load time).
+The exclusion also covers a command-line `--catalog` paired with an `upstreams`
+config: rather than silently ignoring the flag in favour of the live path,
+`mcp serve` rejects the combination so the precedence is never a surprise.
+
+**Artifact redaction is independent of `--redact`.** `artifacts.redact_secrets`
+(default `false`) controls scrubbing of tool-output bytes *before they are
+written to the `--state-dir` artifact store*. It is a separate knob from the
+`--redact` prompt-time firewall (which still scrubs everything reaching the
+prompt). Consequently, a secure-by-default gateway (`--redact` on) with
+`--state-dir` still persists raw, unredacted artifact bytes to disk unless
+`artifacts.redact_secrets: true` is also set. Set it explicitly when persisted
+artifacts must not retain secret-shaped substrings; note redaction only applies
+to UTF-8-decodable content (binary artifacts are stored unchanged).
+
 **Scope.** Only tools are supported over live upstreams in this revision —
 resources/prompts (§9) still require the static-catalog path. Serve-side
 Streamable HTTP (as opposed to the upstream-side `type: http` here) is

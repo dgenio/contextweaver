@@ -943,6 +943,29 @@ def test_load_serve_config_rejects_both_catalog_and_upstreams(tmp_path: Path) ->
         _load_serve_config(config_path)
 
 
+def test_serve_rejects_cli_catalog_with_upstreams_config(tmp_path: Path) -> None:
+    """An explicit --catalog paired with an 'upstreams' config is rejected.
+
+    _load_serve_config only guards both keys inside the config file; a
+    command-line --catalog + live config would otherwise be silently dropped
+    in favour of the live path. serve() rejects the combination instead.
+    """
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(json.dumps({"upstreams": {"fs": {"type": "stdio", "command": "echo"}}}))
+    result = _run(
+        "mcp",
+        "serve",
+        "--catalog",
+        str(gateway_catalog_path()),
+        "--config",
+        str(config_path),
+        "--dry-run",
+    )
+    assert result.returncode != 0
+    combined = result.stderr + result.stdout
+    assert "--catalog cannot be combined" in combined
+
+
 def test_serve_live_upstream_malformed_config_reports_clean_error(tmp_path: Path) -> None:
     # A malformed `upstreams`/`startup`/`artifacts` block raises ConfigError
     # deep in parse_upstreams_config/StartupPolicy.from_dict/ArtifactPolicy.from_dict;
