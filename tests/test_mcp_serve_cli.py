@@ -962,8 +962,12 @@ def test_serve_rejects_cli_catalog_with_upstreams_config(tmp_path: Path) -> None
         "--dry-run",
     )
     assert result.returncode != 0
-    combined = result.stderr + result.stdout
-    assert "--catalog cannot be combined" in combined
+    # Typer renders BadParameter inside a Rich panel that word-wraps the
+    # message across box-bordered lines (width-dependent: CI defaults to 80
+    # cols). Normalise the box borders + whitespace back into single spaces so
+    # the wrapped message reads as one line, then match a distinctive phrase.
+    normalized = re.sub(r"[│╭╮╯╰─\s]+", " ", _strip_ansi(result.stderr + result.stdout))
+    assert "catalog cannot be combined" in normalized
 
 
 def test_serve_live_upstream_malformed_config_reports_clean_error(tmp_path: Path) -> None:
