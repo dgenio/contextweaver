@@ -52,6 +52,7 @@ attributes are.
 | `CW_PATH_NOT_FOUND` | `PathNotFoundError` | A well-formed `tool_browse` path resolves to no node. |
 | `CW_UPSTREAM` | `UpstreamError` | An upstream MCP tool call fails for transport/protocol reasons. |
 | `CW_STORE_CLOSED` | `StoreClosedError` | An operation is attempted on a closed store. |
+| `CW_UPSTREAM_STARTUP` | `UpstreamStartupError` | Live multi-upstream startup fails under the configured `StartupPolicy`. |
 
 ---
 
@@ -269,6 +270,23 @@ after the backing connection was released via `close()`.
 
 **Fix:** do not use a store after closing it; open a new instance, or use the
 store as a context manager so its lifetime is scoped correctly.
+
+## UpstreamStartupError
+
+**Code:** `CW_UPSTREAM_STARTUP`
+
+Raised by `adapters/upstream_launch.py` (`launch_upstreams`) when live
+multi-upstream startup fails under the configured
+`adapters.startup_policy.StartupPolicy` (issue #374): a `required` upstream
+failed while `startup.mode: strict`, fewer than `min_healthy_upstreams`
+upstreams started, or the effective catalog is empty and
+`fail_on_empty_catalog` is set. The exception carries a `report` attribute
+(a `StartupReport`) describing every upstream's individual startup outcome.
+
+**Fix:** inspect `exc.report.statuses` for the per-upstream failure reason
+(connection refused, auth failure, timeout, …); either fix the failing
+upstream or relax `startup.mode` to `degraded` / lower
+`min_healthy_upstreams` if partial startup is acceptable.
 
 ---
 

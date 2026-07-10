@@ -31,6 +31,7 @@ import asyncio
 import json
 import logging
 import signal
+from contextlib import AsyncExitStack
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
@@ -41,6 +42,13 @@ import yaml
 from contextweaver._incident_pack import build_incident_pack, default_incident_pack_path
 from contextweaver._incident_pack_files import DEFAULT_MAX_FILE_BYTES
 from contextweaver._version import __version__
+from contextweaver._vscode_import import (
+    build_migration_plan,
+    load_vscode_mcp_config,
+    render_dry_run_report,
+    write_migration,
+)
+from contextweaver.adapters.artifact_policy import ArtifactPolicy
 from contextweaver.adapters.gateway_authz import ToolPolicy
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
@@ -57,6 +65,9 @@ from contextweaver.adapters.mcp_primitive_upstream import StubPrimitiveUpstream
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
+from contextweaver.adapters.startup_policy import StartupPolicy
+from contextweaver.adapters.upstream_config import UpstreamSpec, parse_upstreams_config
+from contextweaver.adapters.upstream_launch import launch_upstreams
 from contextweaver.context.classify import HeuristicSensitivityClassifier
 from contextweaver.context.manager import ContextManager
 from contextweaver.diagnostics import (
@@ -66,7 +77,7 @@ from contextweaver.diagnostics import (
     render_diagnostic_report,
     summarize_diagnostics,
 )
-from contextweaver.exceptions import ConfigError, ContextWeaverError
+from contextweaver.exceptions import ConfigError, ContextWeaverError, UpstreamStartupError
 from contextweaver.store import JsonFileArtifactStore, SqliteEventLog, StoreBundle
 
 logger = logging.getLogger("contextweaver.mcp_cli")
@@ -160,6 +171,9 @@ _CONFIG_KEYS: frozenset[str] = frozenset(
         "redact",
         "policy",
         "policy_preset",
+        "upstreams",
+        "startup",
+        "artifacts",
     }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
@@ -246,14 +260,24 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
             f"unknown config key(s): {', '.join(unknown)}; allowed: {allowed}",
             param_hint="--config",
         )
-    if "catalog" not in data:
+    if "catalog" not in data and "upstreams" not in data:
         raise typer.BadParameter(
-            f"config file {config_path} must set 'catalog'", param_hint="--config"
+            f"config file {config_path} must set 'catalog' or 'upstreams'", param_hint="--config"
         )
-    catalog_path = Path(str(data["catalog"])).expanduser()
-    if not catalog_path.is_absolute():
-        catalog_path = config_path.parent / catalog_path
-    data["catalog"] = str(catalog_path.resolve())
+    if "catalog" in data and "upstreams" in data:
+        raise typer.BadParameter(
+            f"config file {config_path} must not set both 'catalog' and 'upstreams' "
+            "(they are mutually exclusive — see docs/gateway_spec.md §4.7)",
+            param_hint="--config",
+        )
+    if "catalog" in data:
+        catalog_path = Path(str(data["catalog"])).expanduser()
+        if not catalog_path.is_absolute():
+            catalog_path = config_path.parent / catalog_path
+        data["catalog"] = str(catalog_path.resolve())
+    for mapping_key in ("upstreams", "startup", "artifacts"):
+        if mapping_key in data and not isinstance(data[mapping_key], dict):
+            raise typer.BadParameter(f"{mapping_key} must be a mapping", param_hint="--config")
     # Normalise + validate option types so `serve` can consume them directly
     # and `--config` parsing matches CLI flag semantics (e.g. a quoted
     # "false" must not become True).
@@ -628,7 +652,9 @@ async def _stub_handler(name: str, args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": body}], "isError": False}
 
 
-def _build_state_stores(state_dir: Path) -> StoreBundle:
+def _build_state_stores(
+    state_dir: Path, artifact_policy: ArtifactPolicy | None = None
+) -> StoreBundle:
     """Build persistent stores rooted at *state_dir* for ``mcp serve`` (issue #511).
 
     Lays out ``{state_dir}/events.sqlite3`` (a :class:`SqliteEventLog`) and
@@ -639,6 +665,9 @@ def _build_state_stores(state_dir: Path) -> StoreBundle:
 
     Args:
         state_dir: Directory to persist gateway state under (created if absent).
+        artifact_policy: Optional TTL/quota/redaction policy for the artifact
+            store (issue #375); ``None`` uses the store's inert defaults
+            (unbounded, no TTL, no redaction).
 
     Returns:
         A :class:`StoreBundle` wiring the persistent event log + artifact store.
@@ -646,10 +675,17 @@ def _build_state_stores(state_dir: Path) -> StoreBundle:
     Raises:
         typer.BadParameter: If *state_dir* cannot be created or written.
     """
+    policy = artifact_policy or ArtifactPolicy()
     try:
         state_dir.mkdir(parents=True, exist_ok=True)
         event_log = SqliteEventLog(state_dir / "events.sqlite3")
-        artifact_store = JsonFileArtifactStore(state_dir / "artifacts")
+        artifact_store = JsonFileArtifactStore(
+            state_dir / "artifacts",
+            max_bytes=policy.max_bytes,
+            max_artifacts=policy.max_artifacts,
+            ttl_seconds=policy.ttl_seconds,
+            redact_secrets=policy.redact_secrets,
+        )
     except OSError as exc:
         raise typer.BadParameter(
             f"state_dir {state_dir} is not writable: {exc}", param_hint="--state-dir"
@@ -671,6 +707,7 @@ def _build_runtime(
     retry_policy: RetryPolicy | None = None,
     rate_limiter: RateLimiter | None = None,
     result_cache: ToolResultCache | None = None,
+    artifact_policy: ArtifactPolicy | None = None,
 ) -> ProxyRuntime:
     """Construct a :class:`ProxyRuntime` populated from *catalog_path*.
 
@@ -697,6 +734,8 @@ def _build_runtime(
         retry_policy: Optional upstream-retry policy (issue #529).
         rate_limiter: Optional per-session quota enforcer (issue #482).
         result_cache: Optional read-only response cache (issue #512).
+        artifact_policy: Optional artifact TTL/quota/redaction policy applied
+            when *state_dir* is set (issue #375).
 
     Returns:
         A ready-to-serve :class:`ProxyRuntime`.
@@ -708,7 +747,7 @@ def _build_runtime(
     # library-level ``ContextManager`` defaults stay permissive; this hardening is
     # applied here, at the gateway boundary.
     context_manager = ContextManager(
-        stores=_build_state_stores(state_dir) if state_dir is not None else None,
+        stores=_build_state_stores(state_dir, artifact_policy) if state_dir is not None else None,
         sensitivity_classifier=HeuristicSensitivityClassifier() if secure else None,
         redact_secrets=secure,
     )
@@ -777,6 +816,111 @@ def _build_primitive_runtime(
     )
     primitive_runtime.register_sync(resource_defs, prompt_defs)
     return primitive_runtime
+
+
+def _find_upstream_startup_error(exc: BaseException) -> UpstreamStartupError | None:
+    """Recursively search *exc* (and any nested exception group) for an
+    :class:`UpstreamStartupError` (see the call site in ``serve`` for why)."""
+    if isinstance(exc, UpstreamStartupError):
+        return exc
+    for sub in getattr(exc, "exceptions", ()):
+        found = _find_upstream_startup_error(sub)
+        if found is not None:
+            return found
+    return None
+
+
+async def _serve_live(
+    specs: list[UpstreamSpec],
+    startup_policy: StartupPolicy,
+    *,
+    mode: _ServeMode,
+    top_k: int,
+    beam_width: int,
+    cache_stable: bool,
+    diagnostic_sink: DiagnosticSink | None,
+    state_dir: Path | None,
+    secure: bool,
+    policy: ToolPolicy | None,
+    retry_policy: RetryPolicy | None,
+    rate_limiter: RateLimiter | None,
+    result_cache: ToolResultCache | None,
+    artifact_policy: ArtifactPolicy | None,
+    name: str,
+    version: str,
+    transport: str,
+    host: str,
+    port: int,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Launch real upstream MCP servers and serve the resulting catalog (issues #366/#374).
+
+    Every configured upstream is connected inside this coroutine's
+    :class:`contextlib.AsyncExitStack`, so returning (normally, on
+    ``dry_run``, or via an exception) tears every child process / network
+    connection down cleanly. Resources and prompts are not yet supported over
+    live upstreams — only tools — mirroring the scope of issues #366-#375;
+    catalogs declaring resources/prompts should use the static-catalog path.
+
+    Raises:
+        UpstreamStartupError: Propagated from :func:`launch_upstreams` when
+            startup fails under *startup_policy* (strict-mode required-upstream
+            failure, too few healthy upstreams, or an empty effective catalog).
+    """
+    async with AsyncExitStack() as stack:
+        multiplex, report = await launch_upstreams(specs, startup_policy, stack)
+        if not quiet:
+            for line in report.render_lines():
+                typer.echo(line, err=True)
+
+        exposure = ExposureMode.GATEWAY if mode == _ServeMode.gateway else ExposureMode.TRANSPARENT
+        context_manager = ContextManager(
+            stores=_build_state_stores(state_dir, artifact_policy)
+            if state_dir is not None
+            else None,
+            sensitivity_classifier=HeuristicSensitivityClassifier() if secure else None,
+            redact_secrets=secure,
+        )
+        runtime = ProxyRuntime(
+            multiplex,
+            mode=exposure,
+            top_k=top_k,
+            beam_width=beam_width,
+            cache_stable=cache_stable,
+            diagnostic_sink=diagnostic_sink,
+            context_manager=context_manager,
+            redact_secrets=secure,
+            policy=policy,
+            retry_policy=retry_policy,
+            rate_limiter=rate_limiter,
+            result_cache=result_cache,
+        )
+        tool_count = await runtime.refresh_catalog()
+
+        if not quiet:
+            typer.echo(
+                f"contextweaver mcp serve: mode={mode.value} transport={transport} "
+                f"upstreams={len(specs)} healthy={report.healthy_count} tools={tool_count} "
+                f"redact={'on' if secure else 'off'} version={version} "
+                f"state_dir={state_dir or 'in-memory'}",
+                err=True,
+            )
+        if dry_run:
+            if not quiet:
+                typer.echo(f"dry-run: upstreams validated; not binding {transport}.", err=True)
+            return
+
+        server: McpGatewayServer | McpProxyServer
+        if mode == _ServeMode.gateway:
+            server = McpGatewayServer(runtime, name=name, version=version)
+        else:
+            server = McpProxyServer(runtime, name=name, version=version)
+
+        if transport == "sse":
+            await server.run_sse(host=host, port=port)
+        else:
+            await server.run_stdio()
 
 
 @mcp_app.command("inspect")
@@ -1120,6 +1264,12 @@ def serve(
     # Named preset (#664); an explicit policy/retry/rate_limits/cache block
     # still wins over the preset for that block (resolved further below).
     preset_name: str | None = policy_preset.value if policy_preset is not None else None
+    # Live multi-upstream config (issues #366/#368/#374/#375) is config-file
+    # only, like policy/retry/rate_limits/cache above; stays None (static-
+    # catalog path) unless a config file sets 'upstreams'.
+    upstreams_cfg: dict[str, Any] | None = None
+    startup_cfg: dict[str, Any] | None = None
+    artifacts_cfg: dict[str, Any] | None = None
 
     # Config file fills any option not passed explicitly on the command line.
     if config is not None:
@@ -1127,14 +1277,18 @@ def serve(
         retry_policy, rate_limits_policy, cache_config = _build_dispatch_config(cfg)
         if "policy" in cfg:
             policy = ToolPolicy.from_dict(cfg["policy"])
+        upstreams_cfg = cfg.get("upstreams")
+        startup_cfg = cfg.get("startup")
+        artifacts_cfg = cfg.get("artifacts")
 
         def _from_cli(param: str) -> bool:
             source = ctx.get_parameter_source(param)
             return source is not None and source.name == "COMMANDLINE"
 
         # cfg values are already type-normalised + validated by
-        # _load_serve_config, so consume them directly.
-        if catalog is None and not _from_cli("catalog"):
+        # _load_serve_config, so consume them directly. 'catalog' is absent
+        # from cfg when the config sets 'upstreams' instead (live mode).
+        if catalog is None and not _from_cli("catalog") and "catalog" in cfg:
             catalog = Path(str(cfg["catalog"]))
         if not _from_cli("policy_preset") and "policy_preset" in cfg:
             preset_name = str(cfg["policy_preset"])
@@ -1190,9 +1344,24 @@ def serve(
         typer.echo(json.dumps(effective.to_dict(), indent=2, sort_keys=True))
         raise typer.Exit(0)
 
-    if catalog is None:
+    live_mode = upstreams_cfg is not None
+    if live_mode:
+        # 'catalog' and 'upstreams' are mutually exclusive. _load_serve_config
+        # already rejects both appearing in the config file, but an explicit
+        # --catalog on the command line paired with an 'upstreams' config would
+        # otherwise be silently ignored in favour of the live path. Reject it
+        # so the precedence is never a surprise (docs/gateway_spec.md §4.7).
+        catalog_source = ctx.get_parameter_source("catalog")
+        if catalog_source is not None and catalog_source.name == "COMMANDLINE":
+            raise typer.BadParameter(
+                "--catalog cannot be combined with a config file that sets 'upstreams' "
+                "(they are mutually exclusive — see docs/gateway_spec.md §4.7)",
+                param_hint="--catalog",
+            )
+    if not live_mode and catalog is None:
         raise typer.BadParameter(
-            "provide a catalog via --catalog or a config file via --config",
+            "provide a catalog via --catalog, or a config file setting "
+            "'catalog' or 'upstreams' via --config",
             param_hint="--catalog",
         )
     resolved_mode = _ServeMode.gateway if gateway else _ServeMode.proxy if proxy else mode
@@ -1206,8 +1375,77 @@ def serve(
         raise typer.BadParameter("--transport must be 'stdio' or 'sse'", param_hint="--transport")
 
     rate_limiter, result_cache = _dispatch_behaviors(rate_limits_policy, cache_config)
-
     diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
+
+    if live_mode:
+        if not redact:
+            typer.echo(
+                "contextweaver mcp serve: WARNING secret/PII redaction is OFF "
+                "(--no-redact) — unlabelled tool output may reach the prompt "
+                "unscrubbed. Omit --no-redact to serve secure-by-default.",
+                err=True,
+            )
+        try:
+            upstream_specs = parse_upstreams_config(upstreams_cfg or {})
+            startup_policy = (
+                StartupPolicy.from_dict(startup_cfg) if startup_cfg else StartupPolicy()
+            )
+            live_artifact_policy = (
+                ArtifactPolicy.from_dict(artifacts_cfg) if artifacts_cfg else None
+            )
+        except (ContextWeaverError, ValueError, TypeError) as exc:
+            raise typer.BadParameter(str(exc), param_hint="--config") from exc
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            _install_sigint_handler(loop)
+            loop.run_until_complete(
+                _serve_live(
+                    upstream_specs,
+                    startup_policy,
+                    mode=resolved_mode,
+                    top_k=top_k,
+                    beam_width=beam_width,
+                    cache_stable=cache_stable,
+                    diagnostic_sink=diagnostic_sink,
+                    state_dir=state_dir,
+                    secure=redact,
+                    policy=policy,
+                    retry_policy=retry_policy,
+                    rate_limiter=rate_limiter,
+                    result_cache=result_cache,
+                    artifact_policy=live_artifact_policy,
+                    name=name,
+                    version=version,
+                    transport=transport,
+                    host=host,
+                    port=port,
+                    dry_run=dry_run,
+                    quiet=quiet,
+                )
+            )
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            if not quiet:
+                typer.echo("contextweaver mcp serve: interrupted, shutting down.", err=True)
+            raise typer.Exit(0) from None
+        except Exception as exc:  # noqa: BLE001 — unwrapped below; only UpstreamStartupError is handled
+            # anyio wraps an exception raised inside `async with AsyncExitStack()`
+            # in an ExceptionGroup while it cancels/closes the other still-open
+            # upstream transports, so the UpstreamStartupError we raised in
+            # launch_upstreams may not surface as a bare instance here. Walk
+            # `.exceptions` (the ExceptionGroup/BaseExceptionGroup duck-type;
+            # avoided as an explicit import so this stays Python 3.10-compatible)
+            # rather than relying on `except*`, which is 3.11+ syntax.
+            upstream_error = _find_upstream_startup_error(exc)
+            if upstream_error is None:
+                raise
+            typer.echo(f"contextweaver mcp serve: {upstream_error}", err=True)
+            raise typer.Exit(1) from None
+        finally:
+            loop.close()
+        return
+
+    assert catalog is not None  # narrowed by the live_mode check above
     runtime = _build_runtime(
         catalog,
         mode=resolved_mode,
@@ -1410,11 +1648,94 @@ def generate_configs(
             typer.echo(f"warning [{item.value}]: {note}", err=True)
 
 
+@mcp_app.command("import-vscode")
+def import_vscode(
+    input: Annotated[  # noqa: A002 - matches the documented --input flag name
+        Path,
+        typer.Option(..., "--input", help="Path to an existing VS Code MCP config to migrate."),
+    ],
+    gateway_config: Annotated[
+        Path,
+        typer.Option(
+            "--gateway-config",
+            help="Where to write the generated gateway config (an 'upstreams:' block).",
+        ),
+    ] = Path(".contextweaver/gateway.json"),
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            help=(
+                "Where to write the replacement VS Code MCP config exposing only "
+                "contextweaver-gateway. Defaults to overwriting --input."
+            ),
+        ),
+    ] = None,
+    write: Annotated[
+        bool,
+        typer.Option(
+            "--write/--dry-run",
+            help=(
+                "Write the migration to disk. Default is --dry-run: print the "
+                "plan without touching any file."
+            ),
+        ),
+    ] = False,
+    backup: Annotated[
+        bool,
+        typer.Option(
+            "--backup/--no-backup",
+            help="With --write, back up an existing --output file to '<output>.bak' first.",
+        ),
+    ] = True,
+) -> None:
+    """Migrate an existing VS Code (or VS Code-family) MCP config to a
+    contextweaver gateway config, exposing only ``contextweaver-gateway``
+    to the client (issue #367).
+
+    Reads the ``servers`` (or ``mcpServers``) block of *input*, converts
+    each ``stdio``/``url``-backed entry into an ``upstreams`` entry for
+    ``mcp serve``, and (with ``--write``) writes both the new gateway
+    config and a replacement client config exposing only the gateway.
+    Servers with an unsupported shape are skipped with a warning rather
+    than aborting the whole migration.
+    """
+    output_path = output if output is not None else input
+    try:
+        vscode_config = load_vscode_mcp_config(input)
+        plan = build_migration_plan(vscode_config)
+    except ConfigError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--input") from exc
+
+    gateway_config_arg, path_note = _workspace_path(gateway_config, "workspaceFolder")
+    if path_note is not None:
+        typer.echo(f"warning: {path_note}", err=True)
+
+    if not write:
+        typer.echo(
+            render_dry_run_report(plan, gateway_config_path=gateway_config, output_path=output_path)
+        )
+        return
+
+    written = write_migration(
+        plan,
+        gateway_config_path=gateway_config,
+        gateway_config_arg=gateway_config_arg,
+        output_path=output_path,
+        backup=backup,
+    )
+    for path in written:
+        typer.echo(f"wrote: {path}", err=True)
+    for warning in plan.warnings:
+        typer.echo(f"warning: {warning}", err=True)
+
+
 # Re-exported for tests / advanced wiring.
 __all__ = [
     "mcp_app",
     "_load_tool_defs_from_catalog",
     "_load_serve_config",
     "_build_runtime",
+    "_serve_live",
     "_ServeMode",
 ]

@@ -582,6 +582,91 @@ guarantees:
 These guarantees are pinned by the characterization tests in
 `tests/test_proxy_runtime.py` (refresh-rename, refresh-removal, duplicate-raw-name).
 
+### 4.7 Live multi-upstream serving (issues #366/#368/#374/#375)
+
+`mcp serve --config` accepts an `upstreams:` block as an alternative to
+`catalog:` (the two are mutually exclusive; `upstreams:` switches the CLI to
+`adapters.upstream_launch.launch_upstreams`, which connects real MCP servers
+instead of the static-catalog/`StubUpstream` path):
+
+```yaml
+upstreams:
+  <name>:
+    type: stdio | http | sse       # default stdio
+    command: ...                   # stdio only
+    args: [...]                    # stdio only
+    env: {...}                     # stdio only; values may use ${env:VAR}
+    url: ...                       # http/sse only
+    headers: {...}                 # http/sse only; values may use ${env:VAR}
+    namespace: ...                 # optional dotted tool-name prefix
+    required: true                 # default true
+    include_tools: [...]           # glob, matched against the upstream's own names
+    exclude_tools: [...]           # glob; evaluated after include_tools
+    timeout: 30                    # per-call timeout, seconds
+startup:
+  mode: degraded | strict          # default degraded
+  upstream_timeout_seconds: 10
+  min_healthy_upstreams: 1
+  fail_on_empty_catalog: true
+artifacts:                        # only meaningful with state_dir set
+  ttl_seconds: ...
+  max_bytes: ...
+  max_artifacts: ...
+  redact_secrets: false
+```
+
+**Namespace prefixing reuses §1.4, no new mechanism.** A configured
+`namespace` is applied by prefixing the upstream's raw tool name with
+`"{namespace}."` *before* it reaches `register_tool_defs_sync` /
+`refresh_catalog` — the existing `infer_namespace` dotted-prefix rule (§1.4)
+then derives the canonical `tool_id`'s namespace segment exactly as it would
+for any other dotted upstream tool name.
+
+**Fault tolerance (`startup:`).** `mode: strict` aborts the whole `mcp serve`
+invocation if any `required: true` upstream fails to connect, times out, or
+fails its initial `tools/list`; `mode: degraded` (default) tolerates failures
+in non-required upstreams as long as `min_healthy_upstreams` is met. Either
+mode enforces `min_healthy_upstreams` and (unless disabled)
+`fail_on_empty_catalog`. A per-upstream `StartupReport` — status
+(`loaded`/`failed`/`timed_out`), tool count, and any tool-name collision
+diagnostics — is logged to stderr at startup; a startup failure raises
+`UpstreamStartupError` (`CW_UPSTREAM_STARTUP`), reported by the CLI as a
+single-line error, not a raw traceback.
+
+**Connect-step timeout scope.** `upstream_timeout_seconds` bounds the MCP
+handshake (`session.initialize()`) and the initial `tools/list` call — each a
+self-contained RPC. It deliberately does **not** wrap the transport's
+context-manager entry (`stdio_client`/`ClientSession.__aenter__`): that entry
+opens an anyio task group whose exit is deferred to when the caller's
+`AsyncExitStack` closes it later, and `asyncio.wait_for` schedules its
+coroutine as a new asyncio Task — wrapping the entry would violate anyio's
+invariant that a cancel scope must exit in the same Task it entered in
+(observed as `RuntimeError: Attempted to exit cancel scope in a different
+task`). Bounding only the RPC calls avoids this while still catching the
+practically meaningful hang points (a server that never completes the
+handshake or never answers `tools/list`).
+
+**`catalog` and `upstreams` are mutually exclusive.** A config file may set
+one or the other, never both (a config setting both is rejected at load time).
+The exclusion also covers a command-line `--catalog` paired with an `upstreams`
+config: rather than silently ignoring the flag in favour of the live path,
+`mcp serve` rejects the combination so the precedence is never a surprise.
+
+**Artifact redaction is independent of `--redact`.** `artifacts.redact_secrets`
+(default `false`) controls scrubbing of tool-output bytes *before they are
+written to the `--state-dir` artifact store*. It is a separate knob from the
+`--redact` prompt-time firewall (which still scrubs everything reaching the
+prompt). Consequently, a secure-by-default gateway (`--redact` on) with
+`--state-dir` still persists raw, unredacted artifact bytes to disk unless
+`artifacts.redact_secrets: true` is also set. Set it explicitly when persisted
+artifacts must not retain secret-shaped substrings; note redaction only applies
+to UTF-8-decodable content (binary artifacts are stored unchanged).
+
+**Scope.** Only tools are supported over live upstreams in this revision —
+resources/prompts (§9) still require the static-catalog path. Serve-side
+Streamable HTTP (as opposed to the upstream-side `type: http` here) is
+tracked separately (issue #422).
+
 ## 5. Cache-stable tool browsing (`cache_stable=True`)
 
 The default §2.5 ordering (score desc, id asc) maximises agent-side

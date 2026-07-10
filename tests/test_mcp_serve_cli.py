@@ -24,6 +24,7 @@ from contextweaver._mcp_cli import (
     _build_primitive_runtime,
     _build_runtime,
     _dispatch_behaviors,
+    _find_upstream_startup_error,
     _load_primitive_defs_from_catalog,
     _load_serve_config,
     _load_tool_defs_from_catalog,
@@ -897,3 +898,211 @@ def test_unknown_policy_preset_cli_value_rejected() -> None:
     )
     assert result.returncode != 0
     assert "safe" in result.stderr and "balanced" in result.stderr
+
+
+# ------------------------------------------------------------------
+# Live multi-upstream config (issues #366/#368/#374/#375)
+# ------------------------------------------------------------------
+
+
+def test_load_serve_config_accepts_upstreams_without_catalog(tmp_path: Path) -> None:
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(json.dumps({"upstreams": {"fs": {"type": "stdio", "command": "echo"}}}))
+    cfg = _load_serve_config(config_path)
+    assert "catalog" not in cfg
+    assert cfg["upstreams"] == {"fs": {"type": "stdio", "command": "echo"}}
+
+
+def test_load_serve_config_rejects_neither_catalog_nor_upstreams(tmp_path: Path) -> None:
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(json.dumps({"mode": "gateway"}))
+    with pytest.raises(typer.BadParameter, match="catalog.*or.*upstreams"):
+        _load_serve_config(config_path)
+
+
+def test_load_serve_config_rejects_non_mapping_upstreams_block(tmp_path: Path) -> None:
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(json.dumps({"upstreams": ["not", "a", "mapping"]}))
+    with pytest.raises(typer.BadParameter, match="upstreams must be a mapping"):
+        _load_serve_config(config_path)
+
+
+def test_load_serve_config_rejects_both_catalog_and_upstreams(tmp_path: Path) -> None:
+    # docs/gateway_spec.md §4.7 documents these as mutually exclusive; silently
+    # preferring one over the other would be surprising behavior.
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "catalog": str(gateway_catalog_path()),
+                "upstreams": {"fs": {"type": "stdio", "command": "echo"}},
+            }
+        )
+    )
+    with pytest.raises(typer.BadParameter, match="must not set both 'catalog' and 'upstreams'"):
+        _load_serve_config(config_path)
+
+
+def test_serve_rejects_cli_catalog_with_upstreams_config(tmp_path: Path) -> None:
+    """An explicit --catalog paired with an 'upstreams' config is rejected.
+
+    _load_serve_config only guards both keys inside the config file; a
+    command-line --catalog + live config would otherwise be silently dropped
+    in favour of the live path. serve() rejects the combination instead.
+    """
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(json.dumps({"upstreams": {"fs": {"type": "stdio", "command": "echo"}}}))
+    result = _run(
+        "mcp",
+        "serve",
+        "--catalog",
+        str(gateway_catalog_path()),
+        "--config",
+        str(config_path),
+        "--dry-run",
+    )
+    assert result.returncode != 0
+    # Typer renders BadParameter inside a Rich panel that word-wraps the
+    # message across box-bordered lines (width-dependent: CI defaults to 80
+    # cols). Normalise the box borders + whitespace back into single spaces so
+    # the wrapped message reads as one line, then match a distinctive phrase.
+    normalized = re.sub(r"[│╭╮╯╰─\s]+", " ", _strip_ansi(result.stderr + result.stdout))
+    assert "catalog cannot be combined" in normalized
+
+
+def test_serve_live_upstream_malformed_config_reports_clean_error(tmp_path: Path) -> None:
+    # A malformed `upstreams`/`startup`/`artifacts` block raises ConfigError
+    # deep in parse_upstreams_config/StartupPolicy.from_dict/ArtifactPolicy.from_dict;
+    # the CLI must convert it to a clean --config error, not a raw traceback.
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(
+        json.dumps({"upstreams": {"fs": {"type": "carrier-pigeon", "command": "echo"}}})
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "contextweaver", "mcp", "serve", "--config", str(config_path)],
+        capture_output=True,
+        text=True,
+        timeout=25,
+    )
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert "type must be one of" in result.stderr
+
+
+def test_find_upstream_startup_error_bare_instance() -> None:
+    from contextweaver.exceptions import UpstreamStartupError
+
+    exc = UpstreamStartupError("boom")
+    assert _find_upstream_startup_error(exc) is exc
+
+
+def test_find_upstream_startup_error_unwraps_exception_group() -> None:
+    from contextweaver.exceptions import UpstreamStartupError
+
+    inner = UpstreamStartupError("boom")
+    # Duck-typed stand-in for BaseExceptionGroup so this stays testable
+    # without importing the 3.11+-only builtin directly.
+    group = type("FakeGroup", (Exception,), {})()
+    group.exceptions = (ValueError("unrelated"), inner)  # type: ignore[attr-defined]
+    assert _find_upstream_startup_error(group) is inner
+
+
+def test_find_upstream_startup_error_returns_none_for_unrelated_exception() -> None:
+    assert _find_upstream_startup_error(ValueError("nope")) is None
+
+
+_ECHO_UPSTREAM_SERVER = '''
+from fastmcp import FastMCP
+
+server = FastMCP(name="echo-server")
+
+
+@server.tool
+def echo(message: str) -> str:
+    """Echo back the message."""
+    return f"echo: {message}"
+
+
+if __name__ == "__main__":
+    server.run()
+'''
+
+
+def test_serve_live_upstream_end_to_end_over_real_subprocess(tmp_path: Path) -> None:
+    """``mcp serve --config`` with an ``upstreams:`` block against a real
+    stdio subprocess MCP server (issues #366/#368/#374): the upstream is
+    connected, discovered, namespaced, and the gateway starts successfully.
+    """
+    server_script = tmp_path / "echo_server.py"
+    server_script.write_text(_ECHO_UPSTREAM_SERVER)
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "upstreams": {
+                    "echo": {
+                        "type": "stdio",
+                        "command": sys.executable,
+                        "args": [str(server_script)],
+                        "namespace": "echo",
+                    }
+                },
+                "startup": {"mode": "strict", "min_healthy_upstreams": 1},
+            }
+        )
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "contextweaver",
+            "mcp",
+            "serve",
+            "--config",
+            str(config_path),
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=25,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "upstream 'echo': loaded tools=1" in result.stderr
+    assert "tools=1" in result.stderr
+    assert "dry-run: upstreams validated" in result.stderr
+
+
+def test_serve_live_upstream_strict_mode_reports_clean_error(tmp_path: Path) -> None:
+    """A required upstream that fails to start under ``mode: strict`` produces
+    a clean, single-line CLI error (not a raw traceback) and exits non-zero —
+    regression for the anyio ExceptionGroup-wrapping behavior seen when
+    ``AsyncExitStack`` unwinds other still-open upstreams during the raise.
+    """
+    config_path = tmp_path / "gateway.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "upstreams": {"broken": {"type": "stdio", "command": "false", "required": True}},
+                "startup": {"mode": "strict"},
+            }
+        )
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "contextweaver",
+            "mcp",
+            "serve",
+            "--config",
+            str(config_path),
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=25,
+    )
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert "CW_UPSTREAM_STARTUP" in result.stderr
+    assert "required upstream(s) failed to start: broken" in result.stderr

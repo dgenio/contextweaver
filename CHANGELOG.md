@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Live multi-upstream MCP gateway serving (#366, #368, #374).** `contextweaver
+  mcp serve --config gateway.yaml` now supports an `upstreams:` block that
+  launches and proxies real upstream MCP servers — `type: stdio` (child
+  process), `type: http` (streamable HTTP, the current MCP-spec transport),
+  or `type: sse` (legacy) — instead of only the static-catalog/stub path,
+  which remains unchanged and still works with no `upstreams:` block. Each
+  upstream supports a `namespace` prefix (feeding the existing canonical
+  `tool_id` namespace inference with no other code changes), `include_tools`
+  / `exclude_tools` glob filters evaluated against the upstream's own tool
+  names, and a per-upstream `timeout`. A new `startup:` block
+  (`contextweaver.adapters.startup_policy.StartupPolicy`) controls
+  fault-tolerant startup: `mode: degraded` (default) starts with whatever
+  upstreams come up healthy as long as `min_healthy_upstreams` is met and no
+  `required` upstream failed; `mode: strict` aborts startup on any required
+  upstream failure. A `StartupReport` records the resolved status
+  (`loaded`/`failed`/`timed_out`) and tool count per upstream, plus
+  deterministic tool-name collision diagnostics, logged to stderr at
+  startup. New `contextweaver.exceptions.UpstreamStartupError`
+  (`CW_UPSTREAM_STARTUP`) carries the report. New modules:
+  `contextweaver.adapters.upstream_config` (`UpstreamSpec`,
+  `parse_upstreams_config`), `contextweaver.adapters.startup_policy`
+  (`StartupPolicy`, `StartupReport`, `UpstreamStatus`,
+  `detect_tool_name_collisions`), `contextweaver.adapters.upstream_launch`
+  (`launch_upstreams`, `NamespacedFilteredUpstream`) — composing the
+  existing `McpClientUpstream` / `MultiplexUpstream` primitives rather than
+  duplicating them. Resources/prompts are not yet supported over live
+  upstreams (tools only); serve-side Streamable HTTP (as opposed to
+  upstream-side, added here) remains tracked separately under #422.
+  `catalog` and `upstreams` are mutually exclusive: rejected both in a
+  config file and as a command-line `--catalog` paired with an `upstreams`
+  config (rather than silently ignoring the flag). Include/exclude glob
+  filtering is centralised in a shared `upstream_config.tool_matches_filters`
+  helper so `UpstreamSpec.matches_tool` (tested) and the runtime
+  `NamespacedFilteredUpstream` filter can never diverge.
+- **`contextweaver mcp import-vscode` (#367).** Migrates an existing VS
+  Code-family MCP config (`servers` or `mcpServers`) into a gateway
+  `upstreams:` config plus a replacement client config exposing only
+  `contextweaver-gateway`. Defaults to `--dry-run` (prints the plan without
+  touching any file); `--write` applies it, backing up the original output
+  file by default (`--no-backup` to opt out). Servers with an unsupported
+  shape (no `command`/`url`) are skipped with a warning rather than
+  aborting the whole migration. New `contextweaver._vscode_import` module.
+- **Artifact TTL and redaction-before-store for `mcp serve --state-dir`
+  (#375).** `JsonFileArtifactStore` (the backend `--state-dir` uses) gains
+  optional `ttl_seconds` (process-lifetime-scoped expiry, lazily evicted on
+  read and swept before quota checks on write — not persisted across a
+  restart; issue #617 tracks making that durable) and `redact_secrets`
+  (scrubs UTF-8 content with `contextweaver.secrets.scrub_secrets` *before*
+  writing, so the persisted `content_hash` matches the redacted bytes;
+  binary content is stored unchanged). Wired into `mcp serve` via a new
+  `artifacts:` config block (`contextweaver.adapters.artifact_policy.ArtifactPolicy`:
+  `ttl_seconds`, `max_bytes`, `max_artifacts`, `redact_secrets`) alongside
+  the existing `max_bytes`/`max_artifacts` quotas. Note: this narrows the
+  original issue's scope — the `tool_view` policy gate and size-quota
+  machinery it also asked for already shipped via issues #373/#746/#497;
+  implementing them again here would have duplicated that shipped code.
+  `artifacts.redact_secrets` is deliberately independent of the `--redact`
+  prompt-time firewall: a secure-by-default gateway with `--state-dir` still
+  persists raw artifact bytes unless `artifacts.redact_secrets: true` is set
+  (documented in `docs/gateway_spec.md` §4.7).
 - **Gateway policy presets (#664).** New `contextweaver.adapters.gateway_presets`
   module: `GatewayPreset.from_preset("safe" | "balanced" | "throughput")` bundles
   the authorization policy (`ToolPolicy`), retry policy, rate limits, and the

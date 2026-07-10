@@ -424,3 +424,85 @@ def test_quota_failure_does_not_store_partial(tmp_path: Path) -> None:
         store.put("h1", b"12345")
     assert store.exists("h1") is False
     assert not (tmp_path / "h1.data").exists()
+
+
+# ---------------------------------------------------------------------------
+# TTL and redact_secrets (issue #375)
+# ---------------------------------------------------------------------------
+
+
+class _FakeClock:
+    """Injectable monotonic clock a test can advance deterministically."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_ttl_expires_artifact_after_elapsed_time(tmp_path: Path) -> None:
+    clock = _FakeClock()
+    store = JsonFileArtifactStore(tmp_path, ttl_seconds=10.0, clock=clock)
+    store.put("h1", b"hello")
+    assert store.exists("h1") is True
+
+    clock.now = 10.0
+    assert store.exists("h1") is False
+    with pytest.raises(ArtifactNotFoundError):
+        store.get("h1")
+    with pytest.raises(ArtifactNotFoundError):
+        store.ref("h1")
+
+
+def test_ttl_none_never_expires(tmp_path: Path) -> None:
+    clock = _FakeClock()
+    store = JsonFileArtifactStore(tmp_path, clock=clock)
+    store.put("h1", b"hello")
+    clock.now = 10_000.0
+    assert store.exists("h1") is True
+
+
+def test_ttl_expiry_removes_files_and_frees_quota(tmp_path: Path) -> None:
+    clock = _FakeClock()
+    store = JsonFileArtifactStore(tmp_path, max_artifacts=1, ttl_seconds=5.0, clock=clock)
+    store.put("h1", b"hello")
+    clock.now = 5.0
+    # h1 has expired; a fresh put must not be blocked by its stale quota slot.
+    store.put("h2", b"world")
+    assert store.list_refs() == [store.ref("h2")]
+    assert not (tmp_path / "h1.data").exists()
+    assert not (tmp_path / "h1.json").exists()
+
+
+def test_ttl_reset_on_overwrite(tmp_path: Path) -> None:
+    clock = _FakeClock()
+    store = JsonFileArtifactStore(tmp_path, ttl_seconds=10.0, clock=clock)
+    store.put("h1", b"hello")
+    clock.now = 9.0
+    store.put("h1", b"world")  # re-put refreshes the expiry
+    clock.now = 15.0  # 6s after the re-put, still < 10s TTL
+    assert store.exists("h1") is True
+
+
+def test_redact_secrets_scrubs_before_write(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path, redact_secrets=True)
+    ref = store.put("h1", b"token: sk-ant-abcdefghijklmnopqrstuvwx")
+    stored = store.get("h1")
+    assert b"sk-ant-" not in stored
+    assert b"[REDACTED-SECRET]" in stored
+    # content_hash must match what is actually on disk, not the original input.
+    assert ref.content_hash == hashlib.sha256(stored).hexdigest()
+
+
+def test_redact_secrets_off_by_default(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path)
+    store.put("h1", b"token: sk-ant-abcdefghijklmnopqrstuvwx")
+    assert store.get("h1") == b"token: sk-ant-abcdefghijklmnopqrstuvwx"
+
+
+def test_redact_secrets_leaves_binary_content_unchanged(tmp_path: Path) -> None:
+    store = JsonFileArtifactStore(tmp_path, redact_secrets=True)
+    binary = b"\xff\xfe\x00\x01not-utf8"
+    store.put("h1", binary)
+    assert store.get("h1") == binary
