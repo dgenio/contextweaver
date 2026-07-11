@@ -854,15 +854,38 @@ def _build_primitive_runtime(
     return primitive_runtime
 
 
-def _find_upstream_startup_error(exc: BaseException) -> UpstreamStartupError | None:
-    """Recursively search *exc* (and any nested exception group) for an
-    :class:`UpstreamStartupError` (see the call site in ``serve`` for why)."""
+def _find_upstream_startup_error(
+    exc: BaseException, _seen: set[int] | None = None
+) -> UpstreamStartupError | None:
+    """Recursively search *exc* for an :class:`UpstreamStartupError`.
+
+    Walks three edges (with cycle protection): exception-group children
+    (``.exceptions``), ``__cause__``, and ``__context__``. The context/cause
+    edges matter because closing the ``AsyncExitStack`` around a just-failed
+    required upstream can race: the ``false``-style child dies and the SDK's
+    stdio ``TaskGroup`` re-raises its *own* ``BaseExceptionGroup`` of transport
+    teardown errors ``from None`` during unwind, displacing our
+    ``UpstreamStartupError`` into ``__context__``. Following that edge keeps
+    the CLI emitting the clean ``CW_UPSTREAM_STARTUP`` message instead of a raw
+    traceback (see the call site in ``serve``). Only ever returns a genuine
+    ``UpstreamStartupError``, so it can never mask an unrelated failure.
+    """
+    seen = _seen if _seen is not None else set()
+    if exc is None or id(exc) in seen:
+        return None
+    seen.add(id(exc))
     if isinstance(exc, UpstreamStartupError):
         return exc
-    for sub in getattr(exc, "exceptions", ()):
-        found = _find_upstream_startup_error(sub)
-        if found is not None:
-            return found
+    candidates: tuple[BaseException | None, ...] = (
+        *getattr(exc, "exceptions", ()),
+        exc.__cause__,
+        exc.__context__,
+    )
+    for sub in candidates:
+        if sub is not None:
+            found = _find_upstream_startup_error(sub, seen)
+            if found is not None:
+                return found
     return None
 
 

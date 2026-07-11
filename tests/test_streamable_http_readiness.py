@@ -18,10 +18,14 @@ behaviour (``mcp.server.streamable_http`` / ``streamable_http_manager``):
 from __future__ import annotations
 
 import json
+import sys
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import pytest
+
+if sys.version_info < (3, 11):  # BaseExceptionGroup is a builtin only from 3.11
+    from exceptiongroup import BaseExceptionGroup  # type: ignore[import-not-found]
 
 from contextweaver.adapters import ProxyRuntime, StubUpstream
 from contextweaver.adapters.mcp_gateway_server import _HAS_STREAMABLE_HTTP, McpGatewayServer
@@ -190,25 +194,27 @@ async def test_request_without_session_id_rejected_after_init() -> None:
 async def test_unknown_session_id_rejected_with_404() -> None:
     """A request presenting a session id the server never issued gets 404 (#665.4).
 
-    The installed SDK's session manager answers unknown/expired session ids
-    with 404 "Session not found" per the MCP spec.
+    Recent SDKs answer unknown/expired session ids with 404 "Session not
+    found" per the MCP spec. Older SDKs (at the ``mcp>=1.19`` floor) instead
+    let the session manager raise inside its ASGI task, which surfaces as a
+    ``BaseExceptionGroup`` when the app lifespan context tears down — so this
+    check skips there rather than pinning a wire behaviour that only
+    stabilised later. ``AssertionError`` is *not* an exception group, so a
+    genuine wrong-status failure on a recent SDK still fails the test.
     """
-    async with _gateway_client() as client:
-        await _initialize(client)
-        try:
+    try:
+        async with _gateway_client() as client:
+            await _initialize(client)
             response = await client.post(
                 ENDPOINT,
                 headers={**POST_HEADERS, SESSION_HEADER: "deadbeef" * 4},
                 json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
             )
-        except Exception as exc:  # noqa: BLE001
-            # Older SDKs (at the mcp>=1.19 floor) route an unknown session id
-            # by raising inside the ASGI task rather than returning a clean
-            # 404; the clean-404 contract only stabilised in later releases.
-            pytest.skip(f"SDK raises on unknown session id instead of 404: {exc!r}")
-        assert response.status_code == 404
-        message = _parse_message(response)
-        assert "not found" in message["error"]["message"].lower()
+            assert response.status_code == 404
+            message = _parse_message(response)
+            assert "not found" in message["error"]["message"].lower()
+    except BaseExceptionGroup as group:  # noqa: F821 - builtin on 3.11+, backport on 3.10
+        pytest.skip(f"floor SDK raises on unknown session id instead of 404: {group!r}")
 
 
 @pytest.mark.asyncio
