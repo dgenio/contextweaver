@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -140,6 +141,7 @@ async def test_message_handler_triggers_only_on_tool_list_changed() -> None:
         mcp_types.ToolListChangedNotification(method="notifications/tools/list_changed")
     )
     await handler(notification)
+    await refresher.wait_idle()  # handler offloads; drain the scheduled task
     assert len(runtime.calls) == 1
 
     other = mcp_types.ServerNotification(
@@ -147,7 +149,41 @@ async def test_message_handler_triggers_only_on_tool_list_changed() -> None:
     )
     await handler(other)
     await handler(RuntimeError("transport hiccup"))
+    await refresher.wait_idle()
     assert len(runtime.calls) == 1  # unchanged
+
+
+async def test_message_handler_offloads_refresh_without_blocking() -> None:
+    """The handler must return before the refresh completes (issue #424).
+
+    The handler runs inside the MCP ``ClientSession`` receive loop, and the
+    refresh issues its own ``tools/list`` on that same session. Awaiting the
+    refresh inline would deadlock the loop; the handler must *schedule* it.
+    """
+    runtime, clock = _FakeRuntime(), _Clock()
+    gate = asyncio.Event()
+
+    async def blocking_list_tools() -> list[dict[str, Any]]:
+        await gate.wait()
+        return list(_TOOL_DEFS)
+
+    refresher = LiveRefresher(
+        runtime, blocking_list_tools, policy=LiveRefreshPolicy(enabled=True), clock=clock
+    )
+    handler = make_message_handler(refresher)
+    notification = mcp_types.ServerNotification(
+        mcp_types.ToolListChangedNotification(method="notifications/tools/list_changed")
+    )
+
+    # Returns promptly even though list_tools is still blocked -> not awaited inline.
+    await asyncio.wait_for(handler(notification), timeout=1.0)
+    assert runtime.calls == []  # refresh scheduled, not yet run
+    assert refresher._tasks  # the offloaded task is in-flight
+
+    gate.set()
+    await refresher.wait_idle()
+    assert runtime.calls == [_TOOL_DEFS]
+    assert not refresher._tasks  # drained
 
 
 def test_policy_validation_and_serde() -> None:

@@ -1,27 +1,24 @@
 """Live catalog refresh on upstream ``tools/list_changed`` notifications (#424).
 
-When a live upstream MCP server declares the ``listChanged`` tools capability
-it may emit ``notifications/tools/list_changed`` at any time.  This module
-turns those notifications into calls to the runtime's existing *atomic*
-refresh path (``ProxyRuntime.register_tool_defs_sync``, issue #507) so the
-gateway catalog, graph, router, validators, and result cache are all rebuilt
-consistently — without polling and without restarting the server.
+When a live upstream declares the ``listChanged`` tools capability it may emit
+``notifications/tools/list_changed`` at any time.  This module turns those into
+calls to the runtime's *atomic* refresh path
+(``ProxyRuntime.register_tool_defs_sync``, issue #507) so the gateway catalog,
+graph, router, validators, and result cache rebuild consistently — without
+polling or restarting.
 
-Wiring (the coordinator owns ``_mcp_cli``):
-
-1. Build a :class:`LiveRefresher` with the serving :class:`ProxyRuntime`
-   (anything satisfying :class:`CatalogRefreshRuntime`), an async
-   ``list_tools`` callable (typically a lazily-bound closure over the
-   :class:`~contextweaver.adapters.mcp_upstream.MultiplexUpstream` returned by
-   ``launch_upstreams``), and a :class:`LiveRefreshPolicy` with ``enabled=True``.
-2. Pass ``message_handler=make_message_handler(refresher)`` to
-   :func:`~contextweaver.adapters.upstream_launch.launch_upstreams` so every
-   upstream session routes its server notifications through the refresher.
+Wiring (the coordinator owns ``_mcp_cli``): build a :class:`LiveRefresher` with
+the serving :class:`ProxyRuntime` (any :class:`CatalogRefreshRuntime`), an async
+``list_tools`` callable (typically a closure over the ``launch_upstreams``
+:class:`~contextweaver.adapters.mcp_upstream.MultiplexUpstream`), and a
+:class:`LiveRefreshPolicy` with ``enabled=True``; then pass
+``message_handler=make_message_handler(refresher)`` to
+:func:`~contextweaver.adapters.upstream_launch.launch_upstreams`.
 
 The default policy is inert (``enabled=False``): an unconfigured gateway
-behaves exactly as before.  Refreshes are debounced (bursts of notifications
-within :attr:`LiveRefreshPolicy.debounce_seconds` of the last refresh are
-collapsed) and rate-limited over a sliding 60-second window.
+behaves exactly as before.  Refreshes are debounced (bursts within
+:attr:`LiveRefreshPolicy.debounce_seconds` are collapsed) and rate-limited over
+a sliding 60-second window.
 """
 
 from __future__ import annotations
@@ -93,14 +90,11 @@ class LiveRefreshPolicy:
     Attributes:
         enabled: Whether ``tools/list_changed`` notifications trigger a
             catalog refresh at all.
-        debounce_seconds: Notifications arriving within this many seconds of
-            the last completed refresh are collapsed (no refresh runs).  The
-            next notification after the window refreshes and picks up every
-            intervening change, since the tool list is re-fetched at that
-            moment.
+        debounce_seconds: Notifications within this many seconds of the last
+            completed refresh are collapsed; the next one after the window
+            re-fetches and picks up every intervening change.
         max_refreshes_per_minute: Upper bound on refreshes in any sliding
-            60-second window, protecting the router/graph rebuild from a
-            notification storm.
+            60-second window, protecting the router/graph rebuild from a storm.
     """
 
     enabled: bool = False
@@ -150,15 +144,15 @@ class LiveRefresher:
     """Debounced, rate-limited bridge from notifications to catalog refresh.
 
     Args:
-        runtime: The serving runtime; only
+        runtime: Serving runtime; only
             :meth:`CatalogRefreshRuntime.register_tool_defs_sync` is used.
-        list_tools: Async callable returning the current MCP-format tool
-            definitions (the aggregated upstream ``tools/list``).
-        policy: Refresh policy.  Defaults to the inert
+        list_tools: Async callable returning the aggregated upstream
+            ``tools/list`` (MCP-format tool definitions).
+        policy: Refresh policy; defaults to the inert
             :class:`LiveRefreshPolicy` (``enabled=False``).
         clock: Injectable monotonic clock for debounce / rate-limit windows.
         diagnostic_sink: Optional sink receiving one sanitized
-            :data:`LIVE_REFRESH_EVENT` event per handled notification.
+            :data:`LIVE_REFRESH_EVENT` per handled notification.
         session_id: Optional identifier stamped on diagnostic events.
     """
 
@@ -179,10 +173,11 @@ class LiveRefresher:
         self._sink = diagnostic_sink
         self._session_id = session_id
         self._lock = asyncio.Lock()
-        #: Monotonic time of the last completed refresh (debounce anchor).
-        self._last_refresh: float | None = None
-        #: Completed-refresh timestamps inside the sliding rate-limit window.
-        self._window: deque[float] = deque()
+        self._last_refresh: float | None = None  # last completed refresh (debounce anchor)
+        self._window: deque[float] = deque()  # completed-refresh times in the rate window
+        # In-flight refresh tasks offloaded from the receive loop (#424), retained
+        # so they are not GC'd mid-flight and can be drained/awaited (wait_idle).
+        self._tasks: set[asyncio.Task[bool]] = set()
 
     @property
     def policy(self) -> LiveRefreshPolicy:
@@ -192,15 +187,11 @@ class LiveRefresher:
     async def on_list_changed(self) -> bool:
         """Handle one ``tools/list_changed`` notification.
 
-        Applies the debounce window and the sliding-minute rate limit, then
-        re-fetches the upstream tool list and refreshes the runtime catalog
-        atomically.  Fetch or refresh failures are logged and reported to the
-        diagnostic sink — never raised, since this runs inside the MCP client
-        session's receive loop.
-
-        Returns:
-            ``True`` if a refresh ran, ``False`` otherwise (disabled policy,
-            debounced, rate-limited, or failed).
+        Applies debounce + sliding-minute rate limit, then re-fetches the
+        upstream tool list and refreshes the catalog atomically. Failures are
+        logged/reported to the diagnostic sink, never raised. Returns ``True``
+        if a refresh ran, else ``False`` (disabled, debounced, rate-limited,
+        or failed).
         """
         if not self._policy.enabled:
             return False
@@ -231,6 +222,22 @@ class LiveRefresher:
             logger.debug("live_refresh: refreshed catalog (%d tools)", registered)
             return True
 
+    def schedule_on_list_changed(self) -> asyncio.Task[bool]:
+        """Schedule :meth:`on_list_changed` off the receive loop and return the task.
+
+        Awaiting it in the ``ClientSession`` receive loop would deadlock (the
+        refresh's ``tools/list`` needs that loop free, #424); await via :meth:`wait_idle`.
+        """
+        task = asyncio.ensure_future(self.on_list_changed())
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    async def wait_idle(self) -> None:
+        """Await all in-flight refresh tasks (shutdown drain / tests); safe when none."""
+        while self._tasks:
+            await asyncio.gather(*tuple(self._tasks), return_exceptions=True)
+
     def _emit(
         self,
         outcome: str,
@@ -259,22 +266,15 @@ class LiveRefresher:
 def make_message_handler(refresher: LiveRefresher) -> MessageHandler:
     """Return a ``ClientSession`` message handler that drives *refresher*.
 
-    The MCP SDK exposes incoming server traffic to clients through the
-    ``ClientSession(..., message_handler=...)`` callback (there is no
-    typed per-notification hook).  The returned handler triggers
-    :meth:`LiveRefresher.on_list_changed` for
-    :class:`mcp.types.ToolListChangedNotification` and ignores every other
-    request/notification/exception, leaving the session's default handling
-    untouched.
-
-    Args:
-        refresher: The refresher to notify.
-
-    Returns:
-        A callback suitable for ``ClientSession(message_handler=...)`` — and
-        therefore for
-        :func:`~contextweaver.adapters.upstream_launch.launch_upstreams`'s
-        ``message_handler`` keyword.
+    The SDK surfaces incoming server traffic through the
+    ``ClientSession(..., message_handler=...)`` callback (no typed
+    per-notification hook).  For a :class:`mcp.types.ToolListChangedNotification`
+    the handler *schedules* the refresh via
+    :meth:`LiveRefresher.schedule_on_list_changed` — it never awaits it, so the
+    session receive loop stays free (issue #424) — and ignores every other
+    request/notification/exception.  Suitable for
+    :func:`~contextweaver.adapters.upstream_launch.launch_upstreams`'s
+    ``message_handler`` keyword.
     """
 
     async def handler(
@@ -285,7 +285,7 @@ def make_message_handler(refresher: LiveRefresher) -> MessageHandler:
         if isinstance(message, mcp_types.ServerNotification) and isinstance(
             message.root, mcp_types.ToolListChangedNotification
         ):
-            await refresher.on_list_changed()
+            refresher.schedule_on_list_changed()  # offload; never await in the loop
 
     return handler
 

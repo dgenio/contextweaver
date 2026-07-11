@@ -123,6 +123,32 @@ def test_validate_event_dict_accepts_nulls_where_allowed() -> None:
     assert validate_event_dict(data) == []
 
 
+def test_validate_event_dict_rejects_unsupported_version() -> None:
+    data = _make_event().to_dict()
+    data["version"] = TELEMETRY_CONTRACT_VERSION + 1
+    problems = validate_event_dict(data)
+    assert any(
+        f"unsupported contract version {TELEMETRY_CONTRACT_VERSION + 1}" in p for p in problems
+    )
+    # The conforming version still validates clean.
+    data["version"] = TELEMETRY_CONTRACT_VERSION
+    assert validate_event_dict(data) == []
+
+
+def test_read_jsonl_skips_version_drift(tmp_path: Path) -> None:
+    good = _make_event().to_dict()
+    drift = _make_event().to_dict()
+    drift["version"] = 99
+    path = tmp_path / "events.jsonl"
+    path.write_text(
+        json.dumps(good, sort_keys=True) + "\n" + json.dumps(drift, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    events, problems = read_jsonl(path)
+    assert len(events) == 1  # the version-99 event is skipped, not returned
+    assert any("unsupported contract version 99" in p for p in problems)
+
+
 def test_payload_leak_heuristic_fires_on_long_attribute() -> None:
     data = _make_event().to_dict()
     data["attributes"] = {"blob": "x" * 3000}

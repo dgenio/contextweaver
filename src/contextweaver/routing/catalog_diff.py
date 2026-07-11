@@ -5,7 +5,7 @@ catalogs field-by-field (via ``to_dict``) into a :class:`CatalogDiff` anchored
 by :func:`~contextweaver.routing.manifest.compute_catalog_hash`.
 :func:`routing_impact` builds a Router over each catalog (the same construction
 as :mod:`contextweaver.eval.whatif`), replays probe queries, and reports top-1
-flips plus recall@k via :func:`contextweaver.eval.metrics.recall_at_k`.
+flips plus recall@k (computed inline — see :func:`routing_impact`).
 :func:`suggest_probes` derives heuristic (not gold) probes from item names and
 descriptions.  Everything is pure and deterministic.
 """
@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from contextweaver.eval.metrics import recall_at_k
 from contextweaver.exceptions import ConfigError
 from contextweaver.routing.manifest import compute_catalog_hash
 from contextweaver.routing.router import Router
@@ -227,8 +226,9 @@ def routing_impact(
         if t1_before != t1_after and len(examples) < MAX_EXAMPLES:
             examples.append({"query": query, "before_top1": t1_before, "after_top1": t1_after})
         if expected is not None:
-            recalls_before.append(recall_at_k(ids_before, [expected], top_k))
-            recalls_after.append(recall_at_k(ids_after, [expected], top_k))
+            # Single expected id: recall@k == 1.0 iff it is in the top-k.
+            recalls_before.append(1.0 if expected in ids_before[:top_k] else 0.0)
+            recalls_after.append(1.0 if expected in ids_after[:top_k] else 0.0)
     return RoutingImpact(
         probes_total=len(probes),
         top1_changed=changed,

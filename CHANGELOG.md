@@ -323,6 +323,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release-integrity gate reads the package version through the same single
   source of truth as the drift guard.
 
+### Fixed
+
+- **Live catalog refresh no longer deadlocks the session receive loop (#424).**
+  `make_message_handler` now *schedules* `LiveRefresher.on_list_changed` as a
+  background task (`schedule_on_list_changed`) instead of awaiting it inline —
+  the handler runs inside the MCP `ClientSession` receive loop, and the
+  refresh's own `tools/list` needs that loop free to deliver its response.
+  In-flight tasks are tracked (`pending_tasks`, `wait_idle`) so they are
+  drained on shutdown and never garbage-collected mid-flight.
+- **`routing/catalog_diff.py` no longer imports the async context layer.**
+  Recall@k is computed by a local helper mirroring `eval.metrics.recall_at_k`
+  instead of importing `contextweaver.eval.metrics` (whose package `__init__`
+  pulls in `eval.context` → `context.manager`), preserving the sync-only
+  `routing/` ↔ `context/` boundary (#514).
+- **Telemetry contract now rejects version drift (#382).**
+  `validate_event_dict` flags events whose `version` differs from
+  `TELEMETRY_CONTRACT_VERSION`, so `read_jsonl` skips non-v1 events instead of
+  silently returning them as conforming.
+
 ## [0.16.0] - 2026-06-21
 
 ### Added

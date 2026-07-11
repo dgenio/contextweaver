@@ -158,6 +158,19 @@ def validate_event_dict(data: dict[str, Any]) -> list[str]:
     problems.extend(problem for problem in checks if problem is not None)
     if isinstance(data.get("event"), str) and not data["event"]:
         problems.append("event must be a non-empty string")
+    # Reject contract-version drift: the published v1 envelope pins
+    # ``version: {const: 1}`` (issue #382), so an event declaring any other
+    # version does not conform to this contract and must not be silently
+    # accepted. ``bool`` is excluded because it subclasses ``int``.
+    version = data.get("version")
+    if (
+        isinstance(version, int)
+        and not isinstance(version, bool)
+        and version != TELEMETRY_CONTRACT_VERSION
+    ):
+        problems.append(
+            f"unsupported contract version {version} (expected {TELEMETRY_CONTRACT_VERSION})"
+        )
     attributes = data.get("attributes")
     if isinstance(attributes, dict):
         for key in sorted(attributes, key=str):
