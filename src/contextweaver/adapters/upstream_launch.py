@@ -24,6 +24,7 @@ from contextlib import AsyncExitStack
 from typing import Any
 
 from mcp import ClientSession
+from mcp.client.session import MessageHandlerFnT
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
@@ -106,7 +107,11 @@ class NamespacedFilteredUpstream:
 
 
 async def _connect_stdio(
-    spec: UpstreamSpec, stack: AsyncExitStack, timeout: float
+    spec: UpstreamSpec,
+    stack: AsyncExitStack,
+    timeout: float,
+    *,
+    message_handler: MessageHandlerFnT | None = None,
 ) -> ClientSession:
     """Launch a child-process stdio upstream and return an initialised session."""
     params = StdioServerParameters(
@@ -115,27 +120,45 @@ async def _connect_stdio(
         env=dict(spec.env) or None,
     )
     read, write = await stack.enter_async_context(stdio_client(params))
-    session = await stack.enter_async_context(ClientSession(read, write))
+    session = await stack.enter_async_context(
+        ClientSession(read, write, message_handler=message_handler)
+    )
     await asyncio.wait_for(session.initialize(), timeout=timeout)
     return session
 
 
-async def _connect_http(spec: UpstreamSpec, stack: AsyncExitStack, timeout: float) -> ClientSession:
+async def _connect_http(
+    spec: UpstreamSpec,
+    stack: AsyncExitStack,
+    timeout: float,
+    *,
+    message_handler: MessageHandlerFnT | None = None,
+) -> ClientSession:
     """Connect to an already-running streamable-HTTP upstream (MCP-spec current transport)."""
     read, write, _get_session_id = await stack.enter_async_context(
         streamablehttp_client(spec.url or "", headers=dict(spec.headers) or None)
     )
-    session = await stack.enter_async_context(ClientSession(read, write))
+    session = await stack.enter_async_context(
+        ClientSession(read, write, message_handler=message_handler)
+    )
     await asyncio.wait_for(session.initialize(), timeout=timeout)
     return session
 
 
-async def _connect_sse(spec: UpstreamSpec, stack: AsyncExitStack, timeout: float) -> ClientSession:
+async def _connect_sse(
+    spec: UpstreamSpec,
+    stack: AsyncExitStack,
+    timeout: float,
+    *,
+    message_handler: MessageHandlerFnT | None = None,
+) -> ClientSession:
     """Connect to an already-running SSE upstream (legacy transport; prefer ``type: http``)."""
     read, write = await stack.enter_async_context(
         sse_client(spec.url or "", headers=dict(spec.headers) or None)
     )
-    session = await stack.enter_async_context(ClientSession(read, write))
+    session = await stack.enter_async_context(
+        ClientSession(read, write, message_handler=message_handler)
+    )
     await asyncio.wait_for(session.initialize(), timeout=timeout)
     return session
 
@@ -151,6 +174,8 @@ async def launch_upstreams(
     specs: list[UpstreamSpec],
     policy: StartupPolicy,
     stack: AsyncExitStack,
+    *,
+    message_handler: MessageHandlerFnT | None = None,
 ) -> tuple[MultiplexUpstream, StartupReport]:
     """Connect every configured upstream and compose the survivors (#366/#374).
 
@@ -169,6 +194,9 @@ async def launch_upstreams(
         policy: The fault-tolerance policy governing this startup.
         stack: An :class:`contextlib.AsyncExitStack` the caller owns and will
             close (tearing down every connected transport) once serving ends.
+        message_handler: Optional MCP ``ClientSession`` message handler threaded
+            to every session created here (issue #424) — see
+            :func:`contextweaver.adapters.live_refresh.make_message_handler`.
 
     Returns:
         ``(multiplex_upstream, report)`` — the multiplex is safe to hand to
@@ -198,7 +226,11 @@ async def launch_upstreams(
             # Task, and wait_for schedules its coroutine as a new Task. The
             # bounded step is session.initialize() *inside* each connector,
             # which is a self-contained RPC with no later, decoupled close.
-            session = await connector(spec, stack, policy.upstream_timeout_seconds)
+            # Keyword passed only when set: 3-argument test connectors keep working.
+            kwargs: dict[str, Any] = (
+                {} if message_handler is None else {"message_handler": message_handler}
+            )
+            session = await connector(spec, stack, policy.upstream_timeout_seconds, **kwargs)
         except asyncio.TimeoutError:
             logger.warning("upstream %r timed out during connect", spec.name)
             statuses.append(UpstreamStatus(name=spec.name, status="timed_out"))
