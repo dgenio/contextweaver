@@ -159,11 +159,28 @@ names. Otherwise Claude sees both the raw tools and the gateway.
 5. Ask for one small slice and confirm Claude uses `tool_view` with `head`,
    `lines`, `rows`, or `json_keys`.
 
-The packaged CLI currently uses a static catalog and deterministic stub
-upstream, so this checks client wiring, routing, validation, and firewall
-shape. For real upstream calls, wire `McpClientUpstream` or
-`MultiplexUpstream` as described in
-[MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+With a `catalog:` config the CLI uses a deterministic stub upstream, so this
+checks client wiring, routing, validation, and firewall shape. For real
+upstream execution, switch the config to an `upstreams:` block — `mcp serve`
+launches the listed MCP servers behind the gateway and executes selected
+calls live:
+
+```yaml
+upstreams:
+  filesystem:
+    type: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    namespace: fs
+startup:
+  mode: degraded
+```
+
+An existing multi-server client config migrates with
+`contextweaver mcp import-vscode <config> --apply` (dry-run by default). See
+[MCP Integration](../integration_mcp.md#connecting-to-real-upstream-mcp-servers)
+for the full `upstreams:` / `startup:` reference. Live upstream serving covers
+tools only; resources and prompts over live upstreams are not yet bridged.
 
 ## Troubleshooting
 

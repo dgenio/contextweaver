@@ -28,6 +28,7 @@ clients (Claude Desktop, GitHub Copilot, etc.).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import signal
@@ -49,9 +50,11 @@ from contextweaver._vscode_import import (
     write_migration,
 )
 from contextweaver.adapters.artifact_policy import ArtifactPolicy
+from contextweaver.adapters.catalog_pin import PinPolicy, check_catalog_pin, enforce_pin
 from contextweaver.adapters.gateway_authz import ToolPolicy
 from contextweaver.adapters.gateway_catalog_diagnostics import catalog_diagnostic_summary
 from contextweaver.adapters.gateway_controls import RateLimiter, ToolResultCache
+from contextweaver.adapters.gateway_doctor import run_doctor
 from contextweaver.adapters.gateway_policy import RateLimitPolicy, RetryPolicy
 from contextweaver.adapters.gateway_presets import (
     GATEWAY_PRESET_NAMES,
@@ -60,10 +63,23 @@ from contextweaver.adapters.gateway_presets import (
     GatewayPreset,
 )
 from contextweaver.adapters.gateway_primitives import PrimitiveGatewayRuntime
+from contextweaver.adapters.gateway_scorecard import build_scorecard, render_csv, render_markdown
+from contextweaver.adapters.gateway_status import read_status, render_status
+from contextweaver.adapters.gateway_visibility import (
+    VisibilityProfile,
+    filter_catalog,
+    parse_profiles,
+)
+from contextweaver.adapters.live_refresh import (
+    LiveRefresher,
+    LiveRefreshPolicy,
+    make_message_handler,
+)
 from contextweaver.adapters.mcp_gateway_server import McpGatewayServer
 from contextweaver.adapters.mcp_primitive_upstream import StubPrimitiveUpstream
 from contextweaver.adapters.mcp_proxy_server import McpProxyServer
 from contextweaver.adapters.mcp_upstream import StubUpstream
+from contextweaver.adapters.memory_server import run_memory_server_stdio
 from contextweaver.adapters.proxy_runtime import ExposureMode, ProxyRuntime
 from contextweaver.adapters.startup_policy import StartupPolicy
 from contextweaver.adapters.upstream_config import UpstreamSpec, parse_upstreams_config
@@ -78,7 +94,16 @@ from contextweaver.diagnostics import (
     summarize_diagnostics,
 )
 from contextweaver.exceptions import ConfigError, ContextWeaverError, UpstreamStartupError
+from contextweaver.ops_view import build_snapshot as _ops_build_snapshot
+from contextweaver.ops_view import render_text as _ops_render_text
+from contextweaver.ops_view import watch_loop as _ops_watch_loop
 from contextweaver.store import JsonFileArtifactStore, SqliteEventLog, StoreBundle
+from contextweaver.store.episodic import InMemoryEpisodicStore
+from contextweaver.store.facts import InMemoryFactStore
+from contextweaver.store.protocols import EpisodicStore, FactStore
+from contextweaver.store.sqlite_episodic import SqliteEpisodicStore
+from contextweaver.store.sqlite_facts import SqliteFactStore
+from contextweaver.telemetry_contract import read_jsonl as _read_telemetry_jsonl
 
 logger = logging.getLogger("contextweaver.mcp_cli")
 
@@ -174,6 +199,10 @@ _CONFIG_KEYS: frozenset[str] = frozenset(
         "upstreams",
         "startup",
         "artifacts",
+        "pin",
+        "live_refresh",
+        "visibility_profiles",
+        "visibility_profile",
     }
 )
 _TRUE_STRINGS: frozenset[str] = frozenset({"true", "1", "yes", "on"})
@@ -275,7 +304,14 @@ def _load_serve_config(config_path: Path) -> dict[str, Any]:
         if not catalog_path.is_absolute():
             catalog_path = config_path.parent / catalog_path
         data["catalog"] = str(catalog_path.resolve())
-    for mapping_key in ("upstreams", "startup", "artifacts"):
+    for mapping_key in (
+        "upstreams",
+        "startup",
+        "artifacts",
+        "pin",
+        "live_refresh",
+        "visibility_profiles",
+    ):
         if mapping_key in data and not isinstance(data[mapping_key], dict):
             raise typer.BadParameter(f"{mapping_key} must be a mapping", param_hint="--config")
     # Normalise + validate option types so `serve` can consume them directly
@@ -818,16 +854,76 @@ def _build_primitive_runtime(
     return primitive_runtime
 
 
-def _find_upstream_startup_error(exc: BaseException) -> UpstreamStartupError | None:
-    """Recursively search *exc* (and any nested exception group) for an
-    :class:`UpstreamStartupError` (see the call site in ``serve`` for why)."""
+def _find_upstream_startup_error(
+    exc: BaseException, _seen: set[int] | None = None
+) -> UpstreamStartupError | None:
+    """Recursively search *exc* for an :class:`UpstreamStartupError`.
+
+    Walks three edges (with cycle protection): exception-group children
+    (``.exceptions``), ``__cause__``, and ``__context__``. The context/cause
+    edges matter because closing the ``AsyncExitStack`` around a just-failed
+    required upstream can race: the ``false``-style child dies and the SDK's
+    stdio ``TaskGroup`` re-raises its *own* ``BaseExceptionGroup`` of transport
+    teardown errors ``from None`` during unwind, displacing our
+    ``UpstreamStartupError`` into ``__context__``. Following that edge keeps
+    the CLI emitting the clean ``CW_UPSTREAM_STARTUP`` message instead of a raw
+    traceback (see the call site in ``serve``). Only ever returns a genuine
+    ``UpstreamStartupError``, so it can never mask an unrelated failure.
+    """
+    seen = _seen if _seen is not None else set()
+    if exc is None or id(exc) in seen:
+        return None
+    seen.add(id(exc))
     if isinstance(exc, UpstreamStartupError):
         return exc
-    for sub in getattr(exc, "exceptions", ()):
-        found = _find_upstream_startup_error(sub)
-        if found is not None:
-            return found
+    candidates: tuple[BaseException | None, ...] = (
+        *getattr(exc, "exceptions", ()),
+        exc.__cause__,
+        exc.__context__,
+    )
+    for sub in candidates:
+        if sub is not None:
+            found = _find_upstream_startup_error(sub, seen)
+            if found is not None:
+                return found
     return None
+
+
+def _apply_catalog_governance(
+    runtime: ProxyRuntime,
+    tool_defs: list[dict[str, Any]],
+    *,
+    pin_policy: PinPolicy | None,
+    visibility: VisibilityProfile | None,
+    quiet: bool,
+) -> None:
+    """Apply startup catalog governance: visibility filtering (#379) + pin (#656).
+
+    Visibility re-registers the filtered tool set atomically; the pin check
+    runs over the *effective* (post-visibility) catalog and, in strict mode,
+    aborts serving on a hash mismatch.
+    """
+    if visibility is not None:
+        visible, denied = filter_catalog(visibility, runtime.catalog.all())
+        if denied:
+            visible_names = {item.name for item in visible}
+            filtered_defs = [d for d in tool_defs if d.get("name") in visible_names]
+            runtime.register_tool_defs_sync(filtered_defs)
+            if not quiet:
+                typer.echo(
+                    f"contextweaver mcp serve: visibility profile {visibility.name!r} "
+                    f"hid {len(denied)} of {len(tool_defs)} tool(s)",
+                    err=True,
+                )
+    if pin_policy is not None:
+        check = check_catalog_pin(pin_policy, runtime.catalog.all())
+        if not quiet or not check.matched:
+            typer.echo(f"contextweaver mcp serve: {check.message}", err=True)
+        try:
+            enforce_pin(check)
+        except ContextWeaverError as exc:
+            typer.echo(f"contextweaver mcp serve: {exc}", err=True)
+            raise typer.Exit(1) from exc
 
 
 async def _serve_live(
@@ -846,6 +942,9 @@ async def _serve_live(
     rate_limiter: RateLimiter | None,
     result_cache: ToolResultCache | None,
     artifact_policy: ArtifactPolicy | None,
+    pin_policy: PinPolicy | None,
+    live_refresh_policy: LiveRefreshPolicy,
+    visibility: VisibilityProfile | None,
     name: str,
     version: str,
     transport: str,
@@ -869,7 +968,20 @@ async def _serve_live(
             failure, too few healthy upstreams, or an empty effective catalog).
     """
     async with AsyncExitStack() as stack:
-        multiplex, report = await launch_upstreams(specs, startup_policy, stack)
+        # Late-bound holder: the message handler must exist before the
+        # upstream sessions do, but the refresher needs the runtime built
+        # from those sessions (issue #424).
+        refresher_holder: dict[str, LiveRefresher] = {}
+
+        async def _forward_notifications(message: Any) -> None:  # noqa: ANN401 - SDK union
+            refresher = refresher_holder.get("live")
+            if refresher is not None:
+                await make_message_handler(refresher)(message)
+
+        handler = _forward_notifications if live_refresh_policy.enabled else None
+        multiplex, report = await launch_upstreams(
+            specs, startup_policy, stack, message_handler=handler
+        )
         if not quiet:
             for line in report.render_lines():
                 typer.echo(line, err=True)
@@ -897,6 +1009,21 @@ async def _serve_live(
             result_cache=result_cache,
         )
         tool_count = await runtime.refresh_catalog()
+        _apply_catalog_governance(
+            runtime,
+            await multiplex.list_tools(),
+            pin_policy=pin_policy,
+            visibility=visibility,
+            quiet=quiet,
+        )
+        tool_count = len(runtime.list_tool_ids())
+        if live_refresh_policy.enabled:
+            refresher_holder["live"] = LiveRefresher(
+                runtime,
+                multiplex.list_tools,
+                policy=live_refresh_policy,
+                diagnostic_sink=diagnostic_sink,
+            )
 
         if not quiet:
             typer.echo(
@@ -919,6 +1046,8 @@ async def _serve_live(
 
         if transport == "sse":
             await server.run_sse(host=host, port=port)
+        elif transport == "streamable-http":
+            await server.run_streamable_http(host=host, port=port)
         else:
             await server.run_stdio()
 
@@ -1220,7 +1349,9 @@ def serve(
     ] = False,
     transport: Annotated[
         str,
-        typer.Option("--transport", help="Transport protocol: 'stdio' or 'sse'."),
+        typer.Option(
+            "--transport", help="Transport protocol: 'stdio', 'sse', or 'streamable-http'."
+        ),
     ] = "stdio",
     host: Annotated[
         str,
@@ -1270,6 +1401,9 @@ def serve(
     upstreams_cfg: dict[str, Any] | None = None
     startup_cfg: dict[str, Any] | None = None
     artifacts_cfg: dict[str, Any] | None = None
+    pin_policy: PinPolicy | None = None
+    live_refresh_policy = LiveRefreshPolicy()
+    visibility: VisibilityProfile | None = None
 
     # Config file fills any option not passed explicitly on the command line.
     if config is not None:
@@ -1280,6 +1414,28 @@ def serve(
         upstreams_cfg = cfg.get("upstreams")
         startup_cfg = cfg.get("startup")
         artifacts_cfg = cfg.get("artifacts")
+        try:
+            if "pin" in cfg:
+                pin_policy = PinPolicy.from_dict(cfg["pin"])
+            if "live_refresh" in cfg:
+                live_refresh_policy = LiveRefreshPolicy.from_dict(cfg["live_refresh"])
+            if "visibility_profile" in cfg:
+                profiles = parse_profiles(cfg.get("visibility_profiles", {}))
+                wanted = str(cfg["visibility_profile"])
+                if wanted not in profiles:
+                    raise ConfigError(
+                        f"visibility_profile {wanted!r} not found in visibility_profiles "
+                        f"(defined: {sorted(profiles)})"
+                    )
+                visibility = profiles[wanted]
+            if visibility is not None and live_refresh_policy.enabled:
+                raise ConfigError(
+                    "visibility_profile cannot be combined with live_refresh yet: a "
+                    "notification-driven refresh would re-register unfiltered tools, "
+                    "silently bypassing the profile. Disable one of the two blocks."
+                )
+        except ContextWeaverError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--config") from exc
 
         def _from_cli(param: str) -> bool:
             source = ctx.get_parameter_source(param)
@@ -1371,8 +1527,10 @@ def serve(
     if version is None:
         version = __version__
 
-    if transport not in {"stdio", "sse"}:
-        raise typer.BadParameter("--transport must be 'stdio' or 'sse'", param_hint="--transport")
+    if transport not in {"stdio", "sse", "streamable-http"}:
+        raise typer.BadParameter(
+            "--transport must be 'stdio', 'sse', or 'streamable-http'", param_hint="--transport"
+        )
 
     rate_limiter, result_cache = _dispatch_behaviors(rate_limits_policy, cache_config)
     diagnostic_sink = JsonlDiagnosticSink(diagnostics) if diagnostics is not None else None
@@ -1415,6 +1573,9 @@ def serve(
                     rate_limiter=rate_limiter,
                     result_cache=result_cache,
                     artifact_policy=live_artifact_policy,
+                    pin_policy=pin_policy,
+                    live_refresh_policy=live_refresh_policy,
+                    visibility=visibility,
                     name=name,
                     version=version,
                     transport=transport,
@@ -1459,6 +1620,13 @@ def serve(
         retry_policy=retry_policy,
         rate_limiter=rate_limiter,
         result_cache=result_cache,
+    )
+    _apply_catalog_governance(
+        runtime,
+        _load_tool_defs_from_catalog(catalog),
+        pin_policy=pin_policy,
+        visibility=visibility,
+        quiet=quiet,
     )
     tool_count = len(runtime.list_tool_ids())
 
@@ -1520,6 +1688,8 @@ def serve(
     async def _serve() -> None:
         if transport == "sse":
             await server.run_sse(host=host, port=port)
+        elif transport == "streamable-http":
+            await server.run_streamable_http(host=host, port=port)
         else:
             await server.run_stdio()
 
@@ -1731,6 +1901,155 @@ def import_vscode(
 
 
 # Re-exported for tests / advanced wiring.
+@mcp_app.command("status")
+def status_command(
+    state_dir: Annotated[
+        Path,
+        typer.Option("--state-dir", help="The gateway's --state-dir (holds status.json)."),
+    ],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit the raw status JSON instead of text.")
+    ] = False,
+) -> None:
+    """Show the runtime status of a gateway serving with --state-dir (issue #655)."""
+    try:
+        status = read_status(state_dir / "status.json")
+    except ContextWeaverError as exc:
+        typer.echo(f"contextweaver mcp status: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    if json_output:
+        typer.echo(json.dumps(status.to_dict(), indent=2, sort_keys=True))
+    else:
+        typer.echo(render_status(status))
+
+
+@mcp_app.command("doctor")
+def doctor_command(
+    config: Annotated[Path, typer.Option("--config", help="Gateway config file to validate.")],
+    live: Annotated[
+        bool,
+        typer.Option("--live", help="Also connect configured upstreams (network/processes)."),
+    ] = False,
+    strict: Annotated[
+        bool, typer.Option("--strict", help="Exit non-zero on warnings too.")
+    ] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit the findings as JSON.")] = False,
+    smoke: Annotated[
+        list[str] | None,
+        typer.Option("--smoke", help="Routing smoke query (repeatable)."),
+    ] = None,
+) -> None:
+    """Preflight a gateway config before wiring it into an MCP client (issue #395)."""
+    report = run_doctor(config, live=live, smoke_queries=smoke or None)
+    if json_output:
+        typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        typer.echo(report.render_text())
+    raise typer.Exit(report.exit_code(strict=strict))
+
+
+@mcp_app.command("scorecard")
+def scorecard_command(
+    catalog: Annotated[Path, typer.Option("--catalog", help="Path to a JSON/YAML tool catalog.")],
+    diagnostics: Annotated[
+        Path,
+        typer.Option("--diagnostics", help="Diagnostics JSONL from mcp serve --diagnostics."),
+    ],
+    format: Annotated[  # noqa: A002 - mirrors the existing inspect/stats commands
+        str, typer.Option("--format", help="Output format: md, json, or csv.")
+    ] = "md",
+    top_n: Annotated[int, typer.Option("--top-n", help="Rows per hot-spot table.")] = 5,
+) -> None:
+    """Render the tool-surface health scorecard (issue #380)."""
+    from contextweaver.routing.catalog import load_catalog_json, load_catalog_yaml
+
+    if format not in {"md", "json", "csv"}:
+        raise typer.BadParameter("--format must be md, json, or csv", param_hint="--format")
+    loader = load_catalog_yaml if catalog.suffix in {".yaml", ".yml"} else load_catalog_json
+    try:
+        items = loader(catalog)
+        events, problems = _read_telemetry_jsonl(diagnostics)
+    except ContextWeaverError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    for problem in problems:
+        typer.echo(f"contextweaver mcp scorecard: skipped line — {problem}", err=True)
+    scorecard = build_scorecard(items, events, top_n=top_n)
+    if format == "json":
+        typer.echo(json.dumps(scorecard.to_dict(), indent=2, sort_keys=True))
+    elif format == "csv":
+        typer.echo(render_csv(scorecard))
+    else:
+        typer.echo(render_markdown(scorecard))
+
+
+@mcp_app.command("ops")
+def ops_command(
+    diagnostics: Annotated[
+        Path,
+        typer.Option("--diagnostics", help="Diagnostics JSONL from mcp serve --diagnostics."),
+    ],
+    watch: Annotated[
+        bool, typer.Option("--watch", help="Tail the file and refresh live (Ctrl+C to exit).")
+    ] = False,
+    window: Annotated[
+        float, typer.Option("--window", help="Trailing observation window in seconds.")
+    ] = 900.0,
+    interval: Annotated[
+        float, typer.Option("--interval", help="Refresh interval in watch mode (seconds).")
+    ] = 2.0,
+) -> None:
+    """Read-only live-triage view over gateway diagnostics (issue #668)."""
+    if watch:
+        with contextlib.suppress(KeyboardInterrupt):
+            _ops_watch_loop(diagnostics, window_seconds=window, interval_seconds=interval)
+        return
+    events, problems = _read_telemetry_jsonl(diagnostics)
+    for problem in problems:
+        typer.echo(f"contextweaver mcp ops: skipped line — {problem}", err=True)
+    typer.echo(_ops_render_text(_ops_build_snapshot(events, window_seconds=window)))
+
+
+@mcp_app.command("memory-serve")
+def memory_serve_command(
+    state_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--state-dir",
+            help="Persist episodes/facts to SQLite under this directory (in-memory when omitted).",
+        ),
+    ] = None,
+    name: Annotated[
+        str, typer.Option("--name", help="MCP server display name.")
+    ] = "contextweaver-memory",
+    redact: Annotated[
+        bool,
+        typer.Option(
+            "--redact/--no-redact",
+            help="Scrub secret shapes from read-path output (search results, fact values).",
+        ),
+    ] = True,
+) -> None:
+    """Serve the episodic/fact memory stores as a standalone MCP server (issue #632)."""
+    if state_dir is not None:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        episodic: EpisodicStore = SqliteEpisodicStore(state_dir / "memory.sqlite3")
+        facts: FactStore = SqliteFactStore(state_dir / "memory.sqlite3")
+    else:
+        episodic = InMemoryEpisodicStore()
+        facts = InMemoryFactStore()
+    typer.echo(
+        f"contextweaver mcp memory-serve: stdio state={state_dir or 'in-memory'} "
+        f"redact={'on' if redact else 'off'}",
+        err=True,
+    )
+    try:
+        asyncio.run(
+            run_memory_server_stdio(episodic, facts, server_name=name, redact_secrets=redact)
+        )
+    except KeyboardInterrupt:
+        typer.echo("contextweaver mcp memory-serve: interrupted; shutting down.", err=True)
+
+
 __all__ = [
     "mcp_app",
     "_load_tool_defs_from_catalog",

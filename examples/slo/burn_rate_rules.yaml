@@ -1,0 +1,63 @@
+# Burn-rate alert templates for the contextweaver SLO starter kit.
+#
+# TEMPLATES, not a shipped integration: contextweaver emits JSONL diagnostics
+# (`mcp serve --diagnostics FILE`), not Prometheus metrics.  These rules assume
+# your log pipeline maps diagnostic events onto the metric names documented in
+# docs/slo_starter_kit.md.  Adjust names, windows, and targets to your mapping.
+#
+# Multiwindow multi-burn-rate pattern (fast page + slow ticket) for a
+# 30-day window.  Error budget for a 99.5% availability SLO is 0.5%.
+
+groups:
+  - name: contextweaver-availability-slo
+    rules:
+      - record: cw:execute_error_ratio_5m
+        expr: |
+          sum(rate(cw_execute_total{success="false"}[5m]))
+            / sum(rate(cw_execute_total[5m]))
+      - record: cw:execute_error_ratio_1h
+        expr: |
+          sum(rate(cw_execute_total{success="false"}[1h]))
+            / sum(rate(cw_execute_total[1h]))
+      - record: cw:execute_error_ratio_6h
+        expr: |
+          sum(rate(cw_execute_total{success="false"}[6h]))
+            / sum(rate(cw_execute_total[6h]))
+      - alert: ContextweaverExecuteBurnRateFast
+        # 14.4x burn: exhausts a 30-day 0.5% budget in ~2 days.
+        expr: |
+          cw:execute_error_ratio_1h > (14.4 * 0.005)
+            and cw:execute_error_ratio_5m > (14.4 * 0.005)
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "contextweaver execute availability burning fast (1h/5m)"
+      - alert: ContextweaverExecuteBurnRateSlow
+        # 6x burn: exhausts a 30-day 0.5% budget in ~5 days.
+        expr: |
+          cw:execute_error_ratio_6h > (6 * 0.005)
+            and cw:execute_error_ratio_1h > (6 * 0.005)
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "contextweaver execute availability burning slowly (6h/1h)"
+
+  - name: contextweaver-latency-slo
+    rules:
+      - record: cw:execute_slow_ratio_1h
+        # Fraction of execute calls slower than the 2000ms latency threshold.
+        expr: |
+          1 - (
+            sum(rate(cw_execute_duration_ms_bucket{le="2000"}[1h]))
+              / sum(rate(cw_execute_duration_ms_count[1h]))
+          )
+      - alert: ContextweaverExecuteLatencyBudgetBurn
+        # 95% of calls must finish under 2000ms; 5% slow budget, 6x burn.
+        expr: cw:execute_slow_ratio_1h > (6 * 0.05)
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "contextweaver execute latency SLO burning (1h)"

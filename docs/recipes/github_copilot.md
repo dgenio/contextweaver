@@ -111,17 +111,54 @@ That exposes both the raw tools and the bounded gateway surface.
 - `tool_view` is used only for a narrow follow-up slice.
 - Stopping the server appears as an MCP disconnect rather than a hung turn.
 
+## Live upstream servers
+
+The packaged CLI serves real upstream MCP servers directly: replace the
+`catalog:` key in the gateway config with an `upstreams:` block and
+`mcp serve` launches every listed server behind the gateway, discovers their
+tools, and executes selected calls live — no manual catalog capture required.
+
+```yaml
+upstreams:
+  filesystem:
+    type: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    namespace: fs
+  github:
+    type: http
+    url: "https://example.com/mcp"
+    headers:
+      Authorization: "Bearer ${env:GITHUB_TOKEN}"
+    namespace: github
+startup:
+  mode: degraded
+```
+
+An existing multi-server `.vscode/mcp.json` migrates in one command:
+
+```bash
+contextweaver mcp import-vscode .vscode/mcp.json   # dry-run by default
+contextweaver mcp import-vscode .vscode/mcp.json --apply
+```
+
+The importer writes an `upstreams:` gateway config from the current server
+entries and a replacement client config that lists only the gateway, backing
+up the original. See the fault-tolerance knobs under `startup:` in
+[MCP Integration](../integration_mcp.md) for degraded vs strict startup.
+
 ## 300+ tools
 
-Use `scripts/capture_mcp_catalog.py` or another `tools/list` importer to create
-the static catalog, normalize descriptions, and run representative routing
-queries before putting the catalog in `.contextweaver/gateway.yaml`. Do not
-paste hundreds of full schemas into Copilot instructions.
+With an `upstreams:` block the gateway discovers the full tool surface at
+startup, so a 300-tool setup needs no manual catalog work. A static catalog
+(`scripts/capture_mcp_catalog.py` or another `tools/list` importer) remains
+useful for offline routing experiments and CI. Either way, do not paste
+hundreds of full schemas into Copilot instructions.
 
 ## Current limitations
 
-- The packaged CLI uses a static catalog and stub upstream handler. For live
-  calls, compose `McpClientUpstream` or `MultiplexUpstream` in Python.
+- Live upstream serving covers tools only; resources and prompts over live
+  upstreams are not yet bridged (use the static-catalog path for those).
 - Prompt-cache behavior depends on the client; `cache_stable` does not force
   Copilot to cache the browse prefix.
 - Stdout is reserved for MCP protocol messages. Diagnostics belong on stderr.

@@ -137,9 +137,11 @@ def test_firewall_uses_injected_summarizer_and_extractor() -> None:
     )
     assert envelope is not None
     assert envelope.status == "ok"
-    assert envelope.summary == "LLM SUMMARY"
+    # 5000 chars > max_input=4000: the summary carries the issue #384
+    # omission marker because the model saw a truncated input.
+    assert envelope.summary == "LLM SUMMARY [llm summary of first 4000 chars]"
     assert envelope.facts == ["one", "two"]
-    assert processed.text == "LLM SUMMARY"
+    assert processed.text == envelope.summary
 
 
 def test_firewall_with_failing_plugins_still_succeeds_via_fallback() -> None:

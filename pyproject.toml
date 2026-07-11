@@ -264,6 +264,12 @@ retrieval = [
 embeddings = [
     "sentence-transformers>=2.0",
 ]
+# Telemetry-trained tool reranker (issue #388). scikit-learn is fit-time
+# only — trained models persist as JSON coefficients and predict via pure
+# Python, so loading/using a saved ranker needs no extra.
+ranker = [
+    "scikit-learn>=1.4",
+]
 # Persistent SQLite-backed stores (issues #174 / #223).  The implementations
 # rely only on stdlib ``sqlite3``; this extras group exists so installs can
 # opt into a future ``aiosqlite``-based async variant or schema-migration
@@ -330,6 +336,7 @@ e2e-eval = []
 all = [
     "contextweaver[retrieval]",
     "contextweaver[embeddings]",
+    "contextweaver[ranker]",
     "contextweaver[otel]",
     "contextweaver[weaver-spec]",
     "contextweaver[voice]",
@@ -449,6 +456,12 @@ ignore_missing_imports = true
 # is installed in the type-check environment.
 [[tool.mypy.overrides]]
 module = ["referencing", "referencing.*", "langchain_core", "langchain_core.*"]
+ignore_missing_imports = true
+
+# scikit-learn backs the optional [ranker] extra (issue #388) and ships no
+# type stubs; the module imports it lazily behind a guard.
+[[tool.mypy.overrides]]
+module = ["sklearn", "sklearn.*"]
 ignore_missing_imports = true
 
 # Typer's ``@app.command()`` decorator is typed as a generic callable in 0.9-

@@ -106,11 +106,28 @@ authorize side effects; follow normal tool approval rules.
 - A narrow `tool_view` retrieves only the requested slice.
 - Stopping the gateway surfaces as a disconnected MCP server.
 
+## Live upstream servers
+
+Replace `catalog:` with an `upstreams:` block and `mcp serve` launches the
+listed MCP servers behind the gateway and executes selected calls live — no
+Python composition required:
+
+```yaml
+upstreams:
+  filesystem:
+    type: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    namespace: fs
+```
+
+A multi-server `claude_desktop_config.json` (`mcpServers` shape) migrates with
+`contextweaver mcp import-vscode <config> --apply` (dry-run by default).
+
 ## Current limitations
 
-- The packaged CLI loads a static catalog and uses a stub upstream handler.
-  Live execution needs a Python composition with `McpClientUpstream` or
-  `MultiplexUpstream`.
+- Live upstream serving covers tools only; resources and prompts over live
+  upstreams still use the static-catalog path.
 - Claude Desktop may not honor contextweaver's cache-stable marker as a prompt
   caching hint.
 - Raw artifacts remain locally accessible and `tool_view` re-exposes selected

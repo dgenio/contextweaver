@@ -325,3 +325,87 @@ def test_redact_structured_stats_measure_post_scrub_summary() -> None:
     assert _TOKEN not in out.summary
     assert out.stats.summary_chars == len(out.summary)
     assert out.stats.summary_tokens == count_tokens(out.summary)
+
+
+# ---------------------------------------------------------------------------
+# Issue #384 — auditable LLM summarization on the firewall path
+# ---------------------------------------------------------------------------
+
+
+def test_llm_summary_records_provider_audit_metadata() -> None:
+    from contextweaver.extras.llm_summarizer import LlmSummarizer
+
+    store = InMemoryArtifactStore()
+    summarizer = LlmSummarizer(
+        lambda p: "compact llm view",
+        provider_metadata={"provider": "anthropic", "model": "claude-x", "version": "1"},
+    )
+    result = compact_tool_result(
+        "x" * 5000,
+        threshold_chars=100,
+        artifact_store=store,
+        summarizer=summarizer,
+        deterministic=False,
+    )
+    assert result.firewalled is True
+    assert result.stats.summarized_by_llm is True
+    assert result.stats.strategy == "llm_summary"
+    assert result.stats.llm_provider == {
+        "provider": "anthropic",
+        "model": "claude-x",
+        "version": "1",
+    }
+    # Round-trips through serde (audit survives persistence).
+    restored = type(result.stats).from_dict(result.stats.to_dict())
+    assert restored.llm_provider == result.stats.llm_provider
+
+
+def test_llm_summary_links_raw_artifact_and_stores_it_first() -> None:
+    from contextweaver.extras.llm_summarizer import LlmSummarizer
+
+    store = InMemoryArtifactStore()
+    raw = "y" * 5000
+
+    def call_fn(prompt: str) -> str:
+        # The raw artifact must exist BEFORE the model runs (issue #384:
+        # the LLM never becomes the only copy of the data).
+        assert store.list_refs(), "raw artifact not stored before summarization"
+        return "llm view"
+
+    result = compact_tool_result(
+        raw,
+        threshold_chars=100,
+        artifact_store=store,
+        summarizer=LlmSummarizer(call_fn),
+        deterministic=False,
+    )
+    assert result.artifact_ref is not None
+    stored = store.get(result.artifact_ref).decode("utf-8")
+    assert stored == raw
+
+
+def test_llm_failure_falls_back_deterministically_with_no_audit() -> None:
+    from contextweaver.extras.llm_summarizer import LlmSummarizer
+
+    def broken(prompt: str) -> str:
+        raise RuntimeError("model down")
+
+    result = compact_tool_result(
+        "z" * 5000,
+        threshold_chars=100,
+        artifact_store=InMemoryArtifactStore(),
+        summarizer=LlmSummarizer(broken, provider_metadata={"model": "m"}),
+        deterministic=False,
+    )
+    # Fallback produced a usable summary and the raw artifact survived.
+    assert result.firewalled is True
+    assert result.summary
+    assert result.artifact_ref is not None
+
+
+def test_deterministic_summary_has_no_llm_provider() -> None:
+    result = compact_tool_result(
+        "w" * 5000, threshold_chars=100, artifact_store=InMemoryArtifactStore()
+    )
+    assert result.stats.summarized_by_llm is False
+    assert result.stats.llm_provider is None

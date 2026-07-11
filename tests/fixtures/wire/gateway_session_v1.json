@@ -1,0 +1,222 @@
+{
+  "entries": [
+    {
+      "kind": "list_tools",
+      "request": {},
+      "response": [
+        {
+          "description": "Browse the upstream tool catalog.  Pass exactly one of 'query' (free-text) or 'path' (e.g. '/github/issues') and receive a bounded list of ChoiceCards.",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "top_k": {
+                "maximum": 50,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "tool_browse"
+        },
+        {
+          "description": "Invoke an upstream tool by canonical tool_id.  Arguments are validated against the hydrated input schema before dispatch and the response is compacted via the context firewall.  Pass dry_run=true to validate and report the would-be call without invoking upstream.",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "args": {
+                "type": "object"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "tool_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool_id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "name": "tool_execute"
+        },
+        {
+          "description": "Drill into a previously stored artifact handle and return a slice (head / lines / json_keys / rows) per the ArtifactStore.drilldown contract.",
+          "inputSchema": {
+            "additionalProperties": false,
+            "properties": {
+              "handle": {
+                "type": "string"
+              },
+              "selector": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "handle",
+              "selector"
+            ],
+            "type": "object"
+          },
+          "name": "tool_view"
+        }
+      ]
+    },
+    {
+      "kind": "call_tool",
+      "request": {
+        "arguments": {
+          "query": "open a github issue"
+        },
+        "name": "tool_browse"
+      },
+      "response": {
+        "content": [
+          {
+            "text": [
+              {
+                "cost_hint": 0.0,
+                "description": "Open a new GitHub issue with a title.",
+                "has_schema": true,
+                "id": "github:create_issue#34afee88",
+                "kind": "tool",
+                "name": "github.create_issue",
+                "namespace": "github",
+                "safety": "",
+                "score": 0.584247054196459,
+                "side_effects": true,
+                "tags": [
+                  "mcp"
+                ]
+              },
+              {
+                "cost_hint": 0.0,
+                "description": "List repositories for the authenticated user.",
+                "has_schema": true,
+                "id": "github:list_repos#da62b2ed",
+                "kind": "tool",
+                "name": "github.list_repos",
+                "namespace": "github",
+                "safety": "",
+                "score": 0.1609602590564726,
+                "side_effects": true,
+                "tags": [
+                  "mcp"
+                ]
+              }
+            ],
+            "type": "text"
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "kind": "call_tool",
+      "request": {
+        "arguments": {
+          "args": {
+            "title": "hi"
+          },
+          "tool_id": "github:create_issue#34afee88"
+        },
+        "name": "tool_execute"
+      },
+      "response": {
+        "content": [
+          {
+            "text": {
+              "artifacts": [
+                {
+                  "content_hash": "a484a05ff295ca21c5aca718c4b7304f17dda108d56d4f5ee256619383a6f866",
+                  "handle": "text:github:create_issue#34afee88:a484a05ff295ca21",
+                  "label": "text result from github:create_issue#34afee88",
+                  "media_type": "text/plain",
+                  "size_bytes": 4217
+                }
+              ],
+              "facts": [],
+              "firewall_stats": {
+                "artifact_ref": "text:github:create_issue#34afee88:a484a05ff295ca21",
+                "llm_provider": null,
+                "original_chars": 4217,
+                "strategy": "summary",
+                "summarized_by_llm": false,
+                "summary_chars": 500,
+                "threshold_chars": 0,
+                "triggered": true
+              },
+              "provenance": {
+                "protocol": "mcp",
+                "tool": "github.create_issue",
+                "tool_id": "github:create_issue#34afee88"
+              },
+              "status": "ok",
+              "summary": "ISSUE-42 opened. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created ",
+              "views": []
+            },
+            "type": "text"
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "kind": "call_tool",
+      "request": {
+        "arguments": {
+          "handle": "text:github:create_issue#34afee88:a484a05ff295ca21",
+          "selector": {
+            "chars": 24,
+            "type": "head"
+          }
+        },
+        "name": "tool_view"
+      },
+      "response": {
+        "content": [
+          {
+            "text": "ISSUE-42 opened. detail ",
+            "type": "text"
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "kind": "call_tool",
+      "request": {
+        "arguments": {
+          "handle": "artifact:missing",
+          "selector": {
+            "type": "head"
+          }
+        },
+        "name": "tool_view"
+      },
+      "response": {
+        "content": [
+          {
+            "text": {
+              "error": "VIEW_FAILED",
+              "message": "[CW_ARTIFACT_NOT_FOUND] Artifact not found: 'artifact:missing'",
+              "path": "artifact:missing",
+              "retryable": false
+            },
+            "type": "text"
+          }
+        ],
+        "isError": true
+      }
+    }
+  ],
+  "version": 1
+}

@@ -5,15 +5,15 @@ Pairs with the pure-data config in
 :mod:`contextweaver.adapters.startup_policy` (fault-tolerance policy). This
 module owns the actual network/process I/O: connecting to each configured
 :class:`~contextweaver.adapters.upstream_config.UpstreamSpec` over its
-transport, wrapping the resulting session in the existing
+transport, wrapping the session in
 :class:`~contextweaver.adapters.mcp_upstream.McpClientUpstream`, applying
 namespace/include/exclude filtering, and composing the survivors behind
 :class:`~contextweaver.adapters.mcp_upstream.MultiplexUpstream` under the
 configured :class:`~contextweaver.adapters.startup_policy.StartupPolicy`.
 
-All child processes and network connections are entered into a caller-owned
+Every *surviving* upstream's transport is entered into a caller-owned
 :class:`contextlib.AsyncExitStack`, so a single ``await stack.aclose()`` tears
-every upstream down cleanly regardless of how many succeeded.
+them all down; a *failed* connect is unwound in its own task before returning.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from contextlib import AsyncExitStack
 from typing import Any
 
 from mcp import ClientSession
+from mcp.client.session import MessageHandlerFnT
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
@@ -105,52 +106,74 @@ class NamespacedFilteredUpstream:
         return await self._inner.call_tool(original_name, arguments)
 
 
-async def _connect_stdio(
-    spec: UpstreamSpec, stack: AsyncExitStack, timeout: float
+async def _connect(
+    spec: UpstreamSpec,
+    stack: AsyncExitStack,
+    timeout: float,
+    *,
+    message_handler: MessageHandlerFnT | None = None,
 ) -> ClientSession:
-    """Launch a child-process stdio upstream and return an initialised session."""
-    params = StdioServerParameters(
-        command=spec.command or "",
-        args=list(spec.args),
-        env=dict(spec.env) or None,
-    )
-    read, write = await stack.enter_async_context(stdio_client(params))
-    session = await stack.enter_async_context(ClientSession(read, write))
-    await asyncio.wait_for(session.initialize(), timeout=timeout)
+    """Open *spec*'s transport, initialise a session, and return it.
+
+    Dispatch is by ``spec.type``: ``stdio`` launches a child process; ``http``
+    (streamable HTTP, the current MCP transport) and ``sse`` (legacy) connect to
+    an already-running endpoint. The transport + session are entered into a
+    *local* stack. On any failure that local stack is closed synchronously in
+    *this* task before the exception propagates, so a failed stdio child's
+    background writer cannot surface a ``BrokenResourceError`` group later while
+    the shared *stack* unwinds — which would pre-empt the clean
+    :class:`~contextweaver.exceptions.UpstreamStartupError` classification the
+    caller depends on (issue #785). Teardown moves to *stack* only on success.
+
+    When a stdio child dies mid-handshake, anyio's transport task group can
+    deliver a :class:`asyncio.CancelledError` to ``initialize()`` *before* the
+    underlying ``BrokenResourceError`` surfaces. Closing the local stack runs
+    that task group's exit, which absorbs the internal cancel and re-raises the
+    *concrete* transport failure; that concrete error is preferred over the
+    cancellation so :func:`launch_upstreams`' ``except Exception`` classifies
+    the upstream as failed instead of the bare ``CancelledError`` (a
+    ``BaseException``) escaping and being mistaken for a user interrupt.
+    """
+    if spec.type == "stdio":
+        transport = stdio_client(
+            StdioServerParameters(
+                command=spec.command or "", args=list(spec.args), env=dict(spec.env) or None
+            )
+        )
+    elif spec.type == "http":
+        transport = streamablehttp_client(spec.url or "", headers=dict(spec.headers) or None)
+    else:
+        transport = sse_client(spec.url or "", headers=dict(spec.headers) or None)
+    local = AsyncExitStack()
+    try:
+        streams = await local.enter_async_context(transport)
+        read, write = streams[0], streams[1]
+        session = await local.enter_async_context(
+            ClientSession(read, write, message_handler=message_handler)
+        )
+        await asyncio.wait_for(session.initialize(), timeout=timeout)
+    except BaseException as connect_exc:
+        try:
+            await local.aclose()
+        except Exception as teardown_exc:  # noqa: BLE001 — concrete transport failure
+            raise teardown_exc from connect_exc
+        raise
+    stack.push_async_callback(local.aclose)
     return session
 
 
-async def _connect_http(spec: UpstreamSpec, stack: AsyncExitStack, timeout: float) -> ClientSession:
-    """Connect to an already-running streamable-HTTP upstream (MCP-spec current transport)."""
-    read, write, _get_session_id = await stack.enter_async_context(
-        streamablehttp_client(spec.url or "", headers=dict(spec.headers) or None)
-    )
-    session = await stack.enter_async_context(ClientSession(read, write))
-    await asyncio.wait_for(session.initialize(), timeout=timeout)
-    return session
-
-
-async def _connect_sse(spec: UpstreamSpec, stack: AsyncExitStack, timeout: float) -> ClientSession:
-    """Connect to an already-running SSE upstream (legacy transport; prefer ``type: http``)."""
-    read, write = await stack.enter_async_context(
-        sse_client(spec.url or "", headers=dict(spec.headers) or None)
-    )
-    session = await stack.enter_async_context(ClientSession(read, write))
-    await asyncio.wait_for(session.initialize(), timeout=timeout)
-    return session
-
-
-_CONNECTORS = {
-    "stdio": _connect_stdio,
-    "http": _connect_http,
-    "sse": _connect_sse,
-}
+# All transports share one connect path (dispatch is by ``spec.type`` inside
+# ``_open_transport``); the per-type keys stay so tests can monkeypatch a
+# single transport's connector in isolation.
+_CONNECTORS = {"stdio": _connect, "http": _connect, "sse": _connect}
 
 
 async def launch_upstreams(
     specs: list[UpstreamSpec],
     policy: StartupPolicy,
     stack: AsyncExitStack,
+    *,
+    message_handler: MessageHandlerFnT | None = None,
 ) -> tuple[MultiplexUpstream, StartupReport]:
     """Connect every configured upstream and compose the survivors (#366/#374).
 
@@ -169,6 +192,9 @@ async def launch_upstreams(
         policy: The fault-tolerance policy governing this startup.
         stack: An :class:`contextlib.AsyncExitStack` the caller owns and will
             close (tearing down every connected transport) once serving ends.
+        message_handler: Optional MCP ``ClientSession`` message handler threaded
+            to every session created here (issue #424) — see
+            :func:`contextweaver.adapters.live_refresh.make_message_handler`.
 
     Returns:
         ``(multiplex_upstream, report)`` — the multiplex is safe to hand to
@@ -191,14 +217,16 @@ async def launch_upstreams(
     for spec in specs:
         connector = _CONNECTORS[spec.type]
         try:
-            # NOTE: do not wrap this call in asyncio.wait_for. The connector
-            # enters context managers (stdio_client / ClientSession) whose
-            # __aexit__ runs later, decoupled, when `stack` closes — anyio's
-            # cancel scopes require entering and exiting in the same asyncio
-            # Task, and wait_for schedules its coroutine as a new Task. The
-            # bounded step is session.initialize() *inside* each connector,
-            # which is a self-contained RPC with no later, decoupled close.
-            session = await connector(spec, stack, policy.upstream_timeout_seconds)
+            # NOTE: do not wrap this call in asyncio.wait_for — the connector
+            # enters context managers whose __aexit__ runs later when `stack`
+            # closes, and anyio's cancel scopes require enter/exit in the same
+            # Task (wait_for schedules a new one). The bounded step is
+            # session.initialize() *inside* each connector. Keyword passed only
+            # when set, so 3-argument test connectors keep working.
+            kwargs: dict[str, Any] = (
+                {} if message_handler is None else {"message_handler": message_handler}
+            )
+            session = await connector(spec, stack, policy.upstream_timeout_seconds, **kwargs)
         except asyncio.TimeoutError:
             logger.warning("upstream %r timed out during connect", spec.name)
             statuses.append(UpstreamStatus(name=spec.name, status="timed_out"))

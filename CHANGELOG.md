@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP gateway platform-maturity cluster (epics #365, #376, #385).** A large
+  batch advancing the gateway from a local optimizer toward a governable,
+  observable, model-assistable platform. Every model-backed feature is opt-in,
+  deterministic-by-default, and governed by the new deterministic-first rubric
+  (`docs/agent-context/model-backed-features.md`, #505):
+  - **Catalog governance.** Inventory metadata (owner/domain/risk/side-effects/
+    lifecycle/environment/tier) under the reserved `_contextweaver.inventory`
+    namespace (#377); audience-scoped visibility profiles filtering the tool
+    surface before ChoiceCards, fail-closed on allowlists (#379); a collision /
+    duplicate-capability analyzer (#381); catalog pinning against tool-surface
+    drift (#656); `catalog diff` with routing-impact measurement (#514).
+  - **Observability.** A versioned JSONL telemetry handoff contract with a
+    published envelope schema for downstream analytics (#382); a tool-surface
+    health scorecard (#380); `mcp status` runtime surface (#655); a read-only
+    `mcp ops` live-triage view (#668); an SLO starter kit (#666); a what-if
+    churn/traffic simulator (#662); a record/replay wire-transcript harness
+    (#654).
+  - **Model assist.** A local embedding-model setup doctor (#386); a semantic
+    vector index over catalogs (#387); a telemetry-trained tool reranker behind
+    the new `[ranker]` extra (#388); offline LLM catalog-metadata enrichment
+    suggestions (#383); auditable LLM firewall summaries with provider
+    provenance (#384); an MCP-sampling-backed `call_fn` (#623); an advice-only
+    AdvisorPack escalation (#741); a shared LLM call-guard envelope (#494).
+  - **Transport & lifecycle.** Streamable HTTP transport for the gateway and
+    proxy plus a readiness conformance suite (#422, #665); live catalog refresh
+    on `tools/list_changed` (#424); graceful shutdown semantics (#626); a
+    standalone `mcp memory-serve` server exposing episodic/fact stores (#632).
+  - **Interop & ops tooling.** Provider-native tool exporters
+    (`to_openai_tools` / `to_anthropic_tools` / `to_gemini_function_declarations`)
+    for routed shortlists (#609); an MCP spec-compatibility matrix (#548);
+    a `mcp doctor` preflight command (#395); a `visualize` HTML report command
+    (#442); an official multi-arch Docker image pipeline (#432).
+- `FirewallStats.llm_provider` records provider/model metadata when an
+  LLM-backed summarizer produced the summary (#384).
+
 - **Live multi-upstream MCP gateway serving (#366, #368, #374).** `contextweaver
   mcp serve --config gateway.yaml` now supports an `upstreams:` block that
   launches and proxies real upstream MCP servers — `type: stdio` (child
@@ -287,6 +322,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/check_readme_version.py` gained a `--print-version` flag so the
   release-integrity gate reads the package version through the same single
   source of truth as the drift guard.
+
+### Fixed
+
+- **Live catalog refresh no longer deadlocks the session receive loop (#424).**
+  `make_message_handler` now *schedules* `LiveRefresher.on_list_changed` as a
+  background task (`schedule_on_list_changed`) instead of awaiting it inline —
+  the handler runs inside the MCP `ClientSession` receive loop, and the
+  refresh's own `tools/list` needs that loop free to deliver its response.
+  In-flight tasks are tracked (`pending_tasks`, `wait_idle`) so they are
+  drained on shutdown and never garbage-collected mid-flight.
+- **`routing/catalog_diff.py` no longer imports the async context layer.**
+  Recall@k is computed by a local helper mirroring `eval.metrics.recall_at_k`
+  instead of importing `contextweaver.eval.metrics` (whose package `__init__`
+  pulls in `eval.context` → `context.manager`), preserving the sync-only
+  `routing/` ↔ `context/` boundary (#514).
+- **Telemetry contract now rejects version drift (#382).**
+  `validate_event_dict` flags events whose `version` differs from
+  `TELEMETRY_CONTRACT_VERSION`, so `read_jsonl` skips non-v1 events instead of
+  silently returning them as conforming.
 
 ## [0.16.0] - 2026-06-21
 

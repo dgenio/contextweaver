@@ -135,7 +135,7 @@
       def put(self, fact: 'Fact') -> 'None'
   class FeedbackAwareScoreProvider(feedback: 'Mapping[str, ExecutionFeedback] | Sequence[ExecutionFeedback]', *, success_weight: 'float' = ..., failure_penalty: 'float' = ..., quality_weight: 'float' = ..., latency_weight: 'float' = ..., cost_weight: 'float' = ..., latency_ref_ms: 'float' = ..., token_cost_ref: 'float' = ...) -> 'None'
       def adjust(self, query: 'str', scored: 'list[tuple[str, float]]') -> 'list[tuple[str, float]]'
-  class FirewallStats(triggered: 'bool', strategy: 'str', threshold_chars: 'int' = ..., original_chars: 'int' = ..., original_tokens: 'int' = ..., summary_chars: 'int' = ..., summary_tokens: 'int' = ..., artifact_ref: 'str | None' = ..., summarized_by_llm: 'bool' = ...) -> None
+  class FirewallStats(triggered: 'bool', strategy: 'str', threshold_chars: 'int' = ..., original_chars: 'int' = ..., original_tokens: 'int' = ..., summary_chars: 'int' = ..., summary_tokens: 'int' = ..., artifact_ref: 'str | None' = ..., summarized_by_llm: 'bool' = ..., llm_provider: 'dict[str, str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'FirewallStats'
       def to_dict(self) -> 'dict[str, Any]'
   FuzzyScorer: NoneType
