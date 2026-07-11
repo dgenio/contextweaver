@@ -148,11 +148,9 @@
                 "artifact_ref": "text:github:create_issue#34afee88:a484a05ff295ca21",
                 "llm_provider": null,
                 "original_chars": 4217,
-                "original_tokens": 1054,
                 "strategy": "summary",
                 "summarized_by_llm": false,
                 "summary_chars": 500,
-                "summary_tokens": 125,
                 "threshold_chars": 0,
                 "triggered": true
               },

@@ -28,8 +28,18 @@ from contextweaver.exceptions import ConfigError
 
 GOLDEN = Path(__file__).parent / "fixtures" / "wire" / "gateway_session_v1.json"
 
-#: Fields that vary run-to-run (routing-decision timestamps).
-VOLATILE = ["content.*.text.timestamp", "content.*.text.decision.timestamp"]
+#: Fields normalised out before comparison. Timestamps vary run-to-run;
+#: firewall token counts vary by token estimator (tiktoken vs the offline
+#: HeuristicEstimator fallback), so they legitimately differ between
+#: environments and must not be pinned — the golden still pins the
+#: deterministic structure (artifact handle, content hash, summary text,
+#: char counts, status, provenance).
+VOLATILE = [
+    "content.*.text.timestamp",
+    "content.*.text.decision.timestamp",
+    "content.*.text.firewall_stats.original_tokens",
+    "content.*.text.firewall_stats.summary_tokens",
+]
 
 
 def _tool_defs() -> list[dict[str, Any]]:
