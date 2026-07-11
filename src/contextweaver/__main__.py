@@ -106,7 +106,15 @@ _console = Console()
 # the namespace without crowding the top-level help.
 catalog_app = typer.Typer(
     name="catalog",
-    help="Author-time tooling for tool catalogs (lint, ...).",
+    help="Author-time tooling for tool catalogs (lint, diff, ...).",
+    no_args_is_help=True,
+    add_completion=False,
+)
+
+# ``models`` groups local embedding-model setup diagnostics (issue #386).
+models_app = typer.Typer(
+    name="models",
+    help="Local embedding-model setup: doctor, download (issue #386).",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -1195,9 +1203,155 @@ def serve_api_command(
 # Sub-apps
 # ---------------------------------------------------------------------------
 
+
 # ``mcp serve`` lives in its own module to keep this file lean (issue #243/#246).
+@models_app.command("doctor")
+def models_doctor(
+    model: Annotated[
+        str | None, typer.Option("--model", help="Model id to check (defaults to the recommended).")
+    ] = None,
+    cache_dir: Annotated[
+        Path | None, typer.Option("--cache-dir", help="Model cache directory to probe.")
+    ] = None,
+    provider: Annotated[
+        str,
+        typer.Option("--provider", help="Embedding provider: sentence-transformers or hashing."),
+    ] = "sentence-transformers",
+    json_output: Annotated[bool, typer.Option("--json", help="Emit findings as JSON.")] = False,
+) -> None:
+    """Diagnose the local embedding setup without downloading anything (issue #386)."""
+    from contextweaver.extras.model_setup import (
+        DEFAULT_MODEL,
+        EmbeddingModelConfig,
+        run_model_doctor,
+    )
+
+    try:
+        config = EmbeddingModelConfig.from_dict(
+            {
+                "provider": provider,
+                "model": model or DEFAULT_MODEL,
+                "cache_dir": str(cache_dir) if cache_dir else None,
+            }
+        )
+    except ContextWeaverError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    report = run_model_doctor(config)
+    if json_output:
+        typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        typer.echo(report.render_text())
+    raise typer.Exit(0 if report.ok else 1)
+
+
+@models_app.command("download")
+def models_download(
+    model: Annotated[
+        str | None, typer.Argument(help="Model id (defaults to the recommended CPU model).")
+    ] = None,
+    cache_dir: Annotated[
+        Path | None, typer.Option("--cache-dir", help="Cache directory for the download.")
+    ] = None,
+) -> None:
+    """Explicitly download an embedding model into the local cache (issue #386)."""
+    from contextweaver.extras.model_setup import DEFAULT_MODEL, download_model
+
+    try:
+        message = download_model(
+            model or DEFAULT_MODEL, cache_dir=str(cache_dir) if cache_dir else None
+        )
+    except ContextWeaverError as exc:
+        typer.echo(f"contextweaver models download: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(message)
+
+
+@catalog_app.command("diff")
+def catalog_diff_command(
+    before: Annotated[Path, typer.Argument(help="Older catalog JSON/YAML file.")],
+    after: Annotated[Path, typer.Argument(help="Newer catalog JSON/YAML file.")],
+    probes: Annotated[
+        int,
+        typer.Option("--probes", help="Synthesize N heuristic probe queries for routing impact."),
+    ] = 20,
+    top_k: Annotated[int, typer.Option("--top-k", help="Shortlist size for impact checks.")] = 5,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit reports as JSON.")] = False,
+) -> None:
+    """Compare two catalog versions and report the routing impact (issue #514)."""
+    from contextweaver.routing.catalog import load_catalog_json, load_catalog_yaml
+    from contextweaver.routing.catalog_diff import diff_catalogs, routing_impact, suggest_probes
+    from contextweaver.types import SelectableItem
+
+    def _load(path: Path) -> list[SelectableItem]:
+        loader = load_catalog_yaml if path.suffix in {".yaml", ".yml"} else load_catalog_json
+        return loader(path)
+
+    try:
+        before_items, after_items = _load(before), _load(after)
+    except ContextWeaverError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    diff = diff_catalogs(before_items, after_items)
+    impact = None
+    if probes > 0:
+        probe_pairs: list[tuple[str, str | None]] = [
+            (query, expected) for query, expected in suggest_probes(before_items, n=probes)
+        ]
+        impact = routing_impact(before_items, after_items, probe_pairs, top_k=top_k)
+    if json_output:
+        payload = {"diff": diff.to_dict(), "impact": impact.to_dict() if impact else None}
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        typer.echo(diff.render_markdown())
+        if impact is not None:
+            typer.echo("")
+            typer.echo(impact.render_markdown())
+
+
+@app.command("visualize")
+def visualize_command(
+    trace: Annotated[
+        Path | None, typer.Option("--trace", help="RouteTrace JSON file (RouteTrace.to_dict).")
+    ] = None,
+    stats: Annotated[
+        Path | None, typer.Option("--stats", help="BuildStats JSON file (BuildStats.to_dict).")
+    ] = None,
+    diagnostics: Annotated[
+        Path | None, typer.Option("--diagnostics", help="Gateway diagnostics JSONL file.")
+    ] = None,
+    output: Annotated[Path, typer.Option("--output", "-o", help="HTML output path.")] = Path(
+        "contextweaver-report.html"
+    ),
+) -> None:
+    """Render a self-contained HTML report for traces, builds, or sessions (issue #442)."""
+    from contextweaver.routing.trace import RouteTrace
+    from contextweaver.telemetry_contract import read_jsonl
+    from contextweaver.visualize import render_build_html, render_route_html, render_session_html
+
+    supplied = [option for option in (trace, stats, diagnostics) if option is not None]
+    if len(supplied) != 1:
+        raise typer.BadParameter("pass exactly one of --trace, --stats, or --diagnostics")
+    try:
+        if trace is not None:
+            html = render_route_html(RouteTrace.from_dict(json.loads(trace.read_text())))
+        elif stats is not None:
+            from contextweaver.envelope import BuildStats
+
+            html = render_build_html(BuildStats.from_dict(json.loads(stats.read_text())))
+        else:
+            assert diagnostics is not None
+            events, problems = read_jsonl(diagnostics)
+            for problem in problems:
+                typer.echo(f"contextweaver visualize: skipped line — {problem}", err=True)
+            html = render_session_html(events)
+    except (ContextWeaverError, ValueError, KeyError) as exc:
+        raise typer.BadParameter(f"could not load input: {exc}") from exc
+    output.write_text(html, encoding="utf-8")
+    typer.echo(f"wrote {output}")
+
+
 app.add_typer(mcp_app)
 app.add_typer(catalog_app, name="catalog")
+app.add_typer(models_app, name="models")
 
 
 # ---------------------------------------------------------------------------
