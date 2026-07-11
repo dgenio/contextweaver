@@ -48,15 +48,18 @@ except ImportError:  # pragma: no cover
     _HAS_SSE = False
 
 try:
-    # Streamable HTTP shares the SSE soft-dependency set (starlette + uvicorn)
-    # plus the SDK's session manager; probe it separately so each transport
-    # degrades independently. The binding logic is imported lazily from
-    # ``run_streamable_http`` once this flag is True.
+    # Streamable HTTP needs starlette + uvicorn (the shared ASGI stack) plus
+    # the SDK's session manager. Probe every dependency here rather than
+    # deriving from ``_HAS_SSE`` so the two transports degrade independently:
+    # if SSE probing fails for a reason unrelated to HTTP (or the SDK drops
+    # SSE while keeping Streamable HTTP), this flag stays accurate.
+    import uvicorn  # noqa: F401  (availability probe)
     from mcp.server.streamable_http_manager import (  # noqa: F401  (availability probe)
         StreamableHTTPSessionManager,
     )
+    from starlette.applications import Starlette  # noqa: F401  (availability probe)
 
-    _HAS_STREAMABLE_HTTP = _HAS_SSE
+    _HAS_STREAMABLE_HTTP = True
 except ImportError:  # pragma: no cover
     _HAS_STREAMABLE_HTTP = False
 

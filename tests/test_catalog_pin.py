@@ -125,6 +125,21 @@ def test_pin_check_to_dict() -> None:
     }
 
 
+def test_expected_hash_must_be_sha256_hex() -> None:
+    # Wrong length, non-hex chars, and uppercase-that-does-not-normalise-to-hex
+    # are all rejected so a typo cannot silently satisfy strict mode.
+    for bad in ("deadbeef", "z" * 64, "a" * 63, "a" * 65, "not-a-real-hash"):
+        with pytest.raises(ConfigError):
+            PinPolicy(expected_hash=bad)
+
+
+def test_expected_hash_is_normalised() -> None:
+    # Surrounding whitespace/newlines and uppercase are normalised, not rejected.
+    policy = PinPolicy(expected_hash=f"  {'A' * 64}\n")
+    assert policy.expected_hash == "a" * 64
+    assert PinPolicy.from_dict({"expected_hash": "A" * 64}).expected_hash == "a" * 64
+
+
 def test_bad_config_raises_config_error() -> None:
     with pytest.raises(ConfigError):
         PinPolicy(expected_hash="")

@@ -34,6 +34,29 @@ if TYPE_CHECKING:
 BASE_URL = "http://127.0.0.1:8000"
 
 
+def _has_asgi_streamable_client() -> bool:
+    """True when the SDK ships a client helper accepting an injected httpx client.
+
+    The in-process round-trips drive the app through ``httpx.ASGITransport``,
+    which requires ``streamable_http_client(url, http_client=...)``. That
+    alias + ``http_client`` parameter is a newer SDK addition absent at the
+    ``mcp>=1.19`` floor (which only exposes ``streamablehttp_client`` without
+    client injection), so the round-trips skip cleanly there while the
+    server-binding structure tests still run at every supported version.
+    """
+    try:
+        import inspect
+
+        from mcp.client.streamable_http import streamable_http_client
+    except ImportError:
+        return False
+    return "http_client" in inspect.signature(streamable_http_client).parameters
+
+
+#: Whether the ASGI-injectable client helper is available (see above).
+_HAS_ASGI_CLIENT = _has_asgi_streamable_client()
+
+
 @asynccontextmanager
 async def _asgi_client(app: object) -> AsyncIterator[httpx.AsyncClient]:
     """Yield an httpx client bound to *app* with the app lifespan running.
@@ -130,7 +153,10 @@ def test_build_streamable_http_app_wires_route_for_proxy() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not _HAS_STREAMABLE_HTTP, reason="Streamable HTTP dependencies unavailable")
+@pytest.mark.skipif(
+    not (_HAS_STREAMABLE_HTTP and _HAS_ASGI_CLIENT),
+    reason="Streamable HTTP ASGI-injectable client helper unavailable (older MCP SDK)",
+)
 async def test_gateway_initialize_round_trip_over_streamable_http() -> None:
     """A real SDK client completes initialize + tools/list against the gateway app."""
     from mcp import ClientSession
@@ -160,7 +186,10 @@ async def test_gateway_initialize_round_trip_over_streamable_http() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not _HAS_STREAMABLE_HTTP, reason="Streamable HTTP dependencies unavailable")
+@pytest.mark.skipif(
+    not (_HAS_STREAMABLE_HTTP and _HAS_ASGI_CLIENT),
+    reason="Streamable HTTP ASGI-injectable client helper unavailable (older MCP SDK)",
+)
 async def test_proxy_initialize_round_trip_over_streamable_http() -> None:
     """A real SDK client completes initialize + tools/list against the proxy app."""
     from mcp import ClientSession

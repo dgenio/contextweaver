@@ -14,6 +14,7 @@ description, a namespace change — before it silently alters routing.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -25,6 +26,10 @@ if TYPE_CHECKING:
 
 #: Supported pin enforcement modes.
 PIN_MODES: frozenset[str] = frozenset({"warn", "strict"})
+
+#: ``compute_catalog_hash`` returns a lowercase SHA-256 hex digest; a pin must
+#: match that shape so a typo/truncation can't silently satisfy strict mode.
+_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 _PIN_KEYS: frozenset[str] = frozenset({"expected_hash", "mode"})
 
@@ -46,8 +51,18 @@ class PinPolicy:
     mode: Literal["warn", "strict"] = "warn"
 
     def __post_init__(self) -> None:
-        if not isinstance(self.expected_hash, str) or not self.expected_hash.strip():
-            raise ConfigError("pin.expected_hash must be a non-empty string")
+        if not isinstance(self.expected_hash, str):
+            raise ConfigError("pin.expected_hash must be a string")
+        # Normalise surrounding/inner whitespace before validating — a copied
+        # hash often carries a stray newline or spaces (frozen: set via
+        # object.__setattr__).
+        normalized = "".join(self.expected_hash.split()).lower()
+        if not _HASH_RE.match(normalized):
+            raise ConfigError(
+                "pin.expected_hash must be a 64-character lowercase SHA-256 hex "
+                "digest (as produced by compute_catalog_hash)"
+            )
+        object.__setattr__(self, "expected_hash", normalized)
         if self.mode not in PIN_MODES:
             allowed = ", ".join(sorted(PIN_MODES))
             raise ConfigError(f"pin.mode must be one of {allowed}, got {self.mode!r}")
@@ -85,7 +100,8 @@ class PinPolicy:
             raise ConfigError(f"pin.mode must be one of {allowed}, got {mode!r}")
         expected = data["expected_hash"]
         if not isinstance(expected, str):
-            raise ConfigError("pin.expected_hash must be a non-empty string")
+            raise ConfigError("pin.expected_hash must be a string")
+        # __post_init__ validates the hex shape and normalises whitespace/case.
         return cls(expected_hash=expected, mode=cast('Literal["warn", "strict"]', mode))
 
 

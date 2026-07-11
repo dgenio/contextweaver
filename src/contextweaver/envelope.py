@@ -81,6 +81,20 @@ class FirewallStats:
     summarized_by_llm: bool = False
     llm_provider: dict[str, str] | None = None
 
+    def __post_init__(self) -> None:
+        """Normalise ``llm_provider`` to ``dict[str, str] | None``.
+
+        A custom LLM summarizer may expose ``provider_metadata`` as an
+        arbitrary object; coercing here keeps :meth:`to_dict` (and the whole
+        firewall path) from raising on a non-dict or non-string value.
+        """
+        if self.llm_provider is None:
+            return
+        if isinstance(self.llm_provider, dict):
+            self.llm_provider = {str(k): str(v) for k, v in self.llm_provider.items()} or None
+        else:
+            self.llm_provider = None
+
     @property
     def chars_saved(self) -> int:
         """Characters kept out of the prompt (``original - summary``, ≥ 0)."""

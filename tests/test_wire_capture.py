@@ -52,7 +52,11 @@ def _tool_defs() -> list[dict[str, Any]]:
 
 
 async def _handler(name: str, args: dict[str, Any]) -> dict[str, Any]:
-    return {"content": [{"type": "text", "text": f"called {name}"}], "isError": False}
+    # A payload well over the firewall threshold so tool_execute produces a
+    # summarised envelope + artifact handle, letting the golden cover the
+    # execute → artifact → tool_view drilldown end-to-end (not just errors).
+    body = "ISSUE-42 opened. " + ("detail line for the created issue. " * 120)
+    return {"content": [{"type": "text", "text": body}], "isError": False}
 
 
 def _runtime() -> ProxyRuntime:
@@ -62,7 +66,15 @@ def _runtime() -> ProxyRuntime:
 
 
 async def _record_session() -> WireRecorder:
-    """The scripted golden session: list → browse → execute → view error."""
+    """The scripted golden session, exercising the full happy path + one error.
+
+    list → browse → execute (correct ``tool_id``/``args`` keys, firewalled
+    result) → tool_view on the returned artifact ``handle`` (drilldown) →
+    tool_view on a missing handle (error path). Using the real meta-tool
+    argument keys (``args``/``handle``, per the advertised ``tools/list``
+    schemas) means the golden pins genuine execute→artifact→view behaviour
+    rather than only ARGS_INVALID responses.
+    """
     runtime = _runtime()
     recorder = WireRecorder(
         lambda name, args: dispatch_meta_tool(runtime, name, args),
@@ -74,8 +86,17 @@ async def _record_session() -> WireRecorder:
     body = json.loads(browse["content"][0]["text"])
     cards = body if isinstance(body, list) else body.get("choice_cards", [])
     tool_id = cards[0]["id"] if cards and isinstance(cards[0], dict) else "github.create_issue"
-    await recorder.record_call("tool_execute", {"tool_id": tool_id, "arguments": {"title": "hi"}})
-    await recorder.record_call("tool_view", {"artifact_ref": "artifact:missing", "selector": {}})
+    executed = await recorder.record_call(
+        "tool_execute", {"tool_id": tool_id, "args": {"title": "hi"}}
+    )
+    exec_body = json.loads(executed["content"][0]["text"])
+    handle = exec_body["artifacts"][0]["handle"]
+    await recorder.record_call(
+        "tool_view", {"handle": handle, "selector": {"type": "head", "chars": 24}}
+    )
+    await recorder.record_call(
+        "tool_view", {"handle": "artifact:missing", "selector": {"type": "head"}}
+    )
     return recorder
 
 

@@ -169,8 +169,11 @@ def make_sampling_call_fn(
             async_call(prompt), loop
         )
         try:
+            # concurrent.futures.TimeoutError is a distinct class from builtin
+            # TimeoutError on Python 3.10 (they were only unified in 3.11), so
+            # catch it explicitly rather than relying on the builtin alias.
             return future.result(timeout=timeout_seconds)
-        except TimeoutError:
+        except concurrent.futures.TimeoutError:
             future.cancel()
             raise ConfigError(
                 f"sampling round-trip exceeded {timeout_seconds}s",

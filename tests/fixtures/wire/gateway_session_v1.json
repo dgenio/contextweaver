@@ -123,7 +123,7 @@
       "kind": "call_tool",
       "request": {
         "arguments": {
-          "arguments": {
+          "args": {
             "title": "hi"
           },
           "tool_id": "github:create_issue#34afee88"
@@ -134,26 +134,73 @@
         "content": [
           {
             "text": {
-              "details": {
-                "path": []
+              "artifacts": [
+                {
+                  "content_hash": "a484a05ff295ca21c5aca718c4b7304f17dda108d56d4f5ee256619383a6f866",
+                  "handle": "text:github:create_issue#34afee88:a484a05ff295ca21",
+                  "label": "text result from github:create_issue#34afee88",
+                  "media_type": "text/plain",
+                  "size_bytes": 4217
+                }
+              ],
+              "facts": [],
+              "firewall_stats": {
+                "artifact_ref": "text:github:create_issue#34afee88:a484a05ff295ca21",
+                "llm_provider": null,
+                "original_chars": 4217,
+                "original_tokens": 1054,
+                "strategy": "summary",
+                "summarized_by_llm": false,
+                "summary_chars": 500,
+                "summary_tokens": 125,
+                "threshold_chars": 0,
+                "triggered": true
               },
-              "error": "ARGS_INVALID",
-              "message": "'title' is a required property",
-              "path": "github:create_issue#34afee88",
-              "retryable": false
+              "provenance": {
+                "protocol": "mcp",
+                "tool": "github.create_issue",
+                "tool_id": "github:create_issue#34afee88"
+              },
+              "status": "ok",
+              "summary": "ISSUE-42 opened. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created issue. detail line for the created ",
+              "views": []
             },
             "type": "text"
           }
         ],
-        "isError": true
+        "isError": false
       }
     },
     {
       "kind": "call_tool",
       "request": {
         "arguments": {
-          "artifact_ref": "artifact:missing",
-          "selector": {}
+          "handle": "text:github:create_issue#34afee88:a484a05ff295ca21",
+          "selector": {
+            "chars": 24,
+            "type": "head"
+          }
+        },
+        "name": "tool_view"
+      },
+      "response": {
+        "content": [
+          {
+            "text": "ISSUE-42 opened. detail ",
+            "type": "text"
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "kind": "call_tool",
+      "request": {
+        "arguments": {
+          "handle": "artifact:missing",
+          "selector": {
+            "type": "head"
+          }
         },
         "name": "tool_view"
       },
@@ -161,9 +208,9 @@
         "content": [
           {
             "text": {
-              "error": "ARGS_INVALID",
-              "message": "tool_view requires string 'handle' and object 'selector'.",
-              "path": "",
+              "error": "VIEW_FAILED",
+              "message": "[CW_ARTIFACT_NOT_FOUND] Artifact not found: 'artifact:missing'",
+              "path": "artifact:missing",
               "retryable": false
             },
             "type": "text"
