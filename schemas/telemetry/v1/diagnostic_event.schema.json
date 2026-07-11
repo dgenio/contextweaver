@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgenio/contextweaver/schemas/telemetry/v1/diagnostic_event.schema.json",
+  "title": "contextweaver DiagnosticEvent envelope (telemetry v1)",
+  "description": "One sanitized gateway diagnostic event, as emitted by GatewayTelemetry to a JSONL sink (contextweaver mcp serve --diagnostics FILE; issue #382). Events carry metadata only: identifiers, sizes, timings, argument key names, and error codes - never query text, argument values, result text, or artifact bytes. Additive evolution stays within v1; breaking changes publish a v2 schema directory.",
+  "type": "object",
+  "required": ["version", "event", "timestamp", "success", "session_id"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Event envelope schema version."
+    },
+    "event": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable dot-separated event name, e.g. \"browse.completed\". The prefix determines the contract family (see docs/telemetry.md)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp of emission."
+    },
+    "success": {
+      "type": "boolean",
+      "description": "Whether the recorded operation succeeded."
+    },
+    "duration_ms": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Operation latency in milliseconds, when applicable."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Gateway runtime session identifier; the correlation key across events of one session."
+    },
+    "tool_id": {
+      "type": ["string", "null"],
+      "description": "Canonical tool identifier, when applicable."
+    },
+    "namespace": {
+      "type": ["string", "null"],
+      "description": "Tool namespace, when applicable."
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "JSON-compatible metadata for the event. Must never contain payload content or argument values; consumers may flag values rendering longer than 2000 characters as likely payload leakage."
+    }
+  }
+}
