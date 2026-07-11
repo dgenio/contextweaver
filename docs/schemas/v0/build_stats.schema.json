@@ -31,6 +31,19 @@
             }
           ]
         },
+        "llm_provider": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "original_chars": {
           "type": "integer"
         },

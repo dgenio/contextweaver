@@ -1280,7 +1280,6 @@ def catalog_diff_command(
     """Compare two catalog versions and report the routing impact (issue #514)."""
     from contextweaver.routing.catalog import load_catalog_json, load_catalog_yaml
     from contextweaver.routing.catalog_diff import diff_catalogs, routing_impact, suggest_probes
-    from contextweaver.types import SelectableItem
 
     def _load(path: Path) -> list[SelectableItem]:
         loader = load_catalog_yaml if path.suffix in {".yaml", ".yml"} else load_catalog_json

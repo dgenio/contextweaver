@@ -236,10 +236,11 @@ def enrich_catalog(
             continue
         try:
             data = json.loads(raw)
-            if not isinstance(data, dict):
-                raise ValueError("not a JSON object")
-        except (json.JSONDecodeError, ValueError) as exc:
+        except json.JSONDecodeError as exc:
             report.skipped.append((item.id, f"malformed response: {exc}"))
+            continue
+        if not isinstance(data, dict):
+            report.skipped.append((item.id, "malformed response: not a JSON object"))
             continue
         suggestions, problems = _suggestions_from_response(item, data, fields)
         report.suggestions.extend(suggestions)

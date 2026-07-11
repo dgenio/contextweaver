@@ -22,6 +22,7 @@ import yaml
 from contextweaver.adapters.artifact_policy import ArtifactPolicy
 from contextweaver.adapters.gateway_presets import GatewayPreset
 from contextweaver.adapters.startup_policy import StartupPolicy
+from contextweaver.exceptions import ConfigError
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.catalog import Catalog, load_catalog_dicts, validate_references
 from contextweaver.routing.normalizer import CatalogNormalizer
@@ -157,7 +158,7 @@ def _native_dicts(raw: Any) -> list[dict[str, Any]]:  # noqa: ANN401 — JSON/YA
     if isinstance(raw, dict) and isinstance(raw.get("tools"), list):
         raw = raw["tools"]
     if not isinstance(raw, list):
-        raise ValueError("catalog must be a list of tool entries (or a snapshot with 'tools')")
+        raise ConfigError("catalog must be a list of tool entries (or a snapshot with 'tools')")
     out: list[dict[str, Any]] = []
     for entry in raw:
         if isinstance(entry, dict) and "id" not in entry and "name" in entry:

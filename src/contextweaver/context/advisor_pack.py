@@ -184,9 +184,9 @@ def _parse_advice(raw: str, options: list[str]) -> AdvisorResponse:
     """Parse the advisor completion, degrading instead of raising."""
     try:
         data = json.loads(raw)
-        if not isinstance(data, dict):
-            raise ValueError("not an object")
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError:
+        return AdvisorResponse(advice=raw.strip(), raw=raw)
+    if not isinstance(data, dict):
         return AdvisorResponse(advice=raw.strip(), raw=raw)
     advice = str(data.get("advice", "")).strip() or raw.strip()
     preferred = data.get("preferred_option")
