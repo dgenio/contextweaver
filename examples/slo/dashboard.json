@@ -1,0 +1,79 @@
+{
+  "__comment": "Template dashboard for the contextweaver SLO starter kit. contextweaver emits JSONL diagnostics, not Prometheus metrics; point the datasource at wherever your pipeline lands the mapped metrics (see docs/slo_starter_kit.md).",
+  "title": "contextweaver gateway SLIs",
+  "schemaVersion": 39,
+  "tags": ["contextweaver", "slo", "template"],
+  "time": {"from": "now-24h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource (placeholder - set to your mapped metrics store)"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Availability - execute success rate",
+      "datasource": {"uid": "${datasource}"},
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(cw_execute_total{success=\"true\"}[1h])) / sum(rate(cw_execute_total[1h]))"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latency - execute/browse p95 (ms)",
+      "datasource": {"uid": "${datasource}"},
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(cw_execute_duration_ms_bucket[5m])))"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(cw_browse_duration_ms_bucket[5m])))"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ms"}}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Firewall efficacy - tokens kept out of prompts",
+      "datasource": {"uid": "${datasource}"},
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(cw_tokens_saved_total[1h])) / sum(rate(cw_tokens_raw_total[1h]))"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Catalog freshness - seconds since last catalog.loaded",
+      "datasource": {"uid": "${datasource}"},
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(cw_catalog_loaded_timestamp_seconds)"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    }
+  ]
+}
