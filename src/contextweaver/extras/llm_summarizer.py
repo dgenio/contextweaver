@@ -103,11 +103,15 @@ class LlmSummarizer:
         max_input: int = 4000,
         system_prompt: str = DEFAULT_SUMMARY_PROMPT,
         fallback: Summarizer | None = None,
+        provider_metadata: dict[str, str] | None = None,
     ) -> None:
         self._call = call_fn
         self._max_input = max_input
         self._system_prompt = system_prompt
         self._fallback: Summarizer = fallback if fallback is not None else RuleBasedSummarizer()
+        #: Provider/model/version identifiers recorded on FirewallStats for
+        #: auditability (issue #384).  Purely informational.
+        self.provider_metadata: dict[str, str] = dict(provider_metadata or {})
 
     def summarize(self, raw: str, metadata: dict[str, Any] | None = None) -> str:
         """Return an LLM summary of *raw*, or the rule-based fallback on failure."""
@@ -116,7 +120,11 @@ class LlmSummarizer:
             result = self._call(f"{self._system_prompt}{raw[: self._max_input]}")
             if not isinstance(result, str) or not result.strip():
                 raise ValidationError("LLM summariser returned an empty completion")
-            return result.strip()
+            summary = result.strip()
+            if len(raw) > self._max_input:
+                # Omission marker (issue #384): the model saw a truncated input.
+                summary += f" [llm summary of first {self._max_input} chars]"
+            return summary
         except Exception as exc:  # noqa: BLE001 - any model failure must degrade safely
             logger.warning("LlmSummarizer: call_fn failed (%s); using rule-based fallback", exc)
             return self._fallback.summarize(raw, meta)
@@ -148,11 +156,14 @@ class LlmExtractor:
         max_input: int = 4000,
         system_prompt: str = DEFAULT_EXTRACT_PROMPT,
         fallback: Extractor | None = None,
+        provider_metadata: dict[str, str] | None = None,
     ) -> None:
         self._call = call_fn
         self._max_input = max_input
         self._system_prompt = system_prompt
         self._fallback: Extractor = fallback if fallback is not None else StructuredExtractor()
+        #: Provider/model/version identifiers for audit (issue #384).
+        self.provider_metadata: dict[str, str] = dict(provider_metadata or {})
 
     def extract(self, raw: str, metadata: dict[str, Any] | None = None) -> list[str]:
         """Return facts extracted by the LLM, or the rule-based fallback on failure."""

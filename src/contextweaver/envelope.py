@@ -79,6 +79,7 @@ class FirewallStats:
     summary_tokens: int = 0
     artifact_ref: str | None = None
     summarized_by_llm: bool = False
+    llm_provider: dict[str, str] | None = None
 
     @property
     def chars_saved(self) -> int:
@@ -102,6 +103,7 @@ class FirewallStats:
             "summary_tokens": self.summary_tokens,
             "artifact_ref": self.artifact_ref,
             "summarized_by_llm": self.summarized_by_llm,
+            "llm_provider": dict(self.llm_provider) if self.llm_provider else None,
         }
 
     @classmethod
@@ -117,6 +119,7 @@ class FirewallStats:
             summary_tokens=int(data.get("summary_tokens", 0)),
             artifact_ref=data.get("artifact_ref"),
             summarized_by_llm=bool(data.get("summarized_by_llm", False)),
+            llm_provider=dict(data["llm_provider"]) if data.get("llm_provider") else None,
         )
 
 

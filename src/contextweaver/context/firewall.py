@@ -179,21 +179,20 @@ def apply_firewall(
 
     # Choose a strategy.  Structured projection (issue #406) takes precedence
     # when an allow-list is supplied and the payload is JSON; it is always
-    # model-free.  Otherwise summarise — LLM-backed only when the supplied
-    # summariser declares itself so.
-    # ``bool(keep)`` (not ``keep is not None``) so an empty allow-list means
-    # "no structured projection requested" and falls through to summarisation,
-    # rather than constructing ``StructuredFirewall(keep=[])`` and having its
-    # ConfigError swallowed by the projection try/except below.
+    # model-free.  Otherwise summarise — LLM-backed only when the summariser
+    # declares itself so.  ``bool(keep)`` (not ``keep is not None``): an empty
+    # allow-list means "no structured projection requested", since a
+    # StructuredFirewall(keep=[]) ConfigError would be swallowed below.
     use_structured = bool(keep) and _looks_like_json(item.text)
     summarized_by_llm = (not use_structured) and _summarizer_is_llm(summarizer)
+    llm_provider = getattr(summarizer, "provider_metadata", None) if summarized_by_llm else None
     extracted_by_llm = (not use_structured) and _extractor_is_llm(extractor)
     if deterministic and (summarized_by_llm or extracted_by_llm):
         plugin = "summarizer" if summarized_by_llm else "extractor"
         raise DeterminismError(
             f"deterministic=True but an LLM-backed {plugin} would process item "
-            f"{item.id!r}; refusing to pass data through a model. Supply a "
-            f"structured `keep` allow-list or a rule-based summarizer/extractor instead."
+            f"{item.id!r}; refusing to pass data through a model. Supply a structured "
+            f"`keep` allow-list or a rule-based summarizer/extractor instead."
         )
 
     status: Literal["ok", "partial", "error"] = "ok"
@@ -252,6 +251,7 @@ def apply_firewall(
         summary_tokens=count_tokens(summary),
         artifact_ref=ref.handle,
         summarized_by_llm=summarized_by_llm,
+        llm_provider=llm_provider,
     )
 
     envelope = ResultEnvelope(
