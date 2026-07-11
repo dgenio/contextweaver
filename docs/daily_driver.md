@@ -82,7 +82,7 @@ reproduction checklist. It never reads shell history automatically; pass
 `--command-log /path/to/commands.txt` only when you captured a command log
 explicitly for that incident.
 
-The packaged CLI still represents one configured static catalog source. Its
+With a `catalog:` config the CLI represents one static catalog source. Its
 catalog report groups tools by namespace; it does not claim live health for
 multiple upstream MCP processes.
 
@@ -96,10 +96,14 @@ pipx run --spec contextweaver==0.14.0 contextweaver mcp serve \
   --config /path/to/gateway.yaml
 ```
 
-The packaged `mcp serve` command currently loads a static catalog and uses the
-stub upstream handler for deterministic local exercise. For live upstream MCP
-execution, compose `McpClientUpstream` or `MultiplexUpstream` in Python; see
-[MCP Integration](integration_mcp.md#connecting-to-real-upstream-mcp-servers).
+`mcp serve` runs in two modes: a `catalog:` config loads a static catalog with
+the deterministic stub upstream (local exercise, CI, offline routing work),
+while an `upstreams:` config launches real upstream MCP servers behind the
+gateway and executes selected calls live. An existing multi-server client
+config migrates with `contextweaver mcp import-vscode <config> --apply`; see
+[MCP Integration](integration_mcp.md#connecting-to-real-upstream-mcp-servers)
+for the `upstreams:` / `startup:` reference. Live upstream serving covers
+tools only — resources and prompts still use the static-catalog path.
 
 ## Client instruction
 

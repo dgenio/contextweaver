@@ -63,10 +63,28 @@ tool_execute. Use tool_view only for a narrow slice when the summary does not
 answer the question. Keep normal authorization and approval checks.
 ```
 
+## Live upstream servers
+
+Replace `catalog:` with an `upstreams:` block in the gateway config and
+`mcp serve` launches the listed MCP servers behind the gateway, discovers
+their tools, and executes selected calls live:
+
+```yaml
+upstreams:
+  filesystem:
+    type: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    namespace: fs
+```
+
+An existing VS Code–style multi-server config migrates with
+`contextweaver mcp import-vscode <config> --apply` (dry-run by default).
+
 ## Current limitations
 
-- The packaged CLI's upstream is a deterministic stub over a static catalog.
-  Use `McpClientUpstream` / `MultiplexUpstream` for live upstream execution.
+- Live upstream serving covers tools only; resources and prompts over live
+  upstreams still require the static-catalog path.
 - A cold `uvx` environment can start slowly; install or pin contextweaver for
   daily use if the client startup budget is tight.
 - Cursor prompt caching behavior is client-controlled.
