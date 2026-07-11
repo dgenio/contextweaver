@@ -41,6 +41,19 @@ try:
 except ImportError:  # pragma: no cover
     _HAS_SSE = False
 
+try:
+    # Streamable HTTP shares the SSE soft-dependency set (starlette + uvicorn)
+    # plus the SDK's session manager; probe it separately so each transport
+    # degrades independently. The binding logic is imported lazily from
+    # ``run_streamable_http`` once this flag is True.
+    from mcp.server.streamable_http_manager import (  # noqa: F401  (availability probe)
+        StreamableHTTPSessionManager,
+    )
+
+    _HAS_STREAMABLE_HTTP = _HAS_SSE
+except ImportError:  # pragma: no cover
+    _HAS_STREAMABLE_HTTP = False
+
 from contextweaver.adapters.gateway_primitives import PrimitiveGatewayRuntime
 from contextweaver.adapters.mcp_gateway import (
     GATEWAY_TOOL_NAMES,
@@ -185,6 +198,43 @@ class McpGatewayServer:
         from contextweaver.adapters._sse_app import build_sse_app
 
         app = build_sse_app(self.server, host=host, port=port)
+        config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+        srv = uvicorn.Server(config)
+        await srv.serve()
+
+    async def run_streamable_http(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8000,
+        *,
+        json_response: bool = False,
+        stateless: bool = False,
+    ) -> None:
+        """Run the server over Streamable HTTP on *host*:*port* until interrupted.
+
+        Args:
+            host: Address to bind (default ``127.0.0.1``).
+            port: Port to listen on (default ``8000``).
+            json_response: Answer with plain JSON responses instead of SSE streams.
+            stateless: Create a fresh transport per request (no session tracking).
+
+        Raises:
+            ConfigError: If the MCP SDK's Streamable HTTP dependencies are
+                unavailable.
+        """
+        if not _HAS_STREAMABLE_HTTP:
+            raise ConfigError(
+                "Streamable HTTP transport unavailable. The MCP SDK's streamable "
+                "HTTP support requires starlette and uvicorn, which should have "
+                "been installed with the `mcp` package."
+            )
+        # Imported lazily (not at module load) so the soft HTTP dependency stays
+        # optional — this module imports fine without starlette/uvicorn.
+        from contextweaver.adapters._streamable_http_app import build_streamable_http_app
+
+        app = build_streamable_http_app(
+            self.server, host=host, port=port, json_response=json_response, stateless=stateless
+        )
         config = uvicorn.Config(app, host=host, port=port, log_level="warning")
         srv = uvicorn.Server(config)
         await srv.serve()
