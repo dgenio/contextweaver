@@ -1,8 +1,7 @@
 """Private check implementations for :mod:`contextweaver.adapters.gateway_doctor`.
 
-Extracted to keep ``gateway_doctor.py`` under the 300-line ceiling (mirrors
-``_primitive_index.py``); ``DoctorFinding`` / ``CONFIG_KEYS`` are defined here
-and re-exported there.  Checks append findings, never raise.  Not public API."""
+Extracted to keep ``gateway_doctor.py`` ≤300 lines; ``DoctorFinding`` /
+``CONFIG_KEYS`` live here and are re-exported there. Not public API."""
 
 from __future__ import annotations
 

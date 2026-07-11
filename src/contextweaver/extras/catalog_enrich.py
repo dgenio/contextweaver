@@ -41,14 +41,9 @@ if TYPE_CHECKING:
 #: ``business_domain``/``risk_level``/``side_effects`` target the issue #377
 #: inventory namespace; the rest are advisory-only report fields.
 ENRICHABLE_FIELDS: tuple[str, ...] = (
-    "description",
-    "business_domain",
-    "risk_level",
-    "side_effects",
-    "aliases",
-    "use_cases",
-    "duplicate_of",
-)
+    "description", "business_domain", "risk_level",
+    "side_effects", "aliases", "use_cases", "duplicate_of",
+)  # fmt: skip
 
 #: Fields whose suggested values must come from a fixed vocabulary.
 _ENUM_FIELDS: dict[str, tuple[str, ...]] = {
