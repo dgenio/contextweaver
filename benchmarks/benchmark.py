@@ -41,7 +41,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT / "src"))
 
-from contextweaver._utils import FuzzyScorer  # noqa: E402
+from contextweaver._utils import BM25Scorer, FuzzyScorer  # noqa: E402
 from contextweaver.config import ContextBudget  # noqa: E402
 from contextweaver.context.manager import ContextManager  # noqa: E402
 from contextweaver.eval.metrics import (  # noqa: E402
@@ -219,10 +219,12 @@ def _build_router(items: list[SelectableItem], scorer_backend: str = "tfidf") ->
     return Router(graph, items=items, scorer_backend=scorer_backend)
 
 
-# ``FuzzyScorer`` is the runtime ``None`` sentinel exposed by ``_utils`` when
-# the ``[retrieval]`` extra is missing. The matrix runner uses this to record
-# a ``"status": "skipped: missing rapidfuzz"`` row rather than crash (#208).
+# ``FuzzyScorer`` / ``BM25Scorer`` are the runtime ``None`` sentinels exposed by
+# ``_utils`` when the ``[retrieval]`` / ``[bm25]`` extras are missing. The matrix
+# runner uses these to record a ``"status": "skipped: missing ..."`` row rather
+# than crash (#208; bm25 moved off core in #756).
 _FUZZY_AVAILABLE: bool = FuzzyScorer is not None
+_BM25_AVAILABLE: bool = BM25Scorer is not None
 
 
 @functools.cache
@@ -250,14 +252,17 @@ def _matrix_cell_skip_reason(backend: str) -> str | None:
     """Return a ``"skipped: ..."`` status string when *backend* cannot run, else ``None``.
 
     Drives the graceful-skip path in :func:`_run_matrix_cell` for backends
-    whose runtime requires an optional extra (``rapidfuzz`` for the
-    ``fuzzy`` backend, ``sentence-transformers`` for the ``embedding_st``
-    backend).  Centralising the policy here keeps the cell runner short
+    whose runtime requires an optional extra (``rank-bm25`` for the ``bm25``
+    backend, ``rapidfuzz`` for the ``fuzzy`` backend, ``sentence-transformers``
+    for the ``embedding_st`` backend).  Centralising the policy here keeps the
+    cell runner short
     and makes it trivial to extend with future backends (#266, #208).
     The ``sentence_transformers`` availability check is deferred — the
     import only runs when a matrix cell actually targets the
     ``embedding_st`` backend.
     """
+    if backend == "bm25" and not _BM25_AVAILABLE:
+        return "skipped: missing rank-bm25"
     if backend == "fuzzy" and not _FUZZY_AVAILABLE:
         return "skipped: missing rapidfuzz"
     if backend == "embedding_st" and not _sentence_transformers_available():
