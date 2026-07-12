@@ -39,6 +39,19 @@ def test_concurrent_distinct_puts_all_land(tmp_path: Path) -> None:
     assert {r.handle for r in store.list_refs()} == set(handles)
 
 
+def _winerror(code: int) -> PermissionError:
+    """Build a PermissionError carrying a Windows ``winerror`` code.
+
+    On POSIX, ``OSError`` has no ``winerror`` descriptor, so we set it as an
+    instance attribute — matching what ``getattr(exc, "winerror", None)`` reads
+    in ``atomic_write`` — to simulate the Windows "destination is open" errors
+    without a Windows runner.
+    """
+    exc = PermissionError(13, f"simulated WinError {code}: file in use")
+    exc.winerror = code  # type: ignore[attr-defined]
+    return exc
+
+
 def test_atomic_write_retries_on_permission_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -56,7 +69,7 @@ def test_atomic_write_retries_on_permission_error(
     def flaky_replace(src: str, dst: str) -> None:
         calls["n"] += 1
         if calls["n"] < 3:
-            raise PermissionError(13, "simulated WinError 5: file in use")
+            raise _winerror(5)
         real_replace(src, dst)
 
     monkeypatch.setattr(_json_file_io.os, "replace", flaky_replace)
@@ -71,10 +84,10 @@ def test_atomic_write_retries_on_permission_error(
 def test_atomic_write_reraises_after_exhausting_retries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A persistently-locked destination surfaces the PermissionError (#749)."""
+    """A persistently sharing-violated destination surfaces the error (#749)."""
 
     def always_locked(src: str, dst: str) -> None:
-        raise PermissionError(13, "simulated WinError 5: file in use")
+        raise _winerror(32)  # ERROR_SHARING_VIOLATION
 
     monkeypatch.setattr(_json_file_io.os, "replace", always_locked)
     monkeypatch.setattr(_json_file_io.time, "sleep", lambda _d: None)
@@ -83,6 +96,34 @@ def test_atomic_write_reraises_after_exhausting_retries(
     with pytest.raises(PermissionError):
         _json_file_io.atomic_write(target, b"payload")
     # The temp file must not be left behind on failure.
+    assert not list(tmp_path.glob("._cw_tmp_*"))
+
+
+def test_atomic_write_reraises_posix_permission_error_immediately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-Windows PermissionError (no winerror) is not retried (#749).
+
+    Retrying a real POSIX permission failure would only mask it and add backoff
+    delay; it must surface immediately without any retry.
+    """
+    calls = {"n": 0}
+    slept = {"n": 0}
+
+    def denied(src: str, dst: str) -> None:
+        calls["n"] += 1
+        raise PermissionError(13, "Permission denied")  # errno only; winerror is None
+
+    monkeypatch.setattr(_json_file_io.os, "replace", denied)
+    monkeypatch.setattr(
+        _json_file_io.time, "sleep", lambda _d: slept.__setitem__("n", slept["n"] + 1)
+    )
+
+    target = tmp_path / "artifact.data"
+    with pytest.raises(PermissionError):
+        _json_file_io.atomic_write(target, b"payload")
+    assert calls["n"] == 1  # exactly one attempt, no retry loop
+    assert slept["n"] == 0  # no backoff delay incurred
     assert not list(tmp_path.glob("._cw_tmp_*"))
 
 

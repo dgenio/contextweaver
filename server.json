@@ -8,13 +8,13 @@
     "url": "https://github.com/dgenio/contextweaver",
     "source": "github"
   },
-  "version": "0.16.0",
+  "version": "0.17.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "contextweaver",
-      "version": "0.16.0",
+      "version": "0.17.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

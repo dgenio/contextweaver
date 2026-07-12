@@ -105,7 +105,13 @@ def atomic_write(path: Path, data: bytes) -> None:
             try:
                 os.replace(tmp, path)
                 return
-            except PermissionError:
+            except PermissionError as exc:
+                # Retry only the Windows "destination is open" case — access
+                # denied (5) or sharing violation (32). A POSIX PermissionError
+                # (``winerror`` is None) is a real, non-transient failure: don't
+                # mask it or add backoff delay; re-raise immediately.
+                if getattr(exc, "winerror", None) not in (5, 32):
+                    raise
                 if attempt == _REPLACE_RETRIES - 1:
                     raise
                 time.sleep(delay)
