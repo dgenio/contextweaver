@@ -120,7 +120,6 @@ nav:
       - Agent Skills: integration_agent_skills.md
       - External Memory: integration_memory.md
       - Persistent & Remote Stores: persistent_stores.md
-      - Puppetmaster: integration_puppetmaster.md
   - Architecture: architecture.md
   - Benchmarks:
       - Overview: benchmarks.md
@@ -133,10 +132,12 @@ nav:
   - Upgrading: upgrading.md
   - Launch Kit: launch_kit.md
   - Contracts: contracts.md
+  - weaver-spec Mapping: weaver_spec_mapping.md
   - Observability: integration_otel.md
   - Troubleshooting: troubleshooting.md
   - Error Reference: errors.md
   - Contribution Paths: contributing_paths.md
+  - Contributing Fixtures: contributing_fixtures.md
   - API Reference: reference/
 
 exclude_docs: |

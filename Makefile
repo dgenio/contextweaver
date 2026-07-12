@@ -262,10 +262,14 @@ schemas:
 schemas-check:
 	$(PYTHON) scripts/gen_schemas.py --check
 
+# Pinned to a tagged weaver-spec release (issue #757) so the gating conformance
+# check never depends on another repo's moving HEAD. Bump WEAVER_SPEC_REF here
+# and in .github/workflows/ci.yml together, then re-run and commit.
+WEAVER_SPEC_REF ?= v0.7.0
 weaver-conformance:
 	@mkdir -p .weaver-schemas
 	@for s in routing_decision choice_card selectable_item frame; do \
-		curl -fsSL "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/$$s.schema.json" \
+		curl -fsSL "https://raw.githubusercontent.com/dgenio/weaver-spec/$(WEAVER_SPEC_REF)/contracts/json/$$s.schema.json" \
 			-o ".weaver-schemas/$$s.schema.json"; \
 	done
 	$(PYTHON) scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas

@@ -125,10 +125,20 @@ jobs:
         # Round-trip + JSON-Schema validation against the canonical contracts
         # published at https://weaver-spec.dev/contracts/v0/. Gating because
         # weaver_contracts + jsonschema ship in [dev] (issues #143, #145).
+        #
+        # Pinned to a tagged weaver-spec release (issue #757): fetching from the
+        # moving `main` branch coupled this repo's gating pipeline to another
+        # repo's unversioned HEAD, so a push there could red every PR here with
+        # no local change. Bump WEAVER_SPEC_REF deliberately (update it in this
+        # step and the Makefile `weaver-conformance` target, then re-run
+        # conformance and commit). The non-gating deps-latest-weekly job tracks
+        # `main` so spec drift is still surfaced within a week.
+        env:
+          WEAVER_SPEC_REF: v0.7.0
         run: |
           mkdir -p .weaver-schemas
           for s in routing_decision choice_card selectable_item frame; do
-            curl -fsSL --retry 3 --retry-delay 2 "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/${s}.schema.json" \
+            curl -fsSL --retry 3 --retry-delay 2 "https://raw.githubusercontent.com/dgenio/weaver-spec/${WEAVER_SPEC_REF}/contracts/json/${s}.schema.json" \
               -o ".weaver-schemas/${s}.schema.json"
           done
           python scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas
