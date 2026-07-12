@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-07-12
+
 ### Added
 
 - **MCP gateway platform-maturity cluster (epics #365, #376, #385).** A large
