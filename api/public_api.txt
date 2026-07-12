@@ -349,6 +349,7 @@
       def from_dict(cls, data: 'dict[str, Any]') -> 'StoreBundle'
       def to_dict(self) -> 'dict[str, Any]'
   class StoreClosedError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
+  class StoreTimeoutError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
   class StructuredExtractor(max_chars: 'int' = ...) -> 'None'
       def extract(self, raw: 'str', metadata: 'dict[str, Any]') -> 'list[str]'
   class StructuredFirewall(keep: 'list[str]' = ..., max_fact_chars: 'int' = ...) -> None

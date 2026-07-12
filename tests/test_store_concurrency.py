@@ -13,12 +13,16 @@ are deterministic and non-flaky.
 from __future__ import annotations
 
 import asyncio
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import pytest
 
 from contextweaver import ContextManager
 from contextweaver.adapters.mcp_upstream import StubUpstream
 from contextweaver.adapters.proxy_runtime import ProxyRuntime
+from contextweaver.store import _json_file_io
 from contextweaver.store.json_file_artifacts import JsonFileArtifactStore
 
 
@@ -33,6 +37,94 @@ def test_concurrent_distinct_puts_all_land(tmp_path: Path) -> None:
     for h in handles:
         assert store.get(h) == h.encode()
     assert {r.handle for r in store.list_refs()} == set(handles)
+
+
+def _winerror(code: int) -> PermissionError:
+    """Build a PermissionError carrying a Windows ``winerror`` code.
+
+    On POSIX, ``OSError`` has no ``winerror`` descriptor, so we set it as an
+    instance attribute — matching what ``getattr(exc, "winerror", None)`` reads
+    in ``atomic_write`` — to simulate the Windows "destination is open" errors
+    without a Windows runner.
+    """
+    exc = PermissionError(13, f"simulated WinError {code}: file in use")
+    exc.winerror = code  # type: ignore[attr-defined]
+    return exc
+
+
+def test_atomic_write_retries_on_permission_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``atomic_write`` retries the swap on PermissionError, then succeeds (#749).
+
+    On Windows ``os.replace`` raises ``PermissionError`` (WinError 5) when a
+    concurrent reader holds the destination open. This is unobservable on
+    POSIX, so we simulate it: the first two ``os.replace`` calls raise, the
+    third succeeds — the write must land intact rather than propagate the
+    transient error.
+    """
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src: str, dst: str) -> None:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _winerror(5)
+        real_replace(src, dst)
+
+    monkeypatch.setattr(_json_file_io.os, "replace", flaky_replace)
+    monkeypatch.setattr(_json_file_io.time, "sleep", lambda _d: None)  # no real backoff wait
+
+    target = tmp_path / "artifact.data"
+    _json_file_io.atomic_write(target, b"payload")
+    assert calls["n"] == 3
+    assert target.read_bytes() == b"payload"
+
+
+def test_atomic_write_reraises_after_exhausting_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A persistently sharing-violated destination surfaces the error (#749)."""
+
+    def always_locked(src: str, dst: str) -> None:
+        raise _winerror(32)  # ERROR_SHARING_VIOLATION
+
+    monkeypatch.setattr(_json_file_io.os, "replace", always_locked)
+    monkeypatch.setattr(_json_file_io.time, "sleep", lambda _d: None)
+
+    target = tmp_path / "artifact.data"
+    with pytest.raises(PermissionError):
+        _json_file_io.atomic_write(target, b"payload")
+    # The temp file must not be left behind on failure.
+    assert not list(tmp_path.glob("._cw_tmp_*"))
+
+
+def test_atomic_write_reraises_posix_permission_error_immediately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-Windows PermissionError (no winerror) is not retried (#749).
+
+    Retrying a real POSIX permission failure would only mask it and add backoff
+    delay; it must surface immediately without any retry.
+    """
+    calls = {"n": 0}
+    slept = {"n": 0}
+
+    def denied(src: str, dst: str) -> None:
+        calls["n"] += 1
+        raise PermissionError(13, "Permission denied")  # errno only; winerror is None
+
+    monkeypatch.setattr(_json_file_io.os, "replace", denied)
+    monkeypatch.setattr(
+        _json_file_io.time, "sleep", lambda _d: slept.__setitem__("n", slept["n"] + 1)
+    )
+
+    target = tmp_path / "artifact.data"
+    with pytest.raises(PermissionError):
+        _json_file_io.atomic_write(target, b"payload")
+    assert calls["n"] == 1  # exactly one attempt, no retry loop
+    assert slept["n"] == 0  # no backoff delay incurred
+    assert not list(tmp_path.glob("._cw_tmp_*"))
 
 
 def test_atomic_overwrite_never_torn(tmp_path: Path) -> None:

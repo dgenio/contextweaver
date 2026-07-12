@@ -8,6 +8,7 @@ the flag-parsing rules (mutual exclusion of ``--gateway``/``--proxy``).
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import os
@@ -1028,6 +1029,11 @@ if __name__ == "__main__":
 '''
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("fastmcp") is None,
+    reason="needs fastmcp: the echo upstream subprocess runs on this interpreter "
+    "(absent on the 3.14 cell, where fastmcp does not resolve — issue #754)",
+)
 def test_serve_live_upstream_end_to_end_over_real_subprocess(tmp_path: Path) -> None:
     """``mcp serve --config`` with an ``upstreams:`` block against a real
     stdio subprocess MCP server (issues #366/#368/#374): the upstream is

@@ -69,6 +69,10 @@ def _build_scorer(backend: str) -> _ScorerLike:
     if backend == "tfidf":
         return TfIdfScorer()
     if backend == "bm25":
+        if BM25Scorer is None:
+            raise ConfigError(
+                "scorer_backend='bm25' requires the [bm25] extra: pip install 'contextweaver[bm25]'"
+            )
         return BM25Scorer()
     if backend == "fuzzy":
         if FuzzyScorer is None:

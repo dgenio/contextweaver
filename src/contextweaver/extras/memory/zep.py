@@ -7,10 +7,10 @@ stores.  The two classes implement the existing
 :class:`~contextweaver.store.protocols.FactStore` Protocols verbatim (the
 Protocols are not widened).
 
-Requires the ``[zep]`` optional extra (``pip install 'contextweaver[zep]'``);
-without it, importing this module raises :class:`ImportError` with that hint.
-Shared constants, payload helpers, and the store base class live in
-:mod:`contextweaver.extras.memory._zep_common` to keep this module cohesive.
+The Zep client is caller-supplied ("bring your own"), so this module imports
+cleanly without the ``[zep]`` extra — ``zep_cloud`` is only a type hint (#751).
+Install ``pip install 'contextweaver[zep]'`` to obtain a ``Zep`` client. Shared
+helpers live in :mod:`contextweaver.extras.memory._zep_common`.
 
 **Persistence.** Zep extracts edges/nodes from **episodes** (the raw inputs you
 add); episodes are the one surface that round-trips the exact input, so this

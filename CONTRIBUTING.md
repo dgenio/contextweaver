@@ -156,6 +156,20 @@ Re-running after `pip install -e ".[dev]"` should resolve it.
 - Checked-in JSON fixtures live under [`tests/fixtures/`](tests/fixtures);
   see [`docs/contributing_fixtures.md`](docs/contributing_fixtures.md) for the
   layout, normalisation rules, and regeneration workflow.
+- Deterministic, security-grade pure functions (secret scrubbing, token
+  estimators, canonical serialization, clustering) also carry Hypothesis
+  property tests in [`tests/test_properties.py`](tests/test_properties.py) —
+  add properties there when you touch that class of code.
+
+### Coverage ratchet
+
+CI enforces a branch-coverage floor (`fail_under` in `[tool.coverage.report]`)
+on the 3.12 matrix cell. The rule is **the floor only moves up**: a PR that
+drops total coverage below the committed floor fails CI. When a change
+meaningfully and durably raises coverage, you may raise `fail_under` to the new
+rounded-down whole percent in the same PR — never lower it to make a red run
+pass. The number is a floor, not a target; review remains the real gate, so do
+not add trivial tests solely to lift it.
 
 ## Adding a new store backend
 

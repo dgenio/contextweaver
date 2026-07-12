@@ -21,12 +21,15 @@ This module is internal (underscore-prefixed); construct bridges via
 
 from __future__ import annotations
 
-import asyncio
 import inspect
-import threading
-from collections.abc import Coroutine
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
+
+# ``_LoopThread`` was extracted to ``_loop_thread`` to keep this module within
+# the 300-line ceiling; imported here for the bridge/``to_sync`` type hints and
+# re-exported (redundant alias marks the intentional re-export for mypy) so
+# ``from contextweaver.store._async_to_sync import _LoopThread`` keeps working.
+from contextweaver.store._loop_thread import _LoopThread as _LoopThread
 
 if TYPE_CHECKING:
     from contextweaver.store.async_protocols import (
@@ -39,38 +42,6 @@ if TYPE_CHECKING:
     from contextweaver.store.facts import Fact
     from contextweaver.store.protocols import ArtifactStore, EpisodicStore, EventLog, FactStore
     from contextweaver.types import ArtifactRef, ContextItem, ItemKind
-
-_T = TypeVar("_T")
-
-
-class _LoopThread:
-    """A private asyncio event loop running in its own daemon thread.
-
-    Shared by all async-to-sync bridges attached to one
-    :class:`~contextweaver.context.manager.ContextManager`, so async store I/O
-    runs off the caller's loop.  :meth:`run` submits a coroutine and blocks the
-    calling thread until it completes.
-    """
-
-    def __init__(self) -> None:
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._serve, name="cw-store-loop", daemon=True)
-        self._thread.start()
-
-    def _serve(self) -> None:
-        asyncio.set_event_loop(self._loop)
-        self._loop.run_forever()
-
-    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
-        """Run *coro* on the private loop and return its result (blocking)."""
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
-
-    def close(self) -> None:
-        """Stop the private loop and join its thread.  Idempotent."""
-        if not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(self._loop.stop)
-            self._thread.join(timeout=5)
-            self._loop.close()
 
 
 class _SyncEventLogBridge:

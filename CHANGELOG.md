@@ -11,6 +11,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CI/CD & dependency-hygiene hardening cluster (#747, #748, #749, #750, #751,
+  #754, #755, #475, #756, #757).** A coordinated batch of infrastructure fixes:
+  - **Python 3.14 support (#754).** Split the heavy framework-adapter tree into
+    a new `[dev-adapters]` extra so `[dev]` resolves on 3.14; added a gating
+    3.14 CI cell running fmt/lint/type/test.
+  - **Windows support (#749).** `atomic_write` now retries `os.replace` under
+    the Windows `PermissionError` (WinError 5); Agent Skills resource paths and
+    generated MCP configs are POSIX-normalized; added a `windows-latest` CI cell.
+  - **Store correctness (#750).** The async→sync bridge bounds each operation
+    with a timeout, raising the new `StoreTimeoutError` instead of hanging; the
+    `make type` gate is hermetic (redis type-checked for real, dead mypy
+    overrides pruned).
+  - **Coverage ratchet + property tests (#475, #755).** A `fail_under` branch
+    coverage floor gated on the 3.12 cell; Hypothesis property tests for
+    secret-scrubbing, token estimators, canonical JSON, and episode clustering.
+  - **CI-dark extras (#751).** A scheduled `ci-dark-extras` job installs the
+    previously-untested adapter/backend extras and runs them under a new
+    `--strict-live` flag; Zep fake tests are decoupled from the SDK import.
+  - **Release-metadata gate (#747).** `server.json` and `CITATION.cff` versions
+    are gated against `pyproject.toml` (and corrected from 0.15.0 / 0.10.0);
+    `server.json` is regenerated at publish time.
+  - **Workflow hardening (#748).** SHA-pinned write-privileged workflows,
+    job-scoped permissions, un-silenced the benchmark-scale job, and renamed
+    `scorecard-weekly.yml` → `benchmark-scorecard-weekly.yml`.
+  - **weaver-spec pin & docs hygiene (#757).** Pinned the conformance fetch to
+    `v0.7.0`, removed the dead Puppetmaster integration doc, fixed two nav
+    orphans.
+
 - **MCP gateway platform-maturity cluster (epics #365, #376, #385).** A large
   batch advancing the gateway from a local optimizer toward a governable,
   observable, model-assistable platform. Every model-backed feature is opt-in,
@@ -324,6 +352,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/check_readme_version.py` gained a `--print-version` flag so the
   release-integrity gate reads the package version through the same single
   source of truth as the drift guard.
+
+### Changed
+
+- **`rank-bm25` demoted to the `[bm25]` optional extra (#756).** A plain install
+  no longer ships it; selecting the BM25 scorer backend without the extra raises
+  the standard helpful missing-dependency error. **Breaking** for callers that
+  used `scorer_backend="bm25"` without installing `contextweaver[bm25]`.
 
 ### Fixed
 

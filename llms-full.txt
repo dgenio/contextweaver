@@ -3621,6 +3621,7 @@ attributes are.
 | `CW_PATH_NOT_FOUND` | `PathNotFoundError` | A well-formed `tool_browse` path resolves to no node. |
 | `CW_UPSTREAM` | `UpstreamError` | An upstream MCP tool call fails for transport/protocol reasons. |
 | `CW_STORE_CLOSED` | `StoreClosedError` | An operation is attempted on a closed store. |
+| `CW_STORE_TIMEOUT` | `StoreTimeoutError` | An async store operation driven through the sync bridge exceeds its timeout. |
 | `CW_UPSTREAM_STARTUP` | `UpstreamStartupError` | Live multi-upstream startup fails under the configured `StartupPolicy`. |
 
 ---
@@ -3839,6 +3840,20 @@ after the backing connection was released via `close()`.
 
 **Fix:** do not use a store after closing it; open a new instance, or use the
 store as a context manager so its lifetime is scoped correctly.
+
+## StoreTimeoutError
+
+**Code:** `CW_STORE_TIMEOUT`
+
+Raised when an async store backend, driven through the synchronous bridge
+(`store/_async_to_sync.py`), does not complete an operation within its timeout
+(default 30s). Without the bound, a single hung backend call would wedge the
+private loop thread and, via the `ContextManager` build lock, every subsequent
+`build()` — turning one stuck I/O into a permanent manager hang.
+
+**Fix:** check the backend's health/connectivity; for a backend that is
+legitimately slow, raise the bound via `_LoopThread(timeout=...)` (or pass
+`timeout=None` to wait indefinitely, restoring the pre-fix behaviour).
 
 ## UpstreamStartupError
 

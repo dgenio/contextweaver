@@ -24,13 +24,17 @@ jobs:
       # supported range (issue #339).
       fail-fast: false
       matrix:
-        # Supported range 3.10–3.13 inclusive (issue #339). All cells are
-        # gating: a release is only claimed as supported once its cell is green.
-        # 3.14 is deliberately excluded for now — the heavy dev/adapter stack
-        # (crewai, mem0ai, fastmcp, langgraph, langchain-core) still caps at
-        # Requires-Python <3.14, so the [dev,langchain] suite cannot resolve on
-        # 3.14. Tracked for re-add once those upstreams ship 3.14 wheels.
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # Supported range 3.10–3.14 inclusive (issues #339, #754). All cells
+        # are gating: a release is only claimed as supported once its cell is
+        # green. The heavy framework-adapter stack (crewai, mem0ai, fastmcp,
+        # langgraph, langchain-core) still caps at Requires-Python <3.14, so it
+        # now lives in the [dev-adapters] extra: the 3.14 cell installs plain
+        # [dev] (resolvable on 3.14) and runs fmt/lint/type/test to prove the
+        # library and suite are 3.14-clean, while 3.10–3.13 install
+        # [dev,dev-adapters,langchain] and additionally run the adapter
+        # example/demo steps. Re-fold the adapter tree into every cell once
+        # those upstreams ship 3.14 wheels.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v7
@@ -50,7 +54,16 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        run: pip install -e ".[dev,langchain]"
+        # 3.14: plain [dev] only — the [dev-adapters] framework tree (and
+        # langchain-core) still cap at Requires-Python <3.14 (issue #754).
+        # Adapter-integration tests importorskip-skip on this cell; they run
+        # fully on 3.10–3.13 and in the scheduled extras job (#751).
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.14" ]; then
+            pip install -e ".[dev,bm25]"
+          else
+            pip install -e ".[dev,dev-adapters,langchain,bm25]"
+          fi
 
       - name: Format check
         run: ruff format --check src/ tests/ examples/ scripts/
@@ -64,12 +77,28 @@ jobs:
         run: mypy src/ examples/ scripts/
 
       - name: Test
-        run: pytest --cov=contextweaver --cov-report=term-missing -q
+        # Coverage is gated on the 3.12 cell only (issue #475): fail_under in
+        # [tool.coverage.report] fails the run when total branch coverage drops
+        # below the ratchet. The 3.12 cell installs the full adapter tree + all
+        # extras, so it measures representative coverage; other cells run
+        # without --cov for speed (the gate would otherwise fire spuriously on
+        # cells where optional-backend tests skip).
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            pytest --cov=contextweaver --cov-report=term-missing -q
+          else
+            pytest -q
+          fi
 
       - name: Examples
+        # Skipped on 3.14: the example suite drives the [dev-adapters]
+        # frameworks (crewai/fastmcp/langgraph/...), which don't resolve on
+        # 3.14 yet (issue #754). Fully gating on 3.10–3.13.
+        if: ${{ matrix.python-version != '3.14' }}
         run: make example
 
       - name: Demo
+        if: ${{ matrix.python-version != '3.14' }}
         run: make demo
 
       - name: "Generated-artifact drift gate (gating, issues #522/#518)"
@@ -103,14 +132,31 @@ jobs:
         # references no longer resolves. Stdlib-only; no install required.
         run: python scripts/check_security_policy.py
 
+      - name: Version-metadata drift check (gating, issue #747)
+        # Fails when server.json (MCP Registry manifest) or CITATION.cff drift
+        # from the package version in pyproject.toml — the two version-bearing
+        # files that previously had no gate and had both gone stale.
+        # Stdlib-only; no install required.
+        run: python scripts/check_version_metadata.py
+
       - name: Weaver-spec conformance
         # Round-trip + JSON-Schema validation against the canonical contracts
         # published at https://weaver-spec.dev/contracts/v0/. Gating because
         # weaver_contracts + jsonschema ship in [dev] (issues #143, #145).
+        #
+        # Pinned to a tagged weaver-spec release (issue #757): fetching from the
+        # moving `main` branch coupled this repo's gating pipeline to another
+        # repo's unversioned HEAD, so a push there could red every PR here with
+        # no local change. Bump WEAVER_SPEC_REF deliberately (update it in this
+        # step and the Makefile `weaver-conformance` target, then re-run
+        # conformance and commit). The non-gating deps-latest-weekly job tracks
+        # `main` so spec drift is still surfaced within a week.
+        env:
+          WEAVER_SPEC_REF: v0.7.0
         run: |
           mkdir -p .weaver-schemas
           for s in routing_decision choice_card selectable_item frame; do
-            curl -fsSL --retry 3 --retry-delay 2 "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/${s}.schema.json" \
+            curl -fsSL --retry 3 --retry-delay 2 "https://raw.githubusercontent.com/dgenio/weaver-spec/${WEAVER_SPEC_REF}/contracts/json/${s}.schema.json" \
               -o ".weaver-schemas/${s}.schema.json"
           done
           python scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas
@@ -159,7 +205,7 @@ jobs:
         # declared floor while letting transitive deps resolve normally — the
         # canonical way to prove ``>=X`` bounds without hand-maintaining a
         # constraints-min.txt.
-        run: uv pip install --system --resolution lowest-direct -e ".[dev,langchain]"
+        run: uv pip install --system --resolution lowest-direct -e ".[dev,dev-adapters,langchain,bm25]"
 
       - name: Test (floor versions)
         # No ``--cov`` here: this job exists to prove the *runtime* dependency
@@ -167,6 +213,29 @@ jobs:
         # to measure coverage — the matrix ``test`` job does that at latest
         # deps. Running coverage here also trips a spurious
         # statement-vs-branch combine error from subprocess-spawning tests.
+        run: pytest -q
+
+  windows-test:
+    # Windows support gate (issue #749). Windows is a stated support target and
+    # the store advertises a torn-write guarantee (#497) plus Windows-safe
+    # artifact handles (#466), but nothing validated it on Windows. Runs the
+    # full pytest suite on windows-latest; examples/demo stay Linux-only (they
+    # drive framework examples and are covered by the matrix job).
+    name: Windows (3.12)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,dev-adapters,langchain,bm25]"
+
+      - name: Test
         run: pytest -q
 
   tool-run-smoke:
@@ -243,7 +312,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # [bm25] is needed so the matrix benchmark exercises the bm25 backend
+        # (moved off core in #756); without it benchmark.py --matrix hits the
+        # missing-extra ConfigError and the head/base snapshots diverge.
+        run: pip install -e ".[dev,bm25]"
       - name: Generate delta
         id: delta
         continue-on-error: true
@@ -304,7 +376,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # [bm25] so the head snapshot benchmarks the bm25 backend and matches
+        # the base snapshot (rank-bm25 moved to the [bm25] extra in #756);
+        # otherwise benchmark.py --matrix raises the missing-extra ConfigError.
+        run: pip install -e ".[dev,bm25]"
       - name: Generate head + base snapshots
         # Read base from the target commit, never from the checked-out PR head:
         # otherwise a PR could refresh latest.json with its regressed values and

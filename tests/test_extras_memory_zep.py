@@ -23,34 +23,29 @@ import pytest
 
 from contextweaver.exceptions import ItemNotFoundError
 
-
-def _zep_available() -> bool:
-    try:
-        importlib.import_module("zep_cloud")
-    except ImportError:
-        return False
-    return True
-
-
-HAS_ZEP = _zep_available()
-
-
-def test_import_error_message_when_extra_missing() -> None:
-    """If ``zep_cloud`` is missing, importing the adapter must guide the user."""
-    if HAS_ZEP:
-        pytest.skip("zep-cloud is installed; ImportError path not exercised here")
-    with pytest.raises(ImportError, match=r"\[zep\]"):
-        importlib.import_module("contextweaver.extras.memory.zep")
+# The adapter is caller-supplies-the-client ("bring your own"), so it imports
+# cleanly without the [zep] extra — zep_cloud is only a type hint (issue #751).
+# The fake-driven tests below therefore run in gating CI, no longer skipped.
+from contextweaver.extras.memory.zep import (
+    ZepBackendError,
+    ZepEpisodicStore,
+    ZepFactStore,
+)
+from contextweaver.store.episodic import Episode
+from contextweaver.store.facts import Fact
 
 
-if HAS_ZEP:  # pragma: no branch
-    from contextweaver.extras.memory.zep import (
-        ZepBackendError,
-        ZepEpisodicStore,
-        ZepFactStore,
-    )
-    from contextweaver.store.episodic import Episode
-    from contextweaver.store.facts import Fact
+def test_adapter_imports_without_zep_cloud_extra() -> None:
+    """The adapter module imports cleanly whether or not ``zep_cloud`` is present.
+
+    Decoupling contract (issue #751): the store classes are usable with any
+    duck-typed client (see the fakes below), so importing must not hard-require
+    the SDK. Formerly this raised ImportError at import; that eager guard blocked
+    the fake tests from running in gating CI.
+    """
+    module = importlib.import_module("contextweaver.extras.memory.zep")
+    assert module.ZepEpisodicStore is ZepEpisodicStore
+    assert module.ZepFactStore is ZepFactStore
 
 
 class _FakeEpisodeClient:
@@ -88,8 +83,6 @@ class _FakeZep:
 
 @pytest.fixture()
 def client() -> _FakeZep:
-    if not HAS_ZEP:
-        pytest.skip("zep-cloud not installed")
     return _FakeZep()
 
 

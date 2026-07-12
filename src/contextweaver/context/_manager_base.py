@@ -39,7 +39,7 @@ if TYPE_CHECKING:
         Summarizer,
         TokenEstimator,
     )
-    from contextweaver.store._async_to_sync import _LoopThread
+    from contextweaver.store._loop_thread import _LoopThread
     from contextweaver.types import Phase
 
 

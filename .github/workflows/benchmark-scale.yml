@@ -19,8 +19,12 @@ jobs:
   routing-scale:
     name: Routing-scale profile (non-gating)
     runs-on: ubuntu-latest
-    # The profiler is informational; a failure must never page anyone or block work.
-    continue-on-error: true
+    # This is a scheduled/dispatch-only job (not a PR gate), so a red run blocks
+    # no work — but it must be *visibly* red so its scheduled-failure
+    # notification fires. Job-level ``continue-on-error`` was removed (issue
+    # #748): it masked permanent breakage as green and silently killed the
+    # drift-detection purpose, the same anti-pattern deps-latest-weekly.yml
+    # deliberately avoids.
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6

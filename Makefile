@@ -163,12 +163,15 @@ readme-version-check:
 security-policy-check:
 	$(PYTHON) scripts/check_security_policy.py
 
+version-metadata-check:
+	$(PYTHON) scripts/check_version_metadata.py
+
 # The local pass bar. Mirrors the gating CI checks a contributor can run
 # offline (issue #474): the consolidated generated-artifact drift gate
 # (issue #522) plus the module-size (#456), doc-snippet (#526), and README
 # version gates. Weaver-spec conformance and the benchmarks stay CI-only —
 # they fetch remote schemas / are heavy — and are documented as such.
-ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-version-check security-policy-check example demo
+ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-version-check security-policy-check version-metadata-check example demo
 
 # Local equivalents of the two gating CI *jobs* `make ci` cannot mirror cheaply
 # (issue #710, follow-up to #474). Kept out of `ci` because both build isolated
@@ -262,10 +265,14 @@ schemas:
 schemas-check:
 	$(PYTHON) scripts/gen_schemas.py --check
 
+# Pinned to a tagged weaver-spec release (issue #757) so the gating conformance
+# check never depends on another repo's moving HEAD. Bump WEAVER_SPEC_REF here
+# and in .github/workflows/ci.yml together, then re-run and commit.
+WEAVER_SPEC_REF ?= v0.7.0
 weaver-conformance:
 	@mkdir -p .weaver-schemas
 	@for s in routing_decision choice_card selectable_item frame; do \
-		curl -fsSL "https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/$$s.schema.json" \
+		curl -fsSL "https://raw.githubusercontent.com/dgenio/weaver-spec/$(WEAVER_SPEC_REF)/contracts/json/$$s.schema.json" \
 			-o ".weaver-schemas/$$s.schema.json"; \
 	done
 	$(PYTHON) scripts/weaver_spec_conformance.py --schemas-dir .weaver-schemas

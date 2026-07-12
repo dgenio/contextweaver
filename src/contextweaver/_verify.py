@@ -56,7 +56,7 @@ def _check_manager() -> _VerifyCheck:
             name="manager",
             ok=False,
             detail=str(exc),
-            fix_hint="Check that core dependencies (tiktoken, PyYAML, rank-bm25) are installed",
+            fix_hint="Check that core dependencies (tiktoken, PyYAML) are installed",
         )
 
 

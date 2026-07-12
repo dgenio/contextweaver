@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote
@@ -75,18 +76,46 @@ def consistent_data_size(base_dir: Path, meta_name: str, ref: ArtifactRef) -> in
     return data_path.stat().st_size
 
 
+#: Retry budget for the atomic ``os.replace`` swap on Windows (issue #749).
+_REPLACE_RETRIES = 10
+_REPLACE_BACKOFF_START = 0.01
+_REPLACE_BACKOFF_MAX = 0.5
+
+
 def atomic_write(path: Path, data: bytes) -> None:
     """Write *data* to *path* atomically (temp file in the same dir + replace).
 
     :func:`os.replace` is atomic on a single filesystem, so a reader never
     observes a half-written or truncated file and a crash mid-write leaves the
     previous version intact.
+
+    On Windows, ``os.replace`` raises :class:`PermissionError` (``WinError 5``)
+    when another handle has the destination file open — Windows forbids
+    replacing an open file, unlike POSIX where the rename always succeeds
+    (issue #749). The condition is transient under concurrent readers, so the
+    swap is retried with a short exponential backoff. On POSIX this raise never
+    occurs, so the loop runs exactly once and behaviour is unchanged.
     """
     fd, tmp = tempfile.mkstemp(prefix=_TMP_PREFIX, dir=str(path.parent))
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
-        os.replace(tmp, path)
+        delay = _REPLACE_BACKOFF_START
+        for attempt in range(_REPLACE_RETRIES):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                # Retry only the Windows "destination is open" case — access
+                # denied (5) or sharing violation (32). A POSIX PermissionError
+                # (``winerror`` is None) is a real, non-transient failure: don't
+                # mask it or add backoff delay; re-raise immediately.
+                if getattr(exc, "winerror", None) not in (5, 32):
+                    raise
+                if attempt == _REPLACE_RETRIES - 1:
+                    raise
+                time.sleep(delay)
+                delay = min(delay * 2, _REPLACE_BACKOFF_MAX)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise

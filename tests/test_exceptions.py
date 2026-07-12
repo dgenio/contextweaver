@@ -46,6 +46,7 @@ GOLDEN_CODES: dict[str, str] = {
     "PathNotFoundError": "CW_PATH_NOT_FOUND",
     "UpstreamError": "CW_UPSTREAM",
     "StoreClosedError": "CW_STORE_CLOSED",
+    "StoreTimeoutError": "CW_STORE_TIMEOUT",
     "UpstreamStartupError": "CW_UPSTREAM_STARTUP",
 }
 

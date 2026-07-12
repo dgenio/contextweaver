@@ -1,4 +1,4 @@
-name: Weekly Scorecard Regeneration
+name: Weekly Benchmark Scorecard Regeneration
 
 # Runs `make benchmark && make scorecard` on a deterministic seed once a week
 # and opens a PR when ``benchmarks/results/latest.json`` or
@@ -6,6 +6,11 @@ name: Weekly Scorecard Regeneration
 # truth for the published numbers (see ``benchmarks/scorecard.md`` reproducibility
 # footer); without this workflow they only refresh when a human happens to
 # rerun the harness locally. Issue #207.
+#
+# Renamed from scorecard-weekly.yml (issue #748) to disambiguate from
+# ossf-scorecard.yml, which is the unrelated OpenSSF supply-chain Scorecard.
+# Third-party actions are SHA-pinned because this workflow holds a write token;
+# Dependabot maintains the SHA + version comment pairs.
 
 on:
   schedule:
@@ -13,16 +18,18 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   regenerate:
     runs-on: ubuntu-latest
+    # Permissions are scoped to this job (issue #748) rather than granted at the
+    # workflow level, so the write token is not exposed to any future job added
+    # to this file that does not need it.
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
@@ -31,9 +38,9 @@ jobs:
         run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
-        # The matrix benchmark exercises bm25 (core dep) plus, when present,
-        # the [retrieval] extra's fuzzy backend.
-        run: pip install -e ".[dev,retrieval]"
+        # The matrix benchmark exercises bm25 (the [bm25] extra) plus, when
+        # present, the [retrieval] extra's fuzzy backend.
+        run: pip install -e ".[dev,bm25,retrieval]"
 
       - name: Regenerate latest.json (matrix run)
         # Matrix run so per-backend cells stay populated alongside the legacy
@@ -48,7 +55,7 @@ jobs:
         # The committed pair (latest.json + scorecard.md) is the canonical
         # weekly snapshot. peter-evans/create-pull-request creates a fresh
         # branch each week so historical scorecards are preserved in PR history.
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           commit-message: "chore(eval): weekly scorecard regen ${{ steps.date.outputs.today }}"
           title: "chore(eval): weekly scorecard update ${{ steps.date.outputs.today }}"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from contextweaver import _utils
 from contextweaver.exceptions import ConfigError, RouteError
 from contextweaver.profiles import RoutingConfig
 from contextweaver.routing.filters import compose_shortlist
@@ -157,6 +158,7 @@ def test_confidence_gap_above_one_raises() -> None:
 # ------------------------------------------------------------------
 
 
+@pytest.mark.skipif(_utils.BM25Scorer is None, reason="rank-bm25 not installed ([bm25] extra)")
 def test_router_bm25_backend_routes() -> None:
     items = _build_catalog_items()
     graph = TreeBuilder().build(items)
@@ -164,6 +166,19 @@ def test_router_bm25_backend_routes() -> None:
     result = router.route("send email to user")
     assert len(result.candidate_ids) > 0
     assert "send_email" in result.candidate_ids
+
+
+def test_router_bm25_backend_without_extra_raises_helpful_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selecting bm25 without the [bm25] extra raises the standard helpful error (#756)."""
+    import contextweaver.routing.router as router_mod
+
+    monkeypatch.setattr(router_mod, "BM25Scorer", None)
+    items = _build_catalog_items()
+    graph = TreeBuilder().build(items)
+    with pytest.raises(ConfigError, match=r"\[bm25\] extra"):
+        Router(graph, items=items, scorer_backend="bm25", top_k=3)
 
 
 def test_router_tfidf_backend_default() -> None:

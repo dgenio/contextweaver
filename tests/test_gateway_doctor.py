@@ -229,7 +229,11 @@ def test_smoke_queries_produce_findings(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions semantics")
-@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses permission bits")
+# ``os.geteuid`` is POSIX-only; guard the call so this decorator does not raise
+# at collection time on Windows (where the win32 skip above already applies).
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0, reason="root bypasses permission bits"
+)
 def test_unwritable_state_dir_fails(tmp_path: Path) -> None:
     locked = tmp_path / "locked"
     locked.mkdir()
