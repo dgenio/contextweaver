@@ -359,65 +359,73 @@ class TfIdfScorer:
 
 
 # ---------------------------------------------------------------------------
-# BM25 scorer (rank-bm25 is a core dep)
+# BM25 scorer (rank-bm25; contextweaver[bm25] extra)
 # ---------------------------------------------------------------------------
 
+try:
+    from rank_bm25 import BM25Okapi as _BM25Okapi
 
-class BM25Scorer:
-    """BM25 scorer backed by the ``rank-bm25`` library.
+    class BM25Scorer:
+        """BM25 scorer backed by the ``rank-bm25`` library.
 
-    BM25 typically outperforms raw TF-IDF on lexical retrieval because of
-    term-frequency saturation and document-length normalisation. The same
-    interface as :class:`TfIdfScorer` (``fit`` / ``score`` / ``score_all``)
-    so the two are interchangeable in :class:`~contextweaver.routing.router.Router`.
+        BM25 typically outperforms raw TF-IDF on lexical retrieval because of
+        term-frequency saturation and document-length normalisation. The same
+        interface as :class:`TfIdfScorer` (``fit`` / ``score`` / ``score_all``)
+        so the two are interchangeable in
+        :class:`~contextweaver.routing.router.Router`.
 
-    Determinism: ``rank-bm25`` is deterministic for a fixed corpus + query.
-    Tokens are sorted before indexing to keep the corpus order stable.
-    """
+        Determinism: ``rank-bm25`` is deterministic for a fixed corpus + query.
+        Tokens are sorted before indexing to keep the corpus order stable.
 
-    def __init__(self) -> None:
-        from rank_bm25 import BM25Okapi  # core dep
-
-        self._bm25_cls = BM25Okapi
-        self._bm25: BM25Okapi | None = None
-        self._n_docs: int = 0
-
-    def fit(self, documents: list[str]) -> None:
-        """Index *documents* with BM25.
-
-        Uses :func:`tokenize_list` so duplicate terms are preserved — BM25
-        relies on per-document term frequency to compute saturation and
-        length-normalised scores.
-
-        Args:
-            documents: Raw text strings; index order is preserved as
-                ``doc_index`` in subsequent calls to :meth:`score`.
+        Available only when the ``contextweaver[bm25]`` extra is installed
+        (issue #756); ``BM25Scorer is None`` otherwise. The default retriever
+        is TF-IDF, so a plain install never needs this backend.
         """
-        corpus = [tokenize_list(doc) for doc in documents]
-        self._n_docs = len(documents)
-        # rank_bm25 raises on empty corpora; guard with a sentinel.
-        self._bm25 = self._bm25_cls(corpus) if corpus else None
 
-    def score(self, query: str, doc_index: int) -> float:
-        """Return the BM25 score of *query* against the document at *doc_index*."""
-        if self._bm25 is None:
-            return 0.0
-        if doc_index < 0 or doc_index >= self._n_docs:
-            raise IndexError(f"doc_index {doc_index} out of range ({self._n_docs} docs)")
-        q_tokens = tokenize_list(query)
-        if not q_tokens:
-            return 0.0
-        scores = self._bm25.get_scores(q_tokens)
-        return float(scores[doc_index])
+        def __init__(self) -> None:
+            self._bm25_cls = _BM25Okapi
+            self._bm25: _BM25Okapi | None = None
+            self._n_docs: int = 0
 
-    def score_all(self, query: str) -> list[float]:
-        """Score *query* against every document in the corpus."""
-        if self._bm25 is None:
-            return []
-        q_tokens = tokenize_list(query)
-        if not q_tokens:
-            return [0.0] * self._n_docs
-        return [float(s) for s in self._bm25.get_scores(q_tokens)]
+        def fit(self, documents: list[str]) -> None:
+            """Index *documents* with BM25.
+
+            Uses :func:`tokenize_list` so duplicate terms are preserved — BM25
+            relies on per-document term frequency to compute saturation and
+            length-normalised scores.
+
+            Args:
+                documents: Raw text strings; index order is preserved as
+                    ``doc_index`` in subsequent calls to :meth:`score`.
+            """
+            corpus = [tokenize_list(doc) for doc in documents]
+            self._n_docs = len(documents)
+            # rank_bm25 raises on empty corpora; guard with a sentinel.
+            self._bm25 = self._bm25_cls(corpus) if corpus else None
+
+        def score(self, query: str, doc_index: int) -> float:
+            """Return the BM25 score of *query* against the doc at *doc_index*."""
+            if self._bm25 is None:
+                return 0.0
+            if doc_index < 0 or doc_index >= self._n_docs:
+                raise IndexError(f"doc_index {doc_index} out of range ({self._n_docs} docs)")
+            q_tokens = tokenize_list(query)
+            if not q_tokens:
+                return 0.0
+            scores = self._bm25.get_scores(q_tokens)
+            return float(scores[doc_index])
+
+        def score_all(self, query: str) -> list[float]:
+            """Score *query* against every document in the corpus."""
+            if self._bm25 is None:
+                return []
+            q_tokens = tokenize_list(query)
+            if not q_tokens:
+                return [0.0] * self._n_docs
+            return [float(s) for s in self._bm25.get_scores(q_tokens)]
+
+except ImportError:  # pragma: no cover - exercised only when extra is missing
+    BM25Scorer = None  # type: ignore[assignment, misc]
 
 
 # ---------------------------------------------------------------------------

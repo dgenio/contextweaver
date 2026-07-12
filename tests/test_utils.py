@@ -224,12 +224,20 @@ def test_tfidf_deterministic() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BM25Scorer (rank-bm25 is a core dep)
+# BM25Scorer (rank-bm25; contextweaver[bm25] extra, issue #756)
 # ---------------------------------------------------------------------------
 
+# ``rank-bm25`` moved from a core dependency to the opt-in [bm25] extra
+# (#756); ``BM25Scorer is None`` when it is not installed, so these tests skip
+# rather than fail on a plain install (mirrors the FuzzyScorer tests below).
+requires_bm25 = pytest.mark.skipif(
+    BM25Scorer is None, reason="rank-bm25 not installed ([bm25] extra)"
+)
 
+
+@requires_bm25
 def test_bm25_fit_and_score() -> None:
-    scorer = BM25Scorer()
+    scorer = BM25Scorer()  # type: ignore[misc]
     docs = ["search database quickly", "fast database access", "unrelated content here"]
     scorer.fit(docs)
     scores = scorer.score_all("fast database")
@@ -238,34 +246,44 @@ def test_bm25_fit_and_score() -> None:
     assert scores[1] >= scores[2]
 
 
+@requires_bm25
 def test_bm25_empty_corpus() -> None:
-    scorer = BM25Scorer()
+    scorer = BM25Scorer()  # type: ignore[misc]
     scorer.fit([])
     assert scorer.score_all("hello") == []
 
 
+@requires_bm25
 def test_bm25_score_out_of_range() -> None:
-    scorer = BM25Scorer()
+    scorer = BM25Scorer()  # type: ignore[misc]
     scorer.fit(["hello world"])
     with pytest.raises(IndexError):
         scorer.score("hello", 5)
 
 
+@requires_bm25
 def test_bm25_empty_query_returns_zeros() -> None:
-    scorer = BM25Scorer()
+    scorer = BM25Scorer()  # type: ignore[misc]
     scorer.fit(["hello world", "another doc"])
     assert scorer.score_all("") == [0.0, 0.0]
 
 
+@requires_bm25
 def test_bm25_deterministic() -> None:
     docs = ["alpha beta gamma", "delta epsilon", "alpha delta"]
-    s1 = BM25Scorer()
+    s1 = BM25Scorer()  # type: ignore[misc]
     s1.fit(docs)
-    s2 = BM25Scorer()
+    s2 = BM25Scorer()  # type: ignore[misc]
     s2.fit(docs)
     assert s1.score_all("alpha delta") == s2.score_all("alpha delta")
 
 
+def test_bm25_scorer_is_none_when_extra_missing() -> None:
+    """Document the public contract: BM25Scorer is None unless [bm25] installed."""
+    assert BM25Scorer is None or callable(BM25Scorer)
+
+
+@requires_bm25
 def test_bm25_preserves_term_frequency() -> None:
     """BM25 must count term frequency.
 
@@ -279,7 +297,7 @@ def test_bm25_preserves_term_frequency() -> None:
     multiple times must score strictly higher than one that mentions it
     only once.
     """
-    scorer = BM25Scorer()
+    scorer = BM25Scorer()  # type: ignore[misc]
     # Doc 0 mentions "database" three times; doc 1 mentions it once.
     # Three distractor docs that don't mention the query term keep the
     # `database` IDF positive (otherwise a query term present in every

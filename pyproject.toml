@@ -48,17 +48,19 @@ classifiers = [
 # when the MCP proxy / gateway runtimes landed in v0.4: both are load-bearing
 # for the gateway invocation contract (see ``docs/gateway_spec.md`` §4.4) and
 # gating them behind extras forced every caller through a guarded-import
-# dance.  ``tiktoken``, ``PyYAML``, ``rank-bm25`` are broadly used in GenAI
-# stacks (often already pulled in transitively) and unblock default behaviour
-# the library would otherwise have to approximate.  ``typer`` and ``rich``
-# moved into core in v0.5 alongside the Typer CLI rewrite (#221) — the CLI
-# is one of the project's primary user touchpoints and the ``_HAS_RICH``
-# guarded-import dance had become its own maintenance burden.  Other heavy
-# or runtime-specific packages remain under [project.optional-dependencies].
+# dance.  ``tiktoken`` and ``PyYAML`` are broadly used in GenAI stacks (often
+# already pulled in transitively) and unblock default behaviour the library
+# would otherwise have to approximate.  ``typer`` and ``rich`` moved into core
+# in v0.5 alongside the Typer CLI rewrite (#221) — the CLI is one of the
+# project's primary user touchpoints and the ``_HAS_RICH`` guarded-import dance
+# had become its own maintenance burden.  ``rank-bm25`` was demoted to the
+# [bm25] extra in v0.17 (issue #756): it backs a *non-default* scorer (the
+# default retriever is TF-IDF) and is effectively unmaintained, so a plain
+# install no longer pulls it.  Other heavy or runtime-specific packages remain
+# under [project.optional-dependencies].
 dependencies = [
     "tiktoken>=0.5",
     "PyYAML>=6.0",
-    "rank-bm25>=0.2",
     # Floor 1.19.0 (issue #356 floor-deps proof): mcp <1.19 returns content
     # the live gateway suite cannot parse; in-memory transport changed
     # wire format between 1.0 and 1.19.
@@ -262,7 +264,14 @@ docs = [
 # (``pip install 'contextweaver[tokenizers]'``) without changing the install
 # surface, mirroring the no-op ``sqlite`` / ``e2e-eval`` groups.
 tokenizers = []
-# Fuzzy lexical retrieval backend (rapidfuzz) — supplements the default BM25
+# BM25 lexical retrieval backend (rank-bm25), issue #756. Opt-in: the default
+# retriever is TF-IDF, so this is only needed for ``scorer_backend="bm25"``.
+# Selecting that backend without this extra raises the standard helpful
+# missing-dependency ConfigError (see ``routing/router._build_scorer``).
+bm25 = [
+    "rank-bm25>=0.2",
+]
+# Fuzzy lexical retrieval backend (rapidfuzz) — supplements the default TF-IDF
 # scorer for typo / abbreviation tolerance.
 retrieval = [
     "rapidfuzz>=3.0",
@@ -344,6 +353,7 @@ otel = [
 e2e-eval = []
 # Convenience: install every optional capability at once.
 all = [
+    "contextweaver[bm25]",
     "contextweaver[retrieval]",
     "contextweaver[embeddings]",
     "contextweaver[ranker]",
