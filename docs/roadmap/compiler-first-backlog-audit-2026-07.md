@@ -1,9 +1,9 @@
 # Compiler-first backlog audit — July 2026
 
-Status: proposed operating baseline  
+Status: applied operating baseline  
 Repository: `dgenio/contextweaver`  
 Audit date: 2026-07-12  
-Inventory covered: 119 open issues
+Inventory covered: 119 open issues at the start of the audit
 
 ## Executive decision
 
@@ -104,7 +104,7 @@ The classifications below are product-governance decisions, not claims that the 
 
 ### Rewrite as canonical compiler-first work
 
-These issues remain open but their scope/title/body should be rewritten around the approved architecture:
+These issues remain open but their scope/title/body are rewritten around the approved architecture:
 
 - #376 — legacy gateway freeze, transition, deprecation, and extraction;
 - #408 — `CompiledAgent` loader and phase-aware runtime API;
@@ -114,6 +114,7 @@ These issues remain open but their scope/title/body should be rewritten around t
 - #477 — bundle and persisted-contract compatibility policy;
 - #561 — host-provided outcome/evaluation ingestion, not autonomous runtime learning;
 - #610 — public API inventory with `core`/`experimental`/`legacy`/`internal-accidental` levels;
+- #631 — cross-platform semantic reproducibility with profile-scoped byte identity;
 - #651 — official adapter lifecycle, support window, conformance, and retirement policy;
 - #758 — canonical offline capability compiler and phase-aware runtime epic.
 
@@ -143,8 +144,7 @@ Do not execute these as independent product tracks. Preserve useful acceptance c
 - #549 and #611 → #651 adapter lifecycle and compatibility matrix;
 - #558 → #434 example consolidation;
 - #618 → platform/reproducibility compatibility work;
-- #759 → phase rendering and inference-aware context layout;
-- #631 → #376 as a documented legacy capability; execution ownership is not expanded in core.
+- #759 → phase rendering and inference-aware context layout.
 
 ### Defer until the compiler MVP has adoption evidence
 
@@ -176,8 +176,7 @@ Promotion requires all of:
 
 ### Close as not planned
 
-- #628 — typed Python execution stubs conflict with the host-executes boundary and add an execution surface the core should not own;
-- #631 — close after its useful result-safety requirements are referenced from #376 and the host/result-ingestion contracts.
+- #628 — typed Python execution stubs conflict with the host-executes boundary and add an execution surface the core should not own.
 
 ## Canonical implementation tracks
 
@@ -245,10 +244,10 @@ The compiler direction should be reconsidered if, after the 0.20 proof release:
 - Labels are normalized through #717; no new ad-hoc priority/status taxonomy should be introduced.
 - Milestones represent the release sequence above, not arbitrary issue batches.
 
-## Immediate next actions
+## Applied actions
 
-1. Rewrite #758, #376, #408, #409, #433, #434, #477, #561, #610, and #651.
-2. Close #628 and #631 as not planned/absorbed.
-3. Apply accepted/deferred/experiment classifications through the repository's canonical label taxonomy once #717 defines it.
-4. Start 0.17 with the architecture boundary, API surface classification, gateway freeze, and adapter lifecycle.
-5. Create only the minimum missing implementation issues under #758 after checking the rewritten canonical issues for coverage.
+1. Rewrote #758, #376, #408, #409, #433, #434, #477, #561, #610, #631, and #651.
+2. Closed #628 as not planned.
+3. Preserved deferred and experimental work without promoting it into the compiler MVP.
+4. Deferred bulk relabeling until #717 defines the canonical taxonomy, avoiding another conflicting label system.
+5. Established 0.17 as the immediate execution focus: architecture boundary, API classification, gateway freeze, adapter lifecycle, and reproducibility contracts.
