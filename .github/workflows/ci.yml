@@ -77,7 +77,18 @@ jobs:
         run: mypy src/ examples/ scripts/
 
       - name: Test
-        run: pytest --cov=contextweaver --cov-report=term-missing -q
+        # Coverage is gated on the 3.12 cell only (issue #475): fail_under in
+        # [tool.coverage.report] fails the run when total branch coverage drops
+        # below the ratchet. The 3.12 cell installs the full adapter tree + all
+        # extras, so it measures representative coverage; other cells run
+        # without --cov for speed (the gate would otherwise fire spuriously on
+        # cells where optional-backend tests skip).
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            pytest --cov=contextweaver --cov-report=term-missing -q
+          else
+            pytest -q
+          fi
 
       - name: Examples
         # Skipped on 3.14: the example suite drives the [dev-adapters]

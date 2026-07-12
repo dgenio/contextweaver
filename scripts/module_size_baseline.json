@@ -1,6 +1,6 @@
 {
-  "__init__.py": 358,
-  "_utils.py": 462,
+  "__init__.py": 360,
+  "_utils.py": 470,
   "adapters/__init__.py": 340,
   "adapters/agno.py": 515,
   "adapters/fastmcp.py": 459,
@@ -18,7 +18,7 @@
   "context/firewall_api.py": 315,
   "context/ingest.py": 368,
   "context/manager.py": 369,
-  "exceptions.py": 313,
+  "exceptions.py": 332,
   "extras/memory/mem0.py": 479,
   "protocols.py": 690,
   "routing/cards.py": 474,
@@ -26,7 +26,7 @@
   "routing/graph.py": 509,
   "routing/hydration.py": 316,
   "routing/navigator.py": 347,
-  "routing/router.py": 879,
+  "routing/router.py": 883,
   "routing/tree.py": 406,
   "store/json_file_artifacts.py": 346,
   "store/testing.py": 341
