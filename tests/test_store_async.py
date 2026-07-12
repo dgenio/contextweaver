@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from contextweaver.context.manager import ContextManager
+from contextweaver.exceptions import StoreTimeoutError
 from contextweaver.routing.catalog import Catalog
 from contextweaver.store import is_async_store, to_async, to_sync
 from contextweaver.store._async_to_sync import _LoopThread
@@ -89,6 +90,46 @@ def test_to_sync_round_trips_through_to_async() -> None:
     loop = _LoopThread()
     try:
         check_event_log_conformance(lambda: to_sync(to_async(InMemoryEventLog()), loop))
+    finally:
+        loop.close()
+
+
+def test_loop_thread_run_times_out_instead_of_hanging() -> None:
+    """A backend call that never completes raises StoreTimeoutError (issue #750).
+
+    Without the bound this ``run`` would block the calling thread forever and,
+    via the manager build lock, wedge every subsequent ``build()``. The typed
+    error keeps the failure local and catchable.
+    """
+
+    async def _never_returns() -> None:
+        await asyncio.Event().wait()  # blocks until cancelled — never set
+
+    loop = _LoopThread(timeout=0.1)
+    try:
+        start = time.monotonic()
+        with pytest.raises(StoreTimeoutError) as excinfo:
+            loop.run(_never_returns())
+        elapsed = time.monotonic() - start
+        # Surfaced promptly (well under a wall-clock second), not hung.
+        assert elapsed < 1.0
+        assert excinfo.value.code == "CW_STORE_TIMEOUT"
+    finally:
+        loop.close()
+
+
+def test_loop_thread_run_per_call_timeout_overrides_default() -> None:
+    """The per-call ``timeout`` argument overrides the instance default (#750)."""
+
+    async def _quick() -> str:
+        await asyncio.sleep(0.05)
+        return "done"
+
+    # Instance default is effectively unbounded here; the per-call timeout is
+    # generous enough for the quick coroutine to complete.
+    loop = _LoopThread(timeout=None)
+    try:
+        assert loop.run(_quick(), timeout=5.0) == "done"
     finally:
         loop.close()
 

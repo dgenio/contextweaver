@@ -82,9 +82,16 @@ Discussions = "https://github.com/dgenio/contextweaver/discussions"
 [project.optional-dependencies]
 # Dev / test toolchain. Includes weaver_contracts + jsonschema so the
 # weaver-spec adapter (#143) and CI conformance check (#145) run on every PR
-# without requiring the [weaver-spec] runtime extra.  ``crewai`` and ``mem0ai``
-# are pulled in so the CrewAI adapter (#193) and Mem0 external-memory backend
-# (#195) are exercised against real upstream wire shapes on every CI run.
+# without requiring the [weaver-spec] runtime extra.
+#
+# This group is deliberately kept resolvable on the newest supported Python
+# (including 3.14, issue #754): the heavy framework-adapter tree (crewai,
+# mem0ai, fastmcp, langgraph) that caps at ``Requires-Python <3.14`` lives in
+# the separate [dev-adapters] extra below.  ``[dev]`` alone is what the 3.14
+# gating cell installs; every other cell installs ``[dev,dev-adapters]`` so
+# adapter-integration coverage is unchanged there.  The remote-store backends
+# (redis/fakeredis/boto3/moto) stay here because they resolve on 3.14 and back
+# store tests that must run on every cell.
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23.8",
@@ -96,39 +103,42 @@ dev = [
     # 4.18 ships ``referencing`` — the conformance script's local $ref
     # resolver depends on it (PR #201 review).
     "jsonschema>=4.18",
-    "crewai>=0.80",
-    "mem0ai>=0.1",
-    # FastMCP is pulled into [dev] so the CodeMode discovery-tool integration
-    # test (``tests/test_adapters_fastmcp_discovery.py``) — which spins up a
-    # real in-memory FastMCP server — runs on every CI matrix cell.  The
-    # ``[fastmcp]`` runtime extra below stays for end users who don't want
-    # the dev toolchain.
-    #
-    # Floor 2.12.0 (issue #356 floor-deps proof): fastmcp <2.12 uses the
-    # bare ``@server.tool`` (no-call) pattern which was removed in later
-    # pydantic/mcp releases.  2.12+ requires ``@server.tool()`` and is the
-    # lowest version compatible with the rest of the transitive stack.
-    "fastmcp>=2.12.0",
-    # LangGraph is pulled into [dev] so the LangGraph agent-loop reference
-    # architecture (``examples/architectures/langgraph_agent_loop``, issue
-    # #326) exercises the *real* ``StateGraph`` under ``make example`` in CI.
-    # The example also ships a hand-rolled fallback so it still runs without
-    # this dependency; the ``[langgraph]`` runtime extra below is for end
-    # users who want the framework without the dev toolchain.
-    #
-    # Floor 0.2.32 (PR #360 floor-deps proof): the langmem adapter test
-    # (``tests/test_extras_memory_langmem.py``) imports
-    # ``langgraph.store.memory.InMemoryStore``, which first appears in 0.2.32;
-    # ``>=0.2`` resolved to 0.2.17 and failed collection at lowest-direct.
-    "langgraph>=0.2.32",
     # Remote-store backends (#426) are exercised in-process on every CI cell:
     # fakeredis stands in for a Redis server and moto mocks the S3 API, so the
     # conformance suite runs the Redis/S3 stores without a service container.
     # ``redis`` / ``boto3`` are the real client libraries the backends import.
+    # ``redis`` also makes the ``make type`` gate hermetic (issue #750): the
+    # sync Redis backends are type-checked against real redis-py stubs rather
+    # than an ``ignore_missing_imports`` override.
     "redis>=5.0",
     "fakeredis>=2.20",
     "boto3>=1.34",
     "moto[s3]>=5.0",
+]
+# Heavy framework-adapter test tree, split out of [dev] so [dev] stays
+# resolvable on Python 3.14 (issue #754).  Every CI matrix cell except the
+# 3.14 cell installs this alongside [dev]; the currently-CI-dark adapter
+# extras (agno/smolagents/pydantic-ai/...) are additionally installed by the
+# scheduled extras job (issue #751), not here.
+#
+# Floor 2.12.0 (issue #356 floor-deps proof): fastmcp <2.12 uses the bare
+# ``@server.tool`` (no-call) pattern removed in later pydantic/mcp releases;
+# 2.12+ requires ``@server.tool()`` and is the lowest version compatible with
+# the rest of the transitive stack.  It backs the CodeMode discovery-tool
+# integration test (``tests/test_adapters_fastmcp_discovery.py``).
+#
+# Floor 0.2.32 (PR #360 floor-deps proof): the langmem adapter test
+# (``tests/test_extras_memory_langmem.py``) imports
+# ``langgraph.store.memory.InMemoryStore``, first available in 0.2.32; ``>=0.2``
+# resolved to 0.2.17 and failed collection at lowest-direct.  langgraph also
+# drives the real ``StateGraph`` in ``examples/architectures/langgraph_agent_loop``
+# (#326) under ``make example``.  ``crewai``/``mem0ai`` exercise the CrewAI
+# adapter (#193) and Mem0 backend (#195) against real upstream wire shapes.
+dev-adapters = [
+    "crewai>=0.80",
+    "mem0ai>=0.1",
+    "fastmcp>=2.12.0",
+    "langgraph>=0.2.32",
 ]
 # weaver-spec contract adapter (https://github.com/dgenio/weaver-spec).
 # Runtime extra for end users who want to interoperate with the canonical
@@ -388,24 +398,15 @@ mypy_path = "src"
 module = "tiktoken"
 ignore_missing_imports = true
 
+# NOTE (issue #750): overrides for crewai/pydantic_ai/smolagents/agno were
+# removed as dead config — those adapters import their frameworks dynamically
+# (never in a mypy-visible position, not even under TYPE_CHECKING), so mypy
+# reported the sections unused whether or not the packages were installed.
+# fastmcp / mem0 / zep_cloud / langgraph stay: those adapters *do* reference
+# their frameworks in mypy-visible positions, so the overrides are load-bearing
+# on cells where the package is absent (e.g. the 3.14 cell, #754).
 [[tool.mypy.overrides]]
 module = "fastmcp"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "crewai.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "pydantic_ai.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "smolagents.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "agno.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -504,24 +505,16 @@ module = "jsonschema.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "redis.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "boto3.*"
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = "botocore.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "fakeredis.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "moto.*"
-ignore_missing_imports = true
+# NOTE (issue #750): overrides for botocore/fakeredis/moto were removed as dead
+# config — they are exercised only in tests (which mypy does not check), never
+# imported in a mypy-visible position under src/examples/scripts, so mypy
+# reported the sections unused. ``boto3.*`` stays: ``store/s3_artifacts.py``
+# imports it directly. The redis backends are now type-checked against real
+# redis-py stubs (the ``redis.*`` override was removed) so ``make type`` is
+# hermetic on every cell where ``redis`` is installed — i.e. all of them.
 
 [tool.coverage.run]
 source = ["contextweaver"]

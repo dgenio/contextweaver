@@ -24,13 +24,17 @@ jobs:
       # supported range (issue #339).
       fail-fast: false
       matrix:
-        # Supported range 3.10–3.13 inclusive (issue #339). All cells are
-        # gating: a release is only claimed as supported once its cell is green.
-        # 3.14 is deliberately excluded for now — the heavy dev/adapter stack
-        # (crewai, mem0ai, fastmcp, langgraph, langchain-core) still caps at
-        # Requires-Python <3.14, so the [dev,langchain] suite cannot resolve on
-        # 3.14. Tracked for re-add once those upstreams ship 3.14 wheels.
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # Supported range 3.10–3.14 inclusive (issues #339, #754). All cells
+        # are gating: a release is only claimed as supported once its cell is
+        # green. The heavy framework-adapter stack (crewai, mem0ai, fastmcp,
+        # langgraph, langchain-core) still caps at Requires-Python <3.14, so it
+        # now lives in the [dev-adapters] extra: the 3.14 cell installs plain
+        # [dev] (resolvable on 3.14) and runs fmt/lint/type/test to prove the
+        # library and suite are 3.14-clean, while 3.10–3.13 install
+        # [dev,dev-adapters,langchain] and additionally run the adapter
+        # example/demo steps. Re-fold the adapter tree into every cell once
+        # those upstreams ship 3.14 wheels.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v7
@@ -50,7 +54,16 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        run: pip install -e ".[dev,langchain]"
+        # 3.14: plain [dev] only — the [dev-adapters] framework tree (and
+        # langchain-core) still cap at Requires-Python <3.14 (issue #754).
+        # Adapter-integration tests importorskip-skip on this cell; they run
+        # fully on 3.10–3.13 and in the scheduled extras job (#751).
+        run: |
+          if [ "${{ matrix.python-version }}" = "3.14" ]; then
+            pip install -e ".[dev]"
+          else
+            pip install -e ".[dev,dev-adapters,langchain]"
+          fi
 
       - name: Format check
         run: ruff format --check src/ tests/ examples/ scripts/
@@ -67,9 +80,14 @@ jobs:
         run: pytest --cov=contextweaver --cov-report=term-missing -q
 
       - name: Examples
+        # Skipped on 3.14: the example suite drives the [dev-adapters]
+        # frameworks (crewai/fastmcp/langgraph/...), which don't resolve on
+        # 3.14 yet (issue #754). Fully gating on 3.10–3.13.
+        if: ${{ matrix.python-version != '3.14' }}
         run: make example
 
       - name: Demo
+        if: ${{ matrix.python-version != '3.14' }}
         run: make demo
 
       - name: "Generated-artifact drift gate (gating, issues #522/#518)"
@@ -159,7 +177,7 @@ jobs:
         # declared floor while letting transitive deps resolve normally — the
         # canonical way to prove ``>=X`` bounds without hand-maintaining a
         # constraints-min.txt.
-        run: uv pip install --system --resolution lowest-direct -e ".[dev,langchain]"
+        run: uv pip install --system --resolution lowest-direct -e ".[dev,dev-adapters,langchain]"
 
       - name: Test (floor versions)
         # No ``--cov`` here: this job exists to prove the *runtime* dependency

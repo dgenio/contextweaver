@@ -103,6 +103,7 @@ from contextweaver.exceptions import (
     PolicyViolationError,
     RouteError,
     StoreClosedError,
+    StoreTimeoutError,
 )
 from contextweaver.inspection import build_inspection_report, render_inspection_report
 from contextweaver.metrics import MetricsCollector, MetricsHook
@@ -265,6 +266,7 @@ __all__ = [
     "PolicyViolationError",
     "RouteError",
     "StoreClosedError",
+    "StoreTimeoutError",
     # diagnostics
     "InMemoryDiagnosticSink",
     "JsonlDiagnosticSink",

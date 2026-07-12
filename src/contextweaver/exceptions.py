@@ -291,6 +291,25 @@ class StoreClosedError(ContextWeaverError):
     code: ClassVar[str] = "CW_STORE_CLOSED"
 
 
+class StoreTimeoutError(ContextWeaverError):
+    """Raised when an async store operation driven through the sync bridge
+    (:class:`contextweaver.store._async_to_sync._LoopThread`) does not complete
+    within its timeout (issue #750).
+
+    Without a timeout a single hung backend call wedges the private store loop
+    thread and, via the :class:`~contextweaver.context.manager.ContextManager`
+    build lock, every subsequent ``build()`` — turning one stuck I/O into a
+    permanent manager hang.  Surfacing a typed, catchable error instead keeps
+    the failure local and debuggable.
+    """
+
+    code: ClassVar[str] = "CW_STORE_TIMEOUT"
+    default_hint: ClassVar[str | None] = (
+        f"the async store backend did not respond in time; check backend health "
+        f"or raise the bridge timeout; see {_ERRORS_DOC}/#storetimeouterror"
+    )
+
+
 class UpstreamStartupError(ContextWeaverError):
     """Raised when live multi-upstream startup fails under the configured
     ``StartupPolicy`` (issue #374): a required upstream failed under
