@@ -351,7 +351,14 @@ otel = [
 # additions (a benchmark-only ``openai`` SDK pin or alternative provider
 # helpers) can land here without churning the install command in docs.
 e2e-eval = []
-# Convenience: install every optional capability at once.
+# Convenience bundle of the commonly-installed optional capabilities (issue
+# #747 — the comment used to claim "every optional capability" but never has).
+# Deliberately EXCLUDES the single-framework adapter extras — fastmcp, crewai,
+# pydantic-ai, smolagents, agno, mem0, zep, langmem — because pulling every
+# framework at once bloats the install and those upstreams frequently conflict;
+# install the specific ``contextweaver[<framework>]`` extra you need. Also
+# excludes ``tokenizers``/``sqlite`` (no-op marker groups) and the ``dev`` /
+# ``dev-adapters`` / ``docs`` toolchains.
 all = [
     "contextweaver[bm25]",
     "contextweaver[retrieval]",

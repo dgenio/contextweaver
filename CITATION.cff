@@ -18,8 +18,8 @@ license: Apache-2.0
 # `version` and `date-released` must be updated by the release process when
 # tagging a new release (see CONTRIBUTING.md / RELEASING). The values below
 # track the most recent tagged release on PyPI.
-version: 0.10.0
-date-released: "2026-05-22"
+version: 0.16.0
+date-released: "2026-06-21"
 # A real DOI will be added once a Zenodo (or equivalent) archive of a tagged
 # release is published. Omitting the `identifiers` block here keeps the file
 # compatible with strict CFF validators that reject placeholder DOIs.

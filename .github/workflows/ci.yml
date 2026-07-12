@@ -121,6 +121,13 @@ jobs:
         # references no longer resolves. Stdlib-only; no install required.
         run: python scripts/check_security_policy.py
 
+      - name: Version-metadata drift check (gating, issue #747)
+        # Fails when server.json (MCP Registry manifest) or CITATION.cff drift
+        # from the package version in pyproject.toml — the two version-bearing
+        # files that previously had no gate and had both gone stale.
+        # Stdlib-only; no install required.
+        run: python scripts/check_version_metadata.py
+
       - name: Weaver-spec conformance
         # Round-trip + JSON-Schema validation against the canonical contracts
         # published at https://weaver-spec.dev/contracts/v0/. Gating because

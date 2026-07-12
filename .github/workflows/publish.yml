@@ -46,6 +46,12 @@ jobs:
           fi
           echo "Release tag '$tag' matches package version 'v$version'."
 
+      - name: Verify version metadata is in sync (issue #747)
+        # server.json (MCP Registry manifest) and CITATION.cff must match the
+        # package version before publishing, so the registry and citation
+        # metadata can never lag the release (as 0.15.0/0.10.0 did).
+        run: python scripts/check_version_metadata.py
+
       - name: Verify release benchmark snapshot
         # Release history is prepared in the release PR. Fail before publishing
         # when the tagged version has no deterministic snapshot or trend drifted.
@@ -110,6 +116,18 @@ jobs:
       id-token: write  # Required for MCP Registry GitHub OIDC authentication
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Sync server.json version from pyproject (issue #747)
+        # Generate the manifest version fields from pyproject.toml at publish
+        # time so server.json can never be published with a stale version (as
+        # 0.15.0 was against a 0.16.0 release). The committed file is also gated
+        # by check_version_metadata.py, so this is normally a no-op.
+        run: python scripts/check_version_metadata.py --sync
 
       - name: Install mcp-publisher
         run: |

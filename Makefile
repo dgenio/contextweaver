@@ -163,12 +163,15 @@ readme-version-check:
 security-policy-check:
 	$(PYTHON) scripts/check_security_policy.py
 
+version-metadata-check:
+	$(PYTHON) scripts/check_version_metadata.py
+
 # The local pass bar. Mirrors the gating CI checks a contributor can run
 # offline (issue #474): the consolidated generated-artifact drift gate
 # (issue #522) plus the module-size (#456), doc-snippet (#526), and README
 # version gates. Weaver-spec conformance and the benchmarks stay CI-only —
 # they fetch remote schemas / are heavy — and are documented as such.
-ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-version-check security-policy-check example demo
+ci: fmt lint type test drift-check module-size-check doc-snippets-check readme-version-check security-policy-check version-metadata-check example demo
 
 # Local equivalents of the two gating CI *jobs* `make ci` cannot mirror cheaply
 # (issue #710, follow-up to #474). Kept out of `ci` because both build isolated
