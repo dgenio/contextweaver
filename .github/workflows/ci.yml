@@ -312,7 +312,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # [bm25] is needed so the matrix benchmark exercises the bm25 backend
+        # (moved off core in #756); without it benchmark.py --matrix hits the
+        # missing-extra ConfigError and the head/base snapshots diverge.
+        run: pip install -e ".[dev,bm25]"
       - name: Generate delta
         id: delta
         continue-on-error: true
@@ -373,7 +376,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # [bm25] so the head snapshot benchmarks the bm25 backend and matches
+        # the base snapshot (rank-bm25 moved to the [bm25] extra in #756);
+        # otherwise benchmark.py --matrix raises the missing-extra ConfigError.
+        run: pip install -e ".[dev,bm25]"
       - name: Generate head + base snapshots
         # Read base from the target commit, never from the checked-out PR head:
         # otherwise a PR could refresh latest.json with its regressed values and
