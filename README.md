@@ -15,7 +15,7 @@
 > front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
 > instead of every tool schema, plus an artifact-backed firewall that swaps a
 > huge raw tool result for a compact summary. Deterministic, no model in the
-> loop, and 42-84 % fewer prompt tokens on the committed benchmarks.
+> loop, and 43-85 % fewer prompt tokens on the committed benchmarks.
 
 **Who it's for:** anyone whose agent — Claude Desktop, Cursor, VS Code, or a
 custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
@@ -167,12 +167,12 @@ Agent hallucinates tool calls, repeats questions, forgets context
 Route phase:  5 tool cards (≈500 tokens), no full schemas
 Answer phase: 3 relevant turns + dependency closure (≈2k tokens)
 Result:       2.5k tokens, complete context, deterministic
-Cost:         41.6 %-84.3 % fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
+Cost:         42.7 %-85.0 % fewer prompt tokens [^naive-baseline]  ·  Latency: sub-second  ·  Quality: relevant context only
 ```
 
 [^naive-baseline]: Measured against the "concatenate all tool schemas + full
     conversation history" baseline using `tiktoken.cl100k_base` on the six
-    committed benchmark scenarios. Range 41.6 %-84.3 %, average 64.3 %.
+    committed benchmark scenarios. Range 42.7 %-85.0 %, average 65.0 %.
     Reproducible via `make benchmark-matrix && make scorecard` — see the
     *vs. naïve concat baseline* section of
     [`benchmarks/scorecard.md`](benchmarks/scorecard.md) and the
@@ -660,14 +660,14 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.17.0](https://pypi.org/project/contextweaver/0.17.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 42-84 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
+| **contextweaver** (this repo, [v0.17.0](https://pypi.org/project/contextweaver/0.17.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 43-85 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
 | **LlamaIndex retrievers** ([0.11.x](https://github.com/run-llama/llama_index/releases)) | ⚠️ Tool retrieval via `ObjectIndex` is unranked similarity, no bounded routing | ⚠️ `ChatMemoryBuffer(token_limit=...)` truncates oldest-first; no phase awareness and no dependency closure [^li-mem] | ❌ Not provided · large outputs flow through verbatim | ⚠️ Retriever yes; summarizer no | ⚠️ Possible via custom tool wrapper |
 | **Raw MCP** ([modelcontextprotocol v0.1](https://modelcontextprotocol.io)) | ❌ Servers expose tools; routing across many servers is the client's problem | ❌ Out of scope for the protocol | ❌ Out of scope for the protocol | ✅ Wire protocol is deterministic | ✅ — _is_ the protocol |
 
 [^cw-route]: `contextweaver.routing.router.Router` ships a four-stage pipeline (`retrieve → rerank → navigate → pack`) with deterministic tie-break by `id`. Locked by `tests/test_cards.py::test_make_choice_cards_byte_identical_stable_order`.
-[^cw-bench]: Range from the committed scorecard ([`benchmarks/scorecard.md`](benchmarks/scorecard.md)) using `tiktoken.cl100k_base` against the naïve baseline ([`scripts/baseline_naive.py`](scripts/baseline_naive.py)). Average 64.3 %; min 41.6 % on `long_conversation.jsonl`; max 84.3 % on `tiny_payload.jsonl`.
+[^cw-bench]: Range from the committed scorecard ([`benchmarks/scorecard.md`](benchmarks/scorecard.md)) using `tiktoken.cl100k_base` against the naïve baseline ([`scripts/baseline_naive.py`](scripts/baseline_naive.py)). Average 65.0 %; min 42.7 % on `long_conversation.jsonl`; max 85.0 % on `tiny_payload.jsonl`.
 [^cw-fire]: `contextweaver.context.firewall.apply_firewall` plus `ArtifactRef` drilldown selectors (`head` / `lines` / `json_keys` / `rows`). See [`docs/context_firewall.md`](docs/context_firewall.md) and the [`firewall_drilldown_recipe`](examples/cookbook/firewall_drilldown_recipe.py).
 [^cw-det]: Determinism is an invariant — see `docs/agent-context/invariants.md` and `make scorecard-check` in the CI gate.
 [^cw-mcp]: `src/contextweaver/adapters/mcp_proxy.py`, `mcp_gateway.py`, `mcp_proxy_server.py`, `mcp_gateway_server.py`. Bound by `docs/gateway_spec.md`.
