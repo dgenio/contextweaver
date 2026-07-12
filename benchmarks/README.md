@@ -212,5 +212,5 @@ context-savings, and compaction metrics against the PR target commit.
 
 On every pull request the dedicated `benchmark-comment` job posts a sticky
 delta against that same target-commit baseline via `scripts/benchmark_delta.py`
-(issue #211), and the `scorecard-weekly.yml` cron opens a PR with refreshed
+(issue #211), and the `benchmark-scorecard-weekly.yml` cron opens a PR with refreshed
 numbers each Monday (issue #207).
