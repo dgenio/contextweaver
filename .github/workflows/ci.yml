@@ -60,9 +60,9 @@ jobs:
         # fully on 3.10–3.13 and in the scheduled extras job (#751).
         run: |
           if [ "${{ matrix.python-version }}" = "3.14" ]; then
-            pip install -e ".[dev]"
+            pip install -e ".[dev,bm25]"
           else
-            pip install -e ".[dev,dev-adapters,langchain]"
+            pip install -e ".[dev,dev-adapters,langchain,bm25]"
           fi
 
       - name: Format check
@@ -177,7 +177,7 @@ jobs:
         # declared floor while letting transitive deps resolve normally — the
         # canonical way to prove ``>=X`` bounds without hand-maintaining a
         # constraints-min.txt.
-        run: uv pip install --system --resolution lowest-direct -e ".[dev,dev-adapters,langchain]"
+        run: uv pip install --system --resolution lowest-direct -e ".[dev,dev-adapters,langchain,bm25]"
 
       - name: Test (floor versions)
         # No ``--cov`` here: this job exists to prove the *runtime* dependency
@@ -185,6 +185,29 @@ jobs:
         # to measure coverage — the matrix ``test`` job does that at latest
         # deps. Running coverage here also trips a spurious
         # statement-vs-branch combine error from subprocess-spawning tests.
+        run: pytest -q
+
+  windows-test:
+    # Windows support gate (issue #749). Windows is a stated support target and
+    # the store advertises a torn-write guarantee (#497) plus Windows-safe
+    # artifact handles (#466), but nothing validated it on Windows. Runs the
+    # full pytest suite on windows-latest; examples/demo stay Linux-only (they
+    # drive framework examples and are covered by the matrix job).
+    name: Windows (3.12)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,dev-adapters,langchain,bm25]"
+
+      - name: Test
         run: pytest -q
 
   tool-run-smoke:

@@ -199,6 +199,9 @@ def test_generate_configs_outside_workspace_emits_absolute_paths(tmp_path: Path)
     assert "outside the current workspace" in _strip_ansi(result.stdout + result.stderr)
 
     copilot = (out_dir / "copilot_mcp.json").read_text(encoding="utf-8")
-    # Absolute config path is emitted verbatim instead of a ${workspaceFolder} token.
-    assert str(config.resolve()) in copilot
+    # Absolute config path is emitted verbatim instead of a ${workspaceFolder}
+    # token. The generator normalises to POSIX separators (``as_posix()``), so
+    # compare against that form rather than ``str()`` — on Windows the latter
+    # uses backslashes and would spuriously fail (issue #749).
+    assert config.resolve().as_posix() in copilot
     assert "${workspaceFolder}" not in copilot

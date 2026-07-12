@@ -149,21 +149,23 @@ class SkillBodySource:
         """Return the bundled resource files for *skill_id*, or ``None``.
 
         Lists every file in the skill directory other than ``SKILL.md``, as
-        paths relative to the skill directory, sorted.  Loading the resource
-        contents is left to the caller (progressive disclosure).
+        POSIX-style paths relative to the skill directory, sorted.  Loading the
+        resource contents is left to the caller (progressive disclosure).
 
         Args:
             skill_id: The skill ``SelectableItem.id`` to resolve.
 
         Returns:
             A sorted list of relative resource paths, or ``None`` when the id
-            is not registered.
+            is not registered.  Separators are always ``/`` — ``as_posix()``
+            keeps the output stable across platforms (issue #749), so a nested
+            resource is ``scripts/run.py`` on Windows too, not ``scripts\\run.py``.
         """
         directory = self._paths.get(skill_id)
         if directory is None:
             return None
         return [
-            str(p.relative_to(directory))
+            p.relative_to(directory).as_posix()
             for p in sorted(directory.rglob("*"))
             if p.is_file() and p.name != SKILL_FILENAME
         ]
