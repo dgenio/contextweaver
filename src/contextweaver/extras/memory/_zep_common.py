@@ -21,15 +21,12 @@ from contextweaver.exceptions import ContextWeaverError
 if TYPE_CHECKING:
     from zep_cloud.client import Zep
 
-
-try:
-    from zep_cloud.client import Zep as _Zep  # noqa: F401
-except ImportError as _zep_import_err:  # pragma: no cover - exercised only when extra is missing
-    raise ImportError(
-        "Zep external-memory backend requires the [zep] extra. "
-        "Install with: pip install 'contextweaver[zep]'"
-    ) from _zep_import_err
-
+# NOTE (issue #751): this module intentionally does NOT import ``zep_cloud`` at
+# runtime. The stores take a caller-supplied ``Zep`` client ("bring your own"),
+# so the SDK is only ever a type hint here — importing it eagerly just to
+# fail-fast forced the fake-driven tests (which need no SDK) to skip in gating
+# CI. Keeping the module import-clean lets those tests run everywhere; a user
+# without the ``[zep]`` extra simply cannot obtain a ``Zep`` instance to pass.
 
 _CW_KIND = "cw_kind"
 _CW_EPISODE_ID = "cw_episode_id"

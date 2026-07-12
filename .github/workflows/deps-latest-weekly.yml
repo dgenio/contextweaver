@@ -50,3 +50,35 @@ jobs:
 
       - name: Test (latest / pre-release versions)
         run: pytest -q
+
+  ci-dark-extras:
+    # CI-dark optional-dependency coverage (issue #751). CI normally installs
+    # only [dev,dev-adapters,langchain,bm25], so tests behind the remaining
+    # framework/backend extras (agno, smolagents, pydantic-ai, openai-agents,
+    # google-adk, agent-framework, zep, embeddings) silently skip on every run —
+    # roughly half the advertised integration surface with no evidence of
+    # working. This non-gating job installs them all and runs the suite with
+    # --strict-live, so an optional-dependency skip (a broken install or import)
+    # becomes a failure instead of a silent pass. Non-gating by construction
+    # (scheduled-only, not a required check): a red run is the early-warning
+    # signal, exactly like the latest-prerelease job above.
+    name: CI-dark extras (live tests, 3.13)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies incl. the CI-dark extras
+        # Best-effort resolution of the full optional surface; these upstreams
+        # churn fast and can conflict, which is itself signal worth seeing.
+        run: |
+          pip install -e ".[dev,dev-adapters,langchain,bm25,retrieval,agno,smolagents,pydantic-ai,openai-agents,google-adk,agent-framework,zep,embeddings]"
+
+      - name: Test (all extras installed, strict-live)
+        # --strict-live turns any remaining optional-dependency skip into a
+        # failure; the skip-report line surfaces the total skip count (#751).
+        run: pytest -q --strict-live

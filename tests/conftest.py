@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
 from contextweaver.context.manager import ContextManager
 from contextweaver.routing.catalog import Catalog, generate_sample_catalog, load_catalog_dicts
 from contextweaver.routing.graph import ChoiceGraph
@@ -15,6 +21,59 @@ from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
 from contextweaver.types import ContextItem, ItemKind, SelectableItem
+
+# ------------------------------------------------------------------
+# --strict-live: surface CI-dark optional-dependency skips (issue #751)
+# ------------------------------------------------------------------
+
+# Substrings that identify a skip caused by a *missing optional dependency*
+# (``pytest.importorskip`` or a ``skipif(... is None)`` extra guard). In the
+# scheduled extras job every optional extra IS installed, so such a skip means
+# the extra failed to install or its import broke — a real problem to surface,
+# not silently pass.
+_OPTIONAL_DEP_SKIP_MARKERS = ("could not import", "not installed", "requires the")
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register ``--strict-live`` (issue #751)."""
+    parser.addoption(
+        "--strict-live",
+        action="store_true",
+        default=False,
+        help=(
+            "Treat optional-dependency skips (importorskip / 'not installed' extra "
+            "guards) as failures. Used by the weekly extras job, where every optional "
+            "extra is installed, so such a skip signals a broken install/import."
+        ),
+    )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, None, None]:
+    """Under ``--strict-live``, convert optional-dependency skips into failures."""
+    outcome = yield
+    if not item.config.getoption("--strict-live"):
+        return
+    report = outcome.get_result()
+    if not report.skipped:
+        return
+    reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+    lowered = reason.lower()
+    if any(marker in lowered for marker in _OPTIONAL_DEP_SKIP_MARKERS):
+        report.outcome = "failed"
+        report.longrepr = (
+            f"[--strict-live] optional-dependency skip treated as failure (issue #751): {reason}"
+        )
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Print a one-line skip count so CI-dark growth is visible (issue #751)."""
+    skipped = terminalreporter.stats.get("skipped", [])
+    if skipped:
+        terminalreporter.write_line(f"skip-report: {len(skipped)} test(s) skipped this run (#751)")
+
 
 # ------------------------------------------------------------------
 # Basic stores
