@@ -60,7 +60,7 @@ Exit condition: representative multi-source inputs produce a deterministic, insp
 
 ## 0.19 — runtime and host seam
 
-- #408 — `CompiledAgent.load`, route, hydrate, context and result APIs;
+- #408 — `CompiledAgent.load(...)`, route, hydrate, context and result APIs;
 - #453 — routing ownership/boundary;
 - #499 — context contracts;
 - #412 — phase budget semantics;
