@@ -8,11 +8,9 @@ stores.  The two classes implement the existing
 Protocols are not widened).
 
 The Zep client is caller-supplied ("bring your own"), so this module imports
-cleanly without the ``[zep]`` extra installed — ``zep_cloud`` is only a type
-hint (issue #751). Install ``pip install 'contextweaver[zep]'`` to obtain a
-``zep_cloud.Zep`` client to pass in. Shared constants, payload helpers, and the
-store base class live in :mod:`contextweaver.extras.memory._zep_common` to keep
-this module cohesive.
+cleanly without the ``[zep]`` extra — ``zep_cloud`` is only a type hint (#751).
+Install ``pip install 'contextweaver[zep]'`` to obtain a ``Zep`` client. Shared
+helpers live in :mod:`contextweaver.extras.memory._zep_common`.
 
 **Persistence.** Zep extracts edges/nodes from **episodes** (the raw inputs you
 add); episodes are the one surface that round-trips the exact input, so this

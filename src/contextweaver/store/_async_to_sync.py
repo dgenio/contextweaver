@@ -26,8 +26,10 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any
 
 # ``_LoopThread`` was extracted to ``_loop_thread`` to keep this module within
-# the 300-line ceiling; imported here for the bridge/``to_sync`` type hints.
-from contextweaver.store._loop_thread import _LoopThread
+# the 300-line ceiling; imported here for the bridge/``to_sync`` type hints and
+# re-exported (redundant alias marks the intentional re-export for mypy) so
+# ``from contextweaver.store._async_to_sync import _LoopThread`` keeps working.
+from contextweaver.store._loop_thread import _LoopThread as _LoopThread
 
 if TYPE_CHECKING:
     from contextweaver.store.async_protocols import (

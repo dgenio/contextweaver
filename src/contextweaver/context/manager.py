@@ -49,8 +49,7 @@ from contextweaver.protocols import (
     TokenEstimator,
 )
 from contextweaver.store import StoreBundle
-from contextweaver.store._async_to_sync import is_async_store, to_sync
-from contextweaver.store._loop_thread import _LoopThread
+from contextweaver.store._async_to_sync import _LoopThread, is_async_store, to_sync
 from contextweaver.store.artifacts import InMemoryArtifactStore
 from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
