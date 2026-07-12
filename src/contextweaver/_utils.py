@@ -9,7 +9,8 @@ Public API:
     - :func:`tokenize` — normalise + tokenise a string to a ``set[str]``
     - :func:`jaccard` — Jaccard similarity between two token sets
     - :class:`TfIdfScorer` — pure-Python deterministic TF-IDF scorer
-    - :class:`BM25Scorer` — BM25 scorer backed by ``rank-bm25`` (core dep)
+    - :class:`BM25Scorer` — BM25 scorer backed by ``rank-bm25``
+      (``contextweaver[bm25]`` extra; ``None`` when missing)
     - :class:`FuzzyScorer` — fuzzy scorer backed by ``rapidfuzz``
       (``contextweaver[retrieval]`` extra; ``None`` when missing)
 """
