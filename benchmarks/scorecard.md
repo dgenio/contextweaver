@@ -24,9 +24,9 @@ for latency percentile stability.
 
 | catalog_size | queries | precision@5 | recall@5 | MRR | p50 (ms) | p95 (ms) | p99 (ms) |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 50 | 131 | 0.1191 | 0.5649 | 0.4978 | 0.423 | 0.548 | 0.759 |
-| 83 | 200 | 0.0800 | 0.3825 | 0.3242 | 0.667 | 0.779 | 1.134 |
-| 1000 | 200 | 0.0310 | 0.1475 | 0.1456 | 36.007 | 37.467 | 41.711 |
+| 50 | 131 | 0.1191 | 0.5649 | 0.4978 | 0.420 | 0.514 | 0.650 |
+| 83 | 200 | 0.0800 | 0.3825 | 0.3242 | 0.691 | 0.841 | 1.205 |
+| 1000 | 200 | 0.0310 | 0.1475 | 0.1456 | 37.086 | 40.610 | 47.855 |
 
 ### Per-backend × per-size matrix
 
@@ -39,21 +39,21 @@ Skipped backends are recorded explicitly.
 
 | backend | catalog_size | queries | precision@5 | recall@5 | MRR | p50 (ms) | p95 (ms) | p99 (ms) | status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| bm25 | 100 | 200 | 0.0800 | 0.3825 | 0.3399 | 5.180 | 7.166 | 8.140 | ok |
-| bm25 | 500 | 200 | 0.0470 | 0.2250 | 0.2165 | 28.506 | 36.817 | 38.989 | ok |
-| bm25 | 1000 | 200 | 0.0330 | 0.1575 | 0.1525 | 70.705 | 86.805 | 111.716 | ok |
-| embedding_hashing | 100 | 200 | 0.1050 | 0.5175 | 0.4360 | 0.898 | 6.847 | 7.225 | ok |
-| embedding_hashing | 500 | 200 | 0.0560 | 0.2700 | 0.2674 | 9.733 | 38.126 | 44.182 | ok |
-| embedding_hashing | 1000 | 200 | 0.0420 | 0.2000 | 0.1931 | 36.778 | 93.261 | 98.277 | ok |
+| bm25 | 100 | 200 | 0.0800 | 0.3825 | 0.3399 | 5.394 | 7.591 | 8.399 | ok |
+| bm25 | 500 | 200 | 0.0470 | 0.2250 | 0.2165 | 28.707 | 36.881 | 41.865 | ok |
+| bm25 | 1000 | 200 | 0.0330 | 0.1575 | 0.1525 | 71.638 | 89.514 | 112.387 | ok |
+| embedding_hashing | 100 | 200 | 0.1050 | 0.5175 | 0.4360 | 0.907 | 6.953 | 7.218 | ok |
+| embedding_hashing | 500 | 200 | 0.0560 | 0.2700 | 0.2674 | 10.070 | 39.180 | 43.171 | ok |
+| embedding_hashing | 1000 | 200 | 0.0420 | 0.2000 | 0.1931 | 37.094 | 94.277 | 102.979 | ok |
 | embedding_st | 100 | — | — | — | — | — | — | — | skipped: missing sentence-transformers |
 | embedding_st | 500 | — | — | — | — | — | — | — | skipped: missing sentence-transformers |
 | embedding_st | 1000 | — | — | — | — | — | — | — | skipped: missing sentence-transformers |
 | fuzzy | 100 | — | — | — | — | — | — | — | skipped: missing rapidfuzz |
 | fuzzy | 500 | — | — | — | — | — | — | — | skipped: missing rapidfuzz |
 | fuzzy | 1000 | — | — | — | — | — | — | — | skipped: missing rapidfuzz |
-| tfidf | 100 | 200 | 0.0800 | 0.3825 | 0.3220 | 0.930 | 1.039 | 1.102 | ok |
-| tfidf | 500 | 200 | 0.0490 | 0.2325 | 0.2314 | 9.600 | 10.311 | 11.492 | ok |
-| tfidf | 1000 | 200 | 0.0310 | 0.1475 | 0.1456 | 36.059 | 39.739 | 50.755 | ok |
+| tfidf | 100 | 200 | 0.0800 | 0.3825 | 0.3220 | 0.949 | 1.082 | 1.193 | ok |
+| tfidf | 500 | 200 | 0.0490 | 0.2325 | 0.2314 | 9.652 | 10.105 | 10.803 | ok |
+| tfidf | 1000 | 200 | 0.0310 | 0.1475 | 0.1456 | 36.419 | 39.120 | 42.986 | ok |
 
 ### Mixed-namespace catalog (500 tools, head + long tail)
 
@@ -69,11 +69,11 @@ act as targeted noise items.
 
 | backend | catalog_size | queries | precision@5 | recall@5 | MRR | p50 (ms) | p95 (ms) | p99 (ms) | status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| bm25 | 500 | 200 | 0.0260 | 0.1200 | 0.1065 | 19.612 | 23.858 | 25.717 | ok |
-| embedding_hashing | 500 | 200 | 0.0340 | 0.1550 | 0.1376 | 10.514 | 39.809 | 42.553 | ok |
+| bm25 | 500 | 200 | 0.0260 | 0.1200 | 0.1065 | 20.256 | 24.963 | 26.822 | ok |
+| embedding_hashing | 500 | 200 | 0.0340 | 0.1550 | 0.1376 | 10.680 | 40.380 | 42.665 | ok |
 | embedding_st | 500 | — | — | — | — | — | — | — | skipped: missing sentence-transformers |
 | fuzzy | 500 | — | — | — | — | — | — | — | skipped: missing rapidfuzz |
-| tfidf | 500 | 200 | 0.0260 | 0.1200 | 0.1010 | 9.925 | 10.599 | 11.190 | ok |
+| tfidf | 500 | 200 | 0.0260 | 0.1200 | 0.1010 | 9.912 | 10.626 | 13.045 | ok |
 
 ### Per-namespace recall@k
 
@@ -182,12 +182,12 @@ prompt sees their summaries instead.
 
 | scenario | events | included | dropped | dedup | tokens | budget | util % | artifacts | compaction |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| large_catalog | 60 | 60 | 0 | 0 | 1514 | 6000 | 25.2% | 15 | 1.00x |
-| long_conversation | 82 | 82 | 0 | 0 | 2548 | 6000 | 42.5% | 21 | 1.41x |
-| mixed_payload | 15 | 15 | 0 | 0 | 497 | 6000 | 8.3% | 4 | 1.64x |
-| short_conversation | 18 | 18 | 0 | 0 | 496 | 6000 | 8.3% | 4 | 1.00x |
-| stress_conversation | 147 | 136 | 7 | 4 | 6651 | 6000 | 110.9% | 32 | 3.29x |
-| tiny_payload | 20 | 20 | 0 | 0 | 267 | 6000 | 4.5% | 5 | 1.00x |
+| large_catalog | 60 | 60 | 0 | 0 | 1480 | 6000 | 24.7% | 15 | 1.00x |
+| long_conversation | 82 | 82 | 0 | 0 | 2500 | 6000 | 41.7% | 21 | 1.41x |
+| mixed_payload | 15 | 15 | 0 | 0 | 488 | 6000 | 8.1% | 4 | 1.64x |
+| short_conversation | 18 | 18 | 0 | 0 | 487 | 6000 | 8.1% | 4 | 1.00x |
+| stress_conversation | 147 | 136 | 11 | 4 | 6590 | 6000 | 109.8% | 32 | 3.29x |
+| tiny_payload | 20 | 20 | 0 | 0 | 256 | 6000 | 4.3% | 5 | 1.00x |
 
 Reading the table:
 
@@ -218,12 +218,12 @@ no LLM judge — see `scripts/baseline_naive.py`).
 
 | scenario | naive_tokens | cw_tokens | token reduction | coverage proxy |
 |---|---:|---:|---:|---:|
-| large_catalog | 2767 | 1514 | 45.28% | 100.00% |
-| long_conversation | 4365 | 2548 | 41.63% | 100.00% |
-| mixed_payload | 2277 | 497 | 78.17% | 100.00% |
-| short_conversation | 1946 | 496 | 74.51% | 100.00% |
-| stress_conversation | 17482 | 6651 | 61.96% | 92.52% |
-| tiny_payload | 1704 | 267 | 84.33% | 100.00% |
+| large_catalog | 2767 | 1480 | 46.51% | 100.00% |
+| long_conversation | 4365 | 2500 | 42.73% | 100.00% |
+| mixed_payload | 2277 | 488 | 78.57% | 100.00% |
+| short_conversation | 1946 | 487 | 74.97% | 100.00% |
+| stress_conversation | 17482 | 6590 | 62.30% | 92.52% |
+| tiny_payload | 1704 | 256 | 84.98% | 100.00% |
 
 ---
 
@@ -280,7 +280,7 @@ two diverge, the headline token figures above are still self-
 consistent, but readers comparing the numbers against an OpenAI
 tokenizer expectation should apply the drift below (#268).
 
-_Token-estimator parity check is unavailable on this run (`status: skipped: HTTPError`); the headline `CharDivFourEstimator` numbers elsewhere in this scorecard are still valid — they do not depend on `tiktoken` at runtime._
+_Token-estimator parity check is unavailable on this run (`status: skipped: ProxyError`); the headline `CharDivFourEstimator` numbers elsewhere in this scorecard are still valid — they do not depend on `tiktoken` at runtime._
 
 ### Optional end-to-end real-model capture
 

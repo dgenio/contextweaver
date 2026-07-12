@@ -6,8 +6,8 @@ Only the latest patch release in the current minor series receives security upda
 
 | Version | Supported |
 |---------|-----------|
-| 0.16.x  | Yes       |
-| < 0.16  | No        |
+| 0.17.x  | Yes       |
+| < 0.17  | No        |
 
 > This table is kept honest by `scripts/check_security_policy.py`, a gating CI
 > check that fails when the supported series drifts from the package version in
