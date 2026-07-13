@@ -62,7 +62,7 @@ jobs:
             io.modelcontextprotocol.server.name=io.github.dgenio/contextweaver
 
       - name: Build and push (linux/amd64, linux/arm64)
-        uses: docker/build-push-action@v6 # TODO(pin): replace with commit SHA
+        uses: docker/build-push-action@v7 # TODO(pin): replace with commit SHA
         with:
           context: .
           platforms: linux/amd64,linux/arm64
