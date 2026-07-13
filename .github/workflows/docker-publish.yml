@@ -48,7 +48,7 @@ jobs:
 
       - name: Derive image metadata
         id: meta
-        uses: docker/metadata-action@v5 # TODO(pin): replace with commit SHA
+        uses: docker/metadata-action@v6 # TODO(pin): replace with commit SHA
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
