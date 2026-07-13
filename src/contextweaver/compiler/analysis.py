@@ -9,7 +9,7 @@ from typing import Any
 
 from contextweaver.compiler.bundle import CompiledBundle, load_bundle
 from contextweaver.compiler.sources import CapabilitySourceSnapshot
-from contextweaver.compiler.trust import TrustStatus
+from contextweaver.compiler.trust import TrustStatus, _trust_status
 
 
 @dataclass
@@ -50,7 +50,7 @@ class AnalysisReport:
             resource_count=int(data.get("resource_count", 0)),
             required_resource_count=int(data.get("required_resource_count", 0)),
             optional_resource_count=int(data.get("optional_resource_count", 0)),
-            trust_status=data.get("trust_status", "unverified"),
+            trust_status=_trust_status(data.get("trust_status", "unverified")),
             warnings=[str(v) for v in data.get("warnings", [])],
             findings=[str(v) for v in data.get("findings", [])],
         )
