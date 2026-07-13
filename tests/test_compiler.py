@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import uuid
 from collections.abc import Iterator
@@ -11,12 +12,14 @@ from pathlib import Path
 import pytest
 
 from contextweaver.compiler import (
+    AnalysisReport,
     EnrichmentPatch,
     InMemoryResourceResolver,
     ResourceDescriptor,
     ResourceResolution,
     ResourceResolutionRequest,
     SourceCoverage,
+    TrustSummary,
     analyze_bundle,
     analyze_snapshots,
     build_bundle_from_snapshots,
@@ -24,6 +27,7 @@ from contextweaver.compiler import (
     verify_bundle,
     write_bundle,
 )
+from contextweaver.compiler._json import digest_json, pretty_json, sha256_hex
 from contextweaver.compiler.bundle import load_bundle
 from contextweaver.compiler.runtime import CompiledAgent
 from contextweaver.compiler.sources import CapabilitySourceSnapshot
@@ -167,6 +171,32 @@ def test_bundle_verifier_detects_component_tampering() -> None:
     assert "component 'capabilities.json' digest mismatch" in report.findings
 
 
+def test_bundle_verifier_rejects_manifest_rewritten_tampering() -> None:
+    with _temp_root() as root:
+        bundle_path = write_bundle(
+            build_bundle_from_snapshots("agent.fixture", [_snapshot()]),
+            root,
+        )
+        tampered_capabilities = b"[]\n"
+        (bundle_path / "capabilities.json").write_bytes(tampered_capabilities)
+        manifest_path = bundle_path / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for component in manifest["components"]:
+            if component["path"] == "capabilities.json":
+                component["digest"] = sha256_hex(tampered_capabilities)
+                component["size_bytes"] = len(tampered_capabilities)
+        manifest["bundle_digest"] = digest_json(
+            {"components": sorted(manifest["components"], key=lambda c: c["path"])}
+        )
+        manifest["trust"]["bundle_digest"] = manifest["bundle_digest"]
+        manifest_path.write_text(pretty_json(manifest), encoding="utf-8", newline="\n")
+
+        report = verify_bundle(bundle_path)
+
+    assert not report.ok
+    assert "bundle directory name does not match manifest digest" in report.findings
+
+
 def test_compiled_agent_routes_and_hydrates_declared_resources() -> None:
     with _temp_root() as root:
         bundle_path = write_bundle(
@@ -185,6 +215,39 @@ def test_compiled_agent_routes_and_hydrates_declared_resources() -> None:
     assert hydrated.trust.bundle_digest == agent.bundle.bundle_digest()
 
 
+def test_runtime_blocks_only_capabilities_with_unverified_required_resources() -> None:
+    snapshot = _snapshot()
+    snapshot.resources[0].digest = ""
+    agent = CompiledAgent(build_bundle_from_snapshots("agent.fixture", [snapshot]))
+
+    assessment = agent.assess_runtime()
+
+    assert assessment.status == "unverified"
+    assert assessment.allowed_capability_ids == ["calendar.create_event"]
+    assert assessment.blocked_capability_ids == ["github.search_issues"]
+
+
+def test_runtime_invalid_bundle_trust_blocks_all_capabilities() -> None:
+    bundle = build_bundle_from_snapshots("agent.fixture", [_snapshot()])
+    bundle.trust = TrustSummary(
+        bundle_digest=bundle.bundle_digest(),
+        status="invalid",
+        source_count=len(bundle.sources),
+        capability_count=len(bundle.capabilities),
+        resource_count=len(bundle.resources),
+        findings=["manifest invalid"],
+    )
+    agent = CompiledAgent(bundle)
+
+    assessment = agent.assess_runtime()
+
+    assert assessment.blocked_capability_ids == [
+        "calendar.create_event",
+        "github.search_issues",
+    ]
+    assert assessment.allowed_capability_ids == []
+
+
 def test_analysis_reports_snapshot_and_bundle_counts() -> None:
     snapshot = _snapshot()
     with _temp_root() as root:
@@ -201,6 +264,11 @@ def test_analysis_reports_snapshot_and_bundle_counts() -> None:
     assert bundle_report.resource_count == 1
     assert bundle_report.required_resource_count == 1
     assert bundle_report.trust_status == "verified"
+
+
+def test_analysis_report_rejects_unknown_trust_status() -> None:
+    with pytest.raises(ValidationError, match="invalid trust status"):
+        AnalysisReport.from_dict({"agent_id": "agent.fixture", "trust_status": "future"})
 
 
 def test_enrichment_patch_round_trips() -> None:
