@@ -104,15 +104,17 @@ class CompiledAgent:
     def assess_runtime(self, *, checked_at: str = "") -> RuntimeTrustAssessment:
         """Return a runtime trust assessment without mutating the bundle."""
         digest = self.bundle.bundle_digest()
-        blocked = [
-            item.id
-            for item in self.catalog.all()
-            if any(resource.requirement == "required" for resource in self.resources_for(item.id))
-            and self.bundle.trust is not None
-            and self.bundle.trust.status in ("invalid", "unverified")
-        ]
-        allowed = [item.id for item in self.catalog.all() if item.id not in set(blocked)]
         status = self.bundle.trust.status if self.bundle.trust else "unverified"
+        blocked: list[str] = []
+        for item in self.catalog.all():
+            resources = self.resources_for(item.id)
+            if status == "invalid" or any(
+                resource.requirement == "required" and not resource.digest
+                for resource in resources
+            ):
+                blocked.append(item.id)
+        blocked_set = set(blocked)
+        allowed = [item.id for item in self.catalog.all() if item.id not in blocked_set]
         findings = list(self.bundle.trust.findings) if self.bundle.trust else []
         return RuntimeTrustAssessment(
             bundle_digest=digest,
