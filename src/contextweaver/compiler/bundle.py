@@ -244,7 +244,12 @@ def verify_bundle(path: str | Path) -> BundleVerification:
         )
     except (OSError, KeyError, TypeError, json.JSONDecodeError, ValidationError) as exc:
         return BundleVerification(False, findings=[f"invalid manifest: {exc}"])
+    expected_paths = set(COMPONENT_PATHS)
     components_by_path = {component.path: component for component in manifest.components}
+    for component in manifest.components:
+        if component.path not in expected_paths:
+            findings.append(f"manifest references unexpected component {component.path!r}")
+    actual_components: list[BundleComponent] = []
     for component_path in COMPONENT_PATHS:
         component = components_by_path.get(component_path)
         if component is None:
@@ -255,13 +260,17 @@ def verify_bundle(path: str | Path) -> BundleVerification:
         except OSError as exc:
             findings.append(f"cannot read component {component_path!r}: {exc}")
             continue
-        if sha256_hex(data) != component.digest:
+        actual = BundleComponent(component_path, sha256_hex(data), len(data))
+        actual_components.append(actual)
+        if actual.digest != component.digest:
             findings.append(f"component {component_path!r} digest mismatch")
-        if len(data) != component.size_bytes:
+        if actual.size_bytes != component.size_bytes:
             findings.append(f"component {component_path!r} size mismatch")
-    logical = _digest_components(list(components_by_path.values()))
+    logical = _digest_components(actual_components)
     if logical != manifest.bundle_digest:
         findings.append("logical bundle digest mismatch")
+    if bundle_path.name != manifest.bundle_digest:
+        findings.append("bundle directory name does not match manifest digest")
     if manifest.trust.bundle_digest != manifest.bundle_digest:
         findings.append("trust summary bundle digest mismatch")
     return BundleVerification(not findings, manifest.bundle_digest, findings)
