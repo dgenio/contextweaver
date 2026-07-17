@@ -109,8 +109,7 @@ class CompiledAgent:
         for item in self.catalog.all():
             resources = self.resources_for(item.id)
             if status == "invalid" or any(
-                resource.requirement == "required" and not resource.digest
-                for resource in resources
+                resource.requirement == "required" and not resource.digest for resource in resources
             ):
                 blocked.append(item.id)
         blocked_set = set(blocked)
