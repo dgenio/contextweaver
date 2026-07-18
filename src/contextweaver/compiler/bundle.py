@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from contextweaver.compiler._bundle_dedupe import dedupe_capabilities, dedupe_resources
 from contextweaver.compiler._bundle_trust import summarize_trust_inputs
+from contextweaver.compiler._bundle_verify import recomputed_trust_findings
 from contextweaver.compiler._json import digest_json, pretty_json, sha256_hex
 from contextweaver.compiler.enrichment import EnrichmentPatch
 from contextweaver.compiler.resources import ResourceDescriptor
@@ -273,35 +274,8 @@ def verify_bundle(path: str | Path) -> BundleVerification:
         findings.append("bundle directory name does not match manifest digest")
     if manifest.trust.bundle_digest != manifest.bundle_digest:
         findings.append("trust summary bundle digest mismatch")
-    findings.extend(_recomputed_trust_findings(bundle_path, manifest))
+    findings.extend(recomputed_trust_findings(bundle_path, manifest.trust))
     return BundleVerification(not findings, manifest.bundle_digest, findings)
-
-
-def _recomputed_trust_findings(bundle_path: Path, manifest: BundleManifest) -> list[str]:
-    """Recompute the trust projection from on-disk artifacts and compare.
-
-    ``TrustSummary`` is a recomputable projection, so ``manifest.json`` (which is
-    not covered by the component digests) is treated as an untrusted cache: a
-    tampered status, warnings, or findings must not survive verification.
-    """
-    try:
-        resources = [
-            ResourceDescriptor.from_dict(dict(raw))
-            for raw in cast(list[Any], _read_json(bundle_path / "resources.json"))
-        ]
-        lock = cast(dict[str, Any], _read_json(bundle_path / "lock.json"))
-        sources = [CapabilitySourceSnapshot.from_dict(dict(raw)) for raw in lock.get("sources", [])]
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError, ValidationError) as exc:
-        return [f"cannot recompute trust projection: {exc}"]
-    status, warnings, trust_findings = summarize_trust_inputs(sources, resources)
-    mismatches: list[str] = []
-    if manifest.trust.status != status:
-        mismatches.append("trust status does not match recomputed trust projection")
-    if list(manifest.trust.warnings) != warnings:
-        mismatches.append("trust warnings do not match recomputed trust projection")
-    if list(manifest.trust.findings) != trust_findings:
-        mismatches.append("trust findings do not match recomputed trust projection")
-    return mismatches
 
 
 def _components_for_payloads(payloads: Mapping[str, Any]) -> list[BundleComponent]:
