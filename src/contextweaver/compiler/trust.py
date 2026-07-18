@@ -107,5 +107,5 @@ def worst_trust_status(statuses: list[TrustStatus]) -> TrustStatus:
 
 def _trust_status(value: object) -> TrustStatus:
     if value in TRUST_STATUS_ORDER:
-        return value  # type: ignore[return-value]
+        return value
     raise ValidationError(f"invalid trust status {value!r}")

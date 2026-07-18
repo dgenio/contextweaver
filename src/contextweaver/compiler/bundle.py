@@ -246,9 +246,9 @@ def verify_bundle(path: str | Path) -> BundleVerification:
         return BundleVerification(False, findings=[f"invalid manifest: {exc}"])
     expected_paths = set(COMPONENT_PATHS)
     components_by_path = {component.path: component for component in manifest.components}
-    for component in manifest.components:
-        if component.path not in expected_paths:
-            findings.append(f"manifest references unexpected component {component.path!r}")
+    for declared in manifest.components:
+        if declared.path not in expected_paths:
+            findings.append(f"manifest references unexpected component {declared.path!r}")
     actual_components: list[BundleComponent] = []
     for component_path in COMPONENT_PATHS:
         component = components_by_path.get(component_path)

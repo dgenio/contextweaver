@@ -55,5 +55,5 @@ class EnrichmentPatch:
 
 def _enrichment_state(value: object) -> EnrichmentState:
     if value in ("proposed", "accepted", "rejected", "applied"):
-        return value  # type: ignore[return-value]
+        return value
     raise ValidationError(f"invalid enrichment state {value!r}")

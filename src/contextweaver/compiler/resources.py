@@ -228,5 +228,5 @@ def validate_resolution(
 
 def _resource_requirement(value: object) -> ResourceRequirement:
     if value in ("required", "optional"):
-        return value  # type: ignore[return-value]
+        return value
     raise ValidationError(f"invalid resource requirement {value!r}")

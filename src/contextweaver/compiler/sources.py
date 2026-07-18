@@ -144,11 +144,11 @@ class CapabilitySourceAdapter(Protocol):
 
 def _source_requirement(value: object) -> SourceRequirement:
     if value in ("required", "optional", "fallback"):
-        return value  # type: ignore[return-value]
+        return value
     raise ValidationError(f"invalid source requirement {value!r}")
 
 
 def _source_state(value: object) -> SourceState:
     if value in ("available", "degraded", "missing", "unsupported"):
-        return value  # type: ignore[return-value]
+        return value
     raise ValidationError(f"invalid source state {value!r}")
