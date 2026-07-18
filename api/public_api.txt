@@ -619,6 +619,74 @@
   def to_weaver_routing_decision(decision: 'RoutingDecision') -> '_ws_types.RoutingDecision'
   def to_weaver_selectable_item(item: 'SelectableItem') -> '_ws_types.SelectableItem'
 
+## contextweaver.compiler
+  ANALYSIS_REPORT_VERSION: str
+  class AnalysisReport(agent_id: 'str', source_count: 'int' = ..., capability_count: 'int' = ..., resource_count: 'int' = ..., required_resource_count: 'int' = ..., optional_resource_count: 'int' = ..., trust_status: 'TrustStatus' = ..., warnings: 'list[str]' = ..., findings: 'list[str]' = ...) -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'AnalysisReport'
+      def to_dict(self) -> 'dict[str, Any]'
+  class BundleComponent(path: 'str', digest: 'str', size_bytes: 'int') -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'BundleComponent'
+      def to_dict(self) -> 'dict[str, Any]'
+  class BundleManifest(bundle_version: 'str', bundle_digest: 'str', components: 'list[BundleComponent]', trust: 'TrustSummary') -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'BundleManifest'
+      def to_dict(self) -> 'dict[str, Any]'
+  class BundleVerification(ok: 'bool', bundle_digest: 'str' = ..., findings: 'list[str]' = ...) -> None
+  COMPILED_BUNDLE_VERSION: str
+  class CapabilitySourceAdapter(Protocol)(*args, **kwargs)
+      def discover(self) -> 'CapabilitySourceSnapshot'
+  class CapabilitySourceSnapshot(source_id: 'str', source_type: 'str', source_version: 'str', adapter_id: 'str', adapter_version: 'str', capabilities: 'list[SelectableItem]' = ..., resources: 'list[ResourceDescriptor]' = ..., runtime_bindings: 'dict[str, Any]' = ..., metadata: 'dict[str, Any]' = ..., captured_at: 'str' = ..., coverage: 'SourceCoverage | None' = ..., warnings: 'list[str]' = ..., unsupported: 'list[str]' = ..., semantic_loss: 'list[str]' = ...) -> None
+      def digest(self) -> 'str'
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'CapabilitySourceSnapshot'
+      def to_dict(self) -> 'dict[str, Any]'
+  class CompiledAgent(bundle: 'CompiledBundle') -> 'None'
+      def assess_runtime(self, *, checked_at: 'str' = ...) -> 'RuntimeTrustAssessment'
+      def hydrate(self, capability_id: 'str') -> 'CompiledHydrationResult'
+      def load(cls, path: 'str | Path', *, verify: 'bool' = ...) -> 'CompiledAgent'
+      def resources_for(self, capability_id: 'str') -> 'list[ResourceDescriptor]'
+      def route(self, query: 'str', *, debug: 'bool' = ..., exclude_ids: 'set[str] | None' = ..., exclude_tags: 'set[str] | None' = ..., allowed_namespaces: 'set[str] | None' = ..., allowed_tags: 'set[str] | None' = ..., context_hints: 'list[str] | None' = ..., history: 'RouteHistory | None' = ..., pin_ids: 'set[str] | None' = ..., namespace_quota: 'int | None' = ...) -> 'RouteResult'
+  class CompiledBundle(agent_id: 'str', name: 'str' = ..., version: 'str' = ..., capabilities: 'list[SelectableItem]' = ..., resources: 'list[ResourceDescriptor]' = ..., sources: 'list[CapabilitySourceSnapshot]' = ..., enrichments: 'list[EnrichmentPatch]' = ..., metadata: 'dict[str, Any]' = ..., trust: 'TrustSummary | None' = ...) -> None
+      def bundle_digest(self) -> 'str'
+      def component_payloads(self) -> 'dict[str, Any]'
+      def manifest(self) -> 'BundleManifest'
+  class CompiledHydrationResult(hydration: 'HydrationResult', resources: 'list[ResourceDescriptor]' = ..., trust: 'RuntimeTrustAssessment | None' = ...) -> None
+      def to_dict(self) -> 'dict[str, Any]'
+  ENRICHMENT_PATCH_VERSION: str
+  class EnrichmentPatch(capability_id: 'str', field_path: 'str', before: 'Any' = ..., after: 'Any' = ..., state: 'EnrichmentState' = ..., provenance: 'dict[str, Any]' = ..., version: 'str' = ...) -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'EnrichmentPatch'
+      def to_dict(self) -> 'dict[str, Any]'
+  class InMemoryResourceResolver(descriptors: 'list[ResourceDescriptor]', contents: 'Mapping[str, bytes] | None' = ...) -> 'None'
+      def resolve(self, request: 'ResourceResolutionRequest') -> 'ResourceResolution'
+  class ResourceDescriptor(resource_id: 'str', uri: 'str', requirement: 'ResourceRequirement' = ..., media_type: 'str' = ..., digest: 'str' = ..., size_bytes: 'int | None' = ..., capability_ids: 'list[str]' = ..., metadata: 'dict[str, Any]' = ...) -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'ResourceDescriptor'
+      def to_dict(self) -> 'dict[str, Any]'
+  class ResourceResolution(resource_id: 'str', status: 'ResolutionStatus' = ..., content: 'bytes | None' = ..., digest: 'str' = ..., size_bytes: 'int | None' = ..., media_type: 'str' = ..., evidence: 'dict[str, Any]' = ..., error: 'str' = ...) -> None
+      def observed_digest(self) -> 'str'
+      def observed_size(self) -> 'int | None'
+      def to_dict(self) -> 'dict[str, Any]'
+  class ResourceResolutionRequest(resource_id: 'str', descriptor: 'ResourceDescriptor') -> None
+  class ResourceResolver(Protocol)(*args, **kwargs)
+      def resolve(self, request: 'ResourceResolutionRequest') -> 'ResourceResolution'
+  class ResourceValidation(resource_id: 'str', status: 'ResourceVerificationStatus', findings: 'list[str]' = ...) -> None
+      def to_dict(self) -> 'dict[str, Any]'
+  class RuntimeTrustAssessment(bundle_digest: 'str', status: 'TrustStatus', checked_at: 'str' = ..., allowed_capability_ids: 'list[str]' = ..., blocked_capability_ids: 'list[str]' = ..., findings: 'list[str]' = ...) -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'RuntimeTrustAssessment'
+      def to_dict(self) -> 'dict[str, Any]'
+  class SourceCoverage(source_id: 'str', requirement: 'SourceRequirement' = ..., state: 'SourceState' = ..., capability_ids: 'list[str]' = ..., missing_capability_ids: 'list[str]' = ..., warnings: 'list[str]' = ..., semantic_loss: 'list[str]' = ...) -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'SourceCoverage'
+      def to_dict(self) -> 'dict[str, Any]'
+  TRUST_STATUS_ORDER: dict
+  class TrustSummary(bundle_digest: 'str', status: 'TrustStatus', source_count: 'int' = ..., capability_count: 'int' = ..., resource_count: 'int' = ..., warnings: 'list[str]' = ..., findings: 'list[str]' = ...) -> None
+      def from_dict(cls, data: 'Mapping[str, Any]') -> 'TrustSummary'
+      def to_dict(self) -> 'dict[str, Any]'
+  def analyze_bundle(bundle_or_path: 'CompiledBundle | str | Path') -> 'AnalysisReport'
+  def analyze_snapshots(agent_id: 'str', snapshots: 'list[CapabilitySourceSnapshot]') -> 'AnalysisReport'
+  def build_bundle_from_snapshots(agent_id: 'str', snapshots: 'list[CapabilitySourceSnapshot]', *, name: 'str' = ..., version: 'str' = ..., metadata: 'Mapping[str, Any] | None' = ..., enrichments: 'list[EnrichmentPatch] | None' = ...) -> 'CompiledBundle'
+  def load_bundle(path: 'str | Path', *, verify: 'bool' = ...) -> 'CompiledBundle'
+  def validate_resolution(descriptor: 'ResourceDescriptor', resolution: 'ResourceResolution') -> 'ResourceValidation'
+  def verify_bundle(path: 'str | Path') -> 'BundleVerification'
+  def worst_trust_status(statuses: 'list[TrustStatus]') -> 'TrustStatus'
+  def write_bundle(bundle: 'CompiledBundle', root: 'str | Path') -> 'Path'
+
 ## contextweaver.context
   CONSOLIDATION_REPORT_VERSION: str
   class CandidateExplanation(item_id: 'str', kind: 'str', sensitivity: 'str', score: 'float | None' = ..., included: 'bool' = ..., drop_reason: 'str' = ..., dependency_closure: 'bool' = ...) -> None
