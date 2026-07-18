@@ -7,9 +7,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from contextweaver.compiler._bundle_dedupe import dedupe_capabilities, dedupe_resources
 from contextweaver.compiler.bundle import CompiledBundle, load_bundle
 from contextweaver.compiler.sources import CapabilitySourceSnapshot
 from contextweaver.compiler.trust import TrustStatus, _trust_status
+
+ANALYSIS_REPORT_VERSION = "contextweaver.compiler.analysis_report.v1"
 
 
 @dataclass
@@ -91,8 +94,8 @@ def analyze_snapshots(
     snapshots: list[CapabilitySourceSnapshot],
 ) -> AnalysisReport:
     """Analyze source snapshots before writing a compiled bundle."""
-    capabilities = {item.id for snapshot in snapshots for item in snapshot.capabilities}
-    resources = [resource for snapshot in snapshots for resource in snapshot.resources]
+    capabilities = dedupe_capabilities(snapshots)
+    resources = dedupe_resources(snapshots)
     warnings = [warning for snapshot in snapshots for warning in snapshot.warnings]
     findings = [
         finding

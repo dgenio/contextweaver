@@ -12,7 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added the first compiler-first MVP APIs for source snapshots, deterministic
   compiled-agent bundles, host-provided resource verification, trust summaries,
   compiled runtime route/hydrate loading, enrichment patches, and analysis
-  reports (#408, #409, #758, #793, #794, #795, #796, #797).
+  reports (#408, #409, #758, #793, #794, #795, #796, #797). Bundle verification
+  recomputes the trust projection from on-disk artifacts, so a tampered
+  `manifest.json` trust status/warnings/findings no longer passes verification.
 
 ## [0.17.0] - 2026-07-12
 

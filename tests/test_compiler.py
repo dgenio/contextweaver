@@ -295,3 +295,68 @@ def test_bundle_trust_summary_reflects_source_warnings_and_resource_gaps() -> No
     assert bundle.trust.status == "unverified"
     assert "source used fallback metadata" in bundle.trust.warnings
     assert "resource 'docs.api' has no declared digest" in bundle.trust.warnings
+
+
+def _second_snapshot() -> CapabilitySourceSnapshot:
+    """A second source sharing one resource and one capability with ``_snapshot``."""
+    resource = ResourceDescriptor(
+        resource_id="docs.api",
+        uri="host://docs/api.md",
+        media_type="text/markdown",
+        digest="d3bd3e215a98a304a1fbfcbfbbe88adb755f7843574408a1b2fc7eb0b03a7c14",
+        size_bytes=16,
+        capability_ids=["github.search_issues"],
+    )
+    return CapabilitySourceSnapshot(
+        source_id="fixture-2",
+        source_type="fixture",
+        source_version="1",
+        adapter_id="fixture-adapter",
+        adapter_version="1",
+        capabilities=[
+            _item(
+                "github.search_issues",
+                "Search GitHub issues by keyword and repository.",
+                resource_ids=["docs.api"],
+            ),
+        ],
+        resources=[resource],
+    )
+
+
+def test_analyze_snapshots_dedupes_shared_resources_like_bundle() -> None:
+    snapshots = [_snapshot(), _second_snapshot()]
+
+    snapshot_report = analyze_snapshots("agent.fixture", snapshots)
+    with _temp_root() as root:
+        bundle_path = write_bundle(
+            build_bundle_from_snapshots("agent.fixture", snapshots),
+            root,
+        )
+        bundle_report = analyze_bundle(bundle_path)
+
+    assert snapshot_report.capability_count == bundle_report.capability_count == 2
+    assert snapshot_report.resource_count == bundle_report.resource_count == 1
+    assert snapshot_report.required_resource_count == bundle_report.required_resource_count == 1
+
+
+def test_bundle_verifier_detects_forged_trust_status() -> None:
+    snapshot = _snapshot()
+    snapshot.resources[0].digest = ""
+    with _temp_root() as root:
+        bundle_path = write_bundle(
+            build_bundle_from_snapshots("agent.fixture", [snapshot]),
+            root,
+        )
+        manifest_path = bundle_path / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert manifest["trust"]["status"] == "unverified"
+        manifest["trust"]["status"] = "verified"
+        manifest["trust"]["warnings"] = []
+        manifest_path.write_text(pretty_json(manifest), encoding="utf-8", newline="\n")
+
+        report = verify_bundle(bundle_path)
+
+    assert not report.ok
+    assert "trust status does not match recomputed trust projection" in report.findings
+    assert "trust warnings do not match recomputed trust projection" in report.findings

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextweaver.compiler.analysis import (
+    ANALYSIS_REPORT_VERSION,
     AnalysisReport,
     analyze_bundle,
     analyze_snapshots,
@@ -77,5 +78,3 @@ __all__ = [
     "worst_trust_status",
     "write_bundle",
 ]
-
-ANALYSIS_REPORT_VERSION = "contextweaver.compiler.analysis_report.v1"

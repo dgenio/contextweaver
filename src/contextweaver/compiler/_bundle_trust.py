@@ -15,7 +15,7 @@ def summarize_trust_inputs(
     statuses: list[TrustStatus] = []
     warnings: list[str] = []
     findings: list[str] = []
-    for snapshot in snapshots:
+    for snapshot in sorted(snapshots, key=lambda snap: snap.source_id):
         warnings.extend(snapshot.warnings)
         findings.extend(snapshot.unsupported)
         findings.extend(snapshot.semantic_loss)
