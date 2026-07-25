@@ -69,6 +69,21 @@ class ContextBudget:
             answer=int(data.get("answer", _d.answer)),
         )
 
+    def with_phase(self, phase: Phase, tokens: int) -> ContextBudget:
+        """Return a copy with *phase*'s budget set to *tokens*.
+
+        Only the active phase is overridden; the other phases keep their
+        current values.  This is the ergonomic helper used by
+        :meth:`ContextManager.build` / :meth:`~ContextManager.build_sync`
+        when a per-call *budget_tokens* argument is supplied.
+        """
+        return ContextBudget(
+            route=tokens if phase == Phase.route else self.route,
+            call=tokens if phase == Phase.call else self.call,
+            interpret=tokens if phase == Phase.interpret else self.interpret,
+            answer=tokens if phase == Phase.answer else self.answer,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Policy

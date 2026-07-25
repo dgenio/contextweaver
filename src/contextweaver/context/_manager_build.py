@@ -56,7 +56,12 @@ class _BuildMixin(_ManagerState):
             query_tags: Optional tag list to boost tag-matched items.
             header: Optional prompt header text.
             footer: Optional prompt footer text.
-            budget_tokens: Override the default phase budget.
+            budget_tokens: Override the token budget for the *active*
+                phase only.  When supplied, it takes precedence over the
+                configured :class:`~contextweaver.config.ContextBudget`;
+                the other three phases keep their configured values.
+                ``None`` (default) uses the manager's configured budget
+                without modification (issue #412).
             hints: Additional hint tags for scoring.
             extra: Reserved for future pipeline extensions.
             explain: When ``True``, collect explanation-specific
@@ -154,7 +159,12 @@ class _BuildMixin(_ManagerState):
             query_tags: Optional tag list to boost tag-matched items.
             header: Optional prompt header text.
             footer: Optional prompt footer text.
-            budget_tokens: Override the default phase budget.
+            budget_tokens: Override the token budget for the *active*
+                phase only.  When supplied, it takes precedence over the
+                configured :class:`~contextweaver.config.ContextBudget`;
+                the other three phases keep their configured values.
+                ``None`` (default) uses the manager's configured budget
+                without modification (issue #412).
             hints: Additional hint tags for scoring.
             extra: Reserved for future pipeline extensions.
             explain: Keyword-only.  When ``True``, the method returns a
@@ -268,7 +278,12 @@ class _BuildMixin(_ManagerState):
             query_tags: Optional tag list to boost tag-matched items.
             header: Optional prompt header text.
             footer: Optional prompt footer text.
-            budget_tokens: Override the default phase budget.
+            budget_tokens: Override the token budget for the *active*
+                phase only.  When supplied, it takes precedence over the
+                configured :class:`~contextweaver.config.ContextBudget`;
+                the other three phases keep their configured values.
+                ``None`` (default) uses the manager's configured budget
+                without modification (issue #412).
             hints: Additional hint tags for scoring.
             extra: Reserved for future pipeline extensions.
             explain: Keyword-only.  Same semantics as

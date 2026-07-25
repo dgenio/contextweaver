@@ -32,16 +32,12 @@ def override_phase_budget(
     """Return *base*, or a copy with *phase*'s budget set to *budget_tokens*.
 
     ``None`` leaves the budget unchanged; only the active phase's limit is
-    overridden so the other phases keep their configured values.
+    overridden so the other phases keep their configured values.  This
+    delegates to :meth:`ContextBudget.with_phase` for the actual copy.
     """
     if budget_tokens is None:
         return base
-    return ContextBudget(
-        route=budget_tokens if phase == Phase.route else base.route,
-        call=budget_tokens if phase == Phase.call else base.call,
-        interpret=budget_tokens if phase == Phase.interpret else base.interpret,
-        answer=budget_tokens if phase == Phase.answer else base.answer,
-    )
+    return base.with_phase(phase, budget_tokens)
 
 
 def adjust_budget_for_header(
