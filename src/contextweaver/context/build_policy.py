@@ -33,7 +33,8 @@ def override_phase_budget(
 
     ``None`` leaves the budget unchanged; only the active phase's limit is
     overridden so the other phases keep their configured values.  This
-    delegates to :meth:`ContextBudget.with_phase` for the actual copy.
+    delegates to :meth:`~contextweaver.config.ContextBudget.with_phase`
+    for the actual copy.
     """
     if budget_tokens is None:
         return base

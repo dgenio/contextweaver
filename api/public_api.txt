@@ -69,6 +69,7 @@
       def for_phase(self, phase: 'Phase') -> 'int'
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextBudget'
       def to_dict(self) -> 'dict[str, Any]'
+      def with_phase(self, phase: 'Phase', tokens: 'int') -> 'ContextBudget'
   class ContextBuildExplanation(version: 'int' = ..., phase: 'str' = ..., query: 'str' = ..., total_candidates: 'int' = ..., included_count: 'int' = ..., dropped_count: 'int' = ..., dropped_reasons: 'dict[str, int]' = ..., dependency_closures: 'int' = ..., sensitivity_drops: 'int' = ..., dedup_removed: 'int' = ..., budget_tokens: 'int' = ..., resolved_weights: 'dict[str, float]' = ..., candidates: 'list[CandidateExplanation]' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'ContextBuildExplanation'
       def to_dict(self) -> 'dict[str, Any]'

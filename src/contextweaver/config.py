@@ -74,7 +74,8 @@ class ContextBudget:
 
         Only the active phase is overridden; the other phases keep their
         current values.  This is the ergonomic helper used by
-        :meth:`ContextManager.build` / :meth:`~ContextManager.build_sync`
+        :meth:`~contextweaver.context.manager.ContextManager.build` /
+        :meth:`~contextweaver.context.manager.ContextManager.build_sync`
         when a per-call *budget_tokens* argument is supplied.
         """
         return ContextBudget(

@@ -152,33 +152,6 @@ class _BuildMixin(_ManagerState):
         async I/O if the pipeline gains ``await``-able steps in the future.
 
         See :meth:`_build` for full parameter documentation.
-
-        Args:
-            phase: Active execution phase.
-            query: User query string used for relevance scoring.
-            query_tags: Optional tag list to boost tag-matched items.
-            header: Optional prompt header text.
-            footer: Optional prompt footer text.
-            budget_tokens: Override the token budget for the *active*
-                phase only.  When supplied, it takes precedence over the
-                configured :class:`~contextweaver.config.ContextBudget`;
-                the other three phases keep their configured values.
-                ``None`` (default) uses the manager's configured budget
-                without modification (issue #412).
-            hints: Additional hint tags for scoring.
-            extra: Reserved for future pipeline extensions.
-            explain: Keyword-only.  When ``True``, the method returns a
-                ``(pack, explanation)`` tuple where *explanation* is a
-                :class:`ContextBuildExplanation` capturing per-candidate
-                scoring + drop reasons.  Default ``False`` preserves the
-                bare :class:`ContextPack` return shape (issue #291).
-            renderer: Keyword-only.  Optional caller-owned renderer that owns
-                the prompt layout (issue #410); ``None`` keeps section rendering.
-
-        Returns:
-            A :class:`~contextweaver.envelope.ContextPack` ready for
-            the LLM, or a ``(pack, explanation)`` tuple when
-            ``explain=True``.
         """
         if self._async_backed:
             # Issue #495: the pipeline reads/writes async stores through
@@ -271,28 +244,6 @@ class _BuildMixin(_ManagerState):
         environment where an event loop is already running.
 
         See :meth:`_build` for full parameter documentation.
-
-        Args:
-            phase: Active execution phase.
-            query: User query string used for relevance scoring.
-            query_tags: Optional tag list to boost tag-matched items.
-            header: Optional prompt header text.
-            footer: Optional prompt footer text.
-            budget_tokens: Override the token budget for the *active*
-                phase only.  When supplied, it takes precedence over the
-                configured :class:`~contextweaver.config.ContextBudget`;
-                the other three phases keep their configured values.
-                ``None`` (default) uses the manager's configured budget
-                without modification (issue #412).
-            hints: Additional hint tags for scoring.
-            extra: Reserved for future pipeline extensions.
-            explain: Keyword-only.  Same semantics as
-                :meth:`build` (issue #291).
-
-        Returns:
-            A :class:`~contextweaver.envelope.ContextPack` ready for
-            the LLM, or a ``(pack, explanation)`` tuple when
-            ``explain=True``.
         """
         pack, explanation = self._build(
             phase=phase,
