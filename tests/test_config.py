@@ -44,6 +44,31 @@ def test_context_budget_for_phase() -> None:
     assert b.for_phase(Phase.answer) == 5000
 
 
+def test_context_budget_with_phase() -> None:
+    """with_phase overrides only the active phase's budget (#412)."""
+    b = ContextBudget(route=2000, call=3000, interpret=4000, answer=6000)
+    assert b.with_phase(Phase.route, 999) == ContextBudget(
+        route=999, call=3000, interpret=4000, answer=6000
+    )
+    assert b.with_phase(Phase.call, 888) == ContextBudget(
+        route=2000, call=888, interpret=4000, answer=6000
+    )
+    assert b.with_phase(Phase.interpret, 777) == ContextBudget(
+        route=2000, call=3000, interpret=777, answer=6000
+    )
+    assert b.with_phase(Phase.answer, 555) == ContextBudget(
+        route=2000, call=3000, interpret=4000, answer=555
+    )
+
+
+def test_context_budget_with_phase_is_independent() -> None:
+    """with_phase returns a new object; the original is unmodified."""
+    b = ContextBudget()
+    out = b.with_phase(Phase.answer, 12345)
+    assert b.answer == 6000
+    assert out.answer == 12345
+
+
 def test_scoring_config_defaults() -> None:
     cfg = ScoringConfig()
     assert cfg.recency_weight == 0.3

@@ -35,6 +35,7 @@ The import is guarded:
 ```python
 try:
     from langgraph.graph import END, START, StateGraph
+
     _HAS_LANGGRAPH = True
 except ImportError:
     _HAS_LANGGRAPH = False

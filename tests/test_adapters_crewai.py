@@ -183,15 +183,25 @@ def test_load_crewai_catalog_with_real_basetool_instances() -> None:
     assert ids == {"crewai:search", "crewai:calendar.create_event"}
     # SearchTool has no explicit namespace prefix → fallback to crewai.
     search_item = next(i for i in catalog.all() if i.id == "crewai:search")
-    # CrewAI's ``BaseTool.model_dump()`` enriches ``description`` with the
-    # tool name + JSON-schema preamble that the framework feeds to the
-    # underlying LLM (see ``crewai.tools.base_tool.BaseTool.description``).
-    # The adapter is intentionally faithful to that enriched form so the
-    # router scores against the same text the LLM eventually sees; assert
-    # both the original sentence and the framework's preamble are present.
+    # The adapter is faithful to whatever ``BaseTool.model_dump()`` emits for
+    # ``description``. Older CrewAI releases enriched it with a
+    # "Tool Name: ...\nTool Description: <original>" preamble; newer releases
+    # emit the raw sentence. Assert only the original description, which holds
+    # across versions; the preamble-stripping path is pinned deterministically
+    # by ``test_crewai_tool_preamble_description_extracts_original`` below.
     assert "Search the corpus." in search_item.description
-    assert "Tool Name: search" in search_item.description
     assert search_item.namespace == "crewai"
+
+
+def test_crewai_tool_preamble_description_extracts_original() -> None:
+    # Version-independent coverage of the adapter's enriched-description
+    # handling: when CrewAI's "Tool Name: ...\nTool Description: <original>"
+    # preamble is present, the raw sentence is preserved in metadata.
+    enriched = "Tool Name: search\nTool Arguments: {}\nTool Description: Search the corpus."
+    item = crewai_tool_to_selectable({"name": "search", "description": enriched})
+
+    assert item.description == enriched
+    assert item.metadata["original_description"] == "Search the corpus."
 
 
 def test_load_crewai_catalog_rejects_object_without_name_attr() -> None:

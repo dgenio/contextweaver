@@ -44,6 +44,7 @@ MANIFEST_PATH = REPO_ROOT / "api" / "public_api.txt"
 PUBLIC_MODULES = (
     "contextweaver",
     "contextweaver.adapters",
+    "contextweaver.compiler",
     "contextweaver.context",
     "contextweaver.data",
     "contextweaver.eval",
