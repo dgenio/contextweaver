@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release workflow supply-chain hardening (#799).** Upgraded
   `docker/login-action` to v4.0.0 and pinned its immutable commit in the
   write-privileged GHCR publish job.
+
 ### Added
 
 - Added the first compiler-first MVP APIs for source snapshots, deterministic
