@@ -19,8 +19,17 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from contextweaver.__main__ import app
+from contextweaver.__main__ import _restore_manager_from_session, app
 from contextweaver._verify import _VerifyCheck
+from contextweaver.config import ContextPolicy
+from contextweaver.context.handoff import (
+    HandoffEntry,
+    SessionHandoffPack,
+    build_session_handoff_pack,
+    render_handoff_pack,
+)
+from contextweaver.protocols import HeuristicEstimator
+from contextweaver.types import ArtifactRef
 
 
 def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -383,6 +392,66 @@ def _write_session_jsonl(tmp_path: Path) -> Path:
     return p
 
 
+def _write_handoff_session_jsonl(tmp_path: Path) -> Path:
+    """Write a JSONL session containing every canonical handoff category."""
+    lines = [
+        {
+            "id": "decision-1",
+            "type": "plan_state",
+            "text": "Use the bounded routing graph.",
+            "handoff_category": "decision",
+        },
+        {
+            "id": "convention-1",
+            "type": "policy",
+            "text": "Keep output deterministic.",
+            "handoff_category": "convention",
+        },
+        {
+            "id": "unresolved-1",
+            "type": "user_turn",
+            "text": "Investigate the remaining latency spike.",
+            "handoff_category": "unresolved",
+        },
+        {
+            "id": "pitfall-1",
+            "type": "tool_result",
+            "text": "The dry-run tool returned an empty result.",
+            "handoff_category": "pitfall",
+        },
+        {
+            "id": "next-1",
+            "type": "agent_msg",
+            "text": "Read the deployment guide before resuming.",
+            "handoff_category": "next_step",
+        },
+    ]
+    p = tmp_path / "handoff-source.jsonl"
+    p.write_text("\n".join(json.dumps(row) for row in lines), encoding="utf-8")
+    return p
+
+
+def _ingest_handoff_source(tmp_path: Path) -> Path:
+    """Create an ingested session containing canonical handoff candidates."""
+    source = _write_handoff_session_jsonl(tmp_path)
+    session = tmp_path / "handoff-source.json"
+    result = _run("ingest", "--events", str(source), "--out", str(session))
+    assert result.returncode == 0, result.stderr
+    return session
+
+
+def _expected_handoff_pack(session: Path, budget: int = 1500) -> SessionHandoffPack:
+    """Build the expected pack through the same public library seam as the CLI."""
+    manager = _restore_manager_from_session(str(session))
+    return build_session_handoff_pack(
+        manager.event_log,
+        manager.artifact_store,
+        ContextPolicy(),
+        HeuristicEstimator(),
+        budget_tokens=budget,
+    )
+
+
 def test_ingest_creates_session_file(tmp_path: Path) -> None:
     jsonl_path = _write_session_jsonl(tmp_path)
     out_path = tmp_path / "session_out.json"
@@ -408,6 +477,215 @@ def test_ingest_firewall_trigger(tmp_path: Path) -> None:
     result = _run("ingest", "--events", str(p), "--out", str(out_path))
     assert result.returncode == 0
     assert "firewall" in result.stdout.lower()
+
+
+# ------------------------------------------------------------------
+# handoff (issue #629)
+# ------------------------------------------------------------------
+
+
+def test_handoff_markdown_matches_renderer_and_preserves_newline(tmp_path: Path) -> None:
+    session = _ingest_handoff_source(tmp_path)
+    expected = render_handoff_pack(_expected_handoff_pack(session))
+
+    result = _run("handoff", "--session", str(session))
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected
+    assert result.stdout.endswith("\n")
+
+
+def test_handoff_json_is_deterministic_and_round_trips(tmp_path: Path) -> None:
+    session = _ingest_handoff_source(tmp_path)
+    first = _run("handoff", "--session", str(session), "--json", "--budget", "1500")
+    second = _run("handoff", "--session", str(session), "--json", "--budget", "1500")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert first.stdout == second.stdout
+    pack = SessionHandoffPack.from_dict(json.loads(first.stdout))
+    assert json.dumps(pack.to_dict(), indent=2, sort_keys=True) + "\n" == first.stdout
+
+
+def test_handoff_out_writes_exact_markdown_and_json_bytes(tmp_path: Path) -> None:
+    session = _ingest_handoff_source(tmp_path)
+    markdown_path = tmp_path / "handoff.md"
+    json_path = tmp_path / "handoff.json"
+
+    markdown = _run("handoff", "--session", str(session), "--out", str(markdown_path))
+    json_output = _run("handoff", "--session", str(session), "--json", "--out", str(json_path))
+
+    assert markdown.returncode == 0, markdown.stderr
+    assert json_output.returncode == 0, json_output.stderr
+    pack = _expected_handoff_pack(session)
+    assert markdown.stdout == ""
+    assert markdown_path.read_bytes() == render_handoff_pack(pack).encode("utf-8")
+    assert json_output.stdout == ""
+    assert json_path.read_bytes() == (
+        (json.dumps(pack.to_dict(), indent=2, sort_keys=True) + "\n").encode("utf-8")
+    )
+
+
+def test_handoff_empty_session_renders_header_and_empty_json(tmp_path: Path) -> None:
+    session = tmp_path / "empty.json"
+    session.write_text('{"events": [], "facts": {}, "episodes": []}', encoding="utf-8")
+
+    markdown = _run("handoff", "--session", str(session))
+    json_output = _run("handoff", "--session", str(session), "--json")
+
+    assert markdown.returncode == 0, markdown.stderr
+    assert markdown.stdout == "# Session handoff (v1)\n"
+    assert json_output.returncode == 0, json_output.stderr
+    pack = SessionHandoffPack.from_dict(json.loads(json_output.stdout))
+    assert pack.all_entries() == []
+    assert pack.artifact_refs == []
+
+
+def test_handoff_rejects_missing_and_malformed_sessions(tmp_path: Path) -> None:
+    missing = _run("handoff", "--session", str(tmp_path / "missing.json"))
+    malformed_path = tmp_path / "malformed.json"
+    malformed_path.write_text("{", encoding="utf-8")
+    malformed = _run("handoff", "--session", str(malformed_path))
+
+    assert missing.returncode != 0
+    assert "session file not found" in missing.stderr
+    assert malformed.returncode != 0
+    assert "could not load session" in malformed.stderr
+    assert "Traceback" not in malformed.stderr
+
+
+def test_ingest_rejects_malformed_handoff_and_invalid_input_selection(tmp_path: Path) -> None:
+    output = tmp_path / "session.json"
+    malformed_path = tmp_path / "bad-handoff.json"
+    malformed_path.write_text("{", encoding="utf-8")
+    malformed = _run("ingest", "--handoff", str(malformed_path), "--out", str(output))
+    neither = _run("ingest", "--out", str(output))
+    both = _run(
+        "ingest",
+        "--events",
+        str(tmp_path / "events.jsonl"),
+        "--handoff",
+        str(malformed_path),
+        "--out",
+        str(output),
+    )
+
+    assert malformed.returncode != 0
+    assert "could not load handoff" in malformed.stderr
+    assert neither.returncode == 2
+    assert "exactly one" in neither.stderr
+    assert both.returncode == 2
+    assert "exactly one" in both.stderr
+
+
+def test_ingest_handoff_maps_categories_and_preserves_artifact_metadata(tmp_path: Path) -> None:
+    pack = SessionHandoffPack(
+        decisions=[
+            HandoffEntry(
+                id="d1",
+                text="choose the safe path",
+                category="decision",
+                source_ids=["source-d"],
+                confidence=0.9,
+                token_estimate=4,
+            )
+        ],
+        conventions=[
+            HandoffEntry(
+                id="c1",
+                text="follow the convention",
+                category="convention",
+                source_ids=["source-c"],
+                confidence=0.8,
+                token_estimate=5,
+            )
+        ],
+        unresolved_tasks=[
+            HandoffEntry(
+                id="u1",
+                text="resolve the open question",
+                category="unresolved",
+                source_ids=["source-u"],
+                confidence=0.7,
+                token_estimate=6,
+            )
+        ],
+        pitfalls=[
+            HandoffEntry(
+                id="p1",
+                text="avoid the known failure",
+                category="pitfall",
+                source_ids=["source-p"],
+                confidence=0.6,
+                token_estimate=7,
+            )
+        ],
+        next_inspections=[
+            HandoffEntry(
+                id="n1",
+                text="inspect the next file",
+                category="next_step",
+                source_ids=["source-n"],
+                confidence=0.5,
+                token_estimate=8,
+            )
+        ],
+        artifact_refs=[
+            ArtifactRef(
+                handle="artifact:old",
+                media_type="text/plain",
+                size_bytes=12,
+                label="old output",
+                content_hash="abc123",
+            )
+        ],
+    )
+    handoff_path = tmp_path / "handoff.json"
+    handoff_path.write_text(json.dumps(pack.to_dict()), encoding="utf-8")
+    output = tmp_path / "seeded.json"
+
+    result = _run("ingest", "--handoff", str(handoff_path), "--out", str(output))
+
+    assert result.returncode == 0, result.stderr
+    session = json.loads(output.read_text(encoding="utf-8"))
+    events = session["events"]
+    assert [event["id"] for event in events] == ["d1", "c1", "u1", "p1", "n1"]
+    assert [event["kind"] for event in events] == [
+        "plan_state",
+        "policy",
+        "user_turn",
+        "tool_result",
+        "agent_msg",
+    ]
+    assert [event["token_estimate"] for event in events] == [4, 5, 6, 7, 8]
+    assert all(event["parent_id"] is None for event in events)
+    assert events[0]["text"] == "choose the safe path"
+    assert events[0]["metadata"] == {
+        "handoff_category": "decision",
+        "handoff_source_ids": ["source-d"],
+        "handoff_confidence": 0.9,
+    }
+    assert session["artifacts"]["artifact:old"] == {
+        "media_type": "text/plain",
+        "size_bytes": 12,
+        "label": "old output",
+        "content_hash": "abc123",
+    }
+
+
+def test_handoff_round_trip_can_feed_stats(tmp_path: Path) -> None:
+    session = _ingest_handoff_source(tmp_path)
+    handoff_path = tmp_path / "pack.json"
+    seeded = tmp_path / "seeded.json"
+
+    generated = _run("handoff", "--session", str(session), "--json", "--out", str(handoff_path))
+    ingested = _run("ingest", "--handoff", str(handoff_path), "--out", str(seeded))
+    stats = _run("stats", "--session", str(seeded), "--format", "text")
+
+    assert generated.returncode == 0, generated.stderr
+    assert ingested.returncode == 0, ingested.stderr
+    assert stats.returncode == 0, stats.stderr
+    assert "Context Build Report" in stats.stdout
 
 
 # ------------------------------------------------------------------

@@ -729,6 +729,9 @@ contextweaver build --catalog c.json --out g.json    # build routing graph
 contextweaver route --graph g.json --catalog c.json --query "send email"
 contextweaver print-tree --graph g.json
 contextweaver ingest --events session.jsonl --out session.json
+contextweaver handoff --session session.json --json --out handoff.json
+contextweaver ingest --handoff handoff.json --out new-session.json
+contextweaver stats --session new-session.json --format text
 contextweaver replay --session session.json --phase answer
 contextweaver inspect --session session.json --format markdown
 contextweaver mcp inspect --catalog c.json --format json

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the `contextweaver handoff` CLI workflow for deterministic session
+  continuity packs, plus `ingest --handoff` for seeding a new session (#629).
+
 - Added the first compiler-first MVP APIs for source snapshots, deterministic
   compiled-agent bundles, host-provided resource verification, trust summaries,
   compiled runtime route/hydrate loading, enrichment patches, and analysis

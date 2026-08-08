@@ -13,6 +13,7 @@ The recipes:
 5. [CrewAI routing — bounded tool shortlists for crews](#5-crewai-routing-bounded-tool-shortlists-for-crews)
 6. [External memory backend — Mem0 / Zep / LangMem](#6-external-memory-backend)
 7. [Post-generation safety gate for agent-generated diffs](#7-post-generation-safety-gate-for-agent-generated-diffs)
+8. [Session handoff between agents](#8-session-handoff-between-agents)
 
 If you are evaluating where contextweaver fits in your runtime, start with
 the [How contextweaver Fits](interop.md) page first; come back here for
@@ -398,6 +399,38 @@ in-loop signal:
 This keeps the boundary clean: contextweaver shapes what the agent reads, the
 agent writes, and a deterministic gate — local or in CI — has the final say on
 what merges.
+
+---
+
+## 8. Session handoff between agents
+
+**Goal.** Export a bounded, sensitivity-safe continuity pack from one session
+and seed a new session without rebuilding the original event history.
+
+Use the CLI workflow when a long-running session needs to move to another
+agent, process, or operator:
+
+```text
+existing session
+    |
+    v
+contextweaver handoff --session session.json --json --out handoff.json
+    |
+    v
+handoff.json
+    |
+    v
+contextweaver ingest --handoff handoff.json --out new-session.json
+    |
+    v
+contextweaver stats --session new-session.json --format text
+```
+
+Markdown is the default handoff output; use `--json` for a pack that can be
+stored or passed to `ingest --handoff`. The seeded entries retain their IDs,
+text, token estimates, categories, source IDs, and confidence metadata. Global
+artifact references are retained as metadata only; raw artifact bytes are not
+portable in a handoff pack.
 
 ---
 

@@ -9,7 +9,8 @@ build       Build a routing graph from a catalog JSON file.
 route       Route a query over a pre-built routing graph.
 print-tree  Pretty-print the routing tree for a graph.
 init        Scaffold contextweaver config + sample catalog in cwd.
-ingest      Ingest a JSONL session into a serialised session file.
+ingest      Ingest a JSONL session or handoff pack into a serialised session file.
+handoff     Build a deterministic session-continuity pack from a session.
 replay      Replay a session and build context for a given phase.
 stats       Render a human-readable :class:`BuildStats` diagnostic report
             from an ingested session (issue #106).
@@ -62,14 +63,21 @@ from contextweaver.adapters._sidecar_http import serve_api
 from contextweaver.adapters.gateway_policy import RateLimit
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.adapters.sidecar import SidecarApp, SidecarConfig
-from contextweaver.config import ContextBudget
+from contextweaver.config import ContextBudget, ContextPolicy
 from contextweaver.context.consolidation import consolidate, parse_iso
 from contextweaver.context.consolidation_types import ConsolidationPolicy
+from contextweaver.context.handoff import (
+    SessionHandoffPack,
+    _handoff_pack_to_context_items,
+    build_session_handoff_pack,
+    render_handoff_pack,
+)
 from contextweaver.context.manager import ContextManager
 from contextweaver.eval.dataset import EvalDataset
 from contextweaver.eval.routing import evaluate_routing
 from contextweaver.exceptions import CatalogError, ContextWeaverError
 from contextweaver.inspection import build_inspection_report, render_inspection_report
+from contextweaver.protocols import HeuristicEstimator
 from contextweaver.routing.cards import make_choice_cards, render_cards_text
 from contextweaver.routing.catalog import (
     CatalogValidationReport,
@@ -327,6 +335,28 @@ def _restore_manager_from_session(
     return mgr
 
 
+def _load_handoff_pack(path: Path) -> SessionHandoffPack:
+    """Load and validate a handoff pack for a CLI command."""
+    if not path.is_file():
+        raise typer.BadParameter(f"handoff file not found: {path}", param_hint="--handoff")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise TypeError("handoff JSON root must be an object")
+        return SessionHandoffPack.from_dict(raw)
+    except (OSError, AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(f"could not load handoff: {exc}", param_hint="--handoff") from exc
+
+
+def _write_cli_payload(payload: str, out: Path | None) -> None:
+    """Write a machine-readable CLI payload without adding status output."""
+    if out is None:
+        sys.stdout.write(payload)
+        sys.stdout.flush()
+    else:
+        out.write_bytes(payload.encode("utf-8"))
+
+
 def _write_budget_baseline(
     path: Path,
     *,
@@ -527,18 +557,39 @@ def init(
 
 @app.command()
 def ingest(
-    events: Annotated[Path, typer.Option(..., help="Path to the JSONL session file.")],
     out: Annotated[Path, typer.Option(..., help="Output path for the session JSON file.")],
+    events: Annotated[Path | None, typer.Option(help="Path to the JSONL session file.")] = None,
+    handoff: Annotated[
+        Path | None, typer.Option(help="Path to a JSON session-handoff pack.")
+    ] = None,
 ) -> None:
-    """Ingest a JSONL session into a serialised session file."""
-    items = _load_jsonl(str(events))
+    """Ingest a JSONL session or handoff pack into a serialised session file."""
+    if (events is None) == (handoff is None):
+        raise typer.BadParameter(
+            "exactly one of --events or --handoff must be supplied",
+            param_hint="--events/--handoff",
+        )
+
+    handoff_pack: SessionHandoffPack | None = None
+    if events is not None:
+        items = _load_jsonl(str(events))
+    else:
+        assert handoff is not None
+        handoff_pack = _load_handoff_pack(handoff)
+        try:
+            items = _handoff_pack_to_context_items(handoff_pack)
+        except (KeyError, ValueError) as exc:
+            raise typer.BadParameter(
+                f"could not convert handoff: {exc}", param_hint="--handoff"
+            ) from exc
+
     mgr = ContextManager()
 
     firewall_count = 0
     kind_counts: dict[str, int] = {}
     for item in items:
         kind_counts[item.kind.value] = kind_counts.get(item.kind.value, 0) + 1
-        if item.kind == ItemKind.tool_result and len(item.text) > 2000:
+        if events is not None and item.kind == ItemKind.tool_result and len(item.text) > 2000:
             _, envelope = mgr.ingest_tool_result(
                 tool_call_id=item.parent_id or item.id,
                 raw_output=item.text,
@@ -553,14 +604,21 @@ def ingest(
     session: dict[str, Any] = {
         "event_count": len(items),
         "events": [it.to_dict() for it in mgr.event_log.all()],
-        "artifacts": {
-            ref.handle: {
-                "media_type": ref.media_type,
-                "size_bytes": ref.size_bytes,
-                "label": ref.label,
+        "artifacts": (
+            {
+                ref.handle: {
+                    "media_type": ref.media_type,
+                    "size_bytes": ref.size_bytes,
+                    "label": ref.label,
+                }
+                for ref in mgr.artifact_store.list_refs()
             }
-            for ref in mgr.artifact_store.list_refs()
-        },
+            if handoff_pack is None
+            else {
+                ref.handle: {key: value for key, value in ref.to_dict().items() if key != "handle"}
+                for ref in handoff_pack.artifact_refs
+            }
+        ),
         "facts": {f.key: f.value for f in mgr.fact_store.all()},
         "episodes": [
             {"episode_id": ep.episode_id, "summary": ep.summary} for ep in mgr.episodic_store.all()
@@ -568,11 +626,57 @@ def ingest(
     }
     Path(out).write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
 
-    print(f"Ingested {len(items)} events from {events}")
+    source = events if events is not None else handoff
+    print(f"Ingested {len(items)} events from {source}")
     print(f"Event counts: {json.dumps(kind_counts)}")
     print(f"Firewall triggers: {firewall_count}")
     print(f"Artifacts stored: {len(session['artifacts'])}")
     print(f"Session saved to {out}")
+
+
+@app.command()
+def handoff(
+    session: Annotated[Path, typer.Option(..., help="Path to the session JSON file.")],
+    budget: Annotated[int, typer.Option(help="Maximum handoff entry token budget.")] = 1500,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit the handoff pack as deterministic JSON.")
+    ] = False,
+    out: Annotated[
+        Path | None, typer.Option(help="Optional output file; stdout is the default.")
+    ] = None,
+) -> None:
+    """Render a budgeted, sensitivity-safe session-continuity pack (issue #629)."""
+    if not session.is_file():
+        raise typer.BadParameter(f"session file not found: {session}", param_hint="--session")
+    try:
+        manager = _restore_manager_from_session(str(session))
+    except (
+        OSError,
+        AttributeError,
+        ContextWeaverError,
+        KeyError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise typer.BadParameter(f"could not load session: {exc}", param_hint="--session") from exc
+
+    pack = build_session_handoff_pack(
+        manager.event_log,
+        manager.artifact_store,
+        ContextPolicy(),
+        HeuristicEstimator(),
+        budget_tokens=budget,
+    )
+    payload = (
+        json.dumps(pack.to_dict(), indent=2, sort_keys=True) + "\n"
+        if json_output
+        else render_handoff_pack(pack)
+    )
+    try:
+        _write_cli_payload(payload, out)
+    except OSError as exc:
+        raise typer.BadParameter(f"could not write output: {exc}", param_hint="--out") from exc
 
 
 @app.command()

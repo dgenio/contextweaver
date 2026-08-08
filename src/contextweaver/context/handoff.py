@@ -19,6 +19,7 @@ from contextweaver.context.handoff_types import (
     category_attr,
 )
 from contextweaver.context.sensitivity import apply_sensitivity_filter
+from contextweaver.exceptions import ValidationError
 from contextweaver.protocols import ArtifactStore, EventLog, TokenEstimator
 from contextweaver.types import ArtifactRef, ContextItem, ItemKind
 
@@ -26,6 +27,13 @@ logger = logging.getLogger("contextweaver.context")
 
 _HEURISTIC_CONFIDENCE = 0.5
 _EXPLICIT_CONFIDENCE = 1.0
+_HANDOFF_ITEM_KINDS: dict[str, ItemKind] = {
+    "decision": ItemKind.plan_state,
+    "convention": ItemKind.policy,
+    "unresolved": ItemKind.user_turn,
+    "pitfall": ItemKind.tool_result,
+    "next_step": ItemKind.agent_msg,
+}
 
 
 def _classify(item: ContextItem) -> tuple[str | None, float]:
@@ -71,6 +79,30 @@ def _ancestor_artifacts(
 
 def _positive_cost(text: str, estimator: TokenEstimator) -> int:
     return max(1, int(estimator.estimate(text)))
+
+
+def _handoff_pack_to_context_items(pack: SessionHandoffPack) -> list[ContextItem]:
+    """Convert a handoff pack into deterministic, standalone context items."""
+    items: list[ContextItem] = []
+    for entry in pack.all_entries():
+        try:
+            kind = _HANDOFF_ITEM_KINDS[entry.category]
+        except KeyError as exc:
+            raise ValidationError(f"Unsupported handoff category: {entry.category!r}") from exc
+        items.append(
+            ContextItem(
+                id=entry.id,
+                kind=kind,
+                text=entry.text,
+                token_estimate=entry.token_estimate,
+                metadata={
+                    "handoff_category": entry.category,
+                    "handoff_source_ids": list(entry.source_ids),
+                    "handoff_confidence": entry.confidence,
+                },
+            )
+        )
+    return items
 
 
 def build_session_handoff_pack(

@@ -10,6 +10,7 @@ from contextweaver.context.handoff import (
     HANDOFF_PACK_VERSION,
     HandoffEntry,
     SessionHandoffPack,
+    _handoff_pack_to_context_items,
     build_session_handoff_pack,
     render_handoff_pack,
 )
@@ -141,6 +142,41 @@ def test_pack_all_entries_walks_canonical_order() -> None:
         next_inspections=[HandoffEntry(id="n", text="n", category="next_step")],
     )
     assert [e.id for e in pack.all_entries()] == ["d", "c", "u", "p", "n"]
+
+
+def test_handoff_pack_to_context_items_maps_categories_without_parents() -> None:
+    pack = SessionHandoffPack(
+        decisions=[HandoffEntry("d", "decision", "decision", ["sd"], 0.9, 1)],
+        conventions=[HandoffEntry("c", "convention", "convention", ["sc"], 0.8, 2)],
+        unresolved_tasks=[HandoffEntry("u", "unresolved", "unresolved", ["su"], 0.7, 3)],
+        pitfalls=[HandoffEntry("p", "pitfall", "pitfall", ["sp"], 0.6, 4)],
+        next_inspections=[HandoffEntry("n", "next", "next_step", ["sn"], 0.5, 5)],
+    )
+
+    items = _handoff_pack_to_context_items(pack)
+
+    assert [item.kind for item in items] == [
+        ItemKind.plan_state,
+        ItemKind.policy,
+        ItemKind.user_turn,
+        ItemKind.tool_result,
+        ItemKind.agent_msg,
+    ]
+    assert [item.id for item in items] == ["d", "c", "u", "p", "n"]
+    assert [item.text for item in items] == [
+        "decision",
+        "convention",
+        "unresolved",
+        "pitfall",
+        "next",
+    ]
+    assert [item.token_estimate for item in items] == [1, 2, 3, 4, 5]
+    assert all(item.parent_id is None for item in items)
+    assert items[0].metadata == {
+        "handoff_category": "decision",
+        "handoff_source_ids": ["sd"],
+        "handoff_confidence": 0.9,
+    }
 
 
 # ---------------------------------------------------------------------------
