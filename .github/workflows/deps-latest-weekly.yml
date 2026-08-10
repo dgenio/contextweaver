@@ -45,7 +45,7 @@ jobs:
         # Keep this to the 3.14-resolvable dev surface. The heavier adapter tree
         # remains exercised separately on 3.13 below until its upstreams publish
         # compatible 3.14 distributions.
-        run: uv pip install --system --prerelease allow --upgrade -e ".[dev,langchain]"
+        run: uv pip install --system --prerelease allow --upgrade -e ".[dev]"
 
       - name: Test (latest / pre-release versions)
         run: pytest -q
