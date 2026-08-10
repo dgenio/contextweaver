@@ -74,7 +74,9 @@ def _snapshot(
     )
 
 
-def build_demo_snapshots(*, degraded_skill_resource: bool = False) -> list[CapabilitySourceSnapshot]:
+def build_demo_snapshots(
+    *, degraded_skill_resource: bool = False
+) -> list[CapabilitySourceSnapshot]:
     """Return five representative source snapshots for the compiler proof."""
     skill_body = b"Draft a concise, polite reminder. Never claim a payment was received."
     skill_resource = ResourceDescriptor(
@@ -176,14 +178,15 @@ def receipt_lines() -> list[str]:
         route = agent.route(QUERY)
         selected = route.candidate_ids[0]
         if selected != "skill.draft_reminder":
-            raise AssertionError(f"compiler demo route drifted: expected skill.draft_reminder, got {selected}")
+            raise AssertionError(
+                f"compiler demo route drifted: expected skill.draft_reminder, got {selected}"
+            )
         lines.append(f"ROUTE selected={selected} shortlist={len(route.candidate_ids)}")
 
         hydrated = agent.hydrate(selected)
         resource_ids = ",".join(resource.resource_id for resource in hydrated.resources)
         lines.append(
-            f"HYDRATE capability={selected} resources={resource_ids} "
-            "host_execution=retained"
+            f"HYDRATE capability={selected} resources={resource_ids} host_execution=retained"
         )
 
     degraded = CompiledAgent(
