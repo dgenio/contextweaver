@@ -6,6 +6,7 @@ name: CodeQL
 # even when the code is quiet. Findings land in the repository Security tab
 # (code scanning). False positives are handled via the documented exception
 # process in docs/security_tooling.md (issue #692).
+# Actions are pinned to immutable commit SHAs; Dependabot maintains the pins.
 
 on:
   push:
@@ -34,10 +35,10 @@ jobs:
       security-events: write
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
         with:
           languages: python
           # ``security-extended`` adds the broader security query suite on top
@@ -45,6 +46,6 @@ jobs:
           queries: security-extended
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
         with:
           category: "/language:python"
