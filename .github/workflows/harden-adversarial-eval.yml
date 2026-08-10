@@ -1,0 +1,142 @@
+name: One-shot adversarial eval honesty hardening
+
+on:
+  push:
+    branches: ["agent/adversarial-eval-foundation"]
+    paths: [".adversarial-eval-harden"]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: agent/adversarial-eval-foundation
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Require explicit real-evidence provenance
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("benchmarks/adversarial_eval.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''def _publishability(model: str, results: list[ArmResult]) -> tuple[bool, list[str]]:
+              reasons: list[str] = []
+              if model == "stub":
+                  reasons.append("stub model results are mechanics-only")
+              by_arm = {result.arm: result for result in results}
+              for arm in ("provider_native", "contextweaver_plus_native"):
+                  if by_arm[arm].status != "complete":
+                      reasons.append(f"{arm} was not run against a real provider-native mechanism")
+              return not reasons, reasons
+          '''
+          new = '''def _publishability(
+              results: list[ArmResult],
+              *,
+              real_model_verified: bool,
+              provider_native_verified: bool,
+          ) -> tuple[bool, list[str]]:
+              reasons: list[str] = []
+              if not real_model_verified:
+                  reasons.append("real model execution was not explicitly verified")
+              if not provider_native_verified:
+                  reasons.append("provider-native mechanism was not explicitly verified")
+              by_arm = {result.arm: result for result in results}
+              for arm in ("provider_native", "contextweaver_plus_native"):
+                  if by_arm[arm].status != "complete":
+                      reasons.append(f"{arm} was not run against a real provider-native mechanism")
+              return not reasons, reasons
+          '''
+          if old not in text:
+              raise SystemExit("publishability function anchor not found")
+          text = text.replace(old, new, 1)
+          old_sig = '''    provider_native_fn: ProviderNativeFn | None = None,
+              dataset: str = "benchmarks/e2e/tasks.json (synthetic fixture)",
+          ) -> AdversarialReport:
+          '''
+          new_sig = '''    provider_native_fn: ProviderNativeFn | None = None,
+              dataset: str = "benchmarks/e2e/tasks.json (synthetic fixture)",
+              real_model_verified: bool = False,
+              provider_native_verified: bool = False,
+          ) -> AdversarialReport:
+          '''
+          if old_sig not in text:
+              raise SystemExit("run signature anchor not found")
+          text = text.replace(old_sig, new_sig, 1)
+          old_call = "    publishable, reasons = _publishability(model, results)\n"
+          new_call = '''    publishable, reasons = _publishability(
+              results,
+              real_model_verified=real_model_verified,
+              provider_native_verified=provider_native_verified,
+          )
+          '''
+          if old_call not in text:
+              raise SystemExit("publishability call anchor not found")
+          text = text.replace(old_call, new_call, 1)
+          path.write_text(text, encoding="utf-8")
+
+          runner = Path("benchmarks/run_anthropic_adversarial_eval.py")
+          runner_text = runner.read_text(encoding="utf-8")
+          old_runner = '''            provider_native_fn=provider_native,
+                  dataset="benchmarks/e2e/tasks.json (synthetic fixture; replace for launch evidence)",
+              )
+          '''
+          new_runner = '''            provider_native_fn=provider_native,
+                  dataset="benchmarks/e2e/tasks.json (synthetic fixture; replace for launch evidence)",
+                  real_model_verified=True,
+                  provider_native_verified=True,
+              )
+          '''
+          if old_runner not in runner_text:
+              raise SystemExit("Anthropic runner anchor not found")
+          runner.write_text(runner_text.replace(old_runner, new_runner, 1), encoding="utf-8")
+
+          test_path = Path("tests/test_adversarial_eval.py")
+          tests = test_path.read_text(encoding="utf-8")
+          old_test = '''    report = adversarial.run(
+                  call_fn=legacy.stub_call_fn,
+                  model="real-provider-test-double",
+                  provider_native_fn=provider,
+              )
+          '''
+          new_test = '''    report = adversarial.run(
+                  call_fn=legacy.stub_call_fn,
+                  model="real-provider-test-double",
+                  provider_native_fn=provider,
+                  real_model_verified=True,
+                  provider_native_verified=True,
+              )
+          '''
+          if old_test not in tests:
+              raise SystemExit("provider test anchor not found")
+          tests = tests.replace(old_test, new_test, 1)
+          tests += '''\n\ndef test_test_double_is_not_publishable_without_explicit_provenance() -> None:\n    def provider(\n        _task: legacy.Task,\n        offered: list[legacy.SelectableItem],\n        _history: list[legacy.ContextItem],\n    ) -> adversarial.ProviderObservation:\n        return adversarial.ProviderObservation(\n            chosen_tool=offered[0].id if offered else None,\n            answer="synthetic",\n            prompt_tokens=10,\n        )\n\n    report = adversarial.run(\n        call_fn=legacy.stub_call_fn,\n        model="looks-real-but-is-not-proof",\n        provider_native_fn=provider,\n    )\n    assert report.publishable is False\n    assert "real model execution was not explicitly verified" in report.publishability_reasons\n    assert "provider-native mechanism was not explicitly verified" in report.publishability_reasons\n'''
+          test_path.write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Install dev tooling and validate focused changes
+        run: |
+          python -m pip install -e ".[dev]"
+          ruff format benchmarks/adversarial_eval.py benchmarks/run_anthropic_adversarial_eval.py benchmarks/providers/anthropic_tool_search.py tests/test_adversarial_eval.py tests/test_anthropic_tool_search_eval.py
+          ruff check benchmarks/adversarial_eval.py benchmarks/run_anthropic_adversarial_eval.py benchmarks/providers/anthropic_tool_search.py tests/test_adversarial_eval.py tests/test_anthropic_tool_search_eval.py
+          pytest -q tests/test_adversarial_eval.py tests/test_anthropic_tool_search_eval.py
+
+      - name: Remove one-shot workflow and trigger
+        run: rm .github/workflows/harden-adversarial-eval.yml .adversarial-eval-harden
+
+      - name: Commit hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "evals: require explicit provenance for competitive evidence"
+          git push origin HEAD:agent/adversarial-eval-foundation
