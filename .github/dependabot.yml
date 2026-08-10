@@ -45,11 +45,12 @@ updates:
           - patch
     ignore:
       # MCP SDK v2 is a real API/protocol migration, not dependency hygiene.
-      # The current adapters import v1 APIs removed/renamed in v2. Keep the
-      # intentional <2 compatibility ceiling until the migration issue lands.
+      # Ignore the incompatible versions themselves: Dependabot can otherwise
+      # widen a declared requirement (<2 -> <3) without classifying that
+      # manifest edit as a SemVer-major dependency update. Migration is #827.
       - dependency-name: mcp
-        update-types:
-          - version-update:semver-major
+        versions:
+          - ">=2,<3"
     labels:
       - dependencies
     commit-message:
