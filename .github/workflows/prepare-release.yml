@@ -1,0 +1,56 @@
+name: Prepare release branch
+
+on:
+  push:
+    branches:
+      - "release/**"
+    paths:
+      - ".release-target.json"
+
+permissions:
+  contents: write
+
+# Release preparation intentionally happens before a tag/GitHub Release exists.
+# A short-lived .release-target.json is the only trigger. The preparation script
+# updates every version-coupled artifact, captures the deterministic benchmark
+# snapshot, regenerates llms/trend output, validates the release gates, removes
+# the trigger file, and commits the complete reviewable release state.
+jobs:
+  prepare:
+    name: Prepare release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: python -m pip install -e .
+
+      - name: Refresh deterministic benchmark
+        run: python benchmarks/benchmark.py
+
+      - name: Prepare and validate release artifacts
+        run: python scripts/prepare_release.py --target-file .release-target.json
+
+      - name: Commit prepared release state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Release preparation produced no changes."
+            exit 0
+          fi
+          version="$(python scripts/check_readme_version.py --print-version)"
+          git commit -m "release: prepare v${version}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
