@@ -11,15 +11,17 @@
 [![GitHub Discussions](https://img.shields.io/github/discussions/dgenio/contextweaver)](https://github.com/dgenio/contextweaver/discussions)
 [![Read the Weaver Stack overview on Towards AI](https://img.shields.io/badge/Read%20the%20overview-Towards%20AI-black?logo=medium&logoColor=white)](https://pub.towardsai.net/the-weaver-stack-one-contract-layer-for-safe-llm-agents-7f733cad5eac)
 
-> **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
-> front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
-> instead of every tool schema, plus an artifact-backed firewall that swaps a
-> huge raw tool result for a compact summary. Deterministic, no model in the
-> loop, and 43-85 % fewer prompt tokens on the committed benchmarks.
+> **Reproducible capability and context control for tool-using agents.**
+> ContextWeaver can turn supported capability sources into an inspectable,
+> versioned surface and progressively expose only bounded tools/context at
+> runtime while the host keeps execution authority. Deterministic benchmark
+> receipts are published with explicit methodology and limitations.
 
-**Who it's for:** anyone whose agent — Claude Desktop, Cursor, VS Code, or a
-custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
-blew up my prompt."*
+**Who it's for:** teams whose agents span MCP, APIs, framework tools or
+other capability sources and need to understand what changed, evaluate the
+candidate surface before promotion, or keep runtime context bounded without
+handing ContextWeaver execution authority. For small/static tool sets or when
+provider-native tool search is sufficient, you may not need it.
 
 ```bash
 uvx contextweaver demo --scenario killer  # zero-install trial
@@ -46,7 +48,7 @@ and the least-privilege [MCP Gateway Security Guide](docs/security_mcp_gateway.m
 
 **1150+ tests passing · minimal core dependencies · deterministic by default · Python 3.10–3.13**
 
-#### More tools ≠ better answers
+#### More tools can make routing harder
 
 <p align="center">
   <img src="docs/assets/context_rot.svg" width="660" alt="Context-rot curve: as the tool catalog grows from 83 to 1328 tools, a naive route prompt carries every schema (line climbs on a log scale) while contextweaver stays flat at 5 ChoiceCards; contextweaver's correct-tool recall@5 erodes from 36 percent to 10 percent as distractor tools accumulate."/>
@@ -63,10 +65,10 @@ and the least-privilege [MCP Gateway Security Guide](docs/security_mcp_gateway.m
 </p>
 
 <p align="center">
-  <img src="docs/assets/before_after.svg" alt="Before vs after token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
+  <img src="docs/assets/before_after.svg" alt="Before vs after estimated-token comparison from examples/before_after.py: 417 raw prompt tokens without contextweaver vs 126 final prompt tokens with contextweaver — a 70 percent reduction, 291 tokens saved, budget compliant."/>
 </p>
 
-[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [📉 Context rot demo](docs/context_rot.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
+[📖 Docs](https://dgenio.github.io/contextweaver) · [🎬 Showcase](docs/showcase.md) · [🧩 Where it fits](docs/comparison.md) · [🗺️ Ecosystem map](docs/ecosystem.md) · [❓ FAQ](docs/faq.md) · [📊 Scorecard](benchmarks/scorecard.md) · [🧾 Claims & evidence](docs/claims.md) · [📈 Adopter benchmark report](docs/benchmark_report.md) · [🧭 Which pattern fits?](docs/which_pattern.md) · [🛠 Cookbook](docs/cookbook.md) · [🍳 Recipes](docs/recipes/index.md) · [📉 Context rot demo](docs/context_rot.md) · [🎬 Replay demo (.cast)](docs/assets/demo.cast)
 
 ---
 
