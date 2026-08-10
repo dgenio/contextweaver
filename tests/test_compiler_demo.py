@@ -41,5 +41,7 @@ def test_compiler_demo_is_explicitly_snapshot_based() -> None:
 
 def test_compiler_demo_degraded_fixture_removes_required_resource_digest() -> None:
     snapshots = build_demo_snapshots(degraded_skill_resource=True)
-    skill_snapshot = next(snapshot for snapshot in snapshots if snapshot.source_type == "agent-skill")
+    skill_snapshot = next(
+        snapshot for snapshot in snapshots if snapshot.source_type == "agent-skill"
+    )
     assert skill_snapshot.resources[0].digest == ""
