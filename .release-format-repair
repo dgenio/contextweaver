@@ -1,0 +1,1 @@
+Apply the repository Ruff formatter to the Python files changed by the v0.18.1 release/evidence work, then remove this trigger and the one-shot workflow.
