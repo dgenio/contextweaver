@@ -68,7 +68,7 @@ dependencies = [
     # mcp.shared.session.RequestResponder, renamed Server's generics/Tool
     # and CallToolResult kwargs, and dropped streamablehttp_client /
     # mcp.shared.memory helpers this repo's adapters import directly.
-    "mcp>=1.19.0,<2",
+    "mcp>=1.19.0,<3",
     "jsonschema>=4.0",
     # Floor 0.16.0 (issue #356 floor-deps proof): typer <0.16 breaks the
     # CLI against modern click (8.2 made breaking changes); 0.16.0 is the
