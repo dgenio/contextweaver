@@ -2,20 +2,16 @@ version: 2
 
 # Automated dependency updates (issue #443).
 #
-# contextweaver is a library, not an application. Python dependency ranges in
-# pyproject.toml are compatibility contracts: minimum versions are proven by
-# the floor-deps job and must not be raised merely because a newer release
-# exists. Normal CI and the scheduled latest/pre-release job exercise current
-# resolutions without requiring an application-style lockfile.
+# contextweaver is a published library, not an application. The Python ranges
+# in pyproject.toml are the downstream compatibility contract: floor-deps proves
+# the minimums and normal/latest CI exercises newer resolutions. Routine bot
+# PRs must therefore not rewrite those ranges merely because a release exists.
 #
-# Version updates are deliberately low-noise: routine non-major Python updates
-# are grouped, Docker Actions move together, and a short cooldown avoids opening
-# PRs for releases that are immediately superseded. Security updates bypass the
-# cooldown and have explicit grouping rules.
-#
-# All GitHub Actions are pinned to immutable commit SHAs. Dependabot resolves
-# the corresponding upstream versions and updates those SHAs; version comments
-# in workflow files document the human-readable release line.
+# Python Dependabot is security-only. A vulnerability fix may legitimately
+# raise a floor; ordinary compatibility evolution remains human-reviewed. The
+# deliberate MCP v2 incompatibility remains excluded until migration #827.
+# GitHub Actions are a different trust boundary: they stay SHA-pinned and
+# Dependabot continues to maintain those immutable pins.
 
 updates:
   - package-ecosystem: pip
@@ -25,36 +21,22 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
-    cooldown:
-      default-days: 7
+    # Disable routine version-update PRs. Dependabot security updates are
+    # configured separately by GitHub and are not counted against this limit.
+    open-pull-requests-limit: 0
     groups:
-      python-nonmajor:
-        applies-to: version-updates
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-      python-security-nonmajor:
+      python-security:
         applies-to: security-updates
         patterns:
           - "*"
-        update-types:
-          - minor
-          - patch
     ignore:
-      # MCP SDK v2 is a real API/protocol migration, not dependency hygiene.
-      # Ignore the incompatible versions themselves: Dependabot can otherwise
-      # widen a declared requirement (<2 -> <3) without classifying that
-      # manifest edit as a SemVer-major dependency update. Migration is #827.
       - dependency-name: mcp
         versions:
           - ">=2,<3"
     labels:
       - dependencies
     commit-message:
-      prefix: "chore(deps)"
+      prefix: "fix(deps)"
 
   - package-ecosystem: github-actions
     directory: "/"
