@@ -55,8 +55,6 @@ def test_offline_ablation_arms_run_with_same_task_set() -> None:
 def test_routing_only_is_distinct_from_full_context_compilation() -> None:
     report = adversarial.run()
     by_arm = {result.arm: result for result in report.results}
-    # Both use the same ContextWeaver shortlist. Full adds the budgeted context
-    # compiler; routing-only deliberately keeps the full synthetic history.
     assert by_arm["contextweaver_routing"].total_prompt_tokens is not None
     assert by_arm["contextweaver_full"].total_prompt_tokens is not None
     assert (
@@ -65,27 +63,30 @@ def test_routing_only_is_distinct_from_full_context_compilation() -> None:
     )
 
 
-def test_real_provider_callback_populates_native_and_combined_arms() -> None:
-    def provider(
-        task: legacy.Task,
-        offered: list[legacy.SelectableItem],
-        _history: list[legacy.ContextItem],
-    ) -> adversarial.ProviderObservation:
-        ids = {item.id for item in offered}
-        chosen = task.expected_tool if task.expected_tool in ids else None
-        return adversarial.ProviderObservation(
-            chosen_tool=chosen,
-            answer=task.answer_contains if chosen else "not available",
-            prompt_tokens=123,
-            output_tokens=7,
-            latency_ms=25.0,
-            cost_usd=0.001,
-        )
+def _perfect_provider(
+    task: legacy.Task,
+    offered: list[legacy.SelectableItem],
+    _history: list[legacy.ContextItem],
+) -> adversarial.ProviderObservation:
+    ids = {item.id for item in offered}
+    chosen = task.expected_tool if task.expected_tool in ids else None
+    return adversarial.ProviderObservation(
+        chosen_tool=chosen,
+        answer=task.answer_contains if chosen else "not available",
+        prompt_tokens=123,
+        output_tokens=7,
+        latency_ms=25.0,
+        cost_usd=0.001,
+    )
 
+
+def test_explicit_verified_provider_populates_native_and_combined_arms() -> None:
     report = adversarial.run(
         call_fn=legacy.stub_call_fn,
         model="real-provider-test-double",
-        provider_native_fn=provider,
+        provider_native_fn=_perfect_provider,
+        real_model_verified=True,
+        provider_native_verified=True,
     )
     by_arm = {result.arm: result for result in report.results}
     assert by_arm["provider_native"].status == "complete"
@@ -95,21 +96,24 @@ def test_real_provider_callback_populates_native_and_combined_arms() -> None:
     assert report.publishable is True
 
 
-def test_stub_model_never_becomes_publishable_even_with_provider_test_double() -> None:
-    def provider(
-        _task: legacy.Task,
-        offered: list[legacy.SelectableItem],
-        _history: list[legacy.ContextItem],
-    ) -> adversarial.ProviderObservation:
-        return adversarial.ProviderObservation(
-            chosen_tool=offered[0].id if offered else None,
-            answer="synthetic",
-            prompt_tokens=10,
-        )
-
-    report = adversarial.run(provider_native_fn=provider)
+def test_test_double_is_not_publishable_without_explicit_provenance() -> None:
+    report = adversarial.run(
+        call_fn=legacy.stub_call_fn,
+        model="looks-real-but-is-not-proof",
+        provider_native_fn=_perfect_provider,
+    )
     assert report.publishable is False
-    assert "stub model results are mechanics-only" in report.publishability_reasons
+    assert "real model execution was not explicitly verified" in report.publishability_reasons
+    assert "provider-native mechanism was not explicitly verified" in report.publishability_reasons
+
+
+def test_stub_model_never_becomes_publishable_without_real_model_verification() -> None:
+    report = adversarial.run(
+        provider_native_fn=_perfect_provider,
+        provider_native_verified=True,
+    )
+    assert report.publishable is False
+    assert "real model execution was not explicitly verified" in report.publishability_reasons
 
 
 def test_report_exposes_where_contextweaver_lost() -> None:
