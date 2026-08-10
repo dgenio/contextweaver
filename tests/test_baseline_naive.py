@@ -51,7 +51,9 @@ def test_explicit_mismatched_context_estimator_fails_closed(tmp_path: Path) -> N
         )
 
 
-def test_tiktoken_presence_cannot_change_release_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tiktoken_presence_cannot_change_release_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     row = {"prompt_tokens": 100, "event_count": 10, "items_included": 5}
     first = baseline_naive.compute_naive_delta(_scenario(tmp_path), row)
     monkeypatch.setitem(sys.modules, "tiktoken", object())

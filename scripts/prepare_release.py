@@ -112,9 +112,7 @@ def _update_readme(old: str, new: str, highlights: str) -> None:
             completed = line.replace(marker, "✅ complete")
             result.append(completed)
             newline = "\n" if line.endswith("\n") else ""
-            result.append(
-                f"| **v{new}** | ✅ current (v{new}) | {highlights} |{newline}"
-            )
+            result.append(f"| **v{new}** | ✅ current (v{new}) | {highlights} |{newline}")
             replaced_current_rows += 1
         else:
             result.append(line)

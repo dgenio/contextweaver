@@ -134,7 +134,11 @@ def load_history(history_dir: Path) -> list[dict[str, Any]]:
 
 def _per_size_table(snapshots: list[dict[str, Any]], metric: str) -> str:
     sizes = sorted(
-        {int(size) for snapshot in snapshots for size in snapshot.get("metrics", {}).get(metric, {})}
+        {
+            int(size)
+            for snapshot in snapshots
+            for size in snapshot.get("metrics", {}).get(metric, {})
+        }
     )
     if not sizes:
         return "_No data._"
@@ -194,8 +198,7 @@ def render(snapshots: list[dict[str, Any]]) -> str:
         parts.extend(
             [
                 "_No release snapshots recorded yet. Capture one with_",
-                "`python scripts/render_trend.py --snapshot <version> "
-                "--from <benchmark.json>`.",
+                "`python scripts/render_trend.py --snapshot <version> --from <benchmark.json>`.",
                 "",
             ]
         )
@@ -249,7 +252,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--history-dir", default=str(DEFAULT_HISTORY_DIR))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
-    parser.add_argument("--snapshot", help="Capture a release snapshot under this version, then exit")
+    parser.add_argument(
+        "--snapshot", help="Capture a release snapshot under this version, then exit"
+    )
     parser.add_argument("--from", dest="from_path", default=str(DEFAULT_LATEST))
     parser.add_argument(
         "--check",
