@@ -1,0 +1,31 @@
+name: Python Next Canary
+
+on:
+  schedule:
+    - cron: "15 6 * * 3"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - ".github/workflows/python-next.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  python-next:
+    name: Python 3.15 pre-release
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.15"
+          allow-prereleases: true
+      - name: Install library and core test toolchain
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run core suite
+        run: pytest -q
