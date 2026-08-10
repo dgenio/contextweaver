@@ -10,6 +10,42 @@ contextweaver demo --scenario killer
 
 (Also available as `python -m contextweaver demo --scenario killer`.)
 
+## Compiler-first companion
+
+If your problem starts earlier — capabilities already live across different
+protocols/frameworks and you want one inspectable artifact before runtime — run
+the package-native compiler proof:
+
+```bash
+python -m contextweaver.compiler
+```
+
+It demonstrates this boundary in under a minute, also without network or API
+keys:
+
+```text
+MCP + OpenAPI + Agent Skill + framework + A2A source snapshots
+    -> analyse
+    -> compile + verify one portable bundle
+    -> bounded route
+    -> hydrate only the selected capability/resources
+    -> host still owns execution
+```
+
+The maintained proof deliberately uses **representative deterministic source
+snapshots**. It does not claim that source-specific MCP/OpenAPI/A2A discovery
+adapters executed. The receipt says `discovery=fixture-snapshots`, and CI tests
+that metadata explicitly. This keeps the current compiler foundation useful and
+truthful while source-specific discovery remains separate work.
+
+It also recompiles one degraded variant with the required Agent Skill resource
+digest removed. Runtime trust becomes `unverified` and only the affected
+capability is blocked. The expected receipt is committed at
+`tests/fixtures/compiler_demo_expected.txt` and drift-checked by CI.
+
+See [the compiler-first adoption track](roadmap/compiler-first-backlog-audit-2026-07.md)
+for the broader product direction.
+
 ## The scenario
 
 An internal ops agent with **100 tools** and a running conversation. The
