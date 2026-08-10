@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-09
+
 ### Added
 
 - Added the `contextweaver handoff` CLI workflow for deterministic session
@@ -18,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reports (#408, #409, #758, #793, #794, #795, #796, #797). Bundle verification
   recomputes the trust projection from on-disk artifacts, so a tampered
   `manifest.json` trust status/warnings/findings no longer passes verification.
+
+### Fixed
+
+- **Pinned the `mcp` SDK below its breaking 2.0.0 release.** `mcp>=1.19.0` had
+  no ceiling, so a fresh install floated onto `mcp==2.0.0`, which removed
+  `mcp.shared.session.RequestResponder`, changed `Server`'s generic arity,
+  renamed `Tool`/`CallToolResult` constructor kwargs, and dropped
+  `mcp.client.streamable_http.streamablehttp_client` /
+  `mcp.shared.memory.create_connected_server_and_client_session` — breaking
+  every adapter that imports them (`mypy` and the packaged-wheel smoke test
+  both failed). Ceiling is now `mcp>=1.19.0,<2`.
 
 ## [0.17.0] - 2026-07-12
 
