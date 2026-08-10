@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import statistics
 import sys
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -87,6 +85,8 @@ def run_trials(config: AnthropicToolSearchConfig, trials: int) -> dict[str, Any]
             model=f"anthropic/{config.model}",
             provider_native_fn=provider_native,
             dataset="benchmarks/e2e/tasks.json (synthetic fixture; replace for launch evidence)",
+            real_model_verified=True,
+            provider_native_verified=True,
         )
         trial = report.to_dict()
         trial["trial"] = index
@@ -111,9 +111,6 @@ def run_trials(config: AnthropicToolSearchConfig, trials: int) -> dict[str, Any]
         "raw_trials": raw_trials,
         "aggregate": _aggregate(raw_trials),
         "contextweaver_losses": sorted(set(all_losses)),
-        # The API/mechanism is real, but the current in-tree task set is still a
-        # synthetic fixture. This run is valid comparative engineering evidence,
-        # not yet the final launch dataset required by #445/#621.
         "launch_publishable": False,
         "launch_blockers": [
             "current dataset is an in-tree synthetic fixture",
@@ -148,7 +145,8 @@ def main() -> int:
     result["observed_cost_usd"] = round(spent, 6) if result["prices_configured"] else None
     if args.budget_usd is not None and result["prices_configured"] and spent > args.budget_usd:
         print(
-            f"error: observed benchmark cost ${spent:.4f} exceeded --budget-usd ${args.budget_usd:.4f}",
+            f"error: observed benchmark cost ${spent:.4f} exceeded "
+            f"--budget-usd ${args.budget_usd:.4f}",
             file=sys.stderr,
         )
         return 2
