@@ -1,1 +1,0 @@
-Repair v0.18.1 release evidence after #841: regenerate the release snapshot with one explicit estimator for both comparison arms and restore the canonical latest.json before committing.
