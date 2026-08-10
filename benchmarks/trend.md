@@ -8,7 +8,7 @@ is excluded — it is environment-dependent and not comparable across release
 machines. This page is visibility only; PR-time regression gating lives in
 `benchmarks/gating.yaml` + `scripts/benchmark_gate.py` (#491).
 
-Releases recorded: 2 (`0.16.0` … `0.17.0`).
+Releases recorded: 3 (`0.16.0` … `0.18.0`).
 
 ## Routing recall@k by catalog size
 
@@ -16,6 +16,7 @@ Releases recorded: 2 (`0.16.0` … `0.17.0`).
 |---|---:|---:|---:|
 | `0.16.0` | 0.5649 | 0.3825 | 0.1475 |
 | `0.17.0` | 0.5649 | 0.3825 | 0.1475 |
+| `0.18.0` | 0.5649 | 0.3825 | 0.1475 |
 
 ## Routing MRR by catalog size
 
@@ -23,6 +24,7 @@ Releases recorded: 2 (`0.16.0` … `0.17.0`).
 |---|---:|---:|---:|
 | `0.16.0` | 0.4978 | 0.3242 | 0.1456 |
 | `0.17.0` | 0.4978 | 0.3242 | 0.1456 |
+| `0.18.0` | 0.4978 | 0.3242 | 0.1456 |
 
 ## Routing precision@k by catalog size
 
@@ -30,6 +32,7 @@ Releases recorded: 2 (`0.16.0` … `0.17.0`).
 |---|---:|---:|---:|
 | `0.16.0` | 0.1191 | 0.0800 | 0.0310 |
 | `0.17.0` | 0.1191 | 0.0800 | 0.0310 |
+| `0.18.0` | 0.1191 | 0.0800 | 0.0310 |
 
 ## Context pipeline quality
 
@@ -37,6 +40,7 @@ Releases recorded: 2 (`0.16.0` … `0.17.0`).
 |---|---:|---:|---:|
 | `0.16.0` | 64.31% | 7 | 4 |
 | `0.17.0` | 65.01% | 11 | 4 |
+| `0.18.0` | 65.01% | 11 | 4 |
 
 ---
 
