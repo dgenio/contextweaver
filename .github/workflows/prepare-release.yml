@@ -6,15 +6,16 @@ on:
       - "release/**"
     paths:
       - ".release-target.json"
+      - ".release-repair"
 
 permissions:
   contents: write
 
-# Release preparation intentionally happens before a tag/GitHub Release exists.
-# A short-lived .release-target.json is the only trigger. The preparation script
-# updates every version-coupled artifact, captures the deterministic benchmark
-# snapshot, regenerates llms/trend output, validates the release gates, removes
-# the trigger file, and commits the complete reviewable release state.
+# Release evidence is generated before a tag/GitHub Release exists. The
+# benchmark runs into /tmp; benchmarks/results/latest.json is only borrowed
+# temporarily for the legacy preparation helper and is restored exactly from
+# origin/main before the release commit. This prevents release bookkeeping from
+# silently replacing the canonical benchmark artifact (#841).
 jobs:
   prepare:
     name: Prepare release artifacts
@@ -34,11 +35,41 @@ jobs:
       - name: Install package
         run: python -m pip install -e .
 
-      - name: Refresh deterministic benchmark
-        run: python benchmarks/benchmark.py
+      - name: Generate isolated deterministic benchmark evidence
+        run: python benchmarks/benchmark.py --output /tmp/contextweaver-release-benchmark.json
 
-      - name: Prepare and validate release artifacts
-        run: python scripts/prepare_release.py --target-file .release-target.json
+      - name: Prepare or repair release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f .release-target.json ]]; then
+            # prepare_release.py still reads latest.json. Feed it the isolated
+            # result temporarily, then restore the canonical artifact below.
+            cp /tmp/contextweaver-release-benchmark.json benchmarks/results/latest.json
+            python scripts/prepare_release.py --target-file .release-target.json
+          elif [[ -f .release-repair ]]; then
+            version="$(python scripts/check_readme_version.py --print-version)"
+            python scripts/render_trend.py --snapshot "$version" \
+              --from /tmp/contextweaver-release-benchmark.json
+            python scripts/render_trend.py
+            python scripts/gen_llms.py
+            rm .release-repair
+          else
+            echo "No release preparation trigger found." >&2
+            exit 1
+          fi
+
+      - name: Restore canonical benchmark artifact and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout origin/main -- benchmarks/results/latest.json
+          python scripts/check_readme_version.py
+          python scripts/check_security_policy.py
+          python scripts/check_version_metadata.py
+          python scripts/check_release_readiness.py
+          python scripts/render_trend.py --check
+          python scripts/gen_llms.py --check
 
       - name: Commit prepared release state
         shell: bash
