@@ -1,27 +1,9 @@
 #!/usr/bin/env python3
 """Adversarial comparative evaluation harness for ContextWeaver (#445).
 
-The harness makes the competitive baseline explicit.  It never substitutes a
+The harness makes the competitive baseline explicit. It never substitutes a
 prompt simulation for provider-native Tool Search: without a real provider
 runner those arms are reported as ``not_run`` and the report is not publishable.
-
-Default execution is credential-free and exercises four offline arms with the
-existing deterministic stub model:
-
-1. naive all-tools/full-history control;
-2. simple lexical retrieval + truncated history;
-3. ContextWeaver routing only (full history retained);
-4. ContextWeaver routing + budgeted context compilation.
-
-Two additional arms require ``provider_native_fn`` supplied by an opt-in real
-benchmark driver:
-
-5. provider-native tool search/deferred loading over the full catalog;
-6. ContextWeaver-bounded catalog + the same provider-native mechanism.
-
-The real provider callback owns the provider API request and reports the actual
-usage/latency/cost returned by that API.  This module owns scoring and the
-anti-cherry-picking report shape.
 """
 
 from __future__ import annotations
@@ -223,17 +205,27 @@ def _find_losses(results: list[ArmResult]) -> list[str]:
     def compare(candidate: str, baseline: str) -> None:
         current = by_arm.get(candidate)
         reference = by_arm.get(baseline)
-        if not current or not reference or current.status != "complete" or reference.status != "complete":
+        if (
+            not current
+            or not reference
+            or current.status != "complete"
+            or reference.status != "complete"
+        ):
             return
         for metric in ("tool_accuracy", "answer_accuracy"):
             c_value = _metric(current, metric)
             b_value = _metric(reference, metric)
             if c_value is not None and b_value is not None and c_value < b_value:
-                losses.append(f"{candidate} has lower {metric} than {baseline}: {c_value:.4f} < {b_value:.4f}")
+                losses.append(
+                    f"{candidate} has lower {metric} than {baseline}: "
+                    f"{c_value:.4f} < {b_value:.4f}"
+                )
         c_tokens = current.total_prompt_tokens
         b_tokens = reference.total_prompt_tokens
         if c_tokens is not None and b_tokens is not None and c_tokens > b_tokens:
-            losses.append(f"{candidate} uses more prompt tokens than {baseline}: {c_tokens} > {b_tokens}")
+            losses.append(
+                f"{candidate} uses more prompt tokens than {baseline}: {c_tokens} > {b_tokens}"
+            )
 
     compare("contextweaver_routing", "simple_retrieval")
     compare("contextweaver_full", "simple_retrieval")
@@ -241,10 +233,17 @@ def _find_losses(results: list[ArmResult]) -> list[str]:
     return losses
 
 
-def _publishability(model: str, results: list[ArmResult]) -> tuple[bool, list[str]]:
+def _publishability(
+    results: list[ArmResult],
+    *,
+    real_model_verified: bool,
+    provider_native_verified: bool,
+) -> tuple[bool, list[str]]:
     reasons: list[str] = []
-    if model == "stub":
-        reasons.append("stub model results are mechanics-only")
+    if not real_model_verified:
+        reasons.append("real model execution was not explicitly verified")
+    if not provider_native_verified:
+        reasons.append("provider-native mechanism was not explicitly verified")
     by_arm = {result.arm: result for result in results}
     for arm in ("provider_native", "contextweaver_plus_native"):
         if by_arm[arm].status != "complete":
@@ -260,6 +259,8 @@ def run(
     tasks: list[legacy.Task] | None = None,
     provider_native_fn: ProviderNativeFn | None = None,
     dataset: str = "benchmarks/e2e/tasks.json (synthetic fixture)",
+    real_model_verified: bool = False,
+    provider_native_verified: bool = False,
 ) -> AdversarialReport:
     """Run all available arms, explicitly preserving unavailable native arms."""
     tasks = tasks if tasks is not None else legacy.load_tasks()
@@ -336,11 +337,17 @@ def run(
             )
         )
 
-    publishable, reasons = _publishability(model, results)
+    publishable, reasons = _publishability(
+        results,
+        real_model_verified=real_model_verified,
+        provider_native_verified=provider_native_verified,
+    )
     return AdversarialReport(
         model=model,
         dataset=dataset,
-        measurement_method="offline arms: heuristic/chardiv4; provider arms: provider-reported usage",
+        measurement_method=(
+            "offline arms: heuristic/chardiv4; provider arms: provider-reported usage"
+        ),
         results=results,
         contextweaver_losses=_find_losses(results),
         publishable=publishable,
@@ -372,7 +379,9 @@ def render(report: AdversarialReport) -> str:
     if report.contextweaver_losses:
         lines.extend(f"- {loss}" for loss in report.contextweaver_losses)
     else:
-        lines.append("- No loss detected among the arms that actually ran. This is not proof of superiority.")
+        lines.append(
+            "- No loss detected among the arms that actually ran. This is not proof of superiority."
+        )
 
     if report.publishability_reasons:
         lines.extend(["", "Not publishable as competitive evidence:"])
@@ -392,7 +401,10 @@ def main(argv: list[str] | None = None) -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
     if args.require_publishable and not report.publishable:
-        print("error: report is mechanics-only; real provider-native arms are required", file=sys.stderr)
+        print(
+            "error: report is mechanics-only; verified real model and provider-native arms are required",
+            file=sys.stderr,
+        )
         return 2
     return 0
 
