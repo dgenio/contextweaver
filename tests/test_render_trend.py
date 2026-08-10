@@ -136,11 +136,13 @@ def test_empty_history_renders_placeholder() -> None:
     assert "No release snapshots recorded yet" in render([])
 
 
-def test_publish_workflow_requires_current_release_snapshot() -> None:
+def test_publish_workflow_requires_immutable_tag_and_current_evidence() -> None:
     root = Path(__file__).parent.parent
     workflow = (root / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
-    assert 'snapshot="benchmarks/results/history/${version}.json"' in workflow
-    assert "python scripts/render_trend.py --check" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "python scripts/check_release_readiness.py" in workflow
+    assert "Dispatch this workflow on the immutable vX.Y.Z tag" in workflow
+    assert "Release ref '$tag' does not match package version" in workflow
 
 
 def test_committed_trend_is_in_sync() -> None:
