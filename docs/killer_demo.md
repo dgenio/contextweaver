@@ -32,10 +32,13 @@ From a checkout with ContextWeaver installed, run the package module:
 python -m contextweaver.compiler
 ```
 
-The same command is run against the built wheel in the isolated package smoke
-job. Its exact stdout is committed in
+That exact module command is executed in subprocess tests on every normal CI
+lane, and its exact stdout is committed in
 [`tests/fixtures/compiler_demo_expected.txt`](../tests/fixtures/compiler_demo_expected.txt)
-and byte-compared in CI, including under optimized Python (`-O`).
+and byte-compared in CI, including under optimized Python (`-O`). The existing
+built-wheel smoke separately validates isolated `uvx`/`pipx` packaging and the
+public console entry point; it does not currently claim to execute this module
+proof from the wheel.
 
 The first receipt reports:
 
