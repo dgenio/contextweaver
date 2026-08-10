@@ -1,0 +1,71 @@
+name: Create prepared release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - pyproject.toml
+
+permissions:
+  contents: write
+  actions: write
+
+# A release-version change reaches main only through the normal PR/check path.
+# This workflow revalidates the prepared state, creates the immutable GitHub
+# Release/tag, then explicitly dispatches publish.yml on that tag. GitHub does
+# not recursively trigger ordinary workflows for releases created with
+# GITHUB_TOKEN; workflow_dispatch is the intentional, auditable hand-off.
+jobs:
+  create:
+    name: Create immutable release and dispatch publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Revalidate prepared release state
+        run: |
+          python scripts/check_readme_version.py
+          python scripts/check_security_policy.py
+          python scripts/check_version_metadata.py
+          python scripts/check_release_readiness.py
+          python scripts/render_trend.py --check
+          python scripts/gen_llms.py --check
+
+      - name: Resolve immutable release identity
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python scripts/check_readme_version.py --print-version)"
+          tag="v${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${tag} already exists; refusing to move or republish immutable history." >&2
+            exit 1
+          fi
+
+      - name: Create GitHub Release at the validated main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "contextweaver $TAG" \
+            --generate-notes
+
+      - name: Explicitly dispatch Trusted Publishing on the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh workflow run publish.yml --ref "$TAG"
