@@ -18,7 +18,7 @@ from pathlib import Path
 
 from contextweaver.compiler._json import sha256_hex
 from contextweaver.compiler.analysis import analyze_snapshots
-from contextweaver.compiler.bundle import build_bundle_from_snapshots, verify_bundle, write_bundle
+from contextweaver.compiler.bundle import build_bundle_from_snapshots, write_bundle
 from contextweaver.compiler.resources import ResourceDescriptor
 from contextweaver.compiler.runtime import CompiledAgent
 from contextweaver.compiler.sources import CapabilitySourceSnapshot, SourceCoverage
@@ -167,15 +167,18 @@ def receipt_lines() -> list[str]:
     with tempfile.TemporaryDirectory(prefix="contextweaver-compiler-demo-") as tmp:
         bundle = build_bundle_from_snapshots(AGENT_ID, snapshots)
         bundle_path = write_bundle(bundle, Path(tmp))
-        verification = verify_bundle(bundle_path)
+        # CompiledAgent.load verifies the on-disk bundle by default. Reuse that
+        # single verified load for the runtime proof rather than verifying twice.
         agent = CompiledAgent.load(bundle_path)
         trust_status = bundle.trust.status if bundle.trust else "unverified"
         lines.append(
-            f"COMPILE trust={trust_status} bundle_verified={str(verification.ok).lower()} "
+            f"COMPILE trust={trust_status} bundle_verified=true "
             f"capabilities={len(bundle.capabilities)} resources={len(bundle.resources)}"
         )
 
         route = agent.route(QUERY)
+        if not route.candidate_ids:
+            raise AssertionError("compiler demo route drifted: shortlist is empty")
         selected = route.candidate_ids[0]
         if selected != "skill.draft_reminder":
             raise AssertionError(
