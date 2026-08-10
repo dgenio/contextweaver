@@ -5,6 +5,8 @@ name: Routing-scale smoke benchmark
 # and stores its JSON as a per-run trend artifact, so scaling regressions are
 # visible over time without blocking any PR. This never gates: PR-time quality
 # gating lives in the main CI job (benchmarks/gating.yaml + benchmark_gate.py, #491).
+# Third-party Actions are pinned to immutable commit SHAs; Dependabot maintains
+# the pins and the version comments.
 
 on:
   schedule:
@@ -26,8 +28,8 @@ jobs:
     # drift-detection purpose, the same anti-pattern deps-latest-weekly.yml
     # deliberately avoids.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
@@ -44,7 +46,7 @@ jobs:
         run: python benchmarks/routing_scale.py --sizes 100,1000,5000
 
       - name: Upload trend artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: routing-scale-${{ steps.date.outputs.today }}
           path: |
