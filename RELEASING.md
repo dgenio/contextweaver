@@ -1,56 +1,82 @@
 # Releasing contextweaver
 
-GitHub Releases, PyPI, the MCP Registry and the committed release evidence must describe the same product version.
+GitHub Releases, PyPI, the MCP Registry and committed release evidence must describe the same product version. Release workflows fail closed; never weaken an integrity gate to make publication pass.
 
-The release workflow intentionally fails closed. Do not weaken a failing integrity gate to make a release publish.
+## Normal release path
 
-## Release preparation
+### 1. Prepare a release branch
 
-Prepare the release in a normal pull request **before** creating or publishing the GitHub Release.
+Start from current `main` and create `release/vX.Y.Z`.
 
-1. Finish the intended release changes and ensure normal CI is green.
-2. Set `[project].version` in `pyproject.toml` to the release version.
-3. Update all version-bearing metadata required by the drift guards:
-   - README current/comparison/roadmap references;
-   - `server.json`;
-   - `CITATION.cff` version and release date;
-   - SECURITY/version references where required by the current policy.
-4. Finalize the CHANGELOG section for the release.
-5. Refresh the deterministic benchmark from the release candidate code:
+Add a short-lived `.release-target.json` describing the target version/date, roadmap highlight and release-specific changelog bullets. Pushing that file triggers `.github/workflows/prepare-release.yml`.
 
-   ```bash
-   make benchmark
-   python scripts/render_trend.py --snapshot X.Y.Z \
-       --from benchmarks/results/latest.json
-   make trend
-   ```
+The preparation workflow:
 
-   Review the new `benchmarks/results/history/X.Y.Z.json` instead of treating it as generated ceremony. A regression or surprising change should be explained before release.
-6. Run the explicit release-readiness guard:
+1. installs the release candidate;
+2. runs the deterministic benchmark into an isolated temporary result file;
+3. updates package/version metadata, README current-version markers, CHANGELOG and citation/registry metadata;
+4. captures `benchmarks/results/history/X.Y.Z.json` from the isolated result;
+5. regenerates `benchmarks/trend.md` and generated LLM documentation;
+6. verifies README/security/version/release-evidence drift guards;
+7. restores the canonical `benchmarks/results/latest.json` from `main` so release bookkeeping cannot overwrite the normal benchmark artifact;
+8. removes the short-lived target file and commits the complete prepared release state.
 
-   ```bash
-   python scripts/check_release_readiness.py
-   ```
+Review the resulting release snapshot. A changed benchmark number is evidence to investigate, not generated ceremony. Snapshot schema v2 records the token-reduction estimator; schema-v1 token history is intentionally marked legacy/unverified methodology after #841 found mixed estimators in the historical naive comparison.
 
-   It must confirm that the current package version has a matching benchmark-history snapshot and that `benchmarks/trend.md` is synchronized.
-7. Run the normal project validation required for the release PR and merge only when required checks are green.
+### 2. Open the release PR
 
-The `Release readiness` workflow runs on pull requests and `main` as an early guard for the same invariant.
+Open `release/vX.Y.Z → main` and let the normal repository checks run. The release PR should contain the complete, reviewable state that will become immutable:
 
-## Publish
+- package version;
+- README/version metadata;
+- `server.json` and `CITATION.cff`;
+- changelog;
+- version-specific benchmark snapshot and trend;
+- any release-process fixes intended for that version.
 
-After the release-preparation PR is merged:
+Do not create a tag or GitHub Release while this PR is red or while the release evidence is unexplained.
 
-1. Create/tag `vX.Y.Z` from the exact prepared commit.
-2. Create and publish the GitHub Release for that tag.
-3. The `Publish to PyPI and MCP Registry` workflow independently verifies:
-   - tag ↔ package version;
-   - version metadata;
-   - release benchmark snapshot + trend;
-   - test suite;
-   - built distribution metadata.
-4. Only after verification does the workflow publish to PyPI via Trusted Publishing/OIDC.
-5. The MCP Registry publish happens after PyPI because its package metadata depends on the PyPI release.
+### 3. Merge the prepared release
+
+When the release PR is green and reviewed, merge it normally.
+
+A `pyproject.toml` version change on `main` triggers `.github/workflows/create-release.yml`. That workflow:
+
+1. reruns release-readiness/version/evidence checks at the exact `main` commit;
+2. refuses to continue if `vX.Y.Z` already exists — public tags are immutable;
+3. creates the GitHub Release/tag at the validated commit;
+4. explicitly dispatches `.github/workflows/publish.yml` on that immutable tag.
+
+The explicit dispatch is intentional: GitHub suppresses ordinary workflow recursion for releases created by `GITHUB_TOKEN`, while `workflow_dispatch` is the supported audited hand-off.
+
+### 4. Trusted publish
+
+`Publish to PyPI and MCP Registry` accepts either a human `release: published` event or an explicit `workflow_dispatch` on `vX.Y.Z`. In both cases it first proves the checked-out ref is the package's immutable release tag and revalidates:
+
+- tag ↔ package version;
+- version metadata;
+- current release snapshot schema/method + trend;
+- gating test suite;
+- built distribution metadata.
+
+Only then does it publish to PyPI through Trusted Publishing/OIDC and attach provenance attestations. MCP Registry publication runs after PyPI and retries briefly while PyPI metadata propagates.
+
+## Manual preparation fallback
+
+If the preparation workflow is unavailable, reproduce the same invariants manually rather than skipping them.
+
+Generate release evidence to a temporary path so canonical `latest.json` is not overwritten:
+
+```bash
+python benchmarks/benchmark.py --output /tmp/contextweaver-release-benchmark.json
+python scripts/render_trend.py --snapshot X.Y.Z \
+    --from /tmp/contextweaver-release-benchmark.json
+python scripts/render_trend.py
+python scripts/gen_llms.py
+python scripts/check_release_readiness.py
+```
+
+Then run the normal repository validation and open a release PR. Manual tagging should be an exception; prefer the reviewed automated main→release hand-off above.
 
 ## Post-publish verification
 
@@ -62,18 +88,21 @@ python -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer
 ```
 
-Confirm that the printed version matches the GitHub Release and that the MCP Registry entry, when applicable, references the same package version.
+Confirm that the printed version matches the GitHub Release. Verify PyPI and MCP Registry outcomes independently; a registry failure must not obscure whether package publication succeeded.
 
 ## Recovery from a failed publish
 
-A GitHub Release can exist even when the release-triggered publish workflow fails. That happened for v0.18.0: the required `benchmarks/results/history/0.18.0.json` had not been committed, so the integrity gate correctly skipped PyPI and the MCP Registry.
+A GitHub Release can exist even when publishing fails. That happened for v0.18.0: its required release benchmark snapshot was missing, so the integrity gate correctly skipped PyPI and the MCP Registry.
 
 When this happens:
 
 - diagnose and fix the violated invariant;
-- do not force-move a public tag merely to make the workflow rerun;
-- do not fabricate or rename an evidence artifact to satisfy a gate;
-- prefer a small patch release when the original immutable release cannot be recovered safely;
+- do not force-move a public tag;
+- do not fabricate, copy or rename evidence merely to satisfy a gate;
+- if the published release/tag cannot be recovered safely, prepare the smallest patch release from current validated `main`;
+- rerun the full release-readiness path;
 - verify PyPI explicitly after recovery.
 
-See issue #837 for the v0.18.0 incident and regression requirements.
+During the v0.18.1 recovery, #841 also demonstrated why release evidence itself must be challenged: the old naive token-reduction ratio mixed `CharDivFourEstimator` for ContextWeaver with `cl100k_base` or a silent fallback on the baseline. The repaired snapshot schema records one estimator for both arms and treats older history as a methodology boundary rather than a continuous trend.
+
+See #837/#839 for the v0.18.0 publication incident and #841 for the evidence-integrity repair.
