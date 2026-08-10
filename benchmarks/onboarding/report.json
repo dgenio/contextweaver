@@ -1,0 +1,28 @@
+{
+  "cohorts": {
+    "design_partner": 0,
+    "persistent_integration": 0,
+    "unassisted_evaluator": 0
+  },
+  "failure_counts": {},
+  "included_runs": 0,
+  "retention_day30": {
+    "active_assisted": 0,
+    "active_independent": 0,
+    "integration_runs": 0,
+    "no_followup": 0,
+    "not_due": 0,
+    "removed": 0
+  },
+  "schema_version": 1,
+  "synthetic_included": false,
+  "unassisted": {
+    "median_seconds_to_first_success": null,
+    "real_source_runs": 0,
+    "real_source_success_rate_pct": null,
+    "runs": 0,
+    "runs_requiring_maintainer_intervention": 0,
+    "success_rate_pct": null,
+    "successful": 0
+  }
+}
