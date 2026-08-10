@@ -1,8 +1,11 @@
 ContextWeaver compiler-first proof
+SURFACE mcp+openapi+agent-skill+framework+a2a -> compile-once -> evaluate -> portable-bundle -> phase-bounded-hydration
 DISCOVER sources=5 types=a2a,agent-skill,framework,mcp,openapi capabilities=5 discovery=fixture-snapshots
-ANALYSE trust=unverified required_resources=1 warnings=0 findings=0
-COMPILE trust=verified bundle_verified=true capabilities=5 resources=1
-ROUTE selected=skill.draft_reminder shortlist=5
-HYDRATE capability=skill.draft_reminder resources=skill.reminder.instructions host_execution=retained
-DEGRADED trust=unverified blocked=skill.draft_reminder allowed=4
-PASS: heterogeneous source snapshots became one portable bundle without executing a capability.
+ANALYSE trust=unverified required_resources=1 warnings=0 findings=0 ambiguities=1
+COMPILE trust=verified bundle_version=contextweaver.compiler.bundle.v1 artifact_version=fixture-v1 bundle_id=ff347d4ee592 bundle_verified=true capabilities=5 resources=1
+EVALUATE gate=PASS fixture=compiler-demo-eval-v1 cases=1 phase=draft-reminder allowed_namespace=skill selected=skill.draft_reminder
+ROUTE selected=skill.draft_reminder shortlist=1 phase=draft-reminder
+HYDRATE capability=skill.draft_reminder resources=skill.reminder.instructions exposed_capabilities=1 host_execution=retained
+DEGRADED trust=unverified blocked=skill.draft_reminder allowed=4 remediation=restore-required-resource-digest
+REMEDIATE trust=verified blocked=0 action=restore-digest
+PASS: one evaluated portable bundle exposed only the selected phase resource; no capability was executed.
