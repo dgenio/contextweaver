@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "run_id": "synthetic-unassisted-001",
+  "participant_id": "SYNTHETIC",
+  "synthetic": true,
+  "cohort": "unassisted_evaluator",
+  "scenario_id": "maintained-fixture-first-success",
+  "contextweaver_version": "0.18.1",
+  "started_at": null,
+  "first_success": true,
+  "seconds_to_first_success": 52.0,
+  "meaningful_receipt": "analysis_finding",
+  "real_source": false,
+  "maintainer_interventions": 0,
+  "failures": [],
+  "rollback_seconds": 18.0,
+  "retention": {
+    "day7": "not_due",
+    "day30": "not_due",
+    "removed_reason": null
+  },
+  "notes": "Synthetic fixture used only to exercise validation/reporting. Never count as adoption evidence.",
+  "consent_public": true
+}
