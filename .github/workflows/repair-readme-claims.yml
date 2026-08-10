@@ -1,0 +1,76 @@
+name: One-shot README claim migration
+
+on:
+  push:
+    branches: ["release/v0.18.1"]
+    paths: [".release-readme-claims"]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: release/v0.18.1
+
+      - name: Replace legacy positioning and unqualified token claim
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("README.md")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = {
+          '''> **The MCP context gateway for tool-heavy agents.** Drop contextweaver in
+          > front of your MCP servers and the model sees a bounded `ChoiceCard` shortlist
+          > instead of every tool schema, plus an artifact-backed firewall that swaps a
+          > huge raw tool result for a compact summary. Deterministic, no model in the
+          > loop, and 43-85 % fewer prompt tokens on the committed benchmarks.
+          ''': '''> **Reproducible capability and context control for tool-using agents.**
+          > ContextWeaver can turn supported capability sources into an inspectable,
+          > versioned surface and progressively expose only bounded tools/context at
+          > runtime while the host keeps execution authority. Deterministic benchmark
+          > receipts are published with explicit methodology and limitations.
+          ''',
+          '''**Who it's for:** anyone whose agent — Claude Desktop, Cursor, VS Code, or a
+          custom loop — keeps tripping over *"too many tools"* or *"a 16 KB tool result
+          blew up my prompt."*
+          ''': '''**Who it's for:** teams whose agents span MCP, APIs, framework tools or
+          other capability sources and need to understand what changed, evaluate the
+          candidate surface before promotion, or keep runtime context bounded without
+          handing ContextWeaver execution authority. For small/static tool sets or when
+          provider-native tool search is sufficient, you may not need it.
+          ''',
+          '#### More tools ≠ better answers': '#### More tools can make routing harder',
+          'Before vs after token comparison from examples/before_after.py:':
+              'Before vs after estimated-token comparison from examples/before_after.py:',
+          '[📊 Scorecard](benchmarks/scorecard.md) · [📈 Adopter benchmark report]':
+              '[📊 Scorecard](benchmarks/scorecard.md) · [🧾 Claims & evidence](docs/claims.md) · [📈 Adopter benchmark report]',
+          }
+
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one README occurrence for {old[:50]!r}; found {count}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Refresh generated LLM documentation
+        run: python scripts/gen_llms.py
+
+      - name: Remove one-shot workflow and trigger
+        run: rm .github/workflows/repair-readme-claims.yml .release-readme-claims
+
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: align README claims with validated product thesis"
+          git push origin HEAD:release/v0.18.1
