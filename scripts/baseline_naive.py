@@ -2,8 +2,8 @@
 """Naïve-concat baseline harness (issue #215, evidence fix #841).
 
 Computes the estimated token cost and a coverage proxy for a "dump everything"
-baseline.  The reduction ratio is intentionally measured with the *same*
-estimator as the ContextWeaver context benchmark.  Mixing a tiktoken count for
+baseline. The reduction ratio is intentionally measured with the *same*
+estimator as the ContextWeaver context benchmark. Mixing a tiktoken count for
 the naïve arm with a heuristic count for the ContextWeaver arm produced an
 invalid ratio and made historical results environment-dependent (#841).
 
@@ -14,7 +14,7 @@ Two roles:
 2. The standalone CLI can annotate an existing compatible benchmark JSON.
 
 The deterministic release-history method is ``heuristic/chardiv4`` for both
-arms.  Exact tokenizer/provider counts may be reported by separate benchmarks,
+arms. Exact tokenizer/provider counts may be reported by separate benchmarks,
 but a comparison must never silently switch measurement methods.
 """
 
@@ -73,16 +73,17 @@ def _scenario_text(scenario_path: Path) -> str:
 def compute_naive_delta(scenario_path: Path, context_row: dict[str, Any]) -> dict[str, Any]:
     """Compute a same-unit naïve-vs-ContextWeaver reduction block.
 
-    ``context_row`` must identify the estimator used for ``prompt_tokens``.
-    Failing closed here prevents future benchmark code from accidentally
-    dividing counts produced by different tokenization methods.
+    New context rows may identify the estimator used for ``prompt_tokens``.
+    When they do, a mismatch fails closed. Older rows omitted that metadata;
+    the benchmark that calls this helper is known to use the same
+    ``CharDivFourEstimator`` and this function records the method explicitly in
+    its output so the ambiguity does not propagate to new evidence.
     """
     row_estimator = str(context_row.get("token_estimator", ""))
-    if row_estimator != ESTIMATOR_ID:
+    if row_estimator and row_estimator != ESTIMATOR_ID:
         raise ValueError(
             "naive baseline estimator mismatch: "
-            f"context row uses {row_estimator or '<missing>'!r}, "
-            f"baseline uses {ESTIMATOR_ID!r}"
+            f"context row uses {row_estimator!r}, baseline uses {ESTIMATOR_ID!r}"
         )
 
     catalog_blob = _render_catalog_schema(_CATALOG_PATH)
