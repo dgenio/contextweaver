@@ -1,0 +1,31 @@
+name: Release readiness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# This check exists because v0.18.0 reached GitHub Releases without the
+# version-specific deterministic benchmark snapshot required by publish.yml.
+# The publish workflow correctly failed, but by then PyPI had already diverged
+# from the public GitHub release. Run the invariant during normal PR/main CI so
+# release artifacts are complete before anyone presses "Publish release".
+jobs:
+  release-readiness:
+    name: Release artifacts ready
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify current package version is release-ready
+        run: python scripts/check_release_readiness.py
