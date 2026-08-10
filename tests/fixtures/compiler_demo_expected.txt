@@ -1,0 +1,8 @@
+ContextWeaver compiler-first proof
+DISCOVER sources=5 types=a2a,agent-skill,framework,mcp,openapi capabilities=5 discovery=fixture-snapshots
+ANALYSE trust=unverified required_resources=1 warnings=0 findings=0
+COMPILE trust=verified bundle_verified=true capabilities=5 resources=1
+ROUTE selected=skill.draft_reminder shortlist=5
+HYDRATE capability=skill.draft_reminder resources=skill.reminder.instructions host_execution=retained
+DEGRADED trust=unverified blocked=skill.draft_reminder allowed=4
+PASS: heterogeneous source snapshots became one portable bundle without executing a capability.
