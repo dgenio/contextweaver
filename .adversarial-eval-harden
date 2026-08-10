@@ -1,0 +1,1 @@
+Require explicit real-model/provider-native provenance, format the new adversarial-eval files with the repository Ruff config, and run focused tests before committing.
