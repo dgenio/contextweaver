@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dgenio/contextweaver/benchmarks/onboarding/schema.json",
+  "title": "ContextWeaver onboarding evidence run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "synthetic",
+    "cohort",
+    "scenario_id",
+    "contextweaver_version",
+    "first_success",
+    "meaningful_receipt",
+    "real_source",
+    "maintainer_interventions",
+    "failures",
+    "retention",
+    "consent_public"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "participant_id": {"type": ["string", "null"]},
+    "synthetic": {"type": "boolean"},
+    "cohort": {
+      "enum": ["design_partner", "unassisted_evaluator", "persistent_integration"]
+    },
+    "scenario_id": {"type": "string", "minLength": 1},
+    "contextweaver_version": {"type": "string", "minLength": 1},
+    "started_at": {"type": ["string", "null"]},
+    "first_success": {"type": "boolean"},
+    "seconds_to_first_success": {"type": ["number", "null"], "minimum": 0},
+    "meaningful_receipt": {
+      "enum": [
+        "source_inventory",
+        "analysis_finding",
+        "compiled_bundle",
+        "evaluation_result",
+        "candidate_diff",
+        "runtime_use",
+        "none"
+      ]
+    },
+    "real_source": {"type": "boolean"},
+    "maintainer_interventions": {"type": "integer", "minimum": 0},
+    "failures": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "package_version_install",
+          "python_dependency",
+          "source_discovery_configuration",
+          "terminology_comprehension",
+          "unsupported_integration",
+          "compiler_analysis",
+          "unclear_receipt",
+          "runtime_host_integration",
+          "docs_mismatch",
+          "other"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "rollback_seconds": {"type": ["number", "null"], "minimum": 0},
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["day7", "day30"],
+      "properties": {
+        "day7": {
+          "enum": ["active_independent", "active_assisted", "removed", "no_followup", "not_due"]
+        },
+        "day30": {
+          "enum": ["active_independent", "active_assisted", "removed", "no_followup", "not_due"]
+        },
+        "removed_reason": {"type": ["string", "null"]}
+      }
+    },
+    "notes": {"type": "string"},
+    "consent_public": {"type": "boolean"}
+  }
+}
