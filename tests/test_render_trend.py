@@ -145,6 +145,19 @@ def test_publish_workflow_requires_immutable_tag_and_current_evidence() -> None:
     assert "Release ref '$tag' does not match package version" in workflow
 
 
+def test_registry_publisher_is_pinned_and_verified_before_oidc() -> None:
+    root = Path(__file__).parent.parent
+    workflow = (root / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+    assert "MCP_PUBLISHER_VERSION: v1.7.9" in workflow
+    assert (
+        "MCP_PUBLISHER_LINUX_AMD64_SHA256: "
+        "ab128162b0616090b47cf245afe0a23f3ef08936fdce19074f5ba0a4469281ac"
+    ) in workflow
+    assert "sha256sum --check --strict" in workflow
+    assert "releases/latest" not in workflow
+    assert workflow.index("sha256sum --check --strict") < workflow.index("login github-oidc")
+
+
 def test_committed_trend_is_in_sync() -> None:
     root = Path(__file__).parent.parent
     snapshots = load_history(root / "benchmarks" / "results" / "history")
