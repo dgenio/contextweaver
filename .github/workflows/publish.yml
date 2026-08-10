@@ -1,28 +1,21 @@
 name: Publish to PyPI and MCP Registry
 
-# Release-path actions are pinned to immutable commit SHAs (issue #468). This is
-# the high-trust workflow — it holds ``id-token: write`` and
-# ``attestations: write`` — so a moving tag here is a supply-chain risk. The
-# ``# vX`` comments record the tag each SHA was resolved from; Dependabot's
-# ``github-actions`` updater (.github/dependabot.yml) keeps the SHAs current.
+# High-trust release workflow. Actions are pinned to immutable commit SHAs and
+# package publication uses OIDC Trusted Publishing. It may start from a human
+# GitHub Release or from an explicit workflow_dispatch on the immutable release
+# tag. The latter is used by create-release.yml because GitHub intentionally
+# suppresses ordinary workflow events caused by GITHUB_TOKEN-created releases.
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    # Release-integrity gate (issue #468). A release publishes straight to PyPI
-    # and the MCP Registry over OIDC, so this job is the last chance to catch a
-    # mis-tagged or untested release before it is immutable on PyPI. It proves:
-    #   1. the release tag matches the package version (no ``v0.16.0`` tag
-    #      shipping a ``0.15.0`` artifact);
-    #   2. the package builds and its metadata passes ``twine check``;
-    #   3. the gating test suite is green at the released commit.
-    # ``publish`` depends on this job, so a red gate blocks the upload.
     name: Verify release integrity
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -35,34 +28,26 @@ jobs:
           python-version: "3.12"
 
       - name: Check release tag matches package version
-        # ``GITHUB_REF_NAME`` is the tag the release was cut from (``vX.Y.Z``).
-        # The package version is the single source of truth in pyproject.toml.
+        # workflow_dispatch must be invoked with ref=vX.Y.Z. For both supported
+        # triggers GITHUB_REF_NAME is therefore the immutable release tag.
         run: |
           tag="${GITHUB_REF_NAME}"
           version="$(python scripts/check_readme_version.py --print-version)"
           if [ "$tag" != "v$version" ]; then
-            echo "::error::Release tag '$tag' does not match package version 'v$version' (pyproject.toml)." >&2
+            echo "::error::Release ref '$tag' does not match package version 'v$version'." >&2
+            echo "Dispatch this workflow on the immutable vX.Y.Z tag, never on a branch." >&2
             exit 1
           fi
-          echo "Release tag '$tag' matches package version 'v$version'."
+          echo "Release ref '$tag' matches package version 'v$version'."
 
-      - name: Verify version metadata is in sync (issue #747)
-        # server.json (MCP Registry manifest) and CITATION.cff must match the
-        # package version before publishing, so the registry and citation
-        # metadata can never lag the release (as 0.15.0/0.10.0 did).
+      - name: Verify version metadata is in sync
         run: python scripts/check_version_metadata.py
 
-      - name: Verify release benchmark snapshot
-        # Release history is prepared in the release PR. Fail before publishing
-        # when the tagged version has no deterministic snapshot or trend drifted.
-        run: |
-          version="$(python scripts/check_readme_version.py --print-version)"
-          snapshot="benchmarks/results/history/${version}.json"
-          if [ ! -f "$snapshot" ]; then
-            echo "::error::Missing release benchmark snapshot: $snapshot" >&2
-            exit 1
-          fi
-          python scripts/render_trend.py --check
+      - name: Verify release evidence is complete
+        # Validates current snapshot schema/method metadata and trend freshness,
+        # not just file existence (#837, #841).
+        run: python scripts/check_release_readiness.py
+
       - name: Install package and test/build tooling
         run: pip install -e ".[dev]" build twine
 
@@ -79,9 +64,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write       # Required for Trusted Publisher (OIDC)
+      id-token: write
       contents: read
-      attestations: write   # Required to attach build-provenance attestations (issue #690)
+      attestations: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -97,9 +82,6 @@ jobs:
         run: python -m build
 
       - name: Attest build provenance
-        # Generates a signed, verifiable provenance attestation for each built
-        # artifact (issue #690). Verifiable later with ``gh attestation verify
-        # <file> --repo dgenio/contextweaver``.
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: "dist/*"
@@ -113,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write  # Required for MCP Registry GitHub OIDC authentication
+      id-token: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -122,11 +104,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Sync server.json version from pyproject (issue #747)
-        # Generate the manifest version fields from pyproject.toml at publish
-        # time so server.json can never be published with a stale version (as
-        # 0.15.0 was against a 0.16.0 release). The committed file is also gated
-        # by check_version_metadata.py, so this is normally a no-op.
+      - name: Sync server.json version from pyproject
         run: python scripts/check_version_metadata.py --sync
 
       - name: Install mcp-publisher
