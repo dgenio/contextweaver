@@ -34,7 +34,9 @@ Open `release/vX.Y.Z → main` and let the normal repository checks run. The rel
 - version-specific benchmark snapshot and trend;
 - any release-process fixes intended for that version.
 
-Do not create a tag or GitHub Release while this PR is red or while the release evidence is unexplained.
+**Required checks must be green on the exact PR head that will be merged.** Commits created by a workflow using `GITHUB_TOKEN` do not recursively start new workflows. If automated preparation/formatting produces the final commit, a maintainer-reviewed repository commit or explicit GitHub approval/run is required so the exact prepared head receives the normal PR checks. An earlier green SHA is not sufficient evidence for a later bot-authored SHA.
+
+Do not create a tag or GitHub Release while this PR is red, while the exact-head checks have not run, or while the release evidence is unexplained.
 
 ### 3. Merge the prepared release
 
