@@ -2,13 +2,20 @@ version: 2
 
 # Automated dependency updates (issue #443).
 #
-#   * pip — keep the declared Python dependency floors and dev toolchain
-#     current. Minor/patch bumps are grouped into a single weekly PR to limit
-#     noise; majors open individually so breaking changes get their own review.
-#   * github-actions — keep workflow action references current. The high-trust
-#     release path (publish.yml) pins actions to immutable commit SHAs (#468);
-#     Dependabot bumps the SHA and its `# vX` comment together. Other workflows
-#     track major tags. See docs/security_tooling.md.
+# contextweaver is a library, not an application. Python dependency ranges in
+# pyproject.toml are compatibility contracts: minimum versions are proven by
+# the floor-deps job and must not be raised merely because a newer release
+# exists. Normal CI and the scheduled latest/pre-release job exercise current
+# resolutions without requiring an application-style lockfile.
+#
+# Version updates are deliberately low-noise: routine non-major Python updates
+# are grouped, Docker Actions move together, and a short cooldown avoids opening
+# PRs for releases that are immediately superseded. Security updates bypass the
+# cooldown and have explicit grouping rules.
+#
+# All GitHub Actions are pinned to immutable commit SHAs. Dependabot resolves
+# the corresponding upstream versions and updates those SHAs; version comments
+# in workflow files document the human-readable release line.
 
 updates:
   - package-ecosystem: pip
@@ -19,11 +26,30 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
-      python-minor-patch:
+      python-nonmajor:
+        applies-to: version-updates
+        patterns:
+          - "*"
         update-types:
           - minor
           - patch
+      python-security-nonmajor:
+        applies-to: security-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # MCP SDK v2 is a real API/protocol migration, not dependency hygiene.
+      # The current adapters import v1 APIs removed/renamed in v2. Keep the
+      # intentional <2 compatibility ceiling until the migration issue lands.
+      - dependency-name: mcp
+        update-types:
+          - version-update:semver-major
     labels:
       - dependencies
     commit-message:
@@ -37,11 +63,24 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
-      actions-all:
+      docker-actions:
+        applies-to: version-updates
+        patterns:
+          - "docker/*"
+      actions-nonmajor:
+        applies-to: version-updates
+        patterns:
+          - "*"
         update-types:
           - minor
           - patch
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
     labels:
       - dependencies
     commit-message:
