@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-08-10
+
+### Fixed
+
+- Restored the missing v0.18.0 deterministic benchmark-history snapshot that had caused the release integrity gate to skip PyPI and MCP Registry publication, and added an earlier release-readiness check so this mismatch is caught before a GitHub Release is published (#837, #839).
+- Blocked Dependabot from widening the supported MCP SDK range into the breaking 2.x line until an explicit compatibility migration is completed.
+- Fixed the naive-vs-ContextWeaver benchmark ratio so both arms use the same explicit `heuristic/chardiv4` estimated-token method; release snapshot schema v2 now records the measurement method and marks 0.16–0.18 token-reduction history as legacy/unverified methodology rather than a directly comparable trend (#841).
+
+### Changed
+
+- Hardened dependency automation and GitHub Actions pinning, removed the non-authoritative uv.lock workflow churn, and aligned dependency-update policy with the library compatibility CI model (#828).
+- Added a Python 3.15 compatibility canary and moved the latest-dependency canary to Python 3.14 while preserving a resolvable maintainer dependency surface.
+- Added deterministic release preparation/readiness tooling, isolated release benchmark generation, immutable tag/release creation, and an explicit Trusted Publishing dispatch so package publication is validated before and after the release hand-off.
+- Reframed the README around reproducible capability/context control, removed the unqualified `43–85% fewer prompt tokens` hero claim, and added a claim registry that distinguishes proven, fixture-bound, unverified, and rejected claims (#397, #758, #841).
+
+
 ## [0.18.0] - 2026-08-09
 
 ### Added

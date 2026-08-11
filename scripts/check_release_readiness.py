@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 """Fail before release when version-specific release artifacts are incomplete.
 
-The v0.18.0 GitHub Release was published while the required deterministic
-benchmark snapshot was missing. The release-triggered publish workflow caught
-that inconsistency, correctly refused to upload to PyPI, and left the canonical
-package channel two releases behind GitHub.
-
-This guard moves the same invariant earlier: normal PR/main CI can prove that
-the package version already has the release snapshot required by publish.yml and
-that benchmarks/trend.md is rendered from the committed history.
-
-The script is intentionally stdlib-only apart from importing sibling release
-helpers under scripts/.
+The v0.18.0 release incident showed that release evidence must exist before a
+GitHub Release is published.  The v0.18.1 evidence audit additionally showed
+that the current snapshot must identify its measurement method rather than
+silently inheriting legacy benchmark semantics (#841).
 """
 
 from __future__ import annotations
@@ -22,7 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from check_version_metadata import read_pyproject_version
-from render_trend import load_history, render
+from render_trend import SNAPSHOT_SCHEMA_VERSION, load_history, render
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PYPROJECT = REPO_ROOT / "pyproject.toml"
@@ -42,8 +35,7 @@ def find_release_readiness_problems(
     if not snapshot_path.exists():
         problems.append(
             f"missing release benchmark snapshot: {snapshot_path}; capture it with "
-            f"`python scripts/render_trend.py --snapshot {version} "
-            "--from benchmarks/results/latest.json`"
+            f"`python scripts/render_trend.py --snapshot {version} --from <benchmark.json>`"
         )
     else:
         try:
@@ -56,11 +48,29 @@ def find_release_readiness_problems(
                     f"release snapshot {snapshot_path.name} declares "
                     f"{snapshot.get('release')!r}, expected {version!r}"
                 )
-            if snapshot.get("schema_version") != 1:
+            if snapshot.get("schema_version") != SNAPSHOT_SCHEMA_VERSION:
                 problems.append(
                     f"release snapshot {snapshot_path.name} has unsupported "
-                    f"schema_version={snapshot.get('schema_version')!r}, expected 1"
+                    f"schema_version={snapshot.get('schema_version')!r}, "
+                    f"expected current schema {SNAPSHOT_SCHEMA_VERSION}"
                 )
+            measurement = snapshot.get("measurement")
+            if not isinstance(measurement, dict):
+                problems.append(
+                    f"release snapshot {snapshot_path.name} has no measurement metadata"
+                )
+            else:
+                method = measurement.get("token_reduction_estimator")
+                unit = measurement.get("token_reduction_unit")
+                if not isinstance(method, str) or not method:
+                    problems.append(
+                        f"release snapshot {snapshot_path.name} has no token-reduction estimator"
+                    )
+                if unit not in {"estimated_tokens", "none"}:
+                    problems.append(
+                        f"release snapshot {snapshot_path.name} has unsupported "
+                        f"token_reduction_unit={unit!r}"
+                    )
 
     expected_trend = render(load_history(history_dir))
     if not trend_path.exists():
@@ -89,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         print(
-            "Prepare the version-specific release artifacts before publishing a GitHub Release.",
+            "Prepare and review the version-specific release artifacts before publishing.",
             file=sys.stderr,
         )
         return 1
