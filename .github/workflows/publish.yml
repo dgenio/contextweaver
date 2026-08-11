@@ -38,6 +38,11 @@ jobs:
         # triggers GITHUB_REF_NAME is therefore the immutable release tag.
         run: |
           tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release ref '$tag' is not an immutable vX.Y.Z tag." >&2
+            echo "Dispatch this workflow on a vX.Y.Z tag only, never on a branch." >&2
+            exit 1
+          fi
           version="$(python scripts/check_readme_version.py --print-version)"
           if [ "$tag" != "v$version" ]; then
             echo "::error::Release ref '$tag' does not match package version 'v$version'." >&2

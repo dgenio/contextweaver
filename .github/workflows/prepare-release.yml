@@ -55,8 +55,8 @@ jobs:
             python scripts/gen_llms.py
             rm .release-repair
           else
-            echo "No release preparation trigger found." >&2
-            exit 1
+            echo "No release preparation trigger found; nothing to do."
+            exit 0
           fi
 
       - name: Restore canonical benchmark artifact and validate

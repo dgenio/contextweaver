@@ -181,7 +181,8 @@ def _run(*args: str) -> None:
 def _generate_release_artifacts(version: str) -> None:
     if not LATEST_BENCHMARK.exists():
         raise ValueError(
-            "benchmarks/results/latest.json is missing; run the benchmark before preparing a release"
+            "benchmarks/results/latest.json is missing; "
+            "run the benchmark before preparing a release"
         )
     _run(
         sys.executable,
