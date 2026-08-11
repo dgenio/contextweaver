@@ -138,8 +138,13 @@ jobs:
       - name: Publish server.json (retry while PyPI metadata propagates)
         run: |
           for attempt in 1 2 3 4 5 6; do
-            if ./mcp-publisher publish; then
+            err_msg=$(./mcp-publisher publish 2>&1) && exit_code=0 || exit_code=$?
+            if [ "$exit_code" -eq 0 ]; then
               echo "Published to the MCP Registry."
+              exit 0
+            fi
+            if echo "$err_msg" | grep -qi 'cannot publish duplicate version'; then
+              echo "Version already present in the MCP Registry; treating as success."
               exit 0
             fi
             echo "Attempt $attempt failed (PyPI metadata may still be propagating); retrying in 30s..."
