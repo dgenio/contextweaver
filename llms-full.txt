@@ -663,7 +663,6 @@ mirrors the published documents at `https://weaver-spec.dev/contracts/v0/`
 
 ### 6. Roadmap & Community
 
-Current package version: **0.18.0**.
 Current package version: **0.18.1**.
 
 Recent milestones:
@@ -677,7 +676,6 @@ Recent milestones:
 | **v0.15.0** | ✅ complete | Selection contracts, framework adapters, CI gate consolidation, routing cache, sidecar API |
 | **v0.16.0** | ✅ complete | Memory consolidation, cross-primitive identity, stable error codes, deprecation machinery, resource/prompt gateway |
 | **v0.17.0** | ✅ complete | MCP gateway platform-maturity cluster (catalog governance, observability, model assist, transport/lifecycle, interop tooling), knowledge-bundle adapters, secret-scrubbing parity, onboarding wizard |
-| **v0.18.0** | ✅ current (v0.18.0) | Compiler-first MVP (source snapshots, compiled-agent bundles, trust summaries, enrichment patches), mcp SDK safety pin, CI/CD hardening |
 | **v0.18.0** | ✅ complete | Compiler-first MVP (source snapshots, compiled-agent bundles, trust summaries, enrichment patches), mcp SDK safety pin, CI/CD hardening |
 | **v0.18.1** | ✅ current (v0.18.1) | Release publishing recovery, pre-release readiness gate, dependency/security automation hardening |
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
@@ -702,7 +700,6 @@ Recent milestones:
 
 | Approach | Tool routing | History compaction | Sensitivity firewall | Deterministic | MCP-native |
 |---|---|---|---|---|---|
-| **contextweaver** (this repo, [v0.18.0](https://pypi.org/project/contextweaver/0.18.0/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 43-85 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **contextweaver** (this repo, [v0.18.1](https://pypi.org/project/contextweaver/0.18.1/)) | ✅ Bounded DAG + beam search · per-phase `ChoiceCard`s [^cw-route] | ✅ Phase-aware budgeted compilation · 43-85 % token reduction vs naïve [^cw-bench] | ✅ Built-in (size-gated, with `ArtifactRef` drilldown) [^cw-fire] | ✅ By default — tie-break by sorted IDs [^cw-det] | ✅ Native proxy + gateway runtimes per `docs/gateway_spec.md` [^cw-mcp] |
 | **Naïve concat-everything** | ❌ No router · prompt carries every tool schema | ❌ No compaction · prompt grows with turn count | ❌ Raw outputs in the prompt | ⚠️ Only if the upstream LLM is | ⚠️ Compatible but no shaping |
 | **LangGraph memory** ([0.6.x](https://github.com/langchain-ai/langgraph/releases)) | ❌ Out of scope — LangGraph routes state, not tools | ⚠️ Optional via `ConversationSummaryMemory` (LLM-based, non-deterministic) [^lg-mem] | ❌ Not provided | ⚠️ Workflow yes; memory summarizer no | ⚠️ Possible via custom adapter, not first-class |
@@ -866,7 +863,6 @@ you have. All contributors agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 | **v0.15.0** | ✅ complete | Selection contracts, framework adapters, CI gate consolidation, routing cache, sidecar API |
 | **v0.16.0** | ✅ complete | Memory consolidation, cross-primitive identity, stable error codes, deprecation machinery, resource/prompt gateway |
 | **v0.17.0** | ✅ complete | MCP gateway platform-maturity cluster (catalog governance, observability, model assist, transport/lifecycle, interop tooling), knowledge-bundle adapters, secret-scrubbing parity, onboarding wizard |
-| **v0.18.0** | ✅ current (v0.18.0) | Compiler-first MVP (source snapshots, compiled-agent bundles, trust summaries, enrichment patches), mcp SDK safety pin, CI/CD hardening |
 | **v0.18.0** | ✅ complete | Compiler-first MVP (source snapshots, compiled-agent bundles, trust summaries, enrichment patches), mcp SDK safety pin, CI/CD hardening |
 | **v0.18.1** | ✅ current (v0.18.1) | Release publishing recovery, pre-release readiness gate, dependency/security automation hardening |
 | **Beta readiness** | 🚧 in progress | Provider-adapter render fix, community standards, adopter benchmark report, stability checklist |
