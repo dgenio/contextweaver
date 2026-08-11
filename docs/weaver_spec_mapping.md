@@ -16,12 +16,20 @@ pip install 'contextweaver[weaver-spec]'
 
 contextweaver tracks `weaver_contracts >= 0.2.0, < 1.0` (any MAJOR=0 release;
 the spec promises no breaking changes within a major version). The CI step
-`weaver-spec conformance` fetches the JSON Schemas at job time from
+`weaver-spec conformance` currently fetches the JSON Schemas at job time from
 `https://raw.githubusercontent.com/dgenio/weaver-spec/main/contracts/json/`
 (the source the gate uses) and exercises the adapter against them on every
-PR. The same documents are also published at
-`https://weaver-spec.dev/contracts/v0/` — both URLs serve the same content;
-the raw GitHub URL is the one the gate actually reads.
+PR. `weaver-spec` reserves `https://weaver-spec.dev/contracts/v0/...` as the
+canonical `$id` namespace, but the canonical host is **not yet a live schema
+endpoint**; live immutable hosting is tracked upstream in
+[`weaver-spec#213`](https://github.com/dgenio/weaver-spec/issues/213). Do not
+assume those `$id` URLs resolve until that deployment is verified.
+
+The mutable `main` fetch is also not sufficient evidence for a versioned
+compatibility claim. Pinning/gating the conformance input to an immutable
+reviewed spec version is tracked in [#469](https://github.com/dgenio/contextweaver/issues/469),
+and publication of a current implementation-generated conformance bundle is
+tracked in [#846](https://github.com/dgenio/contextweaver/issues/846).
 
 ## Name-clash note
 
@@ -218,6 +226,7 @@ locally:
 make weaver-conformance
 ```
 
-This fetches the published schemas, exercises every `to_weaver_*` / `from_weaver_*`
-pair, and validates the JSON form of `SelectableItem`, `ChoiceCard`,
-`RoutingDecision`, and `Frame` against the corresponding schema.
+This fetches the current gate inputs, exercises every `to_weaver_*` /
+`from_weaver_*` pair, and validates the JSON form of `SelectableItem`,
+`ChoiceCard`, `RoutingDecision`, and `Frame` against the corresponding schema.
+See #469 for the work to make the gating spec input immutable/version-identifiable.
