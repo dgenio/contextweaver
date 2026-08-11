@@ -94,7 +94,7 @@ def _handoff_pack_to_context_items(pack: SessionHandoffPack) -> list[ContextItem
                 id=entry.id,
                 kind=kind,
                 text=entry.text,
-                token_estimate=entry.token_estimate,
+                token_estimate=max(0, entry.token_estimate),
                 metadata={
                     "handoff_category": entry.category,
                     "handoff_source_ids": list(entry.source_ids),

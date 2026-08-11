@@ -7,10 +7,7 @@
       def from_dict(cls, data: 'dict[str, Any]') -> 'ArtifactRef'
       def to_dict(self) -> 'dict[str, Any]'
   class ArtifactStoreQuotaError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
-  class BM25Scorer() -> 'None'
-      def fit(self, documents: 'list[str]') -> 'None'
-      def score(self, query: 'str', doc_index: 'int') -> 'float'
-      def score_all(self, query: 'str') -> 'list[float]'
+  BM25Scorer: NoneType
   class BeamSearchNavigator(*, beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ...) -> 'None'
       def navigate(self, query: 'str', graph: 'ChoiceGraph', active_items: 'dict[str, SelectableItem]', scorer: 'Retriever', doc_id_to_idx: 'dict[str, int]', *, all_item_ids: 'set[str] | None' = ..., debug: 'bool' = ...) -> 'NavigationResult'
   class BudgetExceededError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
@@ -139,10 +136,7 @@
   class FirewallStats(triggered: 'bool', strategy: 'str', threshold_chars: 'int' = ..., original_chars: 'int' = ..., original_tokens: 'int' = ..., summary_chars: 'int' = ..., summary_tokens: 'int' = ..., artifact_ref: 'str | None' = ..., summarized_by_llm: 'bool' = ..., llm_provider: 'dict[str, str] | None' = ...) -> None
       def from_dict(cls, data: 'dict[str, Any]') -> 'FirewallStats'
       def to_dict(self) -> 'dict[str, Any]'
-  class FuzzyScorer() -> 'None'
-      def fit(self, documents: 'list[str]') -> 'None'
-      def score(self, query: 'str', doc_index: 'int') -> 'float'
-      def score_all(self, query: 'str') -> 'list[float]'
+  FuzzyScorer: NoneType
   class GraphBuildError(ContextWeaverError)(message: 'str', *, cycle: 'list[str] | None' = ..., edge: 'tuple[str, str] | None' = ..., missing_root: 'str | None' = ..., hint: 'str | None' = ...) -> 'None'
   class GraphManifest(manifest_version: 'int' = ..., build_hash: 'str' = ..., seed: 'int | None' = ..., engine_versions: 'dict[str, str]' = ..., timestamp: 'float' = ..., item_count: 'int' = ..., strategy: 'str' = ..., max_depth: 'int' = ..., extra: 'dict[str, Any]' = ...) -> None
       def for_build(cls, items: 'list[SelectableItem]', *, strategy: 'str' = ..., max_depth: 'int' = ..., seed: 'int | None' = ..., engine_versions: 'dict[str, str] | None' = ..., extra: 'dict[str, Any] | None' = ..., timestamp: 'float | None' = ...) -> 'GraphManifest'

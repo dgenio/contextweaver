@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from contextweaver.config import ContextPolicy
 from contextweaver.context.handoff import (
     HANDOFF_CATEGORIES,
@@ -177,6 +179,22 @@ def test_handoff_pack_to_context_items_maps_categories_without_parents() -> None
         "handoff_source_ids": ["sd"],
         "handoff_confidence": 0.9,
     }
+
+
+@pytest.mark.parametrize(
+    ("token_estimate", "expected"),
+    [(-7, 0), (0, 0), (12, 12)],
+)
+def test_handoff_pack_to_context_items_clamps_token_estimate(
+    token_estimate: int, expected: int
+) -> None:
+    pack = SessionHandoffPack(
+        decisions=[HandoffEntry("d", "decision", "decision", token_estimate=token_estimate)]
+    )
+
+    items = _handoff_pack_to_context_items(pack)
+
+    assert items[0].token_estimate == expected
 
 
 # ---------------------------------------------------------------------------

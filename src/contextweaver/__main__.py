@@ -560,7 +560,13 @@ def ingest(
     out: Annotated[Path, typer.Option(..., help="Output path for the session JSON file.")],
     events: Annotated[Path | None, typer.Option(help="Path to the JSONL session file.")] = None,
     handoff: Annotated[
-        Path | None, typer.Option(help="Path to a JSON session-handoff pack.")
+        Path | None,
+        typer.Option(
+            help=(
+                "Path to an operator-generated JSON session-handoff pack; "
+                "untrusted sources are not supported."
+            )
+        ),
     ] = None,
 ) -> None:
     """Ingest a JSONL session or handoff pack into a serialised session file."""
