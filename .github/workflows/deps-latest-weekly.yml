@@ -9,6 +9,7 @@ name: Weekly Latest / Pre-release Deps
 # pre-release) breaks contextweaver, and tells us when a deliberately retained
 # cap (e.g. the pre-1.0 ``weaver_contracts<1``) is safe to move. See pyproject.toml's
 # dependency-constraint policy comment and CONTRIBUTING.md.
+# Actions are pinned to immutable commit SHAs; Dependabot maintains the pins.
 
 on:
   schedule:
@@ -22,31 +23,29 @@ permissions:
 
 jobs:
   latest-prerelease:
-    name: Latest + pre-release deps (3.13)
+    name: Latest + pre-release deps (3.14)
     runs-on: ubuntu-latest
     # Non-gating by construction: scheduled-only and not a required status
     # check, so a failure blocks no PR or merge. The run is allowed to go red on
     # purpose — that red is the early-warning signal (it fires the usual Actions
     # failure notification); a job-level continue-on-error would only hide it.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v6
+      - name: Set up Python 3.14
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          # Newest *supported* Python (3.14 is pending — the heavy dev/adapter
-          # stack still caps at Requires-Python <3.14). Bump to 3.14 once that
-          # ecosystem ships 3.14 wheels.
-          python-version: "3.13"
+          python-version: "3.14"
+          allow-prereleases: true
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
 
       - name: Install newest deps (incl. pre-releases)
-        # ``--prerelease allow`` + ``--upgrade`` pulls the absolute newest
-        # releases, pre-releases included — the most aggressive resolution, so
-        # a green run here is strong evidence the no-upper-cap policy holds.
-        run: uv pip install --system --prerelease allow --upgrade -e ".[dev,langchain]"
+        # Keep this to the 3.14-resolvable dev surface. The heavier adapter tree
+        # remains exercised separately on 3.13 below until its upstreams publish
+        # compatible 3.14 distributions.
+        run: uv pip install --system --prerelease allow --upgrade -e ".[dev]"
 
       - name: Test (latest / pre-release versions)
         run: pytest -q
@@ -65,10 +64,10 @@ jobs:
     name: CI-dark extras (live tests, 3.13)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
 

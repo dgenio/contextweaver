@@ -26,6 +26,36 @@ in the data path between agents and tools. The **dev/test** extra pulls a large
 transitive tree (`crewai`, `mem0ai`, `fastmcp`, `langgraph`, `langchain-core`)
 and is report-only so the gate stays signal-rich.
 
+## Dependency update policy
+
+contextweaver is a **library**, so `pyproject.toml` dependency ranges are
+compatibility contracts rather than an application deployment snapshot.
+Declared `>=` floors are only raised when the floor-deps proof demonstrates
+that the old minimum is no longer truthful. They are not raised merely because
+a newer release exists.
+
+The repository intentionally does **not** commit an application-style Python
+lockfile. Normal CI resolves current stable dependencies, the floor-deps job
+proves the declared minimum direct versions, and
+`.github/workflows/deps-latest-weekly.yml` exercises the newest releases and
+pre-releases as an early-warning surface. A committed `uv.lock` would otherwise
+turn transitive development-resolution churn into PRs without representing the
+environment that users install from the published wheel.
+
+Dependabot therefore follows these rules:
+
+- routine Python minor/patch version updates are grouped into one weekly PR;
+- ordinary version updates have a short cooldown to avoid opening PRs for
+  releases that are immediately superseded; security updates are not delayed by
+  that cooldown;
+- security updates have explicit grouping rules rather than inheriting the
+  version-update grouping accidentally;
+- the intentional `mcp<2` ceiling is not widened automatically: MCP SDK v2 is a
+  source/API and protocol migration and is tracked as maintainer work;
+- Docker Actions are grouped so related runtime/toolkit majors move together;
+- every GitHub Action reference is pinned to an immutable commit SHA, with a
+  version comment for readability. Dependabot maintains those SHA pins.
+
 ## Ownership and SLA
 
 - **Owner:** the repository maintainers (see `CODEOWNERS`/`GOVERNANCE` once

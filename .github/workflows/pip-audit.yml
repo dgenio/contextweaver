@@ -12,7 +12,8 @@ name: pip-audit
 #     for triage and recorded in the job summary.
 #
 # Runs on PRs that touch dependency metadata, on pushes to main, and weekly so
-# newly published advisories surface against an otherwise-quiet tree.
+# newly published advisories surface against an otherwise-quiet tree. Actions
+# are pinned to immutable commit SHAs; Dependabot maintains the pins.
 
 on:
   push:
@@ -41,10 +42,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
@@ -65,10 +66,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 

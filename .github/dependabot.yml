@@ -2,13 +2,16 @@ version: 2
 
 # Automated dependency updates (issue #443).
 #
-#   * pip — keep the declared Python dependency floors and dev toolchain
-#     current. Minor/patch bumps are grouped into a single weekly PR to limit
-#     noise; majors open individually so breaking changes get their own review.
-#   * github-actions — keep workflow action references current. The high-trust
-#     release path (publish.yml) pins actions to immutable commit SHAs (#468);
-#     Dependabot bumps the SHA and its `# vX` comment together. Other workflows
-#     track major tags. See docs/security_tooling.md.
+# contextweaver is a published library, not an application. The Python ranges
+# in pyproject.toml are the downstream compatibility contract: floor-deps proves
+# the minimums and normal/latest CI exercises newer resolutions. Routine bot
+# PRs must therefore not rewrite those ranges merely because a release exists.
+#
+# Python Dependabot is security-only. A vulnerability fix may legitimately
+# raise a floor; ordinary compatibility evolution remains human-reviewed. The
+# deliberate MCP v2 incompatibility remains excluded until migration #827.
+# GitHub Actions are a different trust boundary: they stay SHA-pinned and
+# Dependabot continues to maintain those immutable pins.
 
 updates:
   - package-ecosystem: pip
@@ -18,16 +21,22 @@ updates:
       day: monday
       time: "06:00"
       timezone: Etc/UTC
-    open-pull-requests-limit: 5
+    # Disable routine version-update PRs. Dependabot security updates are
+    # configured separately by GitHub and are not counted against this limit.
+    open-pull-requests-limit: 0
     groups:
-      python-minor-patch:
-        update-types:
-          - minor
-          - patch
+      python-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: mcp
+        versions:
+          - ">=2,<3"
     labels:
       - dependencies
     commit-message:
-      prefix: "chore(deps)"
+      prefix: "fix(deps)"
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -37,11 +46,24 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
-      actions-all:
+      docker-actions:
+        applies-to: version-updates
+        patterns:
+          - "docker/*"
+      actions-nonmajor:
+        applies-to: version-updates
+        patterns:
+          - "*"
         update-types:
           - minor
           - patch
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
     labels:
       - dependencies
     commit-message:
