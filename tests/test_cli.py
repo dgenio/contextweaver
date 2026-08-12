@@ -74,6 +74,16 @@ def test_start_help_lists_profiles() -> None:
         assert profile in result.stdout
 
 
+def test_ingest_help_describes_handoff_trust_boundary() -> None:
+    result = CliRunner().invoke(app, ["ingest", "--help"])
+
+    assert result.exit_code == 0
+    help_text = " ".join(result.stdout.split())
+    assert "operator-generated" in help_text
+    assert "untrusted sources are not" in help_text
+    assert "supported." in help_text
+
+
 @pytest.mark.parametrize(
     ("profile", "title", "commands"),
     [
