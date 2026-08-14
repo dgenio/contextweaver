@@ -1,0 +1,32 @@
+name: PR853 regenerate llms artifact
+
+# Temporary, branch-scoped helper for PR #853. The authoring API can replace
+# repository files but cannot safely apply a hunk to the large generated
+# llms-full.txt file. Generate the canonical file on a trusted GitHub runner and
+# expose it as an artifact; this workflow has read-only repository permission and
+# will be removed after the generated artifact is committed.
+
+on:
+  push:
+    branches:
+      - refactor/invariants-module-size-752-753
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Regenerate canonical LLM documentation bundles
+        run: python scripts/gen_llms.py
+
+      - name: Upload regenerated llms-full.txt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr853-llms-full
+          path: llms-full.txt
+          if-no-files-found: error
+          retention-days: 1
