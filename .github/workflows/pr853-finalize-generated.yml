@@ -34,6 +34,13 @@ jobs:
               "json_io_row": 0,
               "manager_mixins": 0,
               "ingest_row": 0,
+              "okf_row": 0,
+              "primitive_row": 0,
+              "zep_row": 0,
+              "module_cmd": 0,
+              "module_rule": 0,
+              "module_rule_cont": 0,
+              "mixin_rule": 0,
           }
 
           for line in lines:
@@ -72,14 +79,51 @@ jobs:
                       "Tool-result ingestion helpers (extracted from `manager.py` to honor the <=300 line guideline).",
                       "Tool-result ingestion helpers kept separate from the public manager façade to isolate ingestion concerns.",
                   )
+              if line.startswith("| `adapters/_okf_io.py` / `_okf_materialize.py` / `_okf_coerce.py` |"):
+                  seen["okf_row"] += 1
+                  line = line.replace(
+                      "split out to keep `_okf_io.py` within the ≤300-line ceiling",
+                      "split out to isolate frontmatter coercion from parsing and materialisation",
+                  )
+              if line.startswith("| `adapters/_primitive_index.py` |"):
+                  seen["primitive_row"] += 1
+                  line = line.replace(
+                      "(keeps it ≤300 lines)",
+                      "(isolates catalog/graph/router/browse mechanics from adapter wrappers)",
+                  )
+              if line.startswith("| `extras/memory/_zep_common.py` |"):
+                  seen["zep_row"] += 1
+                  line = line.replace(
+                      "(keeps it ≤300 lines)",
+                      "(isolates shared Zep scope, scan, coercion, and write mechanics)",
+                  )
+              if line.startswith("make module-size-check #"):
+                  seen["module_cmd"] += 1
+                  line = "make module-size-check # enforce the 500-line ordinary-module ceiling and shrink-only frozen baseline (gating, #456)"
+              if line.startswith("- **≤ 300 lines per module**"):
+                  seen["module_rule"] += 1
+                  line = (
+                      "- **≤ 500 lines per ordinary module** — explicit exemptions and pre-existing oversized modules "
+                      "are governed by the checked-in shrink-only baseline; the limit is a maintainability signal, not a split target."
+                  )
+              if line.strip().startswith("non-exempt modules must stay ≤300 lines"):
+                  seen["module_rule_cont"] += 1
+                  continue
+              if line.startswith("4. **`ContextManager` mixin composition**"):
+                  seen["mixin_rule"] += 1
+                  line = (
+                      "4. **`ContextManager` public surface** — preserve the current public methods and behavior. "
+                      "The flat mixin composition is private implementation detail and may be refactored when the public API, "
+                      "behavior, and enforcement tests remain intact; do not preserve mixins merely to satisfy a line-count target."
+                  )
               out.append(line)
 
           expected_once = {k: v for k, v in seen.items() if v != 1}
           if expected_once:
-              raise SystemExit(f"expected exactly one canonical row for each edit, got: {expected_once}")
+              raise SystemExit(f"expected exactly one canonical row/rule for each edit, got: {expected_once}")
 
           text = "\n".join(out) + "\n"
-          stale_tokens = ("≤300", "<=300", "300-line", "300 line")
+          stale_tokens = ("≤300", "<=300", "≤ 300", "<= 300", "300-line", "300 line")
           stale_lines = [line for line in text.splitlines() if any(tok in line for tok in stale_tokens)]
           if stale_lines:
               raise SystemExit("stale 300-line guidance remains in AGENTS.md:\n" + "\n".join(stale_lines))
@@ -96,7 +140,7 @@ jobs:
         run: |
           git diff --check
           test -s llms-full.txt
-          ! grep -Eq '≤300|<=300|300-line|300 line' AGENTS.md
+          ! grep -Eq '≤300|<=300|≤ 300|<= 300|300-line|300 line' AGENTS.md
           ! grep -q '_scoring_config.py' AGENTS.md
           ! grep -q '_consolidation_helpers.py' AGENTS.md
 
