@@ -4,10 +4,12 @@
 > module map, and architectural guidance. This file contains only Claude-specific
 > operating behavior. Do not use this file as a standalone repo handbook.
 
-## Hard Rules (auto-reject)
+## Hard Rules
 
-1. **No `print()` in library code.** Use hooks or logging. `__main__.py` is exempt.
-2. **No business logic in `__init__.py`.** Only re-exports.
+Do not duplicate a second hard-rule list here. Read the canonical classifications
+and enforcement status in `AGENTS.md` and `docs/agent-context/invariants.md`.
+If this file and the canonical files disagree, the canonical files win and this
+projection must be corrected.
 
 ## Explore Before Acting
 
@@ -22,40 +24,54 @@
 
 ## Implement Safely
 
-- Preserve invariants and architectural intent. Invariants take priority over
-  cleanup, simplification, or local refactors.
+- Preserve mechanically enforced invariants and documented review-policy
+  contracts. Do not claim a prose-only rule is mechanically enforced.
 - Do not invent conventions. If a rule is not in `AGENTS.md` or
   `docs/agent-context/`, it does not exist.
-- Use authoritative commands from `docs/agent-context/workflows.md`. Do not guess
-  alternative commands or skip `make ci` targets.
-- Check `AGENTS.md` "Things That Must Not Be Simplified" before proposing
-  consolidation of protocols, serialization, or pipeline stages.
-- Follow path conventions in `AGENTS.md` — especially the async/sync boundary
-  between `context/` and `routing/`.
+- Use authoritative commands from `docs/agent-context/workflows.md` and the
+  `Makefile`; do not guess alternative targets.
+- Before consolidating protocols, serialization, pipeline stages, or other
+  architectural seams, check `docs/agent-context/invariants.md`.
+- Respect layer direction: adapter-specific integration code belongs at the
+  boundary; core code must not import `contextweaver.adapters` to hide a cycle.
+- Treat `ContextManager`'s public behavior/API as the contract. Its private
+  mixin composition is an implementation detail, not an invariant.
 
 ## Validate Before Completing
 
-- Run `make ci` as the validation gate — it runs 6 targets (fmt, lint, type,
-  test, example, demo). `make test` alone is not sufficient.
+- Run `make ci` as the repository validation gate. **Do not hard-code a target
+  count here**; the Makefile is the ground truth and the gate evolves.
 - Check whether your change triggers a doc update. PRs that change the pipeline,
   public API, module map, conventions, or workflows must update `AGENTS.md`
   or `docs/agent-context/`.
 - Verify scoped impact: if you touched sensitivity, store protocols, pipeline
-  stages, or `__init__.py` files, check the corresponding invariants in
-  `docs/agent-context/invariants.md`.
+  stages, layer boundaries, or public API, check the corresponding invariant
+  and its stated enforcement mechanism.
+- If a hard invariant lacks the test/gate claimed by its docs, fix the docs or
+  add the gate rather than treating prose as proof.
+
+## Async/sync guidance
+
+The context build/selection core is synchronous computation. Public/runtime
+integration may provide sync/async entry points and store bridges where I/O
+requires them; routing remains synchronous pure computation. Do not make new
+core context logic async merely to satisfy an obsolete "async-first" slogan.
+Follow the actual contracts and tests in the touched subsystem.
 
 ## Handle Contradictions
 
-- If canonical docs disagree with each other: `docs/architecture.md` is
-  authoritative for architecture; `AGENTS.md` is authoritative for agent
-  guidance; `Makefile` is ground truth for commands; source code is ground
-  truth for implementation.
-- If Claude-specific rules contradict canonical docs, flag the contradiction
-  explicitly. Do not silently pick one side.
-- If you find stale or conflicting guidance, surface it to the user rather
-  than working around it.
-- When uncertain, default to preserving existing behavior and flagging the
-  uncertainty.
+- `AGENTS.md` is authoritative for shared agent guidance;
+  `docs/agent-context/invariants.md` is authoritative for invariant status;
+  `Makefile` is ground truth for commands; source plus tests are ground truth
+  for shipped implementation behavior.
+- `docs/architecture.md` and `docs/agent-context/architecture.md` provide design
+  explanation, but neither silently overrides a newer explicit invariant or the
+  shipped behavior.
+- If Claude-specific rules contradict canonical docs, fix/flag the projection;
+  do not silently pick the easier instruction.
+- If canonical docs contradict shipped code, surface and reconcile the mismatch
+  instead of training future agents to copy whichever side they happened to read.
+- When uncertain, preserve existing behavior and make the uncertainty explicit.
 
 ## Lessons Learned and Promotion
 
@@ -106,7 +122,7 @@ Check `.claude/rules/` for path-triggered rules. Currently:
 |---|---|
 | Shared rules, conventions, module map | `AGENTS.md` |
 | Architecture and tradeoffs | `docs/agent-context/architecture.md` |
-| Invariants and forbidden shortcuts | `docs/agent-context/invariants.md` |
+| Invariants and enforcement status | `docs/agent-context/invariants.md` |
 | Workflows and definition of done | `docs/agent-context/workflows.md` |
 | Lessons learned | `docs/agent-context/lessons-learned.md` |
 | Review checklist | `docs/agent-context/review-checklist.md` |

@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from contextweaver._scoring_config import ScoringConfig
 from contextweaver.exceptions import ConfigError
 from contextweaver.types import ItemKind, Phase, Sensitivity
 
@@ -20,6 +19,98 @@ SENSITIVITY_ACTIONS: tuple[str, ...] = ("drop", "redact")
 
 #: Valid values for :attr:`ContextPolicy.overflow_action` (issue #510).
 OVERFLOW_ACTIONS: tuple[str, ...] = ("drop", "warn", "raise")
+
+
+# ---------------------------------------------------------------------------
+# Scoring
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ScoringConfig:
+    """Weights used by the candidate scorer.
+
+    All weights should sum to ≤ 1.0; the remainder is unweighted base score.
+
+    Attributes:
+        kind_priority: Optional override for the built-in item-kind priority
+            table (issue #487). ``None`` (default) keeps the built-ins in
+            :mod:`contextweaver.context.scoring`; supplied values must be in
+            ``[0, 1]``. Unlisted kinds fall back to the built-in default.
+        phase_overrides: Optional per-:class:`~contextweaver.types.Phase`
+            weight overrides (issue #487). A phase present here is scored with
+            its own ``ScoringConfig`` (resolution order: phase override →
+            this config → built-ins); absent phases use this config unchanged.
+            ``dedup_threshold`` is always taken from the base config, never the
+            per-phase override. Resolution is one level deep, so a per-phase
+            override must not itself define ``phase_overrides``.
+    """
+
+    recency_weight: float = 0.3
+    tag_match_weight: float = 0.25
+    kind_priority_weight: float = 0.35
+    token_cost_penalty: float = 0.1
+    dedup_threshold: float = 0.85
+    kind_priority: dict[ItemKind, float] | None = None
+    phase_overrides: dict[Phase, ScoringConfig] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate priority values and reject nested phase overrides."""
+        for kind, value in (self.kind_priority or {}).items():
+            if not 0.0 <= value <= 1.0:
+                raise ConfigError(
+                    f"ScoringConfig.kind_priority[{kind.value!r}] must be in [0, 1], got {value!r}"
+                )
+        for phase, cfg in (self.phase_overrides or {}).items():
+            if cfg.phase_overrides is not None:
+                raise ConfigError(
+                    f"ScoringConfig.phase_overrides[{phase.value!r}] must not itself define "
+                    "phase_overrides; nested per-phase overrides are not resolved"
+                )
+
+    def resolved_for_phase(self, phase: Phase) -> ScoringConfig:
+        """Return the effective scoring config for *phase* (issue #487)."""
+        if self.phase_overrides is not None and phase in self.phase_overrides:
+            return self.phase_overrides[phase]
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a JSON-compatible dict."""
+        out: dict[str, Any] = {
+            "recency_weight": self.recency_weight,
+            "tag_match_weight": self.tag_match_weight,
+            "kind_priority_weight": self.kind_priority_weight,
+            "token_cost_penalty": self.token_cost_penalty,
+            "dedup_threshold": self.dedup_threshold,
+        }
+        if self.kind_priority is not None:
+            out["kind_priority"] = {k.value: v for k, v in self.kind_priority.items()}
+        if self.phase_overrides is not None:
+            out["phase_overrides"] = {
+                p.value: cfg.to_dict() for p, cfg in self.phase_overrides.items()
+            }
+        return out
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScoringConfig:
+        """Deserialise from a JSON-compatible dict."""
+        _d = cls()
+        kind_priority_raw = data.get("kind_priority")
+        phase_overrides_raw = data.get("phase_overrides")
+        return cls(
+            recency_weight=float(data.get("recency_weight", _d.recency_weight)),
+            tag_match_weight=float(data.get("tag_match_weight", _d.tag_match_weight)),
+            kind_priority_weight=float(data.get("kind_priority_weight", _d.kind_priority_weight)),
+            token_cost_penalty=float(data.get("token_cost_penalty", _d.token_cost_penalty)),
+            dedup_threshold=float(data.get("dedup_threshold", _d.dedup_threshold)),
+            kind_priority={ItemKind(k): float(v) for k, v in kind_priority_raw.items()}
+            if kind_priority_raw is not None
+            else None,
+            phase_overrides={Phase(p): cls.from_dict(cfg) for p, cfg in phase_overrides_raw.items()}
+            if phase_overrides_raw is not None
+            else None,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Budget
@@ -70,14 +161,7 @@ class ContextBudget:
         )
 
     def with_phase(self, phase: Phase, tokens: int) -> ContextBudget:
-        """Return a copy with *phase*'s budget set to *tokens*.
-
-        Only the active phase is overridden; the other phases keep their
-        current values.  This is the ergonomic helper used by
-        :meth:`~contextweaver.context.manager.ContextManager.build` /
-        :meth:`~contextweaver.context.manager.ContextManager.build_sync`
-        when a per-call *budget_tokens* argument is supplied.
-        """
+        """Return a copy with *phase*'s budget set to *tokens*."""
         return ContextBudget(
             route=tokens if phase == Phase.route else self.route,
             call=tokens if phase == Phase.call else self.call,
@@ -132,24 +216,17 @@ class ContextPolicy:
         sensitivity_action: ``"drop"`` (default) removes items at or above
             the floor; ``"redact"`` replaces their text via redaction hooks.
         redaction_hooks: Names of redaction hook implementations to apply,
-            in order.  Resolved at runtime by the context manager.
+            in order. Resolved at runtime by the context manager.
         allow_redacted_drilldown: When ``False`` (default, closed) a
             :meth:`~contextweaver.context.manager.ContextManager.drilldown` whose
             source item meets the sensitivity floor (or was already redacted)
-            raises :class:`~contextweaver.exceptions.PolicyViolationError`,
-            so ``redact``/``drop`` cannot be bypassed by re-fetching the raw
-            artifact bytes (issue #451).  Set ``True`` only for deployments that
-            intentionally rely on drilldown to recover filtered content.
+            raises :class:`~contextweaver.exceptions.PolicyViolationError`.
         overflow_action: What to do when budget pressure drops candidates
-            (issue #510).  ``"drop"`` (default) keeps today's silent
-            drop-with-stats behavior; ``"warn"`` logs the dropped item IDs and
-            reasons once per build; ``"raise"`` raises
-            :class:`~contextweaver.exceptions.BudgetOverflowError` with the
-            would-be :class:`~contextweaver.envelope.BuildStats` attached.
+            (issue #510). ``"drop"`` (default) keeps drop-with-stats behavior;
+            ``"warn"`` logs dropped item IDs/reasons; ``"raise"`` raises
+            :class:`~contextweaver.exceptions.BudgetOverflowError`.
         overflow_raise_kinds: Optional filter scoping ``"warn"``/``"raise"`` to
-            budget drops of these :class:`~contextweaver.types.ItemKind`\\s
-            (e.g. ``[ItemKind.policy]``).  ``None`` (default) applies the action
-            to any budget drop.
+            budget drops of these :class:`~contextweaver.types.ItemKind` values.
     """
 
     allowed_kinds_per_phase: dict[Phase, list[ItemKind]] = field(
@@ -169,17 +246,7 @@ class ContextPolicy:
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Validate ``sensitivity_action`` / ``overflow_action`` at construction.
-
-        Validating here (issues #463, #510) turns a config typo into an
-        immediate, well-classified error instead of one that surfaces only at
-        the first build's sensitivity or selection stage.
-
-        Raises:
-            ConfigError: If ``sensitivity_action`` is not one of
-                :data:`SENSITIVITY_ACTIONS` or ``overflow_action`` is not one
-                of :data:`OVERFLOW_ACTIONS`.
-        """
+        """Validate ``sensitivity_action`` / ``overflow_action`` at construction."""
         if self.sensitivity_action not in SENSITIVITY_ACTIONS:
             raise ConfigError(
                 f"ContextPolicy.sensitivity_action must be one of {SENSITIVITY_ACTIONS}, "
@@ -233,8 +300,6 @@ class ContextPolicy:
             sensitivity_floor=Sensitivity(data["sensitivity_floor"])
             if "sensitivity_floor" in data
             else _d.sensitivity_floor,
-            # Cast for the type checker; ``__post_init__`` validates the value
-            # at runtime and raises ConfigError on anything outside the literals.
             sensitivity_action=cast(
                 "Literal['drop', 'redact']",
                 data.get("sensitivity_action", _d.sensitivity_action),

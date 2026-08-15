@@ -1,8 +1,8 @@
 """MCP (Model Context Protocol) adapter for contextweaver.
 
 Converts MCP tool definitions into :class:`~contextweaver.types.SelectableItem`
-objects and wraps MCP tool call results as
-:class:`~contextweaver.envelope.ResultEnvelope` instances.
+objects and exposes the shared MCP-result →
+:class:`~contextweaver.envelope.ResultEnvelope` transform.
 
 Also provides :func:`load_mcp_session_jsonl` for replaying MCP sessions from
 JSONL files into contextweaver :class:`~contextweaver.types.ContextItem` lists.
@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from contextweaver.envelope import ResultEnvelope
+from contextweaver._mcp_result import mcp_result_to_envelope
 from contextweaver.exceptions import CatalogError
 from contextweaver.routing.tool_id import canonical_tool_id
-from contextweaver.types import ArtifactRef, ContextItem, ItemKind, SelectableItem
+from contextweaver.types import ContextItem, ItemKind, SelectableItem
 
 logger = logging.getLogger("contextweaver.adapters")
 
@@ -81,8 +81,6 @@ def _derive_tool_id_name(upstream_name: str) -> str:
         prefix, _, rest = upstream_name.partition("/")
         if prefix and rest:
             return rest
-    # Underscore-≥3-segments and the ``mcp`` fallback both preserve the
-    # full upstream name.
     return upstream_name
 
 
@@ -102,21 +100,18 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
         MCP annotations (``readOnlyHint``, ``destructiveHint``, ``costHint``)
         are **server-declared hints**, not verified security properties. Do not
         make access-control or safety-critical decisions based solely on these
-        values. The MCP specification explicitly states that clients should not
-        make security-critical decisions based on annotations. Use a separate
-        capability- or policy-based authorization mechanism rather than relying
-        on these hints (see issue #20 for the planned authorization mechanism).
+        values. Use a separate capability- or policy-based authorization
+        mechanism rather than relying on these hints.
 
     Args:
         tool_def: Raw MCP tool definition as returned by ``tools/list``.
 
     Returns:
-        A :class:`SelectableItem` with ``kind="tool"`` and a namespace
-        inferred from the tool name (see :func:`infer_namespace`).
+        A :class:`SelectableItem` with ``kind="tool"`` and an inferred
+        namespace.
 
     Raises:
-        CatalogError: If required fields (``name``, ``description``) are
-            missing from the definition.
+        CatalogError: If required fields are missing.
     """
     name = tool_def.get("name")
     description = tool_def.get("description")
@@ -135,14 +130,8 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
         dict(output_schema_raw) if output_schema_raw is not None else None
     )
 
-    # SECURITY NOTE: The annotation fields below (readOnlyHint, destructiveHint,
-    # costHint) are server-declared hints only.  They are mapped to informational
-    # routing fields (tags, side_effects, cost_hint) for UX purposes.  Do NOT
-    # use these values for access-control or safety-critical decisions — a
-    # malicious or misconfigured server can declare any hint value.  See the MCP
-    # specification: https://modelcontextprotocol.io/legacy/concepts/tools
-    #
-    # Derive tags from annotation hints
+    # MCP annotations are server-declared hints only. They are useful routing
+    # metadata but are not authorization evidence.
     tags: list[str] = ["mcp"]
     if annotations.get("readOnlyHint", False):
         tags.append("read-only")
@@ -152,8 +141,6 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     side_effects = not annotations.get("readOnlyHint", False)
     cost_hint = float(annotations.get("costHint", 0.0))
 
-    # Canonical tool_id per docs/gateway_spec.md §1.  The legacy
-    # ``mcp:{name}`` form is retired (§1.7 — no deprecation period).
     upstream_name = str(name)
     namespace = infer_namespace(upstream_name)
     derived_name = _derive_tool_id_name(upstream_name)
@@ -186,190 +173,6 @@ def mcp_tool_to_selectable(tool_def: dict[str, Any]) -> SelectableItem:
     )
 
 
-def _decode_binary_part(
-    part: dict[str, Any],
-    tool_name: str,
-    index: int,
-    default_mime: str,
-    kind: str,
-) -> tuple[ArtifactRef, tuple[bytes, str, str]]:
-    """Decode a base64-encoded content part (image, audio, etc.)."""
-    import base64 as _b64
-
-    mime = part.get("mimeType", default_mime)
-    data_str = part.get("data") or ""
-    handle = f"mcp:{tool_name}:{kind}:{index}"
-    label = f"{kind} from {tool_name}"
-    try:
-        raw = _b64.b64decode(data_str, validate=True)
-    except Exception:  # noqa: BLE001
-        raw = data_str if isinstance(data_str, bytes) else str(data_str).encode("utf-8")
-    ref = ArtifactRef(
-        handle=handle,
-        media_type=mime,
-        size_bytes=len(raw),
-        label=label,
-    )
-    return ref, (raw, mime, label)
-
-
-def mcp_result_to_envelope(
-    result: dict[str, Any],
-    tool_name: str,
-) -> tuple[ResultEnvelope, dict[str, tuple[bytes, str, str]], str]:
-    """Convert an MCP tool call result to a :class:`ResultEnvelope`.
-
-    The MCP result dict is expected to have:
-
-    - ``content`` — a list of content parts, each with ``type`` and
-      ``text`` (or ``data`` / ``resource``).  Supported content types:
-      ``text``, ``image``, ``resource``, ``resource_link``, ``audio``.
-    - ``structuredContent`` (optional) — a JSON value with typed tool
-      output; stored as a structured artifact.  Only dicts get fact extraction.
-    - ``isError`` (optional bool) — if ``True``, status becomes ``"error"``.
-
-    Each content part may carry per-part ``annotations`` with ``audience``
-    and ``priority`` fields.  These are collected into the envelope's
-    ``provenance["content_annotations"]`` list.
-
-    Returns the envelope, a dict of binary data extracted from image,
-    audio, and resource content parts, and the full (untruncated) text.
-    Use :meth:`ContextManager.ingest_mcp_result` for the full happy path
-    that persists artifacts automatically.
-
-    Args:
-        result: Raw MCP tool result dict.
-        tool_name: The name of the tool that produced the result.
-
-    Returns:
-        A ``(ResultEnvelope, binaries, full_text)`` tuple where *binaries*
-        maps ``handle -> (raw_bytes, media_type, label)`` and *full_text*
-        is the complete untruncated text content.
-    """
-    import json as _json
-
-    is_error = bool(result.get("isError", False))
-    content_parts: list[dict[str, Any]] = result.get("content") or []
-    # MCP spec allows any JSON value; only dicts get fact extraction.
-    structured_content: Any = result.get("structuredContent")
-
-    text_parts: list[str] = []
-    artifacts: list[ArtifactRef] = []
-    binaries: dict[str, tuple[bytes, str, str]] = {}
-    content_annotations: list[dict[str, Any]] = []
-
-    for i, part in enumerate(content_parts):
-        part_type = part.get("type", "text")
-
-        # Collect per-part annotations (audience / priority)
-        part_annotations = part.get("annotations")
-        if isinstance(part_annotations, dict) and part_annotations:
-            content_annotations.append({"part_index": i, **part_annotations})
-
-        if part_type == "text":
-            text_parts.append(part.get("text", ""))
-        elif part_type == "image":
-            ref, blob = _decode_binary_part(part, tool_name, i, "image/png", "image")
-            artifacts.append(ref)
-            binaries[ref.handle] = blob
-        elif part_type == "audio":
-            ref, blob = _decode_binary_part(part, tool_name, i, "audio/wav", "audio")
-            artifacts.append(ref)
-            binaries[ref.handle] = blob
-        elif part_type == "resource":
-            resource: dict[str, Any] = part.get("resource", {})
-            mime = resource.get("mimeType", "application/octet-stream")
-            uri = resource.get("uri", "")
-            text_content = resource.get("text", "")
-            if text_content:
-                text_parts.append(str(text_content))
-            handle = f"mcp:{tool_name}:resource:{i}"
-            raw = str(text_content).encode("utf-8")
-            label = uri or f"resource from {tool_name}"
-            artifacts.append(
-                ArtifactRef(
-                    handle=handle,
-                    media_type=mime,
-                    size_bytes=len(raw),
-                    label=label,
-                )
-            )
-            binaries[handle] = (raw, mime, label)
-        elif part_type == "resource_link":
-            uri = part.get("uri", "")
-            mime = part.get("mimeType", "application/octet-stream")
-            name = part.get("name", "")
-            handle = f"mcp:{tool_name}:resource_link:{i}"
-            label = name or uri or f"resource link from {tool_name}"
-            uri_bytes = uri.encode("utf-8")
-            artifacts.append(
-                ArtifactRef(
-                    handle=handle,
-                    media_type=mime,
-                    size_bytes=len(uri_bytes),
-                    label=label,
-                )
-            )
-            # No dereferenced payload — resource_link is a URI reference only.
-            # Store the URI bytes so callers can resolve the URI themselves.
-            # Use text/uri-list (RFC 2483) since the payload is a URI, not the
-            # linked resource; the resource's declared MIME stays in ArtifactRef.
-            binaries[handle] = (uri_bytes, "text/uri-list", label)
-
-    # Handle structuredContent (top-level JSON output per MCP spec)
-    if structured_content is not None:
-        sc_handle = f"mcp:{tool_name}:structured_content"
-        sc_bytes = _json.dumps(structured_content, sort_keys=True).encode("utf-8")
-        artifacts.append(
-            ArtifactRef(
-                handle=sc_handle,
-                media_type="application/json",
-                size_bytes=len(sc_bytes),
-                label=f"structured content from {tool_name}",
-            )
-        )
-        binaries[sc_handle] = (sc_bytes, "application/json", f"structured content from {tool_name}")
-        # Extract facts from top-level keys when structured_content is a mapping.
-        if isinstance(structured_content, dict):
-            for key, value in structured_content.items():
-                rendered = str(value)
-                if len(rendered) < 200:
-                    facts_line = f"{key}: {rendered}"
-                    text_parts.append(facts_line)
-
-    full_text = "\n".join(text_parts) if text_parts else "(no content)"
-
-    status: Literal["ok", "partial", "error"] = "error" if is_error else "ok"
-
-    # Simple fact extraction from key-value lines
-    facts: list[str] = []
-    for part_text in text_parts:
-        for line in part_text.splitlines():
-            stripped = line.strip()
-            if ":" in stripped and len(stripped) < 200:
-                facts.append(stripped)
-
-    provenance: dict[str, Any] = {"tool": tool_name, "protocol": "mcp"}
-    if content_annotations:
-        provenance["content_annotations"] = content_annotations
-
-    envelope = ResultEnvelope(
-        status=status,
-        summary=full_text[:500] if len(full_text) > 500 else full_text,
-        facts=facts[:20],
-        artifacts=artifacts,
-        provenance=provenance,
-    )
-    logger.debug(
-        "mcp_result_to_envelope: tool=%s, status=%s, artifacts=%d, facts=%d",
-        tool_name,
-        status,
-        len(artifacts),
-        len(envelope.facts),
-    )
-    return envelope, binaries, full_text
-
-
 def load_mcp_session_jsonl(path: str | Path) -> list[ContextItem]:
     """Load an MCP session from a JSONL file into a list of ContextItems.
 
@@ -399,3 +202,11 @@ def load_mcp_session_jsonl(path: str | Path) -> list[ContextItem]:
         id_prefix="mcp",
         label="MCP",
     )
+
+
+__all__ = [
+    "infer_namespace",
+    "load_mcp_session_jsonl",
+    "mcp_result_to_envelope",
+    "mcp_tool_to_selectable",
+]
