@@ -22,6 +22,8 @@ def _imported_modules(path: Path) -> list[str]:
     return modules
 
 
+# This is a mechanical architecture gate, not documentation-only guidance:
+# context is a core layer and must stay independent of concrete adapter code.
 def test_context_layer_does_not_import_adapters() -> None:
     """Core context modules must not depend on adapter implementations."""
     package_root = Path(contextweaver.__file__).resolve().parent
