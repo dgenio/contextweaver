@@ -7,7 +7,10 @@
       def from_dict(cls, data: 'dict[str, Any]') -> 'ArtifactRef'
       def to_dict(self) -> 'dict[str, Any]'
   class ArtifactStoreQuotaError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
-  BM25Scorer: NoneType
+  class BM25Scorer() -> 'None'
+      def fit(self, documents: 'list[str]') -> 'None'
+      def score(self, query: 'str', doc_index: 'int') -> 'float'
+      def score_all(self, query: 'str') -> 'list[float]'
   class BeamSearchNavigator(*, beam_width: 'int' = ..., max_depth: 'int' = ..., top_k: 'int' = ..., confidence_gap: 'float' = ...) -> 'None'
       def navigate(self, query: 'str', graph: 'ChoiceGraph', active_items: 'dict[str, SelectableItem]', scorer: 'Retriever', doc_id_to_idx: 'dict[str, int]', *, all_item_ids: 'set[str] | None' = ..., debug: 'bool' = ...) -> 'NavigationResult'
   class BudgetExceededError(ContextWeaverError)(*args: 'object', hint: 'str | None' = ...) -> 'None'
