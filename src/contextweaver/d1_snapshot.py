@@ -150,7 +150,8 @@ def load_snapshot(path: Path) -> dict[str, Any]:
     problems = _validate_snapshot(raw)
     if problems:
         raise CatalogError("invalid capability snapshot: " + "; ".join(problems))
-    assert isinstance(raw, dict)
+    if not isinstance(raw, dict):
+        raise CatalogError("invalid capability snapshot: snapshot must be a JSON object")
     return raw
 
 
