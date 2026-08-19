@@ -158,12 +158,8 @@ def test_diff_check_exit_code_is_opt_in(tmp_path: Path) -> None:
     after_snapshot = tmp_path / "after-snapshot.json"
     _write_mcp(before_source)
     _write_mcp(after_source, description="Changed")
-    before_snapshot.write_text(
-        json.dumps(build_snapshot(before_source, "mcp")), encoding="utf-8"
-    )
-    after_snapshot.write_text(
-        json.dumps(build_snapshot(after_source, "mcp")), encoding="utf-8"
-    )
+    before_snapshot.write_text(json.dumps(build_snapshot(before_source, "mcp")), encoding="utf-8")
+    after_snapshot.write_text(json.dumps(build_snapshot(after_source, "mcp")), encoding="utf-8")
 
     assert load_snapshot(before_snapshot)["schema"].endswith("@1")
     assert main(["diff", str(before_snapshot), str(after_snapshot)]) == 0
