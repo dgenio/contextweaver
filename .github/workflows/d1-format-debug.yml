@@ -1,0 +1,25 @@
+name: D1 format debug
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  format-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Install CI Ruff version
+        run: pip install ruff==0.16.3
+      - name: Print formatter diff
+        run: |
+          ruff format --diff \
+            src/contextweaver/d1.py \
+            src/contextweaver/d1_snapshot.py \
+            tests/test_d1.py || true
