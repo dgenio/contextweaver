@@ -10,8 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, cast
 
 from contextweaver.d1_snapshot import (
     _validate_snapshot,
@@ -23,9 +24,9 @@ from contextweaver.d1_snapshot import (
 from contextweaver.exceptions import CatalogError
 
 
-def _read_json(path: Path) -> Any:
+def _read_json(path: Path) -> object:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return cast(object, json.loads(path.read_text(encoding="utf-8")))
     except OSError as exc:
         raise CatalogError(f"cannot read {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
@@ -66,7 +67,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m contextweaver.d1",
-        description="Offline D1 experiment: snapshot, inspect, diff and verify capability surfaces.",
+        description=(
+            "Offline D1 experiment: snapshot, inspect, diff and verify capability surfaces."
+        ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
