@@ -1,0 +1,127 @@
+name: D1 evaluation evidence
+
+description: Share a genuine capability-drift evaluation, including negative or removed outcomes.
+title: "[D1 evidence] "
+labels:
+  - adoption
+  - product
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is product evidence, not a testimonial form. Negative results are useful. Do not include credentials, customer data, proprietary schemas, private prompts, or information you cannot publish.
+
+  - type: dropdown
+    id: acquisition
+    attributes:
+      label: How did you encounter the D1 proposition?
+      options:
+        - Direct outreach
+        - GitHub
+        - Professional network
+        - Technical community
+        - Article / post / other content
+        - Organic discovery
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: understood
+    attributes:
+      label: Before trying it, was the proposition clear?
+      description: D1 means capability snapshot -> inspect -> semantic diff -> verify.
+      options:
+        - Yes
+        - Partly
+        - No
+    validations:
+      required: true
+
+  - type: dropdown
+    id: evaluation_state
+    attributes:
+      label: What happened?
+      options:
+        - I understood it but chose not to evaluate
+        - I attempted setup but did not reach a useful result
+        - I reached a useful first result
+        - I used it on a real project
+        - I am still using it independently
+        - I removed / abandoned it
+    validations:
+      required: true
+
+  - type: textarea
+    id: prior_problem
+    attributes:
+      label: What problem or workflow existed before ContextWeaver?
+      description: Please describe the real review/debugging/change-management problem first. "None" is a valid answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternative
+    attributes:
+      label: What simpler alternative did you already use or consider?
+      description: Git diff, config review, tests, manual review, provider/framework tooling, etc.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source_type
+    attributes:
+      label: Source type evaluated
+      options:
+        - Not applicable — did not evaluate
+        - OpenAPI
+        - Captured MCP tools/list
+        - Native ContextWeaver catalog
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: result
+    attributes:
+      label: What was useful, misleading, missing, or unnecessary?
+      description: Concrete negative results are especially valuable. Did ordinary Git/tests already solve this? Was the diff only useful as an occasional diagnostic?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: assistance
+    attributes:
+      label: Maintainer help before first useful result
+      options:
+        - None
+        - Asynchronous docs/issues only
+        - Synchronous maintainer help
+        - Not applicable — did not evaluate
+    validations:
+      required: true
+
+  - type: textarea
+    id: dropoff
+    attributes:
+      label: If you declined, failed, or removed it, why?
+      description: Low-severity problem, Git/tests sufficient, proposition unclear, setup cost, unsupported source, output not useful, only useful as a diagnostic, etc. Write "not applicable" if still using it.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: permissions
+    attributes:
+      label: Optional permissions
+      options:
+        - label: I permit this issue itself to be used as public product evidence.
+        - label: I am willing to receive a follow-up around 7 and/or 30 days.
+        - label: I permit my named public project/organization to be listed as an adopter if it qualifies.
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: I have not included credentials, customer data, proprietary schemas/prompts, or information I am not allowed to publish.
+          required: true
