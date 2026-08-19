@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""Enforce the ≤300-lines-per-module convention mechanically (issue #456).
+"""Enforce the ≤500-lines-per-module convention mechanically (issues #456/#753).
 
-``AGENTS.md`` and ``docs/agent-context/invariants.md`` state a ≤300-line module
-convention with a small named exemption list, but the rule was never mechanically
-checked and the codebase had drifted to dozens of silent violators — which trains
-contributors (human and agent) to ignore the doc.  This check makes the rule and
-the codebase agree:
+``AGENTS.md`` and ``docs/agent-context/invariants.md`` define a cohesion-oriented
+module-size convention with a small named exemption list. The gate is a ratchet,
+not a target to split cohesive modules mechanically:
 
 - The named exemptions (``EXEMPT``) are never checked — they match the docs.
 - Pre-existing oversized modules are **grandfathered** at their current size in
   ``scripts/module_size_baseline.json`` and frozen: they may shrink freely but
   may never grow past their recorded baseline.
-- Every other (non-exempt, non-grandfathered) module must stay ≤300 lines, so
-  **new** violations are blocked at the gate.
+- Every other (non-exempt, non-grandfathered) module must stay ≤500 lines.
+- Crossing the ordinary limit is a review signal to find a cohesive boundary,
+  not permission to create a grab-bag helper whose only purpose is satisfying LOC.
 
 Usage::
 
     python scripts/check_module_size.py            # gate (exit non-zero on violation)
-    python scripts/check_module_size.py --update     # refresh the frozen baseline
+    python scripts/check_module_size.py --update   # refresh the frozen baseline
 
 ``--update`` re-snapshots the baseline to the current oversized set; run it only
-when intentionally decomposing a grandfathered module (which lowers its ceiling)
-or when a deliberate, reviewed addition needs grandfathering.
+when intentionally shrinking a grandfathered module or after a deliberate,
+reviewed exception. Raising the ordinary limit does not bless the remaining
+large modules; their frozen ceilings keep the shrink-only ratchet intact.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src" / "contextweaver"
 BASELINE_PATH = REPO_ROOT / "scripts" / "module_size_baseline.json"
 
-LIMIT = 300
+LIMIT = 500
 
 # Mirrors the exemptions documented in AGENTS.md / invariants.md. Keep in sync.
 EXEMPT = frozenset(
@@ -97,7 +97,7 @@ def check() -> int:
     if new_violations:
         print(
             f"module-size: {len(new_violations)} new module(s) exceed {LIMIT} lines — "
-            "decompose them (mixins/helpers) before merging:",
+            "find a cohesive boundary or request a deliberate reviewed exception:",
             file=sys.stderr,
         )
         for line in sorted(new_violations):
@@ -105,7 +105,7 @@ def check() -> int:
     if growth:
         print(
             f"module-size: {len(growth)} grandfathered module(s) grew past their frozen "
-            "ceiling — split out the new code or decompose:",
+            "ceiling — keep the shrink-only ratchet or decompose along a real boundary:",
             file=sys.stderr,
         )
         for line in sorted(growth):
