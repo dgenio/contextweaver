@@ -1,13 +1,13 @@
 """Minimal offline capability snapshot + semantic-diff experiment.
 
 This module intentionally does not participate in ContextWeaver's runtime,
-routing, gateway, memory, or context-building paths.  It exists to test the D1
+routing, gateway, memory, or context-building paths. It exists to test the D1
 product hypothesis from issue #856 with the smallest possible integration
 surface:
 
     source -> deterministic snapshot -> inspect -> diff -> verify
 
-Run it as ``python -m contextweaver.d1``.  Keeping the experiment in its own
+Run it as ``python -m contextweaver.d1``. Keeping the experiment in its own
 module avoids turning an unvalidated product hypothesis into a new permanent
 public API or top-level CLI contract before external evidence exists.
 """
@@ -56,10 +56,7 @@ def _read_json(path: Path) -> Any:
 def _load_mcp_snapshot(path: Path) -> list[SelectableItem]:
     """Load a captured MCP ``tools/list`` payload without executing tools."""
     raw = _read_json(path)
-    if isinstance(raw, dict):
-        tools = raw.get("tools")
-    else:
-        tools = raw
+    tools = raw.get("tools") if isinstance(raw, dict) else raw
     if not isinstance(tools, list) or not tools:
         raise CatalogError("MCP snapshot must contain a non-empty 'tools' list")
     items: list[SelectableItem] = []
@@ -80,15 +77,39 @@ def _load_source(path: Path, source_type: str) -> list[SelectableItem]:
     raise CatalogError(f"unsupported source type: {source_type!r}")
 
 
-def _capabilities(items: Iterable[SelectableItem]) -> list[dict[str, Any]]:
-    payload = [item.to_dict() for item in items]
+def _logical_id(item: SelectableItem, source_type: str) -> str:
+    """Return an identity suitable for comparing the same logical capability.
+
+    The existing MCP adapter's canonical routing ID includes input-schema
+    identity. That is useful for runtime identity, but would turn an argument
+    schema edit into an apparent remove+add event. D1 therefore compares MCP
+    tools by their upstream name while retaining the routing ID separately.
+    OpenAPI and native catalog IDs are already stable logical identities.
+    """
+    if source_type == "mcp":
+        return f"mcp:{item.name}"
+    return item.id
+
+
+def _capabilities(
+    items: Iterable[SelectableItem], source_type: str
+) -> list[dict[str, Any]]:
+    payload: list[dict[str, Any]] = []
+    for item in items:
+        record = item.to_dict()
+        normalized_id = str(record.get("id", ""))
+        logical_id = _logical_id(item, source_type)
+        record["id"] = logical_id
+        if normalized_id and normalized_id != logical_id:
+            record["normalized_id"] = normalized_id
+        payload.append(record)
     payload.sort(key=lambda item: str(item.get("id", "")))
     ids = [str(item.get("id", "")) for item in payload]
     if any(not item_id for item_id in ids):
         raise CatalogError("normalized capability has an empty id")
     duplicates = sorted({item_id for item_id in ids if ids.count(item_id) > 1})
     if duplicates:
-        raise CatalogError(f"duplicate normalized capability ids: {duplicates}")
+        raise CatalogError(f"duplicate logical capability ids: {duplicates}")
     return payload
 
 
@@ -98,7 +119,7 @@ def build_snapshot(path: Path, source_type: str) -> dict[str, Any]:
         source_bytes = path.read_bytes()
     except OSError as exc:
         raise CatalogError(f"cannot read {path}: {exc}") from exc
-    capabilities = _capabilities(_load_source(path, source_type))
+    capabilities = _capabilities(_load_source(path, source_type), source_type)
     return {
         "schema": SNAPSHOT_SCHEMA,
         "source": {
@@ -196,13 +217,15 @@ def _changed_paths(before: Any, after: Any, prefix: str = "") -> list[str]:
 
 def _classify_change(paths: Sequence[str]) -> str:
     """Classify without pretending to solve general schema compatibility."""
-    if paths and all(path.startswith("/description") for path in paths):
+    ignored_identity_paths = {"/normalized_id"}
+    meaningful = [path for path in paths if path not in ignored_identity_paths]
+    if meaningful and all(path.startswith("/description") for path in meaningful):
         return "documentation_only"
     if any(
         path.startswith("/args_schema")
         or path.startswith("/output_schema")
         or path.startswith("/constraints")
-        for path in paths
+        for path in meaningful
     ):
         return "contract_changed"
     return "metadata_or_behavior_changed"
