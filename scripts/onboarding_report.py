@@ -110,9 +110,7 @@ def _median(values: Iterable[float]) -> float | None:
 
 def summarize(records: Sequence[JsonObject], *, include_synthetic: bool = False) -> JsonObject:
     """Return aggregates sufficient to interpret the D1 distribution funnel."""
-    selected = [
-        record for record in records if include_synthetic or not bool(record["synthetic"])
-    ]
+    selected = [record for record in records if include_synthetic or not bool(record["synthetic"])]
     cohorts = Counter(str(record["cohort"]) for record in selected)
     acquisition = Counter(str(record["acquisition_path"]) for record in selected)
     dropoffs = Counter(
@@ -145,8 +143,7 @@ def summarize(records: Sequence[JsonObject], *, include_synthetic: bool = False)
     ]
     persistent = [record for record in selected if record["cohort"] == "persistent_integration"]
     day30 = Counter(
-        str(cast(Mapping[str, object], record["retention"])["day30"])
-        for record in persistent
+        str(cast(Mapping[str, object], record["retention"])["day30"]) for record in persistent
     )
 
     return {
@@ -211,7 +208,9 @@ def render_markdown(summary: Mapping[str, object]) -> str:
     for cohort in COHORTS:
         lines.append(f"| `{cohort}` | {cohorts[cohort]} |")
 
-    lines.extend(["", "## Distribution funnel", "", "| stage | count | from previous |", "|---|---:|---:|"])
+    lines.extend(
+        ["", "## Distribution funnel", "", "| stage | count | from previous |", "|---|---:|---:|"]
+    )
     for field in FUNNEL_FIELDS:
         stage = funnel[field]
         lines.append(

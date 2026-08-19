@@ -48,9 +48,7 @@ def _record(run_id: str, **overrides: object) -> dict[str, object]:
 
 def _write(directory: Path, record: dict[str, object]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / f"{record['run_id']}.json").write_text(
-        json.dumps(record), encoding="utf-8"
-    )
+    (directory / f"{record['run_id']}.json").write_text(json.dumps(record), encoding="utf-8")
 
 
 def test_decline_before_setup_is_valid_and_counted(tmp_path: Path) -> None:
