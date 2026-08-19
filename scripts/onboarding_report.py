@@ -252,8 +252,10 @@ def render_markdown(summary: Mapping[str, object]) -> str:
             "",
             "## Interpretation",
             "",
-            "Zero adopters without qualified exposure is distribution-inconclusive, not product failure.",
-            "Repeated first success followed by removal is stronger product/value failure evidence.",
+            "Zero adopters without qualified exposure is distribution-inconclusive, "
+            "not product failure.",
+            "Repeated first success followed by removal is stronger product/value "
+            "failure evidence.",
             "If users retain only a narrow slice, that slice — not the historical architecture —",
             "becomes the candidate product. See issues #758 and #855.",
             "",
