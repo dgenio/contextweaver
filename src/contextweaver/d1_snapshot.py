@@ -17,9 +17,9 @@ SNAPSHOT_SCHEMA = "contextweaver.capability-snapshot@1"
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def _sha256(data: bytes) -> str:
@@ -69,9 +69,7 @@ def _logical_id(item: SelectableItem, source_type: str) -> str:
     return f"mcp:{item.name}" if source_type == "mcp" else item.id
 
 
-def _capabilities(
-    items: Iterable[SelectableItem], source_type: str
-) -> list[dict[str, Any]]:
+def _capabilities(items: Iterable[SelectableItem], source_type: str) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for item in items:
         record = item.to_dict()
