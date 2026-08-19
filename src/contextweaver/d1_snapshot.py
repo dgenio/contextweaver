@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, cast
 
 from contextweaver.adapters.mcp import mcp_tool_to_selectable
 from contextweaver.adapters.openapi import load_openapi_catalog
@@ -16,7 +17,7 @@ from contextweaver.types import SelectableItem
 SNAPSHOT_SCHEMA = "contextweaver.capability-snapshot@1"
 
 
-def _canonical_bytes(value: Any) -> bytes:
+def _canonical_bytes(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
         "utf-8"
     )
@@ -26,9 +27,9 @@ def _sha256(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def _read_json(path: Path) -> Any:
+def _read_json(path: Path) -> object:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return cast(object, json.loads(path.read_text(encoding="utf-8")))
     except OSError as exc:
         raise CatalogError(f"cannot read {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
@@ -104,7 +105,7 @@ def build_snapshot(path: Path, source_type: str) -> dict[str, Any]:
     }
 
 
-def _validate_snapshot(snapshot: Any) -> list[str]:
+def _validate_snapshot(snapshot: object) -> list[str]:
     problems: list[str] = []
     if not isinstance(snapshot, dict):
         return ["snapshot must be a JSON object"]
@@ -164,13 +165,13 @@ def inspect_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _changed_paths(before: Any, after: Any, prefix: str = "") -> list[str]:
+def _changed_paths(before: object, after: object, prefix: str = "") -> list[str]:
     """Return deterministic JSON-pointer-like paths whose values differ."""
     if type(before) is not type(after):
         return [prefix or "/"]
-    if isinstance(before, dict):
+    if isinstance(before, dict) and isinstance(after, dict):
         paths: list[str] = []
-        for key in sorted(set(before) | set(after)):
+        for key in sorted(set(before) | set(after), key=str):
             escaped = str(key).replace("~", "~0").replace("/", "~1")
             child = f"{prefix}/{escaped}"
             if key not in before or key not in after:
@@ -178,7 +179,7 @@ def _changed_paths(before: Any, after: Any, prefix: str = "") -> list[str]:
             else:
                 paths.extend(_changed_paths(before[key], after[key], child))
         return paths
-    if isinstance(before, list):
+    if isinstance(before, list) and isinstance(after, list):
         return [] if before == after else [prefix or "/"]
     return [] if before == after else [prefix or "/"]
 
