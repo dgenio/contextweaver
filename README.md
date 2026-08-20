@@ -28,26 +28,23 @@ on real projects.
 
 ## Try the capability-drift experiment
 
-Install the package:
+Clone the repository and install that checkout so the maintained example
+fixtures and the code under evaluation are guaranteed to match:
 
 ```bash
-pip install contextweaver
+git clone --depth 1 https://github.com/dgenio/contextweaver.git
+cd contextweaver
+python -m pip install .
 ```
 
-From a ContextWeaver repository checkout, run the maintained OpenAPI example:
+Run the maintained OpenAPI example:
 
 ```bash
-python -m contextweaver.d1 snapshot examples/d1/openapi_before.json \
-  --source-type openapi \
-  --output /tmp/cw-before.json
-
-python -m contextweaver.d1 snapshot examples/d1/openapi_after.json \
-  --source-type openapi \
-  --output /tmp/cw-after.json
-
-python -m contextweaver.d1 inspect /tmp/cw-after.json
-python -m contextweaver.d1 verify /tmp/cw-after.json
-python -m contextweaver.d1 diff /tmp/cw-before.json /tmp/cw-after.json
+python -m contextweaver.d1 snapshot examples/d1/openapi_before.json --source-type openapi --output ./cw-before.json
+python -m contextweaver.d1 snapshot examples/d1/openapi_after.json --source-type openapi --output ./cw-after.json
+python -m contextweaver.d1 inspect ./cw-after.json
+python -m contextweaver.d1 verify ./cw-after.json
+python -m contextweaver.d1 diff ./cw-before.json ./cw-after.json
 ```
 
 The candidate fixture intentionally:
@@ -72,23 +69,15 @@ Full walkthrough: [Capability drift experiment](docs/d1_capability_drift.md).
 ### OpenAPI
 
 ```bash
-python -m contextweaver.d1 snapshot ./openapi.yaml \
-  --source-type openapi \
-  --output ./capabilities.json
-
+python -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities.json
 python -m contextweaver.d1 verify ./capabilities.json
 ```
 
 After the API changes:
 
 ```bash
-python -m contextweaver.d1 snapshot ./openapi.yaml \
-  --source-type openapi \
-  --output /tmp/capabilities-candidate.json
-
-python -m contextweaver.d1 diff \
-  ./capabilities.json \
-  /tmp/capabilities-candidate.json
+python -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities-candidate.json
+python -m contextweaver.d1 diff ./capabilities.json ./capabilities-candidate.json
 ```
 
 ### Captured MCP tools
