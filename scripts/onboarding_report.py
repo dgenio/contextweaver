@@ -45,13 +45,20 @@ def _json_object(path: Path) -> JsonObject:
 
 
 def _validate_consistency(path: Path, record: Mapping[str, object]) -> None:
+    qualified = bool(record["qualified_exposure"])
+    understood = bool(record["understood_proposition"])
     chose = bool(record["chose_to_evaluate"])
     attempted = bool(record["attempted_setup"])
     success = bool(record["first_success"])
     real_source = bool(record["real_source"])
     outcome = str(record["outcome"])
+    dropoff_reason = str(record["dropoff_reason"])
     seconds = record.get("seconds_to_first_success")
 
+    if understood and not qualified:
+        raise ValueError(f"{path}: understood_proposition requires qualified_exposure")
+    if chose and not understood:
+        raise ValueError(f"{path}: chose_to_evaluate requires understood_proposition")
     if attempted and not chose:
         raise ValueError(f"{path}: attempted_setup requires chose_to_evaluate")
     if success and not attempted:
@@ -70,6 +77,14 @@ def _validate_consistency(path: Path, record: Mapping[str, object]) -> None:
         raise ValueError(f"{path}: setup_failed requires attempted setup without first success")
     if outcome in {"first_success", "real_project", "retained", "removed"} and not success:
         raise ValueError(f"{path}: {outcome} outcome requires first_success")
+
+    negative_outcomes = {"declined", "setup_failed", "removed"}
+    if outcome in negative_outcomes and dropoff_reason == "none":
+        raise ValueError(f"{path}: {outcome} outcome requires a dropoff_reason")
+    if outcome not in negative_outcomes and dropoff_reason != "none":
+        raise ValueError(
+            f"{path}: dropoff_reason requires a declined, setup_failed, or removed outcome"
+        )
 
 
 def load_records(input_dir: Path, schema_path: Path) -> list[JsonObject]:

@@ -134,6 +134,32 @@ def test_report_never_renders_participant_id_or_notes(tmp_path: Path) -> None:
     assert "existing_alternative_sufficient" in markdown
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"qualified_exposure": False, "understood_proposition": True},
+            "understood_proposition requires qualified_exposure",
+        ),
+        (
+            {"understood_proposition": False, "chose_to_evaluate": True},
+            "chose_to_evaluate requires understood_proposition",
+        ),
+    ],
+)
+def test_non_monotonic_funnel_record_is_rejected(
+    tmp_path: Path, overrides: dict[str, object], message: str
+) -> None:
+    record = _record("invalid-funnel", **overrides)
+    if record["chose_to_evaluate"]:
+        record["outcome"] = "pending"
+        record["dropoff_reason"] = "none"
+    _write(tmp_path, record)
+
+    with pytest.raises(ValueError, match=message):
+        onboarding_report.load_records(tmp_path, SCHEMA)
+
+
 def test_inconsistent_success_record_is_rejected(tmp_path: Path) -> None:
     _write(
         tmp_path,
@@ -149,6 +175,35 @@ def test_inconsistent_success_record_is_rejected(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="first_success requires attempted_setup"):
+        onboarding_report.load_records(tmp_path, SCHEMA)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"outcome": "declined", "dropoff_reason": "none"},
+            "declined outcome requires a dropoff_reason",
+        ),
+        (
+            {
+                "chose_to_evaluate": True,
+                "attempted_setup": True,
+                "first_success": True,
+                "seconds_to_first_success": 30,
+                "outcome": "retained",
+                "dropoff_reason": "value_not_consequential",
+            },
+            "dropoff_reason requires a declined, setup_failed, or removed outcome",
+        ),
+    ],
+)
+def test_dropoff_reason_must_match_negative_outcome(
+    tmp_path: Path, overrides: dict[str, object], message: str
+) -> None:
+    _write(tmp_path, _record("invalid-dropoff", **overrides))
+
+    with pytest.raises(ValueError, match=message):
         onboarding_report.load_records(tmp_path, SCHEMA)
 
 
