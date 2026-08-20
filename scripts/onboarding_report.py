@@ -82,7 +82,9 @@ def _validate_consistency(path: Path, record: Mapping[str, object]) -> None:
     if outcome in negative_outcomes and dropoff_reason == "none":
         raise ValueError(f"{path}: {outcome} outcome requires a dropoff_reason")
     if outcome not in negative_outcomes and dropoff_reason != "none":
-        raise ValueError(f"{path}: dropoff_reason requires a declined, setup_failed, or removed outcome")
+        raise ValueError(
+            f"{path}: dropoff_reason requires a declined, setup_failed, or removed outcome"
+        )
 
 
 def load_records(input_dir: Path, schema_path: Path) -> list[JsonObject]:
