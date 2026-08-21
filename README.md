@@ -34,17 +34,20 @@ fixtures and the code under evaluation are guaranteed to match:
 ```bash
 git clone --depth 1 https://github.com/dgenio/contextweaver.git
 cd contextweaver
-python -m pip install .
+python3 -m pip install .
 ```
+
+The D1 examples below use `python3`. If your environment exposes Python 3 as
+`python` or `py -3`, use that executable consistently.
 
 Run the maintained OpenAPI example:
 
 ```bash
-python -m contextweaver.d1 snapshot examples/d1/openapi_before.json --source-type openapi --output ./cw-before.json
-python -m contextweaver.d1 snapshot examples/d1/openapi_after.json --source-type openapi --output ./cw-after.json
-python -m contextweaver.d1 inspect ./cw-after.json
-python -m contextweaver.d1 verify ./cw-after.json
-python -m contextweaver.d1 diff ./cw-before.json ./cw-after.json
+python3 -m contextweaver.d1 snapshot examples/d1/openapi_before.json --source-type openapi --output ./cw-before.json
+python3 -m contextweaver.d1 snapshot examples/d1/openapi_after.json --source-type openapi --output ./cw-after.json
+python3 -m contextweaver.d1 inspect ./cw-after.json
+python3 -m contextweaver.d1 verify ./cw-after.json
+python3 -m contextweaver.d1 diff ./cw-before.json ./cw-after.json
 ```
 
 The candidate fixture intentionally:
@@ -69,15 +72,15 @@ Full walkthrough: [Capability drift experiment](docs/d1_capability_drift.md).
 ### OpenAPI
 
 ```bash
-python -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities.json
-python -m contextweaver.d1 verify ./capabilities.json
+python3 -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities.json
+python3 -m contextweaver.d1 verify ./capabilities.json
 ```
 
 After the API changes:
 
 ```bash
-python -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities-candidate.json
-python -m contextweaver.d1 diff ./capabilities.json ./capabilities-candidate.json
+python3 -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities-candidate.json
+python3 -m contextweaver.d1 diff ./capabilities.json ./capabilities-candidate.json
 ```
 
 ### Captured MCP tools
@@ -85,7 +88,7 @@ python -m contextweaver.d1 diff ./capabilities.json ./capabilities-candidate.jso
 If you already have an MCP `tools/list` response saved as JSON:
 
 ```bash
-python -m contextweaver.d1 snapshot ./tools-list.json \
+python3 -m contextweaver.d1 snapshot ./tools-list.json \
   --source-type mcp \
   --output ./capabilities.json
 ```
@@ -101,7 +104,7 @@ Capturing a live MCP server is a separate operation. `snapshot`, `inspect`,
 ### Native ContextWeaver catalog
 
 ```bash
-python -m contextweaver.d1 snapshot ./catalog.json \
+python3 -m contextweaver.d1 snapshot ./catalog.json \
   --source-type native \
   --output ./capabilities.json
 ```
@@ -218,7 +221,7 @@ contract and limitations.
 D1 is intentionally exposed through:
 
 ```bash
-python -m contextweaver.d1 ...
+python3 -m contextweaver.d1 ...
 ```
 
 rather than being promoted immediately into the historical top-level CLI or a

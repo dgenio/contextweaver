@@ -25,20 +25,24 @@ for the experiment.
 
 ## 60-second maintained example
 
-From a repository checkout with ContextWeaver installed in the environment:
+Clone the repository and install that checkout so the maintained example
+fixtures and the code under evaluation are guaranteed to match:
 
 ```bash
-python -m contextweaver.d1 snapshot examples/d1/openapi_before.json \
-  --source-type openapi \
-  --output /tmp/cw-before.json
+git clone --depth 1 https://github.com/dgenio/contextweaver.git
+cd contextweaver
+python3 -m pip install .
+```
 
-python -m contextweaver.d1 snapshot examples/d1/openapi_after.json \
-  --source-type openapi \
-  --output /tmp/cw-after.json
+The examples below use `python3`. If your environment exposes Python 3 as
+`python` or `py -3`, use that executable consistently.
 
-python -m contextweaver.d1 inspect /tmp/cw-after.json
-python -m contextweaver.d1 verify /tmp/cw-after.json
-python -m contextweaver.d1 diff /tmp/cw-before.json /tmp/cw-after.json
+```bash
+python3 -m contextweaver.d1 snapshot examples/d1/openapi_before.json --source-type openapi --output ./cw-before.json
+python3 -m contextweaver.d1 snapshot examples/d1/openapi_after.json --source-type openapi --output ./cw-after.json
+python3 -m contextweaver.d1 inspect ./cw-after.json
+python3 -m contextweaver.d1 verify ./cw-after.json
+python3 -m contextweaver.d1 diff ./cw-before.json ./cw-after.json
 ```
 
 The candidate fixture intentionally changes two things:
@@ -59,11 +63,8 @@ No network call is made by the D1 path. External `$ref` fetching is not
 performed by the existing OpenAPI adapter.
 
 ```bash
-python -m contextweaver.d1 snapshot ./openapi.yaml \
-  --source-type openapi \
-  --output ./capabilities.json
-
-python -m contextweaver.d1 verify ./capabilities.json
+python3 -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities.json
+python3 -m contextweaver.d1 verify ./capabilities.json
 ```
 
 Commit `capabilities.json` if you want Git to preserve the effective normalized
@@ -72,23 +73,15 @@ surface rather than only the source document.
 After the source changes:
 
 ```bash
-python -m contextweaver.d1 snapshot ./openapi.yaml \
-  --source-type openapi \
-  --output /tmp/capabilities-candidate.json
-
-python -m contextweaver.d1 diff \
-  ./capabilities.json \
-  /tmp/capabilities-candidate.json
+python3 -m contextweaver.d1 snapshot ./openapi.yaml --source-type openapi --output ./capabilities-candidate.json
+python3 -m contextweaver.d1 diff ./capabilities.json ./capabilities-candidate.json
 ```
 
 Add `--check` only if you explicitly want any capability change to return exit
 code 1 in CI:
 
 ```bash
-python -m contextweaver.d1 diff \
-  ./capabilities.json \
-  /tmp/capabilities-candidate.json \
-  --check
+python3 -m contextweaver.d1 diff ./capabilities.json ./capabilities-candidate.json --check
 ```
 
 D1 does not currently implement a policy language that decides which changes
@@ -104,9 +97,7 @@ a `tools` list, including the shape produced by
 If you already have a captured response:
 
 ```bash
-python -m contextweaver.d1 snapshot ./tools-list.json \
-  --source-type mcp \
-  --output ./capabilities.json
+python3 -m contextweaver.d1 snapshot ./tools-list.json --source-type mcp --output ./capabilities.json
 ```
 
 The snapshot uses the upstream MCP tool name as the **logical comparison
