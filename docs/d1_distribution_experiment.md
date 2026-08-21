@@ -82,6 +82,28 @@ It captures:
 - 7/30-day retention state;
 - optional privacy-safe version/commit/source metadata.
 
+### Evidence-record consistency rules
+
+The schema validates field shapes; the reporter also enforces cross-field
+semantics so the funnel cannot contradict itself:
+
+- funnel flags are monotonic: a later stage may be `true` only when every
+  prerequisite stage is also `true`;
+- `first_success=true` requires a setup attempt and a recorded
+  `seconds_to_first_success`; that timing field must be absent otherwise;
+- `real_source=true` requires an attempted setup;
+- someone who did not choose to evaluate must have `outcome="declined"`, and a
+  declined record must have `chose_to_evaluate=false`;
+- `setup_failed` means setup was attempted but first success was not reached;
+- `first_success`, `real_project`, `retained`, and `removed` outcomes require
+  `first_success=true`;
+- negative outcomes (`declined`, `setup_failed`, `removed`) require a structured
+  `dropoff_reason` other than the sentinel `"none"`; non-negative outcomes must
+  use `dropoff_reason="none"`.
+
+These are part of the persisted D1 evidence contract, not merely reporting
+conventions. Invalid records are rejected rather than silently normalized.
+
 Participant IDs and notes are allowed for private/sanitized research records but
 are never rendered by the aggregate reporter.
 

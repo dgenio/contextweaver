@@ -3532,6 +3532,22 @@ artifacts must match their canonical inputs.
 **Enforcement:** `make drift-check` through `make ci`, with the individual
 registered `*-check` commands documented in `AGENTS.md`.
 
+### D1 evidence-record consistency
+
+Persisted D1 evaluation records must remain internally consistent. Funnel flags
+are monotonic; first-success timing and real-source fields must agree with the
+setup/success stages; outcome semantics must agree with the funnel; and negative
+outcomes (`declined`, `setup_failed`, `removed`) require a structured
+`dropoff_reason` other than the sentinel `"none"`, while non-negative outcomes
+must use `"none"`.
+
+The reporter rejects inconsistent records rather than repairing or normalizing
+them, because silently changing evidence would corrupt the survival experiment.
+
+**Enforcement:** `tests/test_onboarding_report.py` exercises
+`scripts/onboarding_report.py` and runs in the normal pytest / `make ci` test
+gate.
+
 ## Must-preserve contracts
 
 The constraints below are product/architecture contracts. Each names the tests

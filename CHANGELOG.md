@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Tightened D1 onboarding evidence validation so inconsistent funnel/outcome records are rejected consistently; negative outcomes now require a non-`none` `dropoff_reason`, with the contract documented and regression-tested (#862).
+
 ## [0.18.1] - 2026-08-10
 
 ### Fixed
