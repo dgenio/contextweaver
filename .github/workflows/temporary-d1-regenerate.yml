@@ -1,5 +1,6 @@
 name: Temporary D1 artifact regeneration
 
+# Temporary branch-scoped helper; remove after the generated commit lands.
 on:
   push:
     branches:
