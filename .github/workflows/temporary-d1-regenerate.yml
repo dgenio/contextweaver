@@ -1,0 +1,59 @@
+name: Temporary D1 artifact regeneration
+
+on:
+  push:
+    branches:
+      - fix/862-d1-evidence-contract
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate llms artifacts
+        run: python scripts/gen_llms.py
+
+      - name: Add Unreleased D1 validation entry
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("CHANGELOG.md")
+          text = path.read_text(encoding="utf-8")
+          marker = "## [Unreleased]\n"
+          entry = (
+              "\n### Fixed\n\n"
+              "- Tightened D1 onboarding evidence validation so inconsistent funnel/outcome records are rejected consistently; "
+              "negative outcomes now require a non-`none` `dropoff_reason`, with the contract documented and regression-tested (#862).\n"
+          )
+          unreleased = text.split("## [0.18.1]", 1)[0]
+          if "#862" not in unreleased:
+              if marker not in text:
+                  raise SystemExit("Unreleased changelog marker not found")
+              text = text.replace(marker, marker + entry, 1)
+              path.write_text(text, encoding="utf-8")
+
+      - name: Commit generated files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add llms.txt llms-full.txt CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: regenerate D1 documentation artifacts"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
