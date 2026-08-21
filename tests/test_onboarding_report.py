@@ -183,7 +183,27 @@ def test_inconsistent_success_record_is_rejected(tmp_path: Path) -> None:
     [
         (
             {"outcome": "declined", "dropoff_reason": "none"},
-            "declined outcome requires a dropoff_reason",
+            "declined outcome requires a non-'none' dropoff_reason",
+        ),
+        (
+            {
+                "chose_to_evaluate": True,
+                "attempted_setup": True,
+                "outcome": "setup_failed",
+                "dropoff_reason": "none",
+            },
+            "setup_failed outcome requires a non-'none' dropoff_reason",
+        ),
+        (
+            {
+                "chose_to_evaluate": True,
+                "attempted_setup": True,
+                "first_success": True,
+                "seconds_to_first_success": 30,
+                "outcome": "removed",
+                "dropoff_reason": "none",
+            },
+            "removed outcome requires a non-'none' dropoff_reason",
         ),
         (
             {
