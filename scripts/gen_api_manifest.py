@@ -153,7 +153,8 @@ def _declared_optional_class(source_path: Path, class_name: str) -> type:
     ]
     if len(matches) != 1:
         raise RuntimeError(
-            f"expected exactly one declaration of {class_name} in {source_path}, found {len(matches)}"
+            f"expected exactly one declaration of {class_name} in {source_path}, "
+            f"found {len(matches)}"
         )
 
     # The class bodies only reference optional dependencies when methods run.
