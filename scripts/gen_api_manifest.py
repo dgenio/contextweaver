@@ -147,7 +147,9 @@ def _declared_optional_class(source_path: Path, class_name: str) -> type:
     """Load one nested optional class declaration without importing its extra."""
     tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
     matches = [
-        node for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == class_name
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == class_name
     ]
     if len(matches) != 1:
         raise RuntimeError(
