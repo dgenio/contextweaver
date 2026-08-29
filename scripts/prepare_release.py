@@ -95,13 +95,35 @@ def _update_pyproject(old: str, new: str) -> None:
 
 def _update_readme(old: str, new: str, highlights: str) -> None:
     text = README.read_text(encoding="utf-8")
-    current_old = f"Current package version: **{old}**."
-    current_new = f"Current package version: **{new}**."
-    text = _replace_once(text, current_old, current_new, label="README current-version marker")
+    current_pattern = re.compile(rf"(Current package version: \*\*){re.escape(old)}(\*\*\.?)")
+    text, current_count = current_pattern.subn(rf"\g<1>{new}\g<2>", text, count=1)
+    if current_count != 1:
+        raise ValueError(
+            f"expected exactly one README current-version marker, found {current_count}"
+        )
 
-    compare_old = f"(this repo, [v{old}](https://pypi.org/project/contextweaver/{old}/))"
-    compare_new = f"(this repo, [v{new}](https://pypi.org/project/contextweaver/{new}/))"
-    text = _replace_once(text, compare_old, compare_new, label="README comparison self-reference")
+    comparison_replacements = (
+        (
+            f"(this repo, [v{old}](https://github.com/dgenio/contextweaver/releases/tag/v{old}))",
+            f"(this repo, [v{new}](https://github.com/dgenio/contextweaver/releases/tag/v{new}))",
+        ),
+        (
+            f"(this repo, [v{old}](https://pypi.org/project/contextweaver/{old}/))",
+            f"(this repo, [v{new}](https://pypi.org/project/contextweaver/{new}/))",
+        ),
+    )
+    matching_replacements = [
+        (old_marker, new_marker)
+        for old_marker, new_marker in comparison_replacements
+        if old_marker in text
+    ]
+    if len(matching_replacements) != 1:
+        raise ValueError(
+            "expected exactly one supported README comparison self-reference, "
+            f"found {len(matching_replacements)}"
+        )
+    compare_old, compare_new = matching_replacements[0]
+    text = text.replace(compare_old, compare_new, 1)
 
     lines = text.splitlines(keepends=True)
     result: list[str] = []
