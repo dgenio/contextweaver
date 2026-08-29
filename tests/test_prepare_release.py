@@ -41,7 +41,6 @@ def test_update_readme_supports_d1_first_release_markers(
     assert "[v0.18.2](https://github.com/dgenio/contextweaver/releases/tag/v0.18.2)" in updated
     assert "| **v0.18.1 — D1 survival experiment baseline** | ✅ complete |" in updated
     expected_current_row = (
-        "| **v0.18.2** | ✅ current (v0.18.2) | "
-        "D1 survival experiment and release-path recovery |"
+        "| **v0.18.2** | ✅ current (v0.18.2) | D1 survival experiment and release-path recovery |"
     )
     assert expected_current_row in updated
