@@ -7,7 +7,7 @@ Release-over-release view of deterministic benchmark metrics. Latency is exclude
 because it is environment-dependent. Token-reduction comparisons are only directly
 comparable when the snapshot records the same estimator methodology.
 
-Releases recorded: 4 (`0.16.0` … `0.18.1`).
+Releases recorded: 5 (`0.16.0` … `0.18.2`).
 
 ## Routing recall@k by catalog size
 
@@ -17,6 +17,7 @@ Releases recorded: 4 (`0.16.0` … `0.18.1`).
 | `0.17.0` | 0.5649 | 0.3825 | 0.1475 |
 | `0.18.0` | 0.5649 | 0.3825 | 0.1475 |
 | `0.18.1` | 0.5649 | 0.3825 | 0.1475 |
+| `0.18.2` | 0.5649 | 0.3825 | 0.1475 |
 
 ## Routing MRR by catalog size
 
@@ -26,6 +27,7 @@ Releases recorded: 4 (`0.16.0` … `0.18.1`).
 | `0.17.0` | 0.4978 | 0.3242 | 0.1456 |
 | `0.18.0` | 0.4978 | 0.3242 | 0.1456 |
 | `0.18.1` | 0.4978 | 0.3242 | 0.1456 |
+| `0.18.2` | 0.4978 | 0.3242 | 0.1456 |
 
 ## Routing precision@k by catalog size
 
@@ -35,6 +37,7 @@ Releases recorded: 4 (`0.16.0` … `0.18.1`).
 | `0.17.0` | 0.1191 | 0.0800 | 0.0310 |
 | `0.18.0` | 0.1191 | 0.0800 | 0.0310 |
 | `0.18.1` | 0.1191 | 0.0800 | 0.0310 |
+| `0.18.2` | 0.1191 | 0.0800 | 0.0310 |
 
 ## Context pipeline quality
 
@@ -44,6 +47,7 @@ Releases recorded: 4 (`0.16.0` … `0.18.1`).
 | `0.17.0` | 65.01% | `legacy/unverified†` | 11 | 4 |
 | `0.18.0` | 65.01% | `legacy/unverified†` | 11 | 4 |
 | `0.18.1` | 65.01% | `heuristic/chardiv4` | 11 | 4 |
+| `0.18.2` | 65.01% | `heuristic/chardiv4` | 11 | 4 |
 
 † Schema-v1 token-reduction snapshots predate enforced estimator identity.
 Their values are retained as historical evidence but are not treated as directly
