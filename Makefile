@@ -6,16 +6,14 @@
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
 
-PYTHON ?= python3
-
 fmt:
-	ruff format src/ tests/ examples/ scripts/
+	$(PYTHON) -m ruff format src/ tests/ examples/ scripts/
 
 lint:
-	ruff check src/ tests/ examples/ scripts/
+	$(PYTHON) -m ruff check src/ tests/ examples/ scripts/
 
 type:
-	mypy src/ examples/ scripts/
+	$(PYTHON) -m mypy src/ examples/ scripts/
 
 test:
 	$(PYTHON) -m pytest --cov=contextweaver --cov-report=term-missing -q
@@ -64,10 +62,10 @@ demo:
 	$(PYTHON) -m contextweaver demo
 
 docs:
-	mkdocs build --clean
+	$(PYTHON) -m mkdocs build --clean
 
 docs-serve:
-	mkdocs serve
+	$(PYTHON) -m mkdocs serve
 
 benchmark:
 	$(PYTHON) benchmarks/benchmark.py
