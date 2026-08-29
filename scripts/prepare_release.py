@@ -95,9 +95,7 @@ def _update_pyproject(old: str, new: str) -> None:
 
 def _update_readme(old: str, new: str, highlights: str) -> None:
     text = README.read_text(encoding="utf-8")
-    current_pattern = re.compile(
-        rf"(Current package version: \*\*){re.escape(old)}(\*\*\.?)"
-    )
+    current_pattern = re.compile(rf"(Current package version: \*\*){re.escape(old)}(\*\*\.?)")
     text, current_count = current_pattern.subn(rf"\g<1>{new}\g<2>", text, count=1)
     if current_count != 1:
         raise ValueError(
@@ -106,10 +104,8 @@ def _update_readme(old: str, new: str, highlights: str) -> None:
 
     comparison_replacements = (
         (
-            f"(this repo, [v{old}]"
-            f"(https://github.com/dgenio/contextweaver/releases/tag/v{old}))",
-            f"(this repo, [v{new}]"
-            f"(https://github.com/dgenio/contextweaver/releases/tag/v{new}))",
+            f"(this repo, [v{old}](https://github.com/dgenio/contextweaver/releases/tag/v{old}))",
+            f"(this repo, [v{new}](https://github.com/dgenio/contextweaver/releases/tag/v{new}))",
         ),
         (
             f"(this repo, [v{old}](https://pypi.org/project/contextweaver/{old}/))",

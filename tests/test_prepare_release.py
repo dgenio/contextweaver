@@ -33,11 +33,8 @@ Current package version: **0.18.1**
 
     updated = readme.read_text(encoding="utf-8")
     assert "Current package version: **0.18.2**" in updated
-    assert (
-        "[v0.18.2](https://github.com/dgenio/contextweaver/releases/tag/v0.18.2)" in updated
-    )
+    assert "[v0.18.2](https://github.com/dgenio/contextweaver/releases/tag/v0.18.2)" in updated
     assert "| **v0.18.1 — D1 survival experiment baseline** | ✅ complete |" in updated
     assert (
-        "| **v0.18.2** | ✅ current (v0.18.2) | "
-        "D1 survival experiment and release-path recovery |"
+        "| **v0.18.2** | ✅ current (v0.18.2) | D1 survival experiment and release-path recovery |"
     ) in updated
