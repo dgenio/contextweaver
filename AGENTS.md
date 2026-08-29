@@ -247,9 +247,11 @@ For full pipeline descriptions and design rationale, see [docs/agent-context/arc
 ## Commands
 
 ```bash
-make fmt      # ruff format src/ tests/ examples/ scripts/
+make fmt      # ruff format src/ tests/ examples/ scripts/  (as $(PYTHON) -m ruff)
 make lint     # ruff check src/ tests/ examples/ scripts/
 make type     # mypy src/ examples/ scripts/  (examples + scripts gated too, #539)
+              # every tool runs as `$(PYTHON) -m <tool>`; a bare one on PATH
+              # may be a different version and reports its environment, not the code
 make test     # python -m pytest --cov=contextweaver --cov-report=term-missing -q
 make example  # run all example scripts (includes architectures via the umbrella target)
 make architectures  # run reference architecture scripts under examples/architectures/
