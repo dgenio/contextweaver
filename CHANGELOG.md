@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Tightened D1 onboarding evidence validation so inconsistent funnel/outcome records are rejected consistently; negative outcomes now require a non-`none` `dropoff_reason`, with the contract documented and regression-tested (#862).
+- `make fmt`, `lint`, `type`, `docs` and `docs-serve` now run their tool as `$(PYTHON) -m <tool>` instead of resolving it from `PATH`, so the first three targets of `make ci` cannot report a different tool version than the project declares — a stale `mypy` on `PATH` reported 18 phantom import errors where the project's own reported none (#712).
 
 ## [0.18.1] - 2026-08-10
 
