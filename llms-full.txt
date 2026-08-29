@@ -3792,6 +3792,13 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 >
 > All targets invoke `$(PYTHON)` (defaults to `python3`); override with
 > `make <target> PYTHON=python3.11` where no bare `python` exists (#712).
+> That now includes the tools themselves — `ruff`, `mypy` and `mkdocs` run as
+> `$(PYTHON) -m <tool>`, never bare. Until this was fixed, `make type` ran
+> whatever `mypy` PATH resolved first: in one container that was an unrelated
+> `uv`-tool install reporting *18 errors in 11 files*, while the project's own
+> mypy reported *Success: no issues found in 314 source files*. A gate that
+> reports a fact about its environment is worse than no gate, so
+> `tests/test_makefile_interpreter.py` pins the convention.
 
 `make ci` runs all declared targets in sequence. The CI-only gates above run on
 every PR regardless; run them locally when the affected integrations change.
