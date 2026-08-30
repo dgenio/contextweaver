@@ -60,7 +60,10 @@ jobs:
         run: python scripts/check_release_readiness.py
 
       - name: Install package and test/build tooling
-        run: pip install -e ".[dev]" build twine
+        # The gating benchmark matrix exercises BM25 as an available backend;
+        # install that optional extra explicitly instead of making the result
+        # depend on runner state.
+        run: pip install -e ".[dev,bm25]" build twine
 
       - name: Pre-publish test suite (gating)
         run: pytest -q

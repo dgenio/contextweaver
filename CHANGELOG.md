@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-08-29
+
+### Fixed
+
+- Made public API manifest generation independent of optional scorer availability and aligned release verification with the BM25 backend required by the gating benchmark, removing environment-specific release drift (#849, #869).
+- Updated release preparation to support the current D1-first README version, roadmap, and GitHub-release markers, with regression coverage.
+
+### Changed
+
+- Recovered publication through a new validated patch release from fixed main rather than moving or reusing the existing v0.18.1 tag.
+
+
 ### Fixed
 
 - Tightened D1 onboarding evidence validation so inconsistent funnel/outcome records are rejected consistently; negative outcomes now require a non-`none` `dropoff_reason`, with the contract documented and regression-tested (#862).
