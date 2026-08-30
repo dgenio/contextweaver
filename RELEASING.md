@@ -70,12 +70,12 @@ If the preparation workflow is unavailable, reproduce the same invariants manual
 Generate release evidence to a temporary path so canonical `latest.json` is not overwritten:
 
 ```bash
-python benchmarks/benchmark.py --output /tmp/contextweaver-release-benchmark.json
-python scripts/render_trend.py --snapshot X.Y.Z \
+python3 benchmarks/benchmark.py --output /tmp/contextweaver-release-benchmark.json
+python3 scripts/render_trend.py --snapshot X.Y.Z \
     --from /tmp/contextweaver-release-benchmark.json
-python scripts/render_trend.py
-python scripts/gen_llms.py
-python scripts/check_release_readiness.py
+python3 scripts/render_trend.py
+python3 scripts/gen_llms.py
+python3 scripts/check_release_readiness.py
 ```
 
 Then run the normal repository validation and open a release PR. Manual tagging should be an exception; prefer the reviewed automated main→release hand-off above.
@@ -85,8 +85,8 @@ Then run the normal repository validation and open a release PR. Manual tagging 
 Verify the canonical user path from a clean environment, not an editable checkout:
 
 ```bash
-python -m pip install --no-cache-dir contextweaver
-python -c "import contextweaver; print(contextweaver.__version__)"
+python3 -m pip install --no-cache-dir contextweaver
+python3 -c "import contextweaver; print(contextweaver.__version__)"
 contextweaver demo --scenario killer
 ```
 
