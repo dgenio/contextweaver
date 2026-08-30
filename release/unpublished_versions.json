@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Versions that exist as a vX.Y.Z tag but are deliberately absent from PyPI,",
+    "each with the reason. scripts/check_published_versions.py fails on any tag",
+    "missing from PyPI that is NOT listed here, and on any entry here that IS on",
+    "PyPI (a stale exemption hides the next real gap).",
+    "Adding an entry is a decision to leave a published GitHub release",
+    "unavailable on PyPI. Prefer fixing the release over adding an entry."
+  ],
+  "_pre_automation": [
+    "Everything below 0.14.0 predates automated publishing. The first file in",
+    ".github/workflows/ is dated 2026-06-18 (publish.yml, `on: release` only),",
+    "while 0.13.4 was tagged 2026-06-02: releases up to then were uploaded by",
+    "hand, so for those gaps there is no workflow run to inspect. Each entry",
+    "records what the tag and PyPI dates establish (confirmed); why a given",
+    "manual upload was skipped is inference from that timing, not a recovered",
+    "log. They are recorded rather than excluded by a cutoff so the check keeps",
+    "no blind window."
+  ],
+  "0.0.1": "Tagged 2026-03-01, before contextweaver existed on PyPI: the earliest release PyPI serves is 0.1.0, tagged 2026-03-02. Pre-publication tag, never intended for PyPI.",
+  "0.0.2": "Tagged 2026-03-01. Pre-publication, as 0.0.1.",
+  "0.0.3": "Tagged 2026-03-02. Pre-publication, as 0.0.1.",
+  "0.0.4": "Tagged 2026-03-02, hours before 0.1.0 became the first version on PyPI. Pre-publication, as 0.0.1.",
+  "0.9.0": "Tagged 2026-05-20 in the hand-published era, superseded by the 0.9.1 tag the next day and by 0.10.0 (on PyPI) on 2026-05-22. Neither 0.9 tag was uploaded; the line recovered forward at 0.10.0.",
+  "0.9.1": "Tagged 2026-05-21, superseded by 0.10.0 (on PyPI) the next day. As 0.9.0.",
+  "0.11.0": "Tagged 2026-05-27 and superseded the next day by 0.11.1, which is on PyPI. The patch was uploaded, this tag was not.",
+  "0.13.0": "One of four 0.13.x tags cut on 2026-06-02; 0.13.4, tagged the same day, is the one on PyPI. Four tags in a single day is a hand-run upload being retried until it worked.",
+  "0.13.1": "Tagged 2026-06-02, superseded same-day by 0.13.4. As 0.13.0.",
+  "0.13.2": "Tagged 2026-06-02, superseded same-day by 0.13.4. As 0.13.0.",
+  "0.13.3": "Tagged 2026-06-02, superseded same-day by 0.13.4. As 0.13.0.",
+  "0.17.0": "Release published 2026-07-23, but publish.yml never ran for it: at that tag the workflow had only an `on: release` trigger and no workflow_dispatch, so there is no run to re-drive and the tag cannot be re-published without moving it.",
+  "0.18.0": "publish.yml run 23 (2026-08-09) failed its own release-integrity gate: 'Missing release benchmark snapshot: benchmarks/results/history/0.18.0.json'. The tag is immutable and the file is not in its tree. release-readiness.yml exists because of this.",
+  "0.18.1": "publish.yml run 26 (2026-08-11) failed the gating suite in the verify job: api-manifest drift (the environment-dependent generator bug fixed later by #869) plus a missing rank-bm25 backend in that job. Both are fixed on main; neither is fixed in the immutable v0.18.1 tree."
+}

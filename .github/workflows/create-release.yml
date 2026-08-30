@@ -1,0 +1,116 @@
+name: Create prepared release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - pyproject.toml
+
+permissions:
+  contents: write
+  actions: write
+
+# pyproject.toml changes for dependencies and tooling are common, so a path
+# trigger alone is not a release signal. The first step compares [project].version
+# with the pre-push main commit; only a strict version increase may continue to
+# immutable release creation. This prevents Dependabot/metadata changes from
+# trying to recreate the current release.
+jobs:
+  create:
+    name: Create immutable release and dispatch publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Detect actual package-version change
+        id: version_change
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          current="$(python scripts/check_readme_version.py --print-version)"
+          previous="$(git show "${BEFORE_SHA}:pyproject.toml" | python -c \
+            'import sys, tomllib; print(tomllib.loads(sys.stdin.read())["project"]["version"])')"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+          if [[ "$current" == "$previous" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Package version remains $current; no release action."
+            exit 0
+          fi
+
+          python - "$previous" "$current" <<'PY'
+          import re
+          import sys
+
+          previous, current = sys.argv[1:]
+          pattern = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+
+          def parse(value: str) -> tuple[int, int, int]:
+              match = pattern.fullmatch(value)
+              if match is None:
+                  raise SystemExit(f"release version must be MAJOR.MINOR.PATCH, got {value!r}")
+              return tuple(int(part) for part in match.groups())
+
+          if parse(current) <= parse(previous):
+              raise SystemExit(
+                  f"refusing non-increasing release version: {previous} -> {current}"
+              )
+          PY
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "Validated package version increase: $previous -> $current"
+
+      - name: Revalidate prepared release state
+        if: steps.version_change.outputs.changed == 'true'
+        run: |
+          python scripts/check_readme_version.py
+          python scripts/check_security_policy.py
+          python scripts/check_version_metadata.py
+          python scripts/check_release_readiness.py
+          python scripts/render_trend.py --check
+          python scripts/gen_llms.py --check
+
+      - name: Resolve immutable release identity
+        if: steps.version_change.outputs.changed == 'true'
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version_change.outputs.current }}"
+          tag="v${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${tag} already exists; refusing to move or republish immutable history." >&2
+            exit 1
+          fi
+
+      - name: Create GitHub Release at the validated main commit
+        if: steps.version_change.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "contextweaver $TAG" \
+            --generate-notes
+
+      - name: Explicitly dispatch Trusted Publishing on the release tag
+        if: steps.version_change.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh workflow run publish.yml --ref "$TAG"

@@ -1,10 +1,9 @@
 """Tool-result ingestion helpers.
 
-Extracted from :mod:`contextweaver.context.manager` so that ``manager.py``
-stays under the project's <=300 lines per module guideline (see AGENTS.md).
-:class:`~contextweaver.context.manager.ContextManager` keeps the public
-``ingest*`` methods as thin delegations; this module is not part of the
-public API.
+Extracted from :mod:`contextweaver.context.manager` as a cohesive owner for raw
+and envelope ingestion behavior. :class:`~contextweaver.context.manager.ContextManager`
+keeps the public ``ingest*`` methods as thin delegations; this module is not part
+of the public API.
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+from contextweaver._mcp_result import mcp_result_to_envelope
 from contextweaver.config import ContextPolicy
 from contextweaver.context.firewall import _extractor_is_llm, apply_firewall
 from contextweaver.context.sensitivity import _SENSITIVITY_ORDER
@@ -46,7 +46,7 @@ def _find_source_item(event_log: EventLog, handle: str) -> ContextItem | None:
     Used to recover the sensitivity of the item a drilldown handle came from so
     redaction/drop cannot be bypassed by re-fetching the raw bytes, and so an
     injected slice inherits the source's label instead of defaulting to
-    ``public``.  The lookup is a deterministic linear scan; the first owner wins.
+    ``public``. The lookup is a deterministic linear scan; the first owner wins.
     """
     for item in event_log.all():
         ref = item.artifact_ref
@@ -77,7 +77,7 @@ def drilldown(
     :class:`~contextweaver.exceptions.PolicyViolationError` unless
     :attr:`~contextweaver.config.ContextPolicy.allow_redacted_drilldown` is set.
     This closes the bypass where the raw, pre-redaction bytes could be re-fetched
-    and re-injected.  An injected slice inherits the source item's sensitivity so
+    and re-injected. An injected slice inherits the source item's sensitivity so
     it cannot launder content back in as ``public``; an unknown handle (no
     matching source) is treated as ``public`` and is never over-blocked.
     """
@@ -195,7 +195,6 @@ def ingest_tool_result(
             redact_secrets=redact_secrets,
         )
         if envelope is None:
-            # Shouldn't happen for tool_result items, but be safe
             envelope = ResultEnvelope(status="ok", summary=raw_output[:500])
         event_log.append(processed)
         logger.debug(
@@ -205,12 +204,8 @@ def ingest_tool_result(
         )
         return processed, envelope
 
-    # Small output: extract facts and store in artifact store to enable drilldown
     from contextweaver.summarize.extract import extract_facts
 
-    # Issue #461 — the deterministic guarantee must hold on the small-output
-    # path too: an LLM-backed extractor would otherwise route this result
-    # through a model even though no firewall summarisation fires here.
     if deterministic and _extractor_is_llm(extractor):
         raise DeterminismError(
             f"deterministic=True but an LLM-backed extractor would process item "
@@ -228,16 +223,14 @@ def ingest_tool_result(
     except Exception:  # noqa: BLE001
         facts = []
         status = "partial"
-    # Issue #428 — for a sub-threshold result the raw text *is* the prompt-bound
-    # surface (the firewall does not fire), so scrub the summary, facts, and the
-    # item text itself.  The out-of-band raw artifact below is left intact.
+
     summary_text = raw_output
     item_text = item.text
     if redact_secrets:
         summary_text = scrub_secrets(summary_text)
         facts = scrub_secrets_in_list(facts)
         item_text = scrub_secrets(item_text)
-    # For small outputs, store in artifact store to enable drilldown
+
     raw_bytes = raw_output.encode("utf-8")
     handle = f"artifact:{item.id}"
     ref = artifact_store.put(
@@ -247,9 +240,6 @@ def ingest_tool_result(
         label=f"raw tool result for {item.id}",
     )
     views = generate_views(ref, raw_bytes, registry=view_registry)
-    # ``original_*`` reflect the raw tool output; ``summary_*`` reflect the
-    # prompt-bound surface, which differs from the raw output only when
-    # ``redact_secrets`` scrubbed it.  When scrubbing is off the two are equal.
     original_tokens = count_tokens(raw_output)
     summary_tokens = count_tokens(summary_text)
     envelope = ResultEnvelope(
@@ -311,23 +301,15 @@ def ingest_mcp_result(
     registered on the manager fire on this path too (issue #460); ``None`` uses
     the default registry.
     """
-    from contextweaver.adapters.mcp import mcp_result_to_envelope
-
     envelope, binaries, full_text = mcp_result_to_envelope(mcp_result, tool_name)
 
-    # Persist binary artifacts (images, resources) and refresh envelope metadata
     stored_refs: dict[str, ArtifactRef] = {}
     for handle, (raw_bytes, media_type, label) in sorted(binaries.items()):
         stored_refs[handle] = artifact_store.put(handle, raw_bytes, media_type, label)
 
     if stored_refs:
-        # NOTE: intentional post-construction mutation — refresh refs with
-        # store-canonical metadata (size_bytes, etc.).  Must be revisited
-        # if ResultEnvelope is ever made frozen.
         envelope.artifacts = [stored_refs.get(a.handle, a) for a in envelope.artifacts]
 
-    # Build the context item from the full raw text so the firewall
-    # can offload the complete output, not the truncated summary.
     item = ContextItem(
         id=f"result:{tool_call_id}",
         kind=ItemKind.tool_result,
@@ -337,7 +319,6 @@ def ingest_mcp_result(
         parent_id=tool_call_id,
     )
 
-    # Apply firewall if full text is large
     if len(full_text) > firewall_threshold:
         processed, fw_envelope = apply_firewall(
             item,
@@ -352,7 +333,6 @@ def ingest_mcp_result(
             redact_secrets=redact_secrets,
         )
         if fw_envelope is not None:
-            # Merge: keep MCP artifacts, use firewall summary/facts, preserve views
             envelope = ResultEnvelope(
                 status=envelope.status,
                 summary=fw_envelope.summary,

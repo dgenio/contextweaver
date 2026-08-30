@@ -16,30 +16,17 @@ Distills episodic memory into durable, deduplicated, provenance-stamped facts:
 Everything is deterministic given identical store contents, policy, and
 ``as_of``: clustering iterates episodes in sorted-ID order, ties break by ID,
 and promoted fact IDs are content-addressed so re-running ``apply=True`` over an
-unchanged store is a no-op (idempotent upsert). Pure helper functions live in
-:mod:`contextweaver.context._consolidation_helpers` to keep this module within
-the size ceiling.
+unchanged store is a no-op (idempotent upsert).
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from contextweaver._utils import jaccard, tokenize
-from contextweaver.context._consolidation_helpers import (
-    CONSOLIDATED_FACT_KEY,
-    canonical_fact_id,
-    canonical_member,
-    coerce_iso,
-    count_sessions,
-    episode_iso,
-    is_decayed,
-    max_sensitivity,
-    parse_iso,
-    seen_bounds,
-)
 from contextweaver.context._consolidation_merge import refine_canonical_text
 from contextweaver.context.consolidation_types import (
     ConsolidationPolicy,
@@ -50,8 +37,107 @@ from contextweaver.context.consolidation_types import (
 from contextweaver.protocols import EpisodicStore, FactStore
 from contextweaver.store.episodic import Episode
 from contextweaver.store.facts import Fact
+from contextweaver.types import Sensitivity
 
 logger = logging.getLogger("contextweaver.context")
+
+#: Fact key under which consolidated facts are stored.
+CONSOLIDATED_FACT_KEY = "consolidated"
+
+#: Severity ranking used to inherit the maximum sensitivity of source episodes.
+_SENSITIVITY_RANK: dict[Sensitivity, int] = {
+    Sensitivity.public: 0,
+    Sensitivity.internal: 1,
+    Sensitivity.confidential: 2,
+    Sensitivity.restricted: 3,
+}
+
+
+def canonical_member(members: list[Episode]) -> str:
+    """Return the deterministic representative summary for *members*.
+
+    Picks the summary with the most tokens (most informative), breaking ties by
+    the smallest ``episode_id`` so the choice is reproducible.
+    """
+    best = min(members, key=lambda ep: (-len(tokenize(ep.summary)), ep.episode_id))
+    return best.summary
+
+
+def max_sensitivity(members: list[Episode]) -> Sensitivity:
+    """Return the highest sensitivity among *members* (defaults to public)."""
+    return max(
+        (ep.sensitivity for ep in members),
+        key=lambda s: _SENSITIVITY_RANK[s],
+        default=Sensitivity.public,
+    )
+
+
+def count_sessions(members: list[Episode], session_key: str) -> int:
+    """Count distinct sessions in *members*.
+
+    Episodes lacking a session marker collectively count as one shared session.
+    """
+    sessions: set[str] = set()
+    for ep in members:
+        value = ep.metadata.get(session_key)
+        sessions.add(str(value) if value is not None else "\x00unscoped")
+    return len(sessions)
+
+
+def episode_iso(ep: Episode, key: str) -> str | None:
+    """Return *ep*'s ISO-8601 timestamp metadata value, or ``None``."""
+    value = ep.metadata.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def coerce_iso(value: object) -> str | None:
+    """Coerce a metadata timestamp *value* to ISO text, or ``None``."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value if isinstance(value, str) and value else None
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Return *dt* as a naive UTC datetime (tz-aware inputs are converted)."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def parse_iso(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 *value* to a naive-UTC ``datetime``, or ``None``."""
+    if not value:
+        return None
+    text = value[:-1] + "+00:00" if value.endswith(("Z", "z")) else value
+    try:
+        return _to_naive_utc(datetime.fromisoformat(text))
+    except ValueError:
+        return None
+
+
+def seen_bounds(members: list[Episode], key: str) -> tuple[str | None, str | None]:
+    """Return the (first_seen, last_seen) ISO timestamps across *members*."""
+    stamped = [(iso, parse_iso(iso)) for ep in members if (iso := episode_iso(ep, key))]
+    parsed = [(iso, dt) for iso, dt in stamped if dt is not None]
+    if not parsed:
+        return None, None
+    first = min(parsed, key=lambda pair: pair[1])[0]
+    last = max(parsed, key=lambda pair: pair[1])[0]
+    return first, last
+
+
+def canonical_fact_id(source_ids: list[str]) -> str:
+    """Return a deterministic, content-addressed fact ID for *source_ids*."""
+    digest = hashlib.sha1("\n".join(sorted(source_ids)).encode("utf-8")).hexdigest()[:12]
+    return f"fact:{CONSOLIDATED_FACT_KEY}:{digest}"
+
+
+def is_decayed(iso: str | None, as_of: datetime, decay_after_days: int) -> bool:
+    """Return ``True`` when *iso* is older than *decay_after_days* before *as_of*."""
+    stamp = parse_iso(iso)
+    if stamp is None:
+        return False
+    return _to_naive_utc(as_of) - stamp > timedelta(days=decay_after_days)
 
 
 def cluster_episodes(
@@ -65,18 +151,6 @@ def cluster_episodes(
     existing cluster whose seed summary has Jaccard similarity at or above
     *similarity_threshold*; otherwise it seeds a new cluster. The result is
     stable and idempotent for identical input.
-
-    Args:
-        episodes: Episodes to cluster.
-        similarity_threshold: Jaccard similarity in ``[0, 1]`` for joining.
-
-    Returns:
-        Clusters in creation order, each with sorted ``episode_ids`` and a
-        deterministic ``canonical_text``.
-
-    Note:
-        Greedy single-pass clustering, ``O(n·k)`` for ``n`` episodes / ``k``
-        clusters (each tokenised once) — for offline batch use, not a hot path.
     """
     ordered = sorted(episodes, key=lambda ep: ep.episode_id)
     seeds: list[set[str]] = []
@@ -113,25 +187,7 @@ def promote_clusters(
     call_fn: Callable[[str], str] | None = None,
     deterministic: bool = False,
 ) -> list[PromotedFact]:
-    """Promote qualifying *clusters* into :class:`PromotedFact` records (#680).
-
-    A cluster is promoted when it has at least ``policy.min_occurrences``
-    episodes spanning at least ``policy.min_sessions`` distinct sessions. The
-    promoted fact inherits the maximum source sensitivity and carries full
-    provenance. When *call_fn* is supplied and *deterministic* is ``False``, the
-    canonical text is refined under the fail-closed guardrails in
-    :func:`~contextweaver.context._consolidation_merge.refine_canonical_text`.
-
-    Args:
-        clusters: Clusters from :func:`cluster_episodes`.
-        episodes_by_id: Lookup from episode ID to :class:`Episode`.
-        policy: Promotion thresholds.
-        call_fn: Optional ``prompt -> completion`` callable for merge refinement.
-        deterministic: When ``True``, ``call_fn`` is ignored (fail-closed).
-
-    Returns:
-        Promoted facts, ordered by ``fact_id`` for determinism.
-    """
+    """Promote qualifying *clusters* into :class:`PromotedFact` records (#680)."""
     promoted: list[PromotedFact] = []
     for cluster in clusters:
         members = [episodes_by_id[e] for e in cluster.episode_ids if e in episodes_by_id]
@@ -175,11 +231,7 @@ def decay_episodes(
     *,
     as_of: datetime,
 ) -> list[str]:
-    """Return IDs of *episodes* past the decay horizon (report-only; #681).
-
-    Decay never deletes — the episodic store is append-only. Callers decide how
-    to act on the returned IDs (e.g. status tombstones in their own backend).
-    """
+    """Return IDs of *episodes* past the decay horizon (report-only; #681)."""
     if policy.decay_after_days is None:
         return []
     return sorted(
@@ -195,10 +247,7 @@ def decay_facts(
     *,
     as_of: datetime,
 ) -> list[str]:
-    """Return IDs of *facts* past the decay horizon (report-only; #681).
-
-    Honours both ISO-8601 string and :class:`~datetime.datetime` timestamps.
-    """
+    """Return IDs of *facts* past the decay horizon (report-only; #681)."""
     if policy.decay_after_days is None:
         return []
     stale: list[str] = []
@@ -219,26 +268,7 @@ def consolidate(
     deterministic: bool = False,
     apply: bool = False,
 ) -> ConsolidationReport:
-    """Run the consolidation pipeline over *episodic_store* (issue #498).
-
-    Args:
-        episodic_store: Source of episodes to consolidate.
-        fact_store: Target fact store (written only when *apply* is ``True``).
-        policy: Thresholds; defaults to :class:`ConsolidationPolicy`.
-        as_of: Reference time for decay reporting. When ``None``, no decay is
-            reported.
-        call_fn: Optional ``prompt -> completion`` callable for merge refinement.
-        deterministic: When ``True``, ``call_fn`` is ignored (fail-closed).
-        apply: When ``True``, promoted facts are upserted into *fact_store* with
-            provenance metadata. Idempotent: re-running over an unchanged store
-            rewrites identical facts.
-
-    Returns:
-        A :class:`ConsolidationReport`.
-
-    Raises:
-        ConfigError: If *policy* fails validation.
-    """
+    """Run the consolidation pipeline over *episodic_store* (issue #498)."""
     policy = policy if policy is not None else ConsolidationPolicy()
     policy.validate()
 
@@ -263,9 +293,6 @@ def consolidate(
                 "last_seen": pf.last_seen,
                 "merged_by_llm": pf.merged_by_llm,
             }
-            # Stamp the policy's decay timestamp key with the fact's recency
-            # (its last-seen source time) so the promoted fact is itself
-            # eligible for decay reporting on later runs, not just its episodes.
             if pf.last_seen is not None:
                 metadata[policy.timestamp_key] = pf.last_seen
             fact_store.put(

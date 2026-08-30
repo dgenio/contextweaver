@@ -1,33 +1,32 @@
 name: Publish to PyPI and MCP Registry
 
-# Release-path actions are pinned to immutable commit SHAs (issue #468). This is
-# the high-trust workflow — it holds ``id-token: write`` and
-# ``attestations: write`` — so a moving tag here is a supply-chain risk. The
-# ``# vX`` comments record the tag each SHA was resolved from; Dependabot's
-# ``github-actions`` updater (.github/dependabot.yml) keeps the SHAs current.
+# High-trust release workflow. Actions are pinned to immutable commit SHAs and
+# package publication uses OIDC Trusted Publishing. It may start from a human
+# GitHub Release or from an explicit workflow_dispatch on the immutable release
+# tag. The latter is used by create-release.yml because GitHub intentionally
+# suppresses ordinary workflow events caused by GITHUB_TOKEN-created releases.
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  # Reviewed from the official modelcontextprotocol/registry v1.7.9 release.
+  # Updating either value must produce a repository diff and be reviewed.
+  MCP_PUBLISHER_VERSION: v1.7.9
+  MCP_PUBLISHER_LINUX_AMD64_SHA256: ab128162b0616090b47cf245afe0a23f3ef08936fdce19074f5ba0a4469281ac
+
 jobs:
   verify:
-    # Release-integrity gate (issue #468). A release publishes straight to PyPI
-    # and the MCP Registry over OIDC, so this job is the last chance to catch a
-    # mis-tagged or untested release before it is immutable on PyPI. It proves:
-    #   1. the release tag matches the package version (no ``v0.16.0`` tag
-    #      shipping a ``0.15.0`` artifact);
-    #   2. the package builds and its metadata passes ``twine check``;
-    #   3. the gating test suite is green at the released commit.
-    # ``publish`` depends on this job, so a red gate blocks the upload.
     name: Verify release integrity
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -35,36 +34,36 @@ jobs:
           python-version: "3.12"
 
       - name: Check release tag matches package version
-        # ``GITHUB_REF_NAME`` is the tag the release was cut from (``vX.Y.Z``).
-        # The package version is the single source of truth in pyproject.toml.
+        # workflow_dispatch must be invoked with ref=vX.Y.Z. For both supported
+        # triggers GITHUB_REF_NAME is therefore the immutable release tag.
         run: |
           tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release ref '$tag' is not an immutable vX.Y.Z tag." >&2
+            echo "Dispatch this workflow on a vX.Y.Z tag only, never on a branch." >&2
+            exit 1
+          fi
           version="$(python scripts/check_readme_version.py --print-version)"
           if [ "$tag" != "v$version" ]; then
-            echo "::error::Release tag '$tag' does not match package version 'v$version' (pyproject.toml)." >&2
+            echo "::error::Release ref '$tag' does not match package version 'v$version'." >&2
+            echo "Dispatch this workflow on the immutable vX.Y.Z tag, never on a branch." >&2
             exit 1
           fi
-          echo "Release tag '$tag' matches package version 'v$version'."
+          echo "Release ref '$tag' matches package version 'v$version'."
 
-      - name: Verify version metadata is in sync (issue #747)
-        # server.json (MCP Registry manifest) and CITATION.cff must match the
-        # package version before publishing, so the registry and citation
-        # metadata can never lag the release (as 0.15.0/0.10.0 did).
+      - name: Verify version metadata is in sync
         run: python scripts/check_version_metadata.py
 
-      - name: Verify release benchmark snapshot
-        # Release history is prepared in the release PR. Fail before publishing
-        # when the tagged version has no deterministic snapshot or trend drifted.
-        run: |
-          version="$(python scripts/check_readme_version.py --print-version)"
-          snapshot="benchmarks/results/history/${version}.json"
-          if [ ! -f "$snapshot" ]; then
-            echo "::error::Missing release benchmark snapshot: $snapshot" >&2
-            exit 1
-          fi
-          python scripts/render_trend.py --check
+      - name: Verify release evidence is complete
+        # Validates current snapshot schema/method metadata and trend freshness,
+        # not just file existence (#837, #841).
+        run: python scripts/check_release_readiness.py
+
       - name: Install package and test/build tooling
-        run: pip install -e ".[dev]" build twine
+        # The gating benchmark matrix exercises BM25 as an available backend;
+        # install that optional extra explicitly instead of making the result
+        # depend on runner state.
+        run: pip install -e ".[dev,bm25]" build twine
 
       - name: Pre-publish test suite (gating)
         run: pytest -q
@@ -79,11 +78,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write       # Required for Trusted Publisher (OIDC)
+      id-token: write
       contents: read
-      attestations: write   # Required to attach build-provenance attestations (issue #690)
+      attestations: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -97,42 +96,44 @@ jobs:
         run: python -m build
 
       - name: Attest build provenance
-        # Generates a signed, verifiable provenance attestation for each built
-        # artifact (issue #690). Verifiable later with ``gh attestation verify
-        # <file> --repo dgenio/contextweaver``.
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: "dist/*"
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
 
   publish-mcp-registry:
     name: Publish to MCP Registry
     needs: publish
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
-      id-token: write  # Required for MCP Registry GitHub OIDC authentication
+      id-token: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
 
-      - name: Sync server.json version from pyproject (issue #747)
-        # Generate the manifest version fields from pyproject.toml at publish
-        # time so server.json can never be published with a stale version (as
-        # 0.15.0 was against a 0.16.0 release). The committed file is also gated
-        # by check_version_metadata.py, so this is normally a no-op.
+      - name: Sync server.json version from pyproject
         run: python scripts/check_version_metadata.py --sync
 
-      - name: Install mcp-publisher
+      - name: Install verified mcp-publisher
+        shell: bash
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          set -euo pipefail
+          asset="mcp-publisher_linux_amd64.tar.gz"
+          url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${asset}"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$asset" "$url"
+          printf '%s  %s\n' "$MCP_PUBLISHER_LINUX_AMD64_SHA256" "$asset" | sha256sum --check --strict
+          tar xzf "$asset" mcp-publisher
           chmod +x mcp-publisher
+          ./mcp-publisher --help >/dev/null
 
       - name: Authenticate to MCP Registry (GitHub OIDC)
         run: ./mcp-publisher login github-oidc
@@ -140,11 +141,20 @@ jobs:
       - name: Publish server.json (retry while PyPI metadata propagates)
         run: |
           for attempt in 1 2 3 4 5 6; do
-            if ./mcp-publisher publish; then
+            set +e
+            err_msg=$(./mcp-publisher publish 2>&1)
+            exit_code=$?
+            set -e
+            if [ "$exit_code" -eq 0 ]; then
               echo "Published to the MCP Registry."
               exit 0
             fi
-            echo "Attempt $attempt failed (PyPI metadata may still be propagating); retrying in 30s..."
+            printf '%s\n' "$err_msg"
+            if printf '%s\n' "$err_msg" | grep -Fqi 'cannot publish duplicate version'; then
+              echo "Version already present in the MCP Registry; treating as success."
+              exit 0
+            fi
+            echo "Attempt $attempt failed (exit code $exit_code; PyPI metadata may still be propagating); retrying in 30s..."
             sleep 30
           done
           echo "::error::mcp-publisher publish failed after 6 attempts." >&2

@@ -1,45 +1,21 @@
 #!/usr/bin/env python3
-"""Naïve-concat baseline harness (issue #215).
+"""Naïve-concat baseline harness (issue #215, evidence fix #841).
 
-Computes the token cost and a coverage proxy for a "dump everything" baseline
-against which contextweaver's context-pipeline output can be honestly
-compared. The harness intentionally avoids LLM calls (repo policy:
-``benchmarks/README.md`` §"no LLM calls, no external network access") and
-relies on structural signals only.
+Computes the estimated token cost and a coverage proxy for a "dump everything"
+baseline. The reduction ratio is intentionally measured with the *same*
+estimator as the ContextWeaver context benchmark. Mixing a tiktoken count for
+the naïve arm with a heuristic count for the ContextWeaver arm produced an
+invalid ratio and made historical results environment-dependent (#841).
 
 Two roles:
 
-1. **Library function** ``compute_naive_delta`` — invoked from
-   ``benchmarks/benchmark.py`` per scenario row to emit the additive
-   ``naive_delta`` block in ``benchmarks/results/latest.json``.
+1. ``compute_naive_delta`` is invoked from ``benchmarks/benchmark.py`` per
+   scenario row.
+2. The standalone CLI can annotate an existing compatible benchmark JSON.
 
-2. **Standalone script** — re-reads an existing ``latest.json``, augments each
-   ``context`` row with a ``naive_delta`` block, and rewrites the file. Useful
-   when the matrix run finishes and the user wants the naïve numbers without
-   re-running the full benchmark.
-
-Coverage formula (deterministic, documented):
-
-    coverage_pct = round(items_included / max(event_count, 1) * 100, 2)
-
-This is the "fraction of conversation events that survived the budget-aware
-pipeline" — a structural proxy for answer-fidelity that does **not** require
-an LLM judge. The formula is bounded ``[0, 100]`` and stable across runs
-because it derives directly from the deterministic pipeline counts already in
-each context row.
-
-Naïve token count:
-
-    naive_tokens = len(cl100k_base.encode(catalog_schemas + scenario_text))
-
-where ``catalog_schemas`` is the canonical ``examples/sample_catalog.json``
-rendered as one ``{id}: {description}`` line per tool, and ``scenario_text``
-is the concatenation of every ``text`` field in the scenario JSONL in source
-order.
-
-Token reduction percentage:
-
-    pct_reduction = round((1 - cw_tokens / naive_tokens) * 100, 2)
+The deterministic release-history method is ``heuristic/chardiv4`` for both
+arms. Exact tokenizer/provider counts may be reported by separate benchmarks,
+but a comparison must never silently switch measurement methods.
 """
 
 from __future__ import annotations
@@ -52,110 +28,89 @@ from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
 _CATALOG_PATH = _ROOT / "examples" / "sample_catalog.json"
+sys.path.insert(0, str(_ROOT / "src"))
+
+from contextweaver.protocols import CharDivFourEstimator  # noqa: E402
+
+_ESTIMATOR = CharDivFourEstimator()
+ESTIMATOR_ID = _ESTIMATOR.name
 
 
-# ---------------------------------------------------------------------------
-# Token estimation
-# ---------------------------------------------------------------------------
-
-
-def _count_tokens(text: str) -> int:
-    """Count ``cl100k_base`` tokens, falling back to ``len // 4`` when missing.
-
-    ``tiktoken`` is a core contextweaver dependency
-    (``pyproject.toml:dependencies``) so the import normally succeeds; the
-    fallback exists so the script can run in stripped-down environments
-    (e.g. a fresh sdist without the full dependency closure installed).
-    """
-    try:
-        import tiktoken  # noqa: PLC0415 — optional / lazy import path
-
-        enc = tiktoken.get_encoding("cl100k_base")
-        return len(enc.encode(text))
-    except Exception:
-        # Same heuristic as ``CharDivFourEstimator`` in the library.
-        return max(1, len(text) // 4)
+def _count_estimated_tokens(text: str) -> int:
+    """Return the deterministic release-benchmark estimate for *text*."""
+    return _ESTIMATOR.estimate(text)
 
 
 def _render_catalog_schema(catalog_path: Path) -> str:
-    """Render the canonical sample catalog as a naïve "all tool schemas" blob.
-
-    Matches the shape of what an agent would receive without contextweaver:
-    every tool's id and description joined into a single string, one per line.
-    """
+    """Render the canonical sample catalog as a naïve all-tools blob."""
     items: list[dict[str, Any]] = json.loads(catalog_path.read_text(encoding="utf-8"))
-    parts = []
-    for it in sorted(items, key=lambda x: str(x.get("id", ""))):
-        idf = str(it.get("id", ""))
-        desc = str(it.get("description", "") or it.get("name", ""))
-        tags = ",".join(str(t) for t in it.get("tags", []) or [])
-        parts.append(f"{idf}: {desc} [tags: {tags}]")
+    parts: list[str] = []
+    for item in sorted(items, key=lambda value: str(value.get("id", ""))):
+        item_id = str(item.get("id", ""))
+        description = str(item.get("description", "") or item.get("name", ""))
+        tags = ",".join(str(tag) for tag in item.get("tags", []) or [])
+        parts.append(f"{item_id}: {description} [tags: {tags}]")
     return "\n".join(parts)
 
 
 def _scenario_text(scenario_path: Path) -> str:
-    """Concatenate every ``text`` field in a scenario JSONL, in source order."""
+    """Concatenate every scenario ``text`` field in source order."""
     parts: list[str] = []
     for line in scenario_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            ev = json.loads(line)
+            event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        text = ev.get("text")
+        text = event.get("text")
         if isinstance(text, str):
             parts.append(text)
     return "\n".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Public helpers
-# ---------------------------------------------------------------------------
-
-
 def compute_naive_delta(scenario_path: Path, context_row: dict[str, Any]) -> dict[str, Any]:
-    """Compute the ``naive_delta`` block for a single context-row scenario.
+    """Compute a same-unit naïve-vs-ContextWeaver reduction block.
 
-    Args:
-        scenario_path: Filesystem path to the ``.jsonl`` scenario file.
-        context_row: A row from ``latest.json.context`` — must carry the
-            ``prompt_tokens``, ``items_included``, and ``event_count`` fields
-            already emitted by ``benchmarks/benchmark.py``.
-
-    Returns:
-        A dict with ``naive_tokens``, ``cw_tokens``, ``pct_reduction``, and
-        ``coverage_pct`` keys. All numeric values are rounded for
-        byte-identical reruns across executions on the same seed.
+    New context rows may identify the estimator used for ``prompt_tokens``.
+    When they do, a mismatch fails closed. Older rows omitted that metadata;
+    the benchmark that calls this helper is known to use the same
+    ``CharDivFourEstimator`` and this function records the method explicitly in
+    its output so the ambiguity does not propagate to new evidence.
     """
+    row_estimator = str(context_row.get("token_estimator", ""))
+    if row_estimator and row_estimator != ESTIMATOR_ID:
+        raise ValueError(
+            "naive baseline estimator mismatch: "
+            f"context row uses {row_estimator!r}, baseline uses {ESTIMATOR_ID!r}"
+        )
+
     catalog_blob = _render_catalog_schema(_CATALOG_PATH)
     scenario_blob = _scenario_text(scenario_path)
-    naive_tokens = _count_tokens(catalog_blob + "\n" + scenario_blob)
+    naive_tokens = _count_estimated_tokens(catalog_blob + "\n" + scenario_blob)
     cw_tokens = int(context_row.get("prompt_tokens", 0))
-    pct_reduction = round((1.0 - cw_tokens / naive_tokens) * 100, 2) if naive_tokens > 0 else 0.0
+    pct_reduction = round((1.0 - cw_tokens / naive_tokens) * 100, 2) if naive_tokens else 0.0
     event_count = max(int(context_row.get("event_count", 0)), 1)
     items_included = int(context_row.get("items_included", 0))
     coverage_pct = round(items_included / event_count * 100, 2)
     return {
-        "naive_tokens": int(naive_tokens),
-        "cw_tokens": int(cw_tokens),
+        "token_estimator": ESTIMATOR_ID,
+        "naive_tokens": naive_tokens,
+        "cw_tokens": cw_tokens,
         "pct_reduction": float(pct_reduction),
         "coverage_pct": float(coverage_pct),
     }
 
 
 def annotate_latest_json(latest_path: Path, scenarios_dir: Path) -> int:
-    """Augment ``latest.json`` in place with a ``naive_delta`` per context row.
-
-    Returns the number of rows annotated. Skips rows whose scenario JSONL
-    cannot be located (e.g. a renamed file) and prints a warning to stderr.
-    """
+    """Augment a compatible benchmark JSON with deterministic naïve deltas."""
     payload = json.loads(latest_path.read_text(encoding="utf-8"))
     rows = payload.get("context")
     if not isinstance(rows, list):
-        print(f"latest.json: no context list at {latest_path}", file=sys.stderr)
+        print(f"benchmark JSON: no context list at {latest_path}", file=sys.stderr)
         return 0
+
     annotated = 0
     for row in rows:
         if not isinstance(row, dict):
@@ -167,13 +122,9 @@ def annotate_latest_json(latest_path: Path, scenarios_dir: Path) -> int:
             continue
         row["naive_delta"] = compute_naive_delta(path, row)
         annotated += 1
+
     latest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return annotated
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -181,7 +132,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--latest",
         default=str(_ROOT / "benchmarks" / "results" / "latest.json"),
-        help="Path to latest.json to annotate in place.",
+        help="Benchmark JSON to annotate in place.",
     )
     parser.add_argument(
         "--scenarios-dir",
@@ -194,15 +145,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     latest = Path(args.latest)
-    scen = Path(args.scenarios_dir)
+    scenarios = Path(args.scenarios_dir)
     if not latest.is_file():
-        print(f"latest.json not found: {latest}", file=sys.stderr)
+        print(f"benchmark JSON not found: {latest}", file=sys.stderr)
         return 1
-    if not scen.is_dir():
-        print(f"scenarios dir not found: {scen}", file=sys.stderr)
+    if not scenarios.is_dir():
+        print(f"scenarios dir not found: {scenarios}", file=sys.stderr)
         return 1
-    n = annotate_latest_json(latest, scen)
-    print(f"Annotated {n} context row(s) with naive_delta in {latest}")
+    try:
+        count = annotate_latest_json(latest, scenarios)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"Annotated {count} context row(s) with naive_delta in {latest}")
     return 0
 
 
