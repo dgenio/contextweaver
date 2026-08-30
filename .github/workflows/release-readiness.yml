@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -38,12 +38,14 @@ jobs:
     name: Released tags match PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Not on pull_request: this one reads pypi.org, and a PyPI outage must not
-    # redden a contributor's PR. It guards versions already released, so main,
-    # the weekly schedule and manual dispatch are the moments that matter.
-    if: github.event_name != 'pull_request'
+    # On pull_request this reads pypi.org only when the PR touches the check
+    # itself. Both halves have a reason: a PyPI outage must not redden an
+    # unrelated contributor's PR, but skipping pull_request outright meant this
+    # job's first ever execution was on main — where it went red on eleven
+    # historical gaps that its author's partial checkout had hidden. A PR that
+    # edits this check is exactly the PR that should carry the outage risk.
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Without tags the script reconciles an empty set and passes
           # vacuously; it errors on an empty tag list for exactly this reason.
@@ -55,5 +57,23 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Does this run need to read PyPI?
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --quiet origin "${{ github.base_ref }}"
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qxE \
+            'scripts/check_published_versions\.py|release/unpublished_versions\.json|\.github/workflows/release-readiness\.yml'; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "This PR does not touch the published-versions check; PyPI not read." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Reconcile released tags against PyPI
+        if: steps.scope.outputs.needed == 'true'
         run: python scripts/check_published_versions.py

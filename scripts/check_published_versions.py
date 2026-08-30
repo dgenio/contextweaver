@@ -97,6 +97,22 @@ def load_exemptions(path: Path = DEFAULT_EXEMPTIONS) -> dict[str, str]:
     return {k: v for k, v in raw.items() if not k.startswith("_")}
 
 
+def untagged_published(tags: set[str], published: set[str]) -> set[str]:
+    """Published versions with no local tag — the sign of a partial checkout.
+
+    A *truncated* tag list is more dangerous than an empty one: it reconciles
+    the handful of tags that happen to be present, passes, and reports a fact
+    about the clone rather than about the project. That is not hypothetical
+    either — this check was written and validated in a clone holding 4 of the
+    repository's 38 tags, so the eleven gaps below 0.14.0 stayed invisible
+    until it first ran in CI, where it went red immediately.
+
+    Every version PyPI serves for this package was cut from a tag here, so a
+    published version with no local tag means the tags are incomplete.
+    """
+    return published - tags
+
+
 def reconcile(
     tags: set[str],
     published: set[str],
@@ -126,6 +142,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         published = published_versions()
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
         print(f"error: could not read {PYPI_JSON}: {error}", file=sys.stderr)
+        return 1
+
+    untagged = untagged_published(tags, published)
+    if untagged:
+        print(
+            f"error: PyPI serves {len(untagged)} version(s) with no tag in this "
+            f"checkout ({', '.join(sorted(untagged)[:5])}"
+            f"{', ...' if len(untagged) > 5 else ''}). The tag list is partial, so "
+            "reconciling it would report a fact about this clone, not about the "
+            "project. Fetch tags (`git fetch --tags`, or actions/checkout "
+            "`fetch-tags: true`) and re-run.",
+            file=sys.stderr,
+        )
         return 1
 
     exemptions = load_exemptions()
