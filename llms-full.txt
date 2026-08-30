@@ -283,11 +283,11 @@ pip install contextweaver
 
 Python 3.10–3.14 are covered by the repository CI matrix.
 
-Current package version: **0.18.1**
+Current package version: **0.18.2**
 
 | Project | Release |
 |---|---|
-| ContextWeaver (this repo, [v0.18.1](https://github.com/dgenio/contextweaver/releases/tag/v0.18.1)) | current package release |
+| ContextWeaver (this repo, [v0.18.2](https://github.com/dgenio/contextweaver/releases/tag/v0.18.2)) | current package release |
 
 The repository is pre-1.0. Prefer the latest supported patch release for bug and
 security fixes, and check the changelog before relying on historical runtime
@@ -299,7 +299,8 @@ The roadmap is intentionally a product-decision sequence, not a feature queue.
 
 | Milestone | Status | Meaning |
 |---|---|---|
-| **v0.18.1 — D1 survival experiment baseline** | ✅ current (v0.18.1) | Offline snapshot/inspect/diff/verify exists; user value remains unverified. |
+| **v0.18.1 — D1 survival experiment baseline** | ✅ complete | Offline snapshot/inspect/diff/verify exists; user value remains unverified. |
+| **v0.18.2** | ✅ current (v0.18.2) | D1 survival experiment and release-path recovery |
 | **D1 distribution gate** | 🔬 evidence first | Make the front door understandable, recruit qualified evaluators, measure first success and retention. |
 | **D1 decision** | ⏸ next decision | Continue, shrink further, or kill based on retained value after competent distribution. |
 | **D2 / D3** | 🧪 conditional | Run only if D1 evidence or independent problem discovery justifies bounded falsification experiments. |
@@ -3792,6 +3793,13 @@ make weaver-conformance  # round-trip + JSON-Schema validate the weaver-spec ada
 >
 > All targets invoke `$(PYTHON)` (defaults to `python3`); override with
 > `make <target> PYTHON=python3.11` where no bare `python` exists (#712).
+> That now includes the tools themselves — `ruff`, `mypy` and `mkdocs` run as
+> `$(PYTHON) -m <tool>`, never bare. Until this was fixed, `make type` ran
+> whatever `mypy` PATH resolved first: in one container that was an unrelated
+> `uv`-tool install reporting *18 errors in 11 files*, while the project's own
+> mypy reported *Success: no issues found in 314 source files*. A gate that
+> reports a fact about its environment is worse than no gate, so
+> `tests/test_makefile_interpreter.py` pins the convention.
 
 `make ci` runs all declared targets in sequence. The CI-only gates above run on
 every PR regardless; run them locally when the affected integrations change.

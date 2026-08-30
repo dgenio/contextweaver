@@ -7,9 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Reconciliation of released `vX.Y.Z` tags against PyPI
+  (`scripts/check_published_versions.py`, wired into `release-readiness.yml` on
+  push/schedule/dispatch). Three tagged releases — 0.17.0, 0.18.0 and 0.18.1 —
+  were advertised on GitHub while PyPI served none of them, for up to six weeks,
+  because nothing compared the two lists; `pip install contextweaver==0.18.0`
+  failed for anyone reading the release notes. `check_release_readiness.py`
+  guards the version about to be released, this guards the ones already out.
+  Known gaps are recorded with their causes in
+  `release/unpublished_versions.json`, consistent with the 0.18.2 decision to
+  recover by a new patch release rather than by moving the existing tags; the
+  check fails on any *unrecorded* gap and on a recorded one PyPI later serves.
+  Deliberately kept out of `make ci` — a local gate must not depend on pypi.org.
+
+## [0.18.2] - 2026-08-29
+
+### Fixed
+
+- Made public API manifest generation independent of optional scorer availability and aligned release verification with the BM25 backend required by the gating benchmark, removing environment-specific release drift (#849, #869).
+- Updated release preparation to support the current D1-first README version, roadmap, and GitHub-release markers, with regression coverage.
+
+### Changed
+
+- Recovered publication through a new validated patch release from fixed main rather than moving or reusing the existing v0.18.1 tag.
+
+
 ### Fixed
 
 - Tightened D1 onboarding evidence validation so inconsistent funnel/outcome records are rejected consistently; negative outcomes now require a non-`none` `dropoff_reason`, with the contract documented and regression-tested (#862).
+- `make fmt`, `lint`, `type`, `docs` and `docs-serve` now run their tool as `$(PYTHON) -m <tool>` instead of resolving it from `PATH`, so the first three targets of `make ci` cannot report a different tool version than the project declares — a stale `mypy` on `PATH` reported 18 phantom import errors where the project's own reported none (#712).
 
 ## [0.18.1] - 2026-08-10
 

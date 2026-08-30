@@ -30,6 +30,28 @@ def test_render_covers_every_public_module() -> None:
     assert "ContextPack" in manifest
 
 
+def test_optional_scorers_are_environment_independent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Optional-dependency availability must not change the public manifest."""
+    import contextweaver
+
+    expected = gen_api_manifest.render_manifest()
+    assert "class BM25Scorer" in expected
+    assert "class FuzzyScorer" in expected
+
+    class RuntimeSentinel:
+        pass
+
+    # Simulate opposite dependency environments without changing the source
+    # declarations that define the public contract.
+    monkeypatch.setattr(contextweaver, "BM25Scorer", None)
+    monkeypatch.setattr(contextweaver, "FuzzyScorer", RuntimeSentinel)
+    assert gen_api_manifest.render_manifest() == expected
+
+    monkeypatch.setattr(contextweaver, "BM25Scorer", RuntimeSentinel)
+    monkeypatch.setattr(contextweaver, "FuzzyScorer", None)
+    assert gen_api_manifest.render_manifest() == expected
+
+
 def test_check_passes_against_committed_manifest() -> None:
     """The committed manifest must match the current public surface."""
     assert gen_api_manifest.main(["--check"]) == 0

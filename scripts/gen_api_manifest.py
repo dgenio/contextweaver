@@ -29,11 +29,13 @@ Wired into ``make api-check`` and the unified ``make drift-check`` gate.
 from __future__ import annotations
 
 import argparse
+import ast
 import enum
 import importlib
 import inspect
 import warnings
 from collections.abc import Sequence
+from pathlib import Path
 
 from _golden import REPO_ROOT, _rel, check_text_artifacts, write_text_artifacts
 
@@ -52,6 +54,17 @@ PUBLIC_MODULES = (
     "contextweaver.store",
     "contextweaver.summarize",
 )
+
+# These classes are public declarations but their runtime bindings become
+# ``None`` when the corresponding optional extra is absent. Runtime
+# introspection would therefore make the committed manifest depend on whichever
+# extras happened to be installed on the generating machine. Render the class
+# declarations directly from trusted repository source instead; this records
+# the declared public surface without importing either optional dependency.
+_DECLARED_OPTIONAL_CLASSES: dict[tuple[str, str], Path] = {
+    ("contextweaver", "BM25Scorer"): REPO_ROOT / "src" / "contextweaver" / "_utils.py",
+    ("contextweaver", "FuzzyScorer"): REPO_ROOT / "src" / "contextweaver" / "_utils.py",
+}
 
 
 class _StableDefault:
@@ -130,6 +143,43 @@ def _render_member(name: str, obj: object) -> list[str]:
     return [f"{name}: {type(obj).__name__}"]
 
 
+def _declared_optional_class(source_path: Path, class_name: str) -> type:
+    """Load one nested optional class declaration without importing its extra."""
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    matches = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected exactly one declaration of {class_name} in {source_path}, "
+            f"found {len(matches)}"
+        )
+
+    # The class bodies only reference optional dependencies when methods run.
+    # Postponed annotations keep names such as ``_BM25Okapi`` unevaluated while
+    # inspect.signature still sees their declared spelling.
+    isolated = ast.Module(
+        body=[
+            ast.ImportFrom(
+                module="__future__",
+                names=[ast.alias(name="annotations")],
+                level=0,
+            ),
+            matches[0],
+        ],
+        type_ignores=[],
+    )
+    ast.fix_missing_locations(isolated)
+    namespace: dict[str, object] = {}
+    exec(compile(isolated, str(source_path), "exec"), namespace)
+    declared = namespace[class_name]
+    if not inspect.isclass(declared):  # pragma: no cover - defensive invariant
+        raise RuntimeError(f"{class_name} in {source_path} did not compile to a class")
+    return declared
+
+
 def render_manifest() -> str:
     """Render the deterministic public-API manifest text."""
     out: list[str] = [
@@ -146,15 +196,19 @@ def render_manifest() -> str:
             out.append("")
             continue
         for name in sorted(exported):
-            # Defensive: no current export warns on *attribute access*
-            # (``ToolCard`` is a plain alias; the decorated/body shims warn only
-            # when *called*), but the public surface deliberately retains
-            # deprecated re-exports (issue #642) and a future module-level
-            # ``__getattr__`` shim could warn on access — introspecting one must
-            # not let a DeprecationWarning derail manifest generation.
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
-                obj = getattr(module, name)
+            source_path = _DECLARED_OPTIONAL_CLASSES.get((module_name, name))
+            if source_path is not None:
+                obj = _declared_optional_class(source_path, name)
+            else:
+                # Defensive: no current export warns on *attribute access*
+                # (``ToolCard`` is a plain alias; the decorated/body shims warn only
+                # when *called*), but the public surface deliberately retains
+                # deprecated re-exports (issue #642) and a future module-level
+                # ``__getattr__`` shim could warn on access — introspecting one must
+                # not let a DeprecationWarning derail manifest generation.
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", DeprecationWarning)
+                    obj = getattr(module, name)
             for line in _render_member(name, obj):
                 out.append(f"  {line}")
         out.append("")
