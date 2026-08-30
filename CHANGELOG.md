@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Reconciliation of released `vX.Y.Z` tags against PyPI
+  (`scripts/check_published_versions.py`, wired into `release-readiness.yml` on
+  push/schedule/dispatch). Three tagged releases — 0.17.0, 0.18.0 and 0.18.1 —
+  were advertised on GitHub while PyPI served none of them, for up to six weeks,
+  because nothing compared the two lists; `pip install contextweaver==0.18.0`
+  failed for anyone reading the release notes. `check_release_readiness.py`
+  guards the version about to be released, this guards the ones already out.
+  Known gaps are recorded with their causes in
+  `release/unpublished_versions.json`, consistent with the 0.18.2 decision to
+  recover by a new patch release rather than by moving the existing tags; the
+  check fails on any *unrecorded* gap and on a recorded one PyPI later serves.
+  Deliberately kept out of `make ci` — a local gate must not depend on pypi.org.
+
 ## [0.18.2] - 2026-08-29
 
 ### Fixed

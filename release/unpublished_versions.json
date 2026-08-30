@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "Versions that exist as a vX.Y.Z tag but are deliberately absent from PyPI,",
+    "each with the reason. scripts/check_published_versions.py fails on any tag",
+    "missing from PyPI that is NOT listed here, and on any entry here that IS on",
+    "PyPI (a stale exemption hides the next real gap).",
+    "Adding an entry is a decision to leave a published GitHub release",
+    "unavailable on PyPI. Prefer fixing the release over adding an entry."
+  ],
+  "0.17.0": "Release published 2026-07-23, but publish.yml never ran for it: at that tag the workflow had only an `on: release` trigger and no workflow_dispatch, so there is no run to re-drive and the tag cannot be re-published without moving it.",
+  "0.18.0": "publish.yml run 23 (2026-08-09) failed its own release-integrity gate: 'Missing release benchmark snapshot: benchmarks/results/history/0.18.0.json'. The tag is immutable and the file is not in its tree. release-readiness.yml exists because of this.",
+  "0.18.1": "publish.yml run 26 (2026-08-11) failed the gating suite in the verify job: api-manifest drift (the environment-dependent generator bug fixed later by #869) plus a missing rank-bm25 backend in that job. Both are fixed on main; neither is fixed in the immutable v0.18.1 tree."
+}

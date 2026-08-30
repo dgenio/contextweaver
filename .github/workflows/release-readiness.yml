@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # Weekly, so a release that never reached PyPI is noticed in days rather
+    # than the six weeks 0.17.0 went unnoticed.
+    - cron: "40 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -29,3 +33,27 @@ jobs:
 
       - name: Verify current package version is release-ready
         run: python scripts/check_release_readiness.py
+
+  published-versions:
+    name: Released tags match PyPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Not on pull_request: this one reads pypi.org, and a PyPI outage must not
+    # redden a contributor's PR. It guards versions already released, so main,
+    # the weekly schedule and manual dispatch are the moments that matter.
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Without tags the script reconciles an empty set and passes
+          # vacuously; it errors on an empty tag list for exactly this reason.
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Reconcile released tags against PyPI
+        run: python scripts/check_published_versions.py
