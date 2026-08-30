@@ -54,8 +54,13 @@ class TestReconcile:
         published = checker.published_versions(_fetcher({"1.0.0": [{"f": 1}], "1.1.0": []}))
         assert published == {"1.0.0"}
 
-    def test_extra_pypi_versions_without_a_tag_are_not_an_error(self) -> None:
-        """One-off uploads are the maintainer's business, not a release gap."""
+    def test_reconcile_ignores_pypi_versions_that_have_no_tag(self) -> None:
+        """reconcile() answers one question: which tags never reached PyPI.
+
+        The opposite direction is not silently fine — main() treats it as a
+        partial checkout (see TestPartialCheckout) — but that is a separate
+        precondition, deliberately not folded into this function.
+        """
         unexplained, stale = checker.reconcile({"1.0.0"}, {"1.0.0", "0.9.9"}, {})
         assert unexplained == set()
         assert stale == set()
@@ -92,7 +97,7 @@ def _git_env() -> dict[str, str]:
 class TestCommittedExemptions:
     def test_the_file_parses_and_every_entry_carries_a_reason(self) -> None:
         exemptions = checker.load_exemptions()
-        assert exemptions, "no exemptions recorded — the three known gaps should be here"
+        assert exemptions, "no exemptions recorded — the known gaps should be here"
         for version, reason in exemptions.items():
             assert len(reason) > 40, f"{version} has no usable reason: {reason!r}"
 
@@ -101,8 +106,32 @@ class TestCommittedExemptions:
         assert "_comment" in raw, "the file should explain itself to the next reader"
         assert "_comment" not in checker.load_exemptions()
 
-    def test_the_known_gaps_are_the_three_measured_ones(self) -> None:
-        assert set(checker.load_exemptions()) == {"0.17.0", "0.18.0", "0.18.1"}
+    def test_the_known_gaps_are_the_measured_ones(self) -> None:
+        """Pinned so a new gap has to be recorded deliberately, not absorbed."""
+        assert set(checker.load_exemptions()) == {
+            # Pre-publication: PyPI's first release is 0.1.0 (2026-03-02).
+            "0.0.1",
+            "0.0.2",
+            "0.0.3",
+            "0.0.4",
+            # Hand-published era (no .github/workflows/ file predates 2026-06-18):
+            # each superseded within a day by a version that did reach PyPI.
+            "0.9.0",
+            "0.9.1",
+            "0.11.0",
+            "0.13.0",
+            "0.13.1",
+            "0.13.2",
+            "0.13.3",
+            # Automated era: a named failed or missing publish.yml run each.
+            "0.17.0",
+            "0.18.0",
+            "0.18.1",
+        }
+
+    def test_every_recorded_gap_is_a_release_version(self) -> None:
+        for version in checker.load_exemptions():
+            assert checker.TAG_PATTERN.match(f"v{version}"), version
 
 
 class TestNotWiredIntoTheOfflineGate:
@@ -137,3 +166,34 @@ def test_main_fails_loudly_when_no_tags_are_present(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(checker, "released_tags", lambda *a, **k: set())
 
     assert checker.main([]) == 1
+
+
+class TestPartialCheckout:
+    """A truncated tag list must fail, not reconcile whatever it happens to see."""
+
+    def test_a_published_version_with_no_tag_means_the_tags_are_partial(self) -> None:
+        assert checker.untagged_published({"1.0.0"}, {"1.0.0", "0.9.9"}) == {"0.9.9"}
+
+    def test_a_complete_checkout_reports_nothing(self) -> None:
+        assert checker.untagged_published({"1.0.0", "0.9.9"}, {"1.0.0"}) == set()
+
+    def test_main_refuses_to_reconcile_a_partial_checkout(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The regression: 4 of 38 tags present, every real gap invisible."""
+        monkeypatch.setattr(checker, "released_tags", lambda *a, **k: {"0.18.1"})
+        monkeypatch.setattr(checker, "published_versions", lambda *a, **k: {"0.16.0", "0.18.2"})
+        monkeypatch.setattr(checker, "load_exemptions", lambda *a, **k: {"0.18.1": "recorded"})
+
+        assert checker.main([]) == 1
+        assert "partial" in capsys.readouterr().err
+
+    def test_the_workflow_runs_the_check_on_prs_that_edit_it(self) -> None:
+        """Its first execution must not be on main, which is how this was missed."""
+        workflow = (REPO_ROOT / ".github/workflows/release-readiness.yml").read_text(
+            encoding="utf-8"
+        )
+        assert "github.event_name != 'pull_request'" not in workflow, (
+            "excluding pull_request outright leaves the check untested until merge"
+        )
+        assert "check_published_versions" in workflow
