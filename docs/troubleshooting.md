@@ -48,37 +48,37 @@ console script directory is not on `PATH`.
 **Solution — confirm the active interpreter:**
 ```bash
 which python
-python --version
-python -m pip show contextweaver
+python3 --version
+python3 -m pip show contextweaver
 ```
 
 On Windows PowerShell, use:
 
 ```powershell
 Get-Command python
-python -m pip show contextweaver
+python3 -m pip show contextweaver
 ```
 
 If `pip show` cannot find the package, install it with the same interpreter you
 will use to run your script:
 
 ```bash
-python -m pip install contextweaver
-python -c "import contextweaver; print(contextweaver.__version__)"
+python3 -m pip install contextweaver
+python3 -c "import contextweaver; print(contextweaver.__version__)"
 ```
 
 If the import succeeds but the `contextweaver` command is missing, check that
 your environment's scripts directory is on `PATH`:
 
 ```bash
-python -m pip show -f contextweaver
+python3 -m pip show -f contextweaver
 ```
 
 For source checkouts, activate the virtual environment and reinstall in editable
 mode from the repository root:
 
 ```bash
-python -m pip install -e ".[dev]"
+python3 -m pip install -e ".[dev]"
 ```
 
 ---
@@ -451,13 +451,13 @@ though it is still less exact than the real encoding for Latin prose.
 PowerShell:
 ```powershell
 $env:TIKTOKEN_CACHE_DIR = "C:\path\to\tiktoken-cache"
-python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+python3 -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 ```
 
 Bash:
 ```bash
 export TIKTOKEN_CACHE_DIR=/path/to/tiktoken-cache
-python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+python3 -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 ```
 
 Copy that cache directory into the offline environment and set

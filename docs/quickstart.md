@@ -108,16 +108,21 @@ above `DEBUG` level.
 
 `contextweaver` requires Python 3.10 or newer.
 
+Commands below use `python3`, matching the repository's documented default
+(`docs/agent-context/workflows.md`). On Windows installations that expose Python
+through the launcher, replace `python3` with `py -3`; if your environment
+already exposes the intended interpreter as `python`, use that consistently.
+
 Check your Python version:
 
 ```bash
-python --version
+python3 --version
 ```
 
 Create and activate a virtual environment:
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 ```
 
 Linux and macOS:
@@ -173,7 +178,7 @@ pip install -e ".[dev]"
 Verify that the package imports from the Python environment you just activated:
 
 ```bash
-python -c "import contextweaver; print(contextweaver.__version__)"
+python3 -c "import contextweaver; print(contextweaver.__version__)"
 ```
 
 Expected output is the installed version, for example `0.14.0`. Then run
@@ -246,7 +251,7 @@ print(f"Deduplicated: {pack.stats.dedup_removed}")
 Run it:
 
 ```bash
-python first_agent.py
+python3 first_agent.py
 ```
 
 Expected output excerpt:
@@ -356,7 +361,7 @@ print(f"Artifacts stored: {len(mgr.artifact_store.list_refs())}")
 Run it:
 
 ```bash
-python firewall_demo.py
+python3 firewall_demo.py
 ```
 
 Expected output excerpt:
@@ -421,7 +426,7 @@ for item_id in result.candidate_ids:
 Run it:
 
 ```bash
-python routing_demo.py
+python3 routing_demo.py
 ```
 
 Expected output:
@@ -459,5 +464,5 @@ Planned separately:
 If you want a deeper local smoke test after this guide, run:
 
 ```bash
-python -m contextweaver demo
+python3 -m contextweaver demo
 ```
