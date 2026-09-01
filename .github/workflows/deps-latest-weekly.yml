@@ -40,6 +40,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "latest-known"
 
       - name: Install newest deps (incl. pre-releases)
         # Keep this to the 3.14-resolvable dev surface. The heavier adapter tree
