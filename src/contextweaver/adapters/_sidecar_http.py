@@ -35,6 +35,24 @@ class _SidecarServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    #: Pending-connection backlog passed to ``listen(2)``.
+    #:
+    #: ``socketserver.TCPServer`` defaults this to 5, which is below the burst
+    #: the sidecar is expected to absorb: a client fanning out parallel tool
+    #: calls opens several connections at once, and every response carries
+    #: ``Connection: close``, so each request is a fresh connect rather than a
+    #: reused one. When more SYNs arrive than the accept queue holds, the
+    #: kernel drops or resets them and the client sees ``ConnectionResetError``
+    #: — a transport failure with no server-side symptom, which is what makes
+    #: it read as flakiness rather than as saturation (#835).
+    #:
+    #: Measured on a 4-core container with six busy loops for contention,
+    #: 20 simultaneous connects per round: at the default of 5, 1 of 800
+    #: requests was reset; at this value, 0 of 800. The number is a ceiling on
+    #: *queued* connections, not on threads or memory, so raising it costs
+    #: nothing at rest.
+    request_queue_size = 64
+
     def __init__(self, server_address: tuple[str, int], app: SidecarApp) -> None:
         """Bind *app* to *server_address* before the base server starts."""
         self.app = app
