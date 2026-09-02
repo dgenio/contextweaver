@@ -100,21 +100,68 @@ def test_response_closes_connection(server: tuple[str, int]) -> None:
         assert resp.headers.get("Connection", "").lower() == "close"
 
 
+#: Simultaneous fresh connections the concurrency smoke opens.
+#:
+#: This is a connection burst, not just parallel requests: every response
+#: carries ``Connection: close``, so each of these is its own TCP connect.
+#: What it proves is that the threading server accepts and answers a burst
+#: larger than ``socketserver``'s default backlog of 5 — the shape a client
+#: fanning out parallel tool calls produces (#835).
+_BURST = 20
+
+
 def test_concurrent_requests_stay_correct(server: tuple[str, int]) -> None:
     host, port = server
-    results: list[int] = []
+
+    # The listening socket exists before ``serve_forever`` starts, so a connect
+    # can land in the accept queue while nothing is accepting yet. Probe once
+    # so the burst measures the server under load, not its startup race.
+    with urllib.request.urlopen(f"http://{host}:{port}/v1/health", timeout=10) as resp:
+        assert resp.status == 200
+
+    outcomes: list[tuple[int, str]] = []
     lock = threading.Lock()
 
-    def worker() -> None:
-        status, _ = _post(host, port, "/v1/route", {"query": "lookup a record", "top_k": 3})
+    def worker(index: int) -> None:
+        # Every worker records an outcome, including a transport failure.
+        # Losing the exception to a dead thread is what turned a single
+        # ``ConnectionResetError`` into an unattributable ``len(results) < 20``
+        # and a whole-matrix rerun (#835). Nothing is swallowed: an entry that
+        # is not ``200`` fails the assertion below, carrying its own diagnosis.
+        try:
+            status, _ = _post(host, port, "/v1/route", {"query": "lookup a record", "top_k": 3})
+            result = str(status)
+        except Exception as exc:  # noqa: BLE001 - reported, never suppressed
+            result = f"{type(exc).__name__}: {exc}"
         with lock:
-            results.append(status)
+            outcomes.append((index, result))
 
-    threads = [threading.Thread(target=worker) for _ in range(20)]
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(_BURST)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join(timeout=15)
 
-    assert len(results) == 20
-    assert all(status == 200 for status in results)
+    stalled = [i for i, thread in enumerate(threads) if thread.is_alive()]
+    failures = [entry for entry in sorted(outcomes) if entry[1] != "200"]
+    assert not stalled, f"workers still running after join: {stalled}"
+    assert not failures, f"non-200 outcomes: {failures}"
+    assert len(outcomes) == _BURST, f"missing outcomes, got {sorted(outcomes)}"
+
+
+def test_server_backlog_absorbs_the_burst() -> None:
+    """The accept queue must be at least as deep as the burst above.
+
+    ``socketserver.TCPServer`` defaults ``request_queue_size`` to 5. With 20
+    simultaneous connects that overflows, and the kernel answers the excess
+    with a reset the client reports as ``ConnectionResetError`` — no server
+    log, no failed request, just a transport error that reruns "fix" (#835).
+    Guarding the number here means the concurrency smoke cannot start passing
+    for the wrong reason if the burst is ever raised.
+    """
+    app = SidecarApp(router=_build_router(), config=SidecarConfig())
+    srv = make_sidecar_server(app, host="127.0.0.1", port=0)
+    try:
+        assert srv.request_queue_size >= _BURST
+    finally:
+        srv.server_close()
