@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A gate on the `weaver-spec.dev` hosting claim
+  (`scripts/check_schema_hosting_claims.py`, wired into `ci.yml` and the
+  `make ci` bar). The domain reserves the canonical `$id` namespace but is not
+  a live endpoint — it does not resolve — and every schema the conformance gate
+  validates against is fetched from `raw.githubusercontent.com` at the pinned
+  `WEAVER_SPEC_REF` tag. The claim had drifted into two places, was corrected in
+  one (#852) and left in the other: `ci.yml` went on describing the conformance
+  step as validating "against the canonical contracts published at" that
+  address. Nothing read the prose, so nothing caught it. This does, and it is a
+  *claim* check rather than a liveness check — no network call — so when
+  upstream `weaver-spec#213` lands it should be replaced by a real liveness +
+  hash check rather than deleted (#848).
+
+### Fixed
+
+- `ci.yml`'s Weaver-spec conformance step no longer claims it validates against
+  schemas published at `https://weaver-spec.dev/contracts/v0/`. It has never
+  fetched from there (#848).
+
 - Reconciliation of released `vX.Y.Z` tags against PyPI
   (`scripts/check_published_versions.py`, wired into `release-readiness.yml` on
   push/schedule/dispatch). Three tagged releases — 0.17.0, 0.18.0 and 0.18.1 —
