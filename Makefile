@@ -164,9 +164,10 @@ security-policy-check:
 version-metadata-check:
 	$(PYTHON) scripts/check_version_metadata.py
 
-# Fails when a tracked file claims weaver-spec.dev serves the schemas (issue
-# #848). Offline -- a claim check, not a liveness check -- so unlike
-# weaver-conformance it belongs in the local bar.
+# check_schema_hosting_claims.py fails when a tracked file claims
+# weaver-spec.dev serves the schemas (issue #848). Offline -- a claim check,
+# not a liveness check -- so unlike weaver-conformance it belongs in the
+# local bar.
 schema-hosting-check:
 	$(PYTHON) scripts/check_schema_hosting_claims.py
 

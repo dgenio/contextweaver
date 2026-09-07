@@ -143,8 +143,9 @@ jobs:
         run: python scripts/check_version_metadata.py
 
       - name: Schema-hosting claim check (gating, issue #848)
-        # Fails when a tracked file says weaver-spec.dev serves the schemas. It
-        # reserves the canonical $id namespace but is not a live endpoint --
+        # check_schema_hosting_claims.py fails when a tracked file says
+        # weaver-spec.dev serves the schemas. It reserves the canonical $id
+        # namespace but is not a live endpoint --
         # the domain does not resolve -- and the step below fetches from
         # raw.githubusercontent.com at the pinned tag. A claim check, not a
         # liveness check: it makes no network call. Stdlib-only.

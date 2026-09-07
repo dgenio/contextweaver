@@ -70,21 +70,27 @@ _SERVING_VERBS = (
 # comment's line wrap, narrow enough not to swallow the next paragraph.
 _WINDOW = 120
 
+# Matched as whole words (or exact phrases) rather than substrings, and only
+# against the clause the host appears in -- see ``claims_in``. "yet" and
+# "would" were in this list and are deliberately gone: as bare substrings they
+# swallowed genuine claims ("published at <host>, yet also mirrored
+# elsewhere"), and they are redundant, since the wording they existed for --
+# "not yet a live schema endpoint" -- is already caught by "not".
 _NEGATIONS = (
-    "not ",
-    "not-",
+    "not",
     "never",
     "no longer",
     "isn't",
-    "is not",
     "cannot",
     "must not",
-    "yet",
-    "would",
     "used to",
     "reserved",
     "reserves",
+    "would be",
+    "will be",
 )
+
+_NEGATION_RE = re.compile(r"(?<!\w)(" + "|".join(re.escape(n) for n in _NEGATIONS) + r")(?!\w)")
 
 
 def tracked_files() -> list[Path]:
@@ -110,6 +116,32 @@ def _windows(text: str) -> list[tuple[int, str]]:
     return found
 
 
+def _clause_around_host(lowered: str) -> str:
+    """Return just the sentence/clause containing the host mention.
+
+    The surrounding window is a sentence's worth either side, which is right
+    for catching a claim split across a line wrap and wrong for deciding
+    whether that claim was negated -- "the host does not serve these. They are
+    published at <host>." must fail, and does, because only the second
+    sentence is inspected.
+    """
+    where = lowered.find(CANONICAL_HOST)
+    if where == -1:
+        return lowered
+    start = max(lowered.rfind(sep, 0, where) + 1 for sep in (". ", "; ", "! ", "? "))
+    end_candidates = [lowered.find(sep, where) for sep in (". ", "; ", "! ", "? ")]
+    ends = [e for e in end_candidates if e != -1]
+    end = min(ends) if ends else len(lowered)
+    return lowered[start:end].strip()
+
+
+# A clause naming this script is describing the gate, not making the claim --
+# the CI step and the Makefile target both have to say what they check. Found
+# by this module's own test suite the moment the negation matching was
+# tightened: the guard flagged its own wiring comments.
+_SELF_REFERENCE = "check_schema_hosting_claims"
+
+
 def claims_in(path: Path) -> list[tuple[int, str]]:
     """Return ``(line, context)`` for each live-hosting claim in *path*."""
     if path == Path(__file__).resolve():
@@ -124,11 +156,16 @@ def claims_in(path: Path) -> list[tuple[int, str]]:
     claims: list[tuple[int, str]] = []
     for line_no, context in _windows(text):
         lowered = " ".join(context.lower().split())
-        if not any(verb in lowered for verb in _SERVING_VERBS):
+        clause = _clause_around_host(lowered)
+        if not any(verb in clause for verb in _SERVING_VERBS):
             continue
-        if any(negation in lowered for negation in _NEGATIONS):
+        # Negation is checked against the clause, not the whole window: a
+        # denial in a neighbouring sentence must not excuse a claim here.
+        if _NEGATION_RE.search(clause):
             continue
-        claims.append((line_no, lowered))
+        if _SELF_REFERENCE in clause:
+            continue
+        claims.append((line_no, clause))
     return claims
 
 
