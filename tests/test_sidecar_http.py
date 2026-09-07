@@ -143,10 +143,16 @@ def test_concurrent_requests_stay_correct(server: tuple[str, int]) -> None:
         thread.join(timeout=15)
 
     stalled = [i for i, thread in enumerate(threads) if thread.is_alive()]
-    failures = [entry for entry in sorted(outcomes) if entry[1] != "200"]
+    # Snapshot under the lock: a worker still running past its join timeout is
+    # exactly the case these diagnostics exist for, and reading the list while
+    # it appends would report a partial picture of the failure it is meant to
+    # explain.
+    with lock:
+        recorded = sorted(outcomes)
+    failures = [entry for entry in recorded if entry[1] != "200"]
     assert not stalled, f"workers still running after join: {stalled}"
     assert not failures, f"non-200 outcomes: {failures}"
-    assert len(outcomes) == _BURST, f"missing outcomes, got {sorted(outcomes)}"
+    assert len(recorded) == _BURST, f"missing outcomes, got {recorded}"
 
 
 def test_server_backlog_absorbs_the_burst() -> None:

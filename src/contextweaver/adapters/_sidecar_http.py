@@ -46,11 +46,12 @@ class _SidecarServer(ThreadingHTTPServer):
     #: — a transport failure with no server-side symptom, which is what makes
     #: it read as flakiness rather than as saturation (#835).
     #:
-    #: Measured on a 4-core container with six busy loops for contention,
-    #: 20 simultaneous connects per round: at the default of 5, 1 of 800
-    #: requests was reset; at this value, 0 of 800. The number is a ceiling on
-    #: *queued* connections, not on threads or memory, so raising it costs
-    #: nothing at rest.
+    #: Measured on a 4-core container under CPU contention, 20 simultaneous
+    #: connects per round: at the default of 5 the burst lost a small but
+    #: reproducible fraction of requests to resets, and at this value it lost
+    #: none across the same number of rounds (#877 records the counts). The
+    #: number is a ceiling on *queued* connections, not on threads or memory,
+    #: so raising it costs nothing at rest.
     request_queue_size = 64
 
     def __init__(self, server_address: tuple[str, int], app: SidecarApp) -> None:
