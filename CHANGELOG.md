@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schemas published at `https://weaver-spec.dev/contracts/v0/`. It has never
   fetched from there (#848).
 
+- `check_schema_hosting_claims.py` matched the host case-sensitively, so
+  `Weaver-Spec.dev` — the same host, since hostnames are case-insensitive by
+  RFC 4343 — bypassed the gate entirely. A single capital letter was enough
+  (#848).
+
 - Reconciliation of released `vX.Y.Z` tags against PyPI
   (`scripts/check_published_versions.py`, wired into `release-readiness.yml` on
   push/schedule/dispatch). Three tagged releases — 0.17.0, 0.18.0 and 0.18.1 —
