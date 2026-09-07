@@ -158,10 +158,14 @@ _SELF_REFERENCE = "check_schema_hosting_claims"
 # path, narrowly: a claim inside a test fixture is not a public claim, and the
 # exemption is pinned by ``test_the_exempt_set_is_exactly_two_files`` so it
 # cannot silently widen to, say, all of ``tests/``.
+# Both entries resolved, because ``claims_in`` compares ``path.resolve()``:
+# ``REPO_ROOT`` is already resolved, but joining onto it does not resolve a
+# symlink in the tail, so a symlinked ``tests/`` would silently un-exempt the
+# test file and the guard would flag its own fixtures.
 _EXEMPT_PATHS = frozenset(
     {
         Path(__file__).resolve(),
-        REPO_ROOT / "tests" / "test_check_schema_hosting_claims.py",
+        (REPO_ROOT / "tests" / "test_check_schema_hosting_claims.py").resolve(),
     }
 )
 

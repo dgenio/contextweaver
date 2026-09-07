@@ -127,10 +127,14 @@ def test_the_exempt_set_is_exactly_two_files() -> None:
     exemption cannot quietly grow into "all of tests/", which would let a real
     claim hide in a fixture.
     """
-    exempt = {p.name for p in check_schema_hosting_claims._EXEMPT_PATHS}
+    # Repo-relative, not basename: two files can share a name, and comparing
+    # names would let a second "test_check_schema_hosting_claims.py" elsewhere
+    # in the tree join the exempt set unnoticed.
+    root = Path(check_schema_hosting_claims.REPO_ROOT).resolve()
+    exempt = {p.relative_to(root).as_posix() for p in check_schema_hosting_claims._EXEMPT_PATHS}
     assert exempt == {
-        "check_schema_hosting_claims.py",
-        "test_check_schema_hosting_claims.py",
+        "scripts/check_schema_hosting_claims.py",
+        "tests/test_check_schema_hosting_claims.py",
     }
 
 
