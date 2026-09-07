@@ -41,6 +41,17 @@ _CASES = [
         "a serving verb other than 'published'",
     ),
     (
+        "Schemas are published at https://Weaver-Spec.dev/contracts/v0/ today.",
+        True,
+        "mixed-case host -- hostnames are case-insensitive (RFC 4343), and the "
+        "first version of this gate let a single capital bypass it entirely",
+    ),
+    (
+        "Schemas are published at HTTPS://WEAVER-SPEC.DEV/CONTRACTS/V0/ today.",
+        True,
+        "upper-case host",
+    ),
+    (
         f"published at {_HOST}, yet also mirrored elsewhere.",
         True,
         "'yet' is not a negation -- it was a substring in an early draft of "
@@ -107,6 +118,20 @@ def test_the_guard_ignores_itself() -> None:
     """The script names the host in nearly every other line of its docstring."""
     script = Path(check_schema_hosting_claims.__file__).resolve()
     assert check_schema_hosting_claims.claims_in(script) == []
+
+
+def test_the_exempt_set_is_exactly_two_files() -> None:
+    """The guard and its own test file, and nothing else.
+
+    Both must hold example claims to do their jobs. Pinned as a set so the
+    exemption cannot quietly grow into "all of tests/", which would let a real
+    claim hide in a fixture.
+    """
+    exempt = {p.name for p in check_schema_hosting_claims._EXEMPT_PATHS}
+    assert exempt == {
+        "check_schema_hosting_claims.py",
+        "test_check_schema_hosting_claims.py",
+    }
 
 
 def test_the_repository_is_currently_clean() -> None:

@@ -105,10 +105,19 @@ def tracked_files() -> list[Path]:
     return [REPO_ROOT / name for name in out.split("\0") if name]
 
 
+# Case-insensitive throughout. A hostname is case-insensitive by RFC 4343, so
+# `Weaver-Spec.dev` in prose addresses the same host -- and the first version
+# of this gate matched it case-sensitively, which meant a single capital
+# bypassed the check entirely. Found by Copilot on #879 as a *suppressed*
+# review comment (not a thread), and missed at merge time because only the
+# threads were read.
+_HOST_RE = re.compile(re.escape(CANONICAL_HOST), re.IGNORECASE)
+
+
 def _windows(text: str) -> list[tuple[int, str]]:
     """Return ``(line_number, context)`` for every mention of the host."""
     found: list[tuple[int, str]] = []
-    for match in re.finditer(re.escape(CANONICAL_HOST), text):
+    for match in _HOST_RE.finditer(text):
         start = max(0, match.start() - _WINDOW)
         end = min(len(text), match.end() + _WINDOW)
         line_no = text.count("\n", 0, match.start()) + 1
@@ -125,6 +134,8 @@ def _clause_around_host(lowered: str) -> str:
     published at <host>." must fail, and does, because only the second
     sentence is inspected.
     """
+    # *lowered* is already case-folded by the caller, so a plain find is
+    # correct here and matches whatever casing the source used.
     where = lowered.find(CANONICAL_HOST)
     if where == -1:
         return lowered
@@ -141,16 +152,29 @@ def _clause_around_host(lowered: str) -> str:
 # tightened: the guard flagged its own wiring comments.
 _SELF_REFERENCE = "check_schema_hosting_claims"
 
+# This module's own test file must contain example claims -- that is what makes
+# it a test. Most cases build them from a placeholder, but the casing cases
+# have to spell the host out literally, so they trip the gate. Exempted by
+# path, narrowly: a claim inside a test fixture is not a public claim, and the
+# exemption is pinned by ``test_the_exempt_set_is_exactly_two_files`` so it
+# cannot silently widen to, say, all of ``tests/``.
+_EXEMPT_PATHS = frozenset(
+    {
+        Path(__file__).resolve(),
+        REPO_ROOT / "tests" / "test_check_schema_hosting_claims.py",
+    }
+)
+
 
 def claims_in(path: Path) -> list[tuple[int, str]]:
     """Return ``(line, context)`` for each live-hosting claim in *path*."""
-    if path == Path(__file__).resolve():
+    if path.resolve() in _EXEMPT_PATHS:
         return []
     try:
         text = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
         return []
-    if CANONICAL_HOST not in text:
+    if not _HOST_RE.search(text):
         return []
 
     claims: list[tuple[int, str]] = []
