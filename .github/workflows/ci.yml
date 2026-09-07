@@ -142,10 +142,26 @@ jobs:
         # Stdlib-only; no install required.
         run: python scripts/check_version_metadata.py
 
+      - name: Schema-hosting claim check (gating, issue #848)
+        # Fails when a tracked file says weaver-spec.dev serves the schemas. It
+        # reserves the canonical $id namespace but is not a live endpoint --
+        # the domain does not resolve -- and the step below fetches from
+        # raw.githubusercontent.com at the pinned tag. A claim check, not a
+        # liveness check: it makes no network call. Stdlib-only.
+        run: python scripts/check_schema_hosting_claims.py
+
       - name: Weaver-spec conformance
-        # Round-trip + JSON-Schema validation against the canonical contracts
-        # published at https://weaver-spec.dev/contracts/v0/. Gating because
-        # weaver_contracts + jsonschema ship in [dev] (issues #143, #145).
+        # Round-trip + JSON-Schema validation against the schemas fetched below
+        # from the pinned weaver-spec tag. Gating because weaver_contracts +
+        # jsonschema ship in [dev] (issues #143, #145).
+        #
+        # This comment used to say the contracts were "published at
+        # https://weaver-spec.dev/contracts/v0/" (issue #848). That domain
+        # reserves the canonical `$id` namespace but is NOT a live endpoint --
+        # it does not resolve -- and this step has never fetched from it.
+        # Live hosting is tracked upstream in dgenio/weaver-spec#213;
+        # scripts/check_schema_hosting_claims.py keeps the claim from coming
+        # back before the endpoint does.
         #
         # Pinned to a tagged weaver-spec release (issue #757): fetching from the
         # moving `main` branch coupled this repo's gating pipeline to another
