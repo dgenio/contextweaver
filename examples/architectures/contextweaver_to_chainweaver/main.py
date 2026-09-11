@@ -143,9 +143,11 @@ def _host_candidate(
     """Project the advisory routing decision into a host-side candidate dict.
 
     This mirrors the neutral ``ExecutionCandidate`` shape described in issue
-    #320 *without* binding to a weaver-spec type (the spec does not yet define
-    one). A host resolves this candidate to a concrete runtime target — here,
-    a ChainWeaver flow id carried in the item's metadata.
+    #320 *without* binding to a weaver-spec type. weaver-spec 0.8.0 does define
+    an Extended ``ExecutionCandidate``, but contextweaver deliberately claims no
+    conformance to the Extended execution shapes while weaver-spec #138 and #207
+    are open. A host resolves this candidate to a concrete runtime target —
+    here, a ChainWeaver flow id carried in the item's metadata.
     """
     top_card = decision.choice_cards[0]
     item = item_lookup[top_card.id]

@@ -53,9 +53,12 @@ live ChainWeaver deployment.
 - **weaver-spec mapping is optional.** The `to_weaver_*` calls require the
   `contextweaver[weaver-spec]` extra. Without it the example prints a skip
   notice and continues with the native `RoutingDecision`.
-- **`ExecutionCandidate` is host-side only.** weaver-spec does not (yet)
-  define an `ExecutionCandidate` contract type, so this example projects the
-  decision into a neutral dict rather than a library dataclass. See
+- **`ExecutionCandidate` is host-side only, by choice.** weaver-spec 0.8.0
+  *does* define an Extended `ExecutionCandidate` contract type, but
+  contextweaver claims no conformance to the Extended execution shapes while
+  the profile/contract-ownership work in weaver-spec [#138](https://github.com/dgenio/weaver-spec/issues/138) and [#207](https://github.com/dgenio/weaver-spec/issues/207) is open, so
+  this example projects the decision into a neutral dict rather than a library
+  dataclass. See
   [`docs/weaver_spec_mapping.md`](../../../docs/weaver_spec_mapping.md).
 
 ## Related
