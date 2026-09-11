@@ -175,14 +175,26 @@ runtime consumes. The conceptual shape (from issue #320) is:
 }
 ```
 
-> **No `ExecutionCandidate` library type (yet).** `weaver_contracts` does not
-> currently define an `ExecutionCandidate` (nor an `ExecutionFeedback`) type.
-> contextweaver therefore does **not** ship one — introducing a contextweaver
-> dataclass that mirrored an unreleased spec type would risk diverging from it.
-> The candidate above is a **host-side projection**: derive it from
-> `decision.choice_cards[0]` (id, score) plus the selected item's `kind` and
-> `metadata`. When the spec publishes an `ExecutionCandidate` contract, the
-> mapping moves into `adapters.weaver_contracts`. See issue #320 for status.
+> **contextweaver does not adopt the Extended execution contracts.**
+> `weaver-spec` 0.8.0 *does* define Extended `ExecutionCandidate`,
+> `ExecutionRoutingDecision` and `ExecutionFeedback` schemas — an earlier
+> revision of this page said no such type existed, which stopped being true
+> when 0.8.0 shipped.
+>
+> contextweaver nonetheless keeps its execution-feedback model **native** and
+> claims no conformance to those Extended shapes. That is a deliberate
+> position, not a gap waiting to be filled: the weaver-spec Extended audit
+> (dgenio/weaver-spec#138) found contextweaver's own `ExecutionFeedback`
+> documented in source as a contextweaver-native record rather than a shared
+> contract, and that divergence is the evidence that the Extended shape should
+> stay experimental until an adapter agreement exists.
+>
+> The candidate above therefore remains a **host-side projection**, and remains
+> illustrative: derive it from `decision.choice_cards[0]` (id, score) plus the
+> selected item's `kind` and `metadata`. The mapping moves into
+> `adapters.weaver_contracts` only once the profile/contract-ownership work in
+> weaver-spec #138 and #207 is resolved — not merely because the types exist.
+> See issue #320 for status.
 
 ### Routing to ChainWeaver flows (issue #334)
 
