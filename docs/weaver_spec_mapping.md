@@ -184,7 +184,7 @@ runtime consumes. The conceptual shape (from issue #320) is:
 > contextweaver nonetheless keeps its execution-feedback model **native** and
 > claims no conformance to those Extended shapes. That is a deliberate
 > position, not a gap waiting to be filled: the weaver-spec Extended audit
-> (dgenio/weaver-spec#138) found contextweaver's own `ExecutionFeedback`
+> ([dgenio/weaver-spec#138](https://github.com/dgenio/weaver-spec/issues/138)) found contextweaver's own `ExecutionFeedback`
 > documented in source as a contextweaver-native record rather than a shared
 > contract, and that divergence is the evidence that the Extended shape should
 > stay experimental until an adapter agreement exists.
@@ -193,7 +193,7 @@ runtime consumes. The conceptual shape (from issue #320) is:
 > illustrative: derive it from `decision.choice_cards[0]` (id, score) plus the
 > selected item's `kind` and `metadata`. The mapping moves into
 > `adapters.weaver_contracts` only once the profile/contract-ownership work in
-> weaver-spec #138 and #207 is resolved — not merely because the types exist.
+> weaver-spec [#138](https://github.com/dgenio/weaver-spec/issues/138) and [#207](https://github.com/dgenio/weaver-spec/issues/207) is resolved — not merely because the types exist.
 > See issue #320 for status.
 
 ### Routing to ChainWeaver flows (issue #334)

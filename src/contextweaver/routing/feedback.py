@@ -6,7 +6,9 @@ rate, latency, token cost, result quality — into the routing score without
 giving up determinism or coupling the library to any external router.
 
 The pieces: :class:`ExecutionFeedback` (a contextweaver-native record of one
-past execution — **not** a weaver-spec contract type; the spec defines none),
+past execution — deliberately **not** a weaver-spec contract type: weaver-spec
+defines an Extended ``ExecutionFeedback``, and contextweaver does not adopt or
+claim conformance to it),
 :class:`~contextweaver.protocols.RoutingScoreProvider` (the plug-point),
 :class:`DeterministicScoreProvider` (no-op default, byte-equivalent to passing
 no provider), :class:`FeedbackAwareScoreProvider` (bounded feedback deltas),

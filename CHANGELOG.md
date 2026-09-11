@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `docs/weaver_spec_mapping.md` claimed `weaver_contracts` defines no
+- Four places claimed `weaver_contracts` defines no
   `ExecutionCandidate` or `ExecutionFeedback` type. It has, since `weaver-spec`
   0.8.0 shipped Extended `ExecutionCandidate`, `ExecutionRoutingDecision` and
   `ExecutionFeedback` schemas. The page now states both facts that matter: the
@@ -18,8 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   divergence is the finding of the weaver-spec Extended audit
   (`dgenio/weaver-spec#138`), not an omission — so the mapping moves into
   `adapters.weaver_contracts` when the profile/contract-ownership work in
-  weaver-spec #138 and #207 resolves, not merely because the types now exist
-  (#851).
+  weaver-spec #138 and #207 resolves, not merely because the types now exist.
+  The same stale claim is corrected in `routing/feedback.py`'s module docstring
+  and in the `contextweaver_to_chainweaver` example (its README and
+  `main.py`), which the page links to, and the upstream issue references are
+  now explicit links (#851).
 
 ### Added
 
