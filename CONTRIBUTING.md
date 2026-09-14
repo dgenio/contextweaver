@@ -159,7 +159,35 @@ Re-running after `pip install -e ".[dev]"` should resolve it.
 - Deterministic, security-grade pure functions (secret scrubbing, token
   estimators, canonical serialization, clustering) also carry Hypothesis
   property tests in [`tests/test_properties.py`](tests/test_properties.py) —
-  add properties there when you touch that class of code.
+  add properties there when you touch that class of code. Serde round-trips
+  and candidate dedup are covered there too.
+
+#### When an invariant deserves a property test
+
+Reach for a property when the contract is **universally quantified** and the
+function is **pure and deterministic** — "round-trips for any value", "applying
+it twice is the same as once", "the output is always a subsequence of the
+input". Examples enumerate a handful of inputs; a property states the rule.
+
+Do not add a property merely because a strategy is easy to write. A property
+over a contract nobody promised is a test of current behaviour that will block
+a legitimate change later, and it costs CI time on every PR.
+
+Two rules that keep these honest:
+
+- **Respect the documented precondition.** `deduplicate_candidates` documents
+  its input as being in descending score order, so the strategy sorts. Feeding
+  a function input its contract excludes and reporting the result as a defect
+  wastes everyone's time.
+- **When a property fails, classify before you fix.** Implementation bug,
+  invalid property, or undefined contract — in that order of preference for
+  what to change. Do not reach for `assume()` until the red goes away unless
+  the excluded domain is genuinely outside the contract.
+
+Hypothesis runs under a `derandomize=True` profile registered in
+[`tests/conftest.py`](tests/conftest.py), so a given commit fails for everyone
+or for nobody. Gating CI is not the place to discover new inputs; a
+counterexample found elsewhere should land here as an ordinary regression test.
 
 ### Coverage ratchet
 

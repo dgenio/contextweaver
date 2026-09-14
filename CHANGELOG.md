@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Property-based coverage for two of the core invariants in #755's phase-2
+  list: `ContextItem` serde round-trip through real JSON (broad Unicode, empty
+  strings, boundary integers) and `deduplicate_candidates` idempotence, with an
+  accounting property pinning that dedup only ever drops — never reorders,
+  substitutes or invents. Hypothesis now runs under a `derandomize=True`
+  profile so a gating run fails for everyone or for nobody rather than
+  depending on the seed it drew (#755).
+
 ### Fixed
 
 - Four places claimed `weaver_contracts` defines no

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from hypothesis import HealthCheck, settings
 
 from contextweaver.config import ContextBudget, ContextPolicy, ScoringConfig
 
@@ -21,6 +22,36 @@ from contextweaver.store.episodic import InMemoryEpisodicStore
 from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.store.facts import InMemoryFactStore
 from contextweaver.types import ContextItem, ItemKind, SelectableItem
+
+# ------------------------------------------------------------------
+# Hypothesis: reproducible gating runs (issue #755)
+# ------------------------------------------------------------------
+
+# #755 requires that "PR/gating runs should be reproducible
+# (``derandomize``/stable profile and committed regression examples)". Without
+# this, every CI run draws a fresh seed: a property that fails on one input in
+# a thousand shows up as an unrelated PR going red, and the next run — a
+# different seed — goes green again. That is the stochastic gate the issue's
+# CI-budget section warns against, and it teaches reviewers to re-run rather
+# than read.
+#
+# ``derandomize`` fixes the seed, so a given commit either fails for everyone
+# or for no one. Exploration is not lost, it is relocated: the issue's
+# non-gating random-seed lane is where new inputs belong, and anything it
+# finds becomes an ordinary committed regression case.
+#
+# ``deadline=None`` because a per-example wall-clock deadline is itself a
+# source of seed-independent flakiness on shared runners — the same input
+# passes locally and times out in CI. Total runtime is bounded by
+# ``max_examples`` instead, which is deterministic.
+settings.register_profile(
+    "default",
+    derandomize=True,
+    deadline=None,
+    max_examples=100,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+settings.load_profile("default")
 
 # ------------------------------------------------------------------
 # --strict-live: surface CI-dark optional-dependency skips (issue #751)
