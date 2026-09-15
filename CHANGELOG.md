@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Property coverage for dependency closure, item 4 of #755's phase-2 list:
+  `resolve_dependency_closure` leaves no survivor orphaned from an ancestor the
+  event log holds (checked up the whole parent chain, not just one level),
+  only ever adds — preserving log order, never duplicating, with
+  `closures_added` accounting for the difference exactly — and reaches its
+  fixed point in a single sweep (#755).
 - Property-based coverage for two of the core invariants in #755's phase-2
   list: `ContextItem` serde round-trip through real JSON (broad Unicode, empty
   strings, boundary integers) and `deduplicate_candidates` idempotence, with an
