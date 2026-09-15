@@ -22,11 +22,13 @@ import json
 from hypothesis import given
 from hypothesis import strategies as st
 
+from contextweaver.context.candidates import resolve_dependency_closure
 from contextweaver.context.consolidation import cluster_episodes
 from contextweaver.context.dedup import deduplicate_candidates
 from contextweaver.protocols import CharDivFourEstimator, HeuristicEstimator
 from contextweaver.secrets import DEFAULT_SECRET_MASK, scrub_secrets
 from contextweaver.store.episodic import Episode
+from contextweaver.store.event_log import InMemoryEventLog
 from contextweaver.types import ContextItem, ItemKind, Sensitivity
 from tests.fixtures._normalize import to_canonical_json
 
@@ -290,3 +292,106 @@ def test_deduplicate_candidates_only_ever_drops(
         assert cursor < len(scored), "dedup returned an item that was not in its input"
         assert scored[cursor][0] == score, "dedup altered an item's score"
         cursor += 1
+
+
+# ---------------------------------------------------------------------------
+# Property 4 — dependency closure (issue #755)
+# ---------------------------------------------------------------------------
+
+
+# A log whose parent links form a forest, plus a subset of it to resolve.
+# Parents always point at an EARLIER item, so the strategy cannot generate a
+# cycle -- ``resolve_dependency_closure`` walks the chain with a ``while`` loop
+# and a cycle would hang it. That is a real (if unreachable) property of the
+# function, not something these tests should discover by timing out; it is
+# noted here rather than asserted because nothing in the pipeline can build one:
+# ``parent_id`` is assigned from an already-appended item.
+@st.composite
+def _log_and_subset(draw) -> tuple[InMemoryEventLog, list[ContextItem]]:  # noqa: ANN001
+    size = draw(st.integers(min_value=0, max_value=10))
+    log = InMemoryEventLog()
+    items: list[ContextItem] = []
+    for index in range(size):
+        # None, or any strictly-earlier item: a forest, never a cycle.
+        parent_choice = draw(st.integers(min_value=-1, max_value=index - 1))
+        items.append(
+            ContextItem(
+                id=f"i{index}",
+                kind=draw(st.sampled_from(list(ItemKind))),
+                text=draw(st.text(max_size=40)),
+                parent_id=None if parent_choice < 0 else f"i{parent_choice}",
+            )
+        )
+    for item in items:
+        log.append(item)
+
+    keep = draw(st.lists(st.booleans(), min_size=size, max_size=size))
+    subset = [item for item, taken in zip(items, keep, strict=True) if taken]
+    return log, subset
+
+
+@given(_log_and_subset())
+def test_dependency_closure_leaves_no_orphan(
+    case: tuple[InMemoryEventLog, list[ContextItem]],
+) -> None:
+    """The invariant the pass exists for: no survivor is missing its parent.
+
+    #755 states it as "included dependent results never become orphaned from
+    required parents". Everything reachable by walking ``parent_id`` upward
+    must be present in the result, not merely the immediate parent -- a pass
+    that added one level and stopped would satisfy a shallower assertion.
+    """
+    log, subset = case
+    resolved, _ = resolve_dependency_closure(subset, log)
+
+    present = {item.id for item in resolved}
+    for item in resolved:
+        parent_id = item.parent_id
+        while parent_id is not None:
+            assert parent_id in present, (
+                f"{item.id} survived without ancestor {parent_id}, which the log holds"
+            )
+            parent_id = log.get(parent_id).parent_id
+
+
+@given(_log_and_subset())
+def test_dependency_closure_only_adds(
+    case: tuple[InMemoryEventLog, list[ContextItem]],
+) -> None:
+    """Closure is additive, order-preserving, and its count is truthful.
+
+    The precondition is that the candidates come from the log, which is how
+    ``build.py`` calls it (``generate_candidates`` reads the same log). Worth
+    stating because the function ends by filtering through ``event_log.all()``,
+    so an item that is *not* in the log would be silently dropped rather than
+    kept -- outside the contract, and not asserted here.
+    """
+    log, subset = case
+    resolved, closures = resolve_dependency_closure(subset, log)
+
+    resolved_ids = [item.id for item in resolved]
+    assert set(subset_ids := {item.id for item in subset}) <= set(resolved_ids)
+    assert len(resolved_ids) == len(subset_ids) + closures
+    assert len(resolved_ids) == len(set(resolved_ids)), "closure duplicated an item"
+
+    # Output follows log order, which is what makes the result stable to read.
+    log_order = [item.id for item in log.all()]
+    assert resolved_ids == [item_id for item_id in log_order if item_id in set(resolved_ids)]
+
+
+@given(_log_and_subset())
+def test_dependency_closure_is_idempotent(
+    case: tuple[InMemoryEventLog, list[ContextItem]],
+) -> None:
+    """Re-resolving an already-closed set pulls in nothing further.
+
+    If this fails the pass is not reaching a fixed point in one sweep, which
+    would make the result depend on how many times the pipeline happened to
+    call it.
+    """
+    log, subset = case
+    once, _ = resolve_dependency_closure(subset, log)
+    twice, closures_second = resolve_dependency_closure(once, log)
+
+    assert [item.id for item in twice] == [item.id for item in once]
+    assert closures_second == 0
