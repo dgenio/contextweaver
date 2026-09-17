@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Module-size convention: the `Makefile` gate comment and
+  `docs/agent-context/workflows.md` still stated the ≤300-line limit that #853
+  raised to ≤500, and `_schema_gen.py`'s header claimed the module "exceeds the
+  300-line soft cap (~360 lines)" when it is 280 lines and the cap is 500.
+  `AGENTS.md`, `docs/agent-context/invariants.md` and
+  `scripts/check_module_size.py` were already correct (#853).
+
 ### Added
 
 - Property coverage for dependency closure, item 4 of #755's phase-2 list:

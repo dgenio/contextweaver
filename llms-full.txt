@@ -3759,7 +3759,7 @@ make ci-full  # make ci + floor-deps + tool-smoke (the two isolated-env CI jobs;
 make floor-deps # prove declared dependency floors resolve + pass tests (mirrors the floor-deps CI job; needs uv; #710)
 make tool-smoke # build the wheel + run the entry point via uvx/pipx (mirrors the Linux tool-run-smoke CI job; needs uv/pipx; #710)
 make drift-check  # one gate over every generated-artifact drift check (#522; in `make ci`)
-make module-size-check  # enforce the ≤300-line convention, frozen baseline (#456; in `make ci`)
+make module-size-check  # enforce the ≤500-line convention, frozen baseline (#456/#853; in `make ci`)
 make doc-snippets-check # execute README + curated docs Python snippets (#526; in `make ci`)
 make docs     # mkdocs build --clean (docs site — not part of CI)
 make docs-serve  # mkdocs serve (live preview)

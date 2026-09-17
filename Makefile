@@ -243,7 +243,7 @@ api:
 api-check:
 	$(PYTHON) scripts/gen_api_manifest.py --check
 
-# Module-size convention gate (issue #456): enforces ≤300 lines for new modules
+# Module-size convention gate (issues #456/#853): enforces ≤500 lines for new modules
 # and freezes grandfathered violators at their current size. `module-size-update`
 # re-snapshots the frozen baseline (run only when intentionally decomposing).
 module-size-check:
