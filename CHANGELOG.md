@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Property coverage for items 1, 2 and 7 of #755's phase-2 list, all on the
+  card-rendering and packing stage: the packer's cumulative budget is honoured
+  or exactly one card is emitted (the documented soft cap never drops the first
+  card), budgeting truncates a prefix rather than reordering, a larger budget
+  never returns fewer cards, `make_choice_cards` and `DefaultCardPacker.pack`
+  are byte-identical across calls, the gateway-spec §2.5 ordering rule itself
+  is asserted so a stably-wrong renderer still fails, and rendered cards
+  satisfy the §2 name/tag/kind/safety bounds under adversarial input (#755).
 - Property coverage for dependency closure, item 4 of #755's phase-2 list:
   `resolve_dependency_closure` leaves no survivor orphaned from an ancestor the
   event log holds (checked up the whole parent chain, not just one level),
