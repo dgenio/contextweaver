@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -31,7 +32,9 @@ from contextweaver.envelope import (
     CHOICE_CARD_SAFETY_LEVELS,
     CHOICE_CARD_TAG_MAX_LEN,
     CHOICE_CARD_TAGS_MAX_COUNT,
+    ChoiceCard,
 )
+from contextweaver.exceptions import CatalogError
 from contextweaver.protocols import CharDivFourEstimator, HeuristicEstimator
 from contextweaver.routing.cards import make_choice_cards
 from contextweaver.routing.packer import DefaultCardPacker, _estimate_card_tokens
@@ -430,16 +433,26 @@ def _selectable_items(  # noqa: ANN201
     # toward short strings, so a plain ``max_size=120`` almost never emits a name
     # past the 64-char cap and the bound below goes untested. Measured -- with the
     # unbiased strategy, deleting ``capped_name = name[:64]`` from cards.py left
-    # this module fully green. Half the draws are now guaranteed over every cap.
-    over_name = st.one_of(text, st.text(min_size=65, max_size=160))
-    over_tag = st.one_of(text, st.text(min_size=25, max_size=60))
+    # this module fully green.
+    #
+    # ASCII, and tags kept few and short-ish, for a reason worth recording: the
+    # per-card HARD cap is 80 tokens (``DEFAULT_CARD_HARD_CAP_TOKENS``) and
+    # ``_card_token_count`` counts id, kind, description, tags and score -- but
+    # NOT the name. So an oversized *name* is free and exercises its cap for
+    # nothing, while a handful of long astral-plane *tags* blows the hard cap and
+    # sends every draw down the CatalogError path, which is a different contract
+    # (see ``test_make_choice_cards_refuses_a_card_it_cannot_fit`` below) and
+    # would leave these properties vacuous.
+    ascii_text = st.text(alphabet=st.characters(min_codepoint=32, max_codepoint=126))
+    over_name = st.one_of(text, ascii_text.filter(lambda s: len(s) > 64) | st.just("n" * 80))
+    over_tag = st.one_of(st.text(max_size=20), st.just("t" * 30))
     return [
         SelectableItem(
             id=f"item-{index}",
             kind=draw(st.sampled_from(CHOICE_CARD_KINDS)),
             name=draw(over_name),
             description=draw(text),
-            tags=draw(st.lists(over_tag, max_size=9)),
+            tags=draw(st.lists(over_tag, max_size=7)),
             namespace=draw(st.text(max_size=16)),
             side_effects=draw(st.booleans()),
             cost_hint=draw(st.floats(min_value=0.0, max_value=1e3, allow_nan=False)),
@@ -455,6 +468,68 @@ def _items_and_scores(draw) -> tuple[list[SelectableItem], dict[str, float]]:  #
         item.id: draw(st.floats(min_value=-1e3, max_value=1e3, allow_nan=False)) for item in items
     }
     return items, scores
+
+
+def _render_or_overflow(
+    items: list[SelectableItem], scores: dict[str, float], **kwargs: object
+) -> list[ChoiceCard] | None:
+    """Render cards, or return ``None`` when the documented overflow path fires.
+
+    ``_truncate_card`` raises :class:`CatalogError` when a card's
+    non-description fields alone exceed the per-card hard cap
+    (``cards.py:279-284``). #755 item 1 states the contract as "never exceed the
+    configured pack budget according to the contract, **or fail through the
+    documented explicit overflow path**" -- so both outcomes are in contract,
+    and a property that tolerated only the first would fail for the wrong
+    reason.
+
+    This matters more than it looks. ``_card_token_count`` uses tiktoken when
+    the encoding is available and a heuristic when it is not, so the SAME input
+    can render in one environment and overflow in another. CI has the encoding;
+    a sandbox whose egress proxy blocks ``openaipublic.blob.core.windows.net``
+    does not. A property that assumed rendering is therefore green locally and
+    red in CI -- which is exactly how this was found, on #887's first push.
+
+    ``test_a_small_plain_catalog_still_renders`` is the guard-the-guard: if
+    every draw started overflowing, the properties below would quietly assert
+    nothing, and that test would fail instead.
+    """
+    try:
+        return make_choice_cards(items, scores=scores, **kwargs)  # type: ignore[arg-type]
+    except CatalogError:
+        return None
+
+
+def test_a_small_plain_catalog_still_renders() -> None:
+    """Guard-the-guard for ``_render_or_overflow``'s ``None`` branch.
+
+    The properties that use it skip their assertions on overflow. If a change
+    made *every* card overflow they would all pass while checking nothing, so
+    something has to fail instead. This is that something.
+    """
+    items = [
+        SelectableItem(id=f"item-{index}", kind="tool", name=f"n{index}", description="d")
+        for index in range(3)
+    ]
+    cards = make_choice_cards(items, scores={f"item-{i}": 0.5 for i in range(3)})
+    assert len(cards) == 3
+
+
+def test_make_choice_cards_refuses_a_card_it_cannot_fit() -> None:
+    """#755 item 1's *documented explicit overflow path*, asserted directly.
+
+    The alternative to silently emitting an oversized card is refusing it, and
+    the refusal has to name the card to be actionable. ``hard_cap_tokens_per_card=1``
+    makes this deterministic whichever tokenizer is installed.
+    """
+    item = SelectableItem(id="item-0", kind="tool", name="n", description="d" * 200)
+    with pytest.raises(CatalogError, match="exceeds hard cap"):
+        make_choice_cards(
+            [item],
+            scores={"item-0": 1.0},
+            target_tokens_per_card=1,
+            hard_cap_tokens_per_card=1,
+        )
 
 
 @given(_items_and_scores(), st.integers(min_value=1, max_value=30))
@@ -475,7 +550,9 @@ def test_make_choice_cards_respects_structural_bounds(
     keep a count under the cap while the spec's intent is about prompt size.
     """
     items, scores = case
-    cards = make_choice_cards(items, scores=scores, max_cards=max_cards)
+    cards = _render_or_overflow(items, scores, max_cards=max_cards)
+    if cards is None:
+        return  # documented overflow path; see _render_or_overflow
 
     assert len(cards) <= max_cards
     assert len(cards) <= len(items), "renderer invented a card"
@@ -500,7 +577,9 @@ def test_make_choice_cards_is_ordered_by_score_desc_then_id_asc(
     catches a renderer that is stably wrong.
     """
     items, scores = case
-    cards = make_choice_cards(items, scores=scores, max_cards=max_cards)
+    cards = _render_or_overflow(items, scores, max_cards=max_cards)
+    if cards is None:
+        return  # documented overflow path; see _render_or_overflow
 
     keys = [(-(card.score if card.score is not None else 0.0), card.id) for card in cards]
     assert keys == sorted(keys), f"cards not in (score desc, id asc) order: {keys}"
@@ -513,13 +592,31 @@ def test_make_choice_cards_is_deterministic(
 ) -> None:
     """#755 item 2: identical inputs render byte-identical cards (issue #218)."""
     items, scores = case
-    first = make_choice_cards(items, scores=scores, max_cards=max_cards)
-    second = make_choice_cards(items, scores=scores, max_cards=max_cards)
+    first = _render_or_overflow(items, scores, max_cards=max_cards)
+    second = _render_or_overflow(items, scores, max_cards=max_cards)
+    if first is None:
+        assert second is None, "overflow is not deterministic"
+        return
 
+    assert second is not None
     assert [card.to_dict() for card in first] == [card.to_dict() for card in second]
 
 
-@given(_items_and_scores(), st.integers(min_value=1, max_value=4000))
+def _pack_or_overflow(
+    items: list[SelectableItem], scores: dict[str, float], *, budget_tokens: int | None
+) -> list[ChoiceCard] | None:
+    """``DefaultCardPacker.pack`` through the same overflow tolerance.
+
+    ``pack`` calls ``make_choice_cards`` internally, so it inherits the
+    :class:`CatalogError` path described on :func:`_render_or_overflow`.
+    """
+    try:
+        return DefaultCardPacker().pack(items, scores, budget_tokens=budget_tokens)
+    except CatalogError:
+        return None
+
+
+@given(_items_and_scores(), st.integers(min_value=1, max_value=150))
 def test_pack_respects_budget_unless_one_card_alone_exceeds_it(
     case: tuple[list[SelectableItem], dict[str, float]],
     budget_tokens: int,
@@ -534,8 +631,9 @@ def test_pack_respects_budget_unless_one_card_alone_exceeds_it(
     over the line, fails this.
     """
     items, scores = case
-    packer = DefaultCardPacker()
-    cards = packer.pack(items, scores, budget_tokens=budget_tokens)
+    cards = _pack_or_overflow(items, scores, budget_tokens=budget_tokens)
+    if cards is None:
+        return  # documented overflow path; see _render_or_overflow
 
     used = sum(_estimate_card_tokens(card) for card in cards)
     assert used <= budget_tokens or len(cards) == 1, (
@@ -545,7 +643,7 @@ def test_pack_respects_budget_unless_one_card_alone_exceeds_it(
         assert cards, "budgeting emptied a non-empty pack; the first card is never dropped"
 
 
-@given(_items_and_scores(), st.integers(min_value=1, max_value=4000))
+@given(_items_and_scores(), st.integers(min_value=1, max_value=150))
 def test_pack_returns_a_prefix_of_the_unbudgeted_pack(
     case: tuple[list[SelectableItem], dict[str, float]],
     budget_tokens: int,
@@ -557,17 +655,18 @@ def test_pack_returns_a_prefix_of_the_unbudgeted_pack(
     callers differing only in budget would disagree about card content.
     """
     items, scores = case
-    packer = DefaultCardPacker()
-    full = packer.pack(items, scores, budget_tokens=None)
-    capped = packer.pack(items, scores, budget_tokens=budget_tokens)
+    full = _pack_or_overflow(items, scores, budget_tokens=None)
+    capped = _pack_or_overflow(items, scores, budget_tokens=budget_tokens)
+    if full is None or capped is None:
+        return  # documented overflow path; see _render_or_overflow
 
     assert [card.to_dict() for card in capped] == [card.to_dict() for card in full[: len(capped)]]
 
 
 @given(
     _items_and_scores(),
-    st.integers(min_value=1, max_value=2000),
-    st.integers(min_value=0, max_value=2000),
+    st.integers(min_value=1, max_value=150),
+    st.integers(min_value=0, max_value=150),
 )
 def test_pack_is_monotonic_in_budget(
     case: tuple[list[SelectableItem], dict[str, float]],
@@ -580,14 +679,15 @@ def test_pack_is_monotonic_in_budget(
     impossible -- paying for more budget and getting less context.
     """
     items, scores = case
-    packer = DefaultCardPacker()
-    smaller = packer.pack(items, scores, budget_tokens=budget_tokens)
-    larger = packer.pack(items, scores, budget_tokens=budget_tokens + extra)
+    smaller = _pack_or_overflow(items, scores, budget_tokens=budget_tokens)
+    larger = _pack_or_overflow(items, scores, budget_tokens=budget_tokens + extra)
+    if smaller is None or larger is None:
+        return  # documented overflow path; see _render_or_overflow
 
     assert len(larger) >= len(smaller)
 
 
-@given(_items_and_scores(), st.integers(min_value=1, max_value=4000))
+@given(_items_and_scores(), st.integers(min_value=1, max_value=150))
 def test_pack_is_deterministic(
     case: tuple[list[SelectableItem], dict[str, float]],
     budget_tokens: int,
@@ -599,8 +699,11 @@ def test_pack_is_deterministic(
     availability; this pins that the whole stage is reproducible.
     """
     items, scores = case
-    packer = DefaultCardPacker()
-    first = packer.pack(items, scores, budget_tokens=budget_tokens)
-    second = packer.pack(items, scores, budget_tokens=budget_tokens)
+    first = _pack_or_overflow(items, scores, budget_tokens=budget_tokens)
+    second = _pack_or_overflow(items, scores, budget_tokens=budget_tokens)
+    if first is None:
+        assert second is None, "overflow is not deterministic"
+        return
+    assert second is not None
 
     assert [card.to_dict() for card in first] == [card.to_dict() for card in second]
