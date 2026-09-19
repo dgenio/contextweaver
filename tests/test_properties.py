@@ -11,6 +11,9 @@ invariants that matter most:
 * ``tests/fixtures._normalize.to_canonical_json`` — round-trip idempotence.
 * ``context.consolidation.cluster_episodes`` — determinism, order-independence,
   and idempotence (the clustering is documented as stable for identical input).
+* ``context.sensitivity.apply_sensitivity_filter`` — the floor is inclusive, no
+  item at or above it reaches model-visible output, and everything below it
+  survives untouched and in order.
 
 Kept fast and deterministic: no external I/O, bounded example sizes.
 """
@@ -20,12 +23,14 @@ from __future__ import annotations
 import json
 
 import pytest
-from hypothesis import given
+from hypothesis import find, given
 from hypothesis import strategies as st
 
+from contextweaver.config import ContextPolicy
 from contextweaver.context.candidates import resolve_dependency_closure
 from contextweaver.context.consolidation import cluster_episodes
 from contextweaver.context.dedup import deduplicate_candidates
+from contextweaver.context.sensitivity import apply_sensitivity_filter
 from contextweaver.envelope import (
     CHOICE_CARD_KINDS,
     CHOICE_CARD_NAME_MAX_LEN,
@@ -41,7 +46,13 @@ from contextweaver.routing.packer import DefaultCardPacker, _estimate_card_token
 from contextweaver.secrets import DEFAULT_SECRET_MASK, scrub_secrets
 from contextweaver.store.episodic import Episode
 from contextweaver.store.event_log import InMemoryEventLog
-from contextweaver.types import ContextItem, ItemKind, SelectableItem, Sensitivity
+from contextweaver.types import (
+    ArtifactRef,
+    ContextItem,
+    ItemKind,
+    SelectableItem,
+    Sensitivity,
+)
 from tests.fixtures._normalize import to_canonical_json
 
 # ---------------------------------------------------------------------------
@@ -707,3 +718,160 @@ def test_pack_is_deterministic(
     assert second is not None
 
     assert [card.to_dict() for card in first] == [card.to_dict() for card in second]
+
+
+# ---------------------------------------------------------------------------
+# context.sensitivity.apply_sensitivity_filter — #755 item 6
+# ---------------------------------------------------------------------------
+
+# The severity ladder, restated here deliberately rather than imported from the
+# module under test. Importing ``_SENSITIVITY_ORDER`` would make every property
+# below agree with the implementation by construction: reorder the ladder in the
+# source and the tests would reorder with it and still pass.
+_LADDER: list[Sensitivity] = [
+    Sensitivity.public,
+    Sensitivity.internal,
+    Sensitivity.confidential,
+    Sensitivity.restricted,
+]
+
+
+def _rank(level: Sensitivity) -> int:
+    return _LADDER.index(level)
+
+
+@st.composite
+def _sensitive_items(draw: st.DrawFn) -> list[ContextItem]:
+    """Items across the whole ladder, with broad text including Unicode."""
+    size = draw(st.integers(min_value=0, max_value=8))
+    items: list[ContextItem] = []
+    for index in range(size):
+        # Some items carry an artifact_ref. Without this the #451 assertion
+        # ("redaction clears the ref") is vacuous: the field defaults to None,
+        # so `is None` holds whether or not the hook clears it. Deleting
+        # `artifact_ref=None` from MaskRedactionHook left the suite green until
+        # these refs were generated.
+        has_ref = draw(st.booleans())
+        items.append(
+            ContextItem(
+                id=f"i{index}",
+                kind=draw(st.sampled_from(list(ItemKind))),
+                text=draw(st.text(max_size=40)),
+                sensitivity=draw(st.sampled_from(_LADDER)),
+                metadata={"n": index},
+                artifact_ref=ArtifactRef(
+                    handle=f"h{index}", media_type="text/plain", size_bytes=index
+                )
+                if has_ref
+                else None,
+            )
+        )
+    return items
+
+
+@given(_sensitive_items(), st.sampled_from(_LADDER))
+def test_drop_removes_everything_at_or_above_the_floor(
+    items: list[ContextItem], floor: Sensitivity
+) -> None:
+    """#755 item 6: the floor is INCLUSIVE — at-or-above is enforced, not allowed.
+
+    This is the "inverted floor assumption" the issue warns about. An item whose
+    sensitivity equals the floor is removed, not passed through, so the property
+    is ``rank < floor`` for survivors and never ``rank <= floor``.
+    """
+    policy = ContextPolicy(sensitivity_floor=floor, sensitivity_action="drop")
+    kept, dropped = apply_sensitivity_filter(items, policy)
+
+    assert all(_rank(item.sensitivity) < _rank(floor) for item in kept)
+    assert dropped == sum(1 for item in items if _rank(item.sensitivity) >= _rank(floor))
+
+
+@given(_sensitive_items(), st.sampled_from(_LADDER))
+def test_drop_preserves_everything_below_the_floor_in_order(
+    items: list[ContextItem], floor: Sensitivity
+) -> None:
+    """The counter-property: enforcement must not be over-broad.
+
+    Without this, an implementation that returned ``[]`` for every input would
+    satisfy the "nothing disallowed survives" property perfectly. Pinning the
+    survivors — same objects, same relative order — is what makes that property
+    mean something.
+    """
+    policy = ContextPolicy(sensitivity_floor=floor, sensitivity_action="drop")
+    kept, _ = apply_sensitivity_filter(items, policy)
+
+    expected = [item for item in items if _rank(item.sensitivity) < _rank(floor)]
+    assert kept == expected
+
+
+@given(_sensitive_items(), st.sampled_from(_LADDER))
+def test_disallowed_text_never_reaches_model_visible_output(
+    items: list[ContextItem], floor: Sensitivity
+) -> None:
+    """#755 item 6, stated as the security contract rather than as a count.
+
+    Both actions are checked against the same corpus, because "dropped" and
+    "redacted" are two ways of making the same promise: the *text* of an item at
+    or above the floor is not in what the model sees.
+
+    Texts that also occur on a permitted item are excluded from the assertion —
+    their presence in the output says nothing about whether the sensitive item
+    leaked, and asserting on them would make the property wrong rather than
+    strict.
+    """
+    allowed_texts = {item.text for item in items if _rank(item.sensitivity) < _rank(floor)}
+    disallowed_texts = {
+        item.text for item in items if _rank(item.sensitivity) >= _rank(floor)
+    } - allowed_texts
+
+    for action in ("drop", "redact"):
+        policy = ContextPolicy(
+            sensitivity_floor=floor,
+            sensitivity_action=action,  # type: ignore[arg-type]
+        )
+        kept, _ = apply_sensitivity_filter(items, policy)
+        visible = [item.text for item in kept]
+        for secret in disallowed_texts:
+            assert secret not in visible, f"{action}: sensitive text survived"
+
+
+@given(_sensitive_items(), st.sampled_from(_LADDER))
+def test_redact_keeps_the_item_but_masks_its_payload(
+    items: list[ContextItem], floor: Sensitivity
+) -> None:
+    """Redaction is structural: the slot stays, the payload and the ref do not.
+
+    ``artifact_ref`` is asserted cleared because keeping it would let the
+    drilldown path re-fetch the original bytes and undo the redaction (#451) —
+    the mask alone is not the contract.
+    """
+    policy = ContextPolicy(sensitivity_floor=floor, sensitivity_action="redact")
+    kept, dropped = apply_sensitivity_filter(items, policy)
+
+    assert dropped == 0, "redact mode keeps items, so nothing is dropped"
+    assert len(kept) == len(items), "redact mode must not change the item count"
+
+    for original, result in zip(items, kept, strict=True):
+        assert result.id == original.id
+        if _rank(original.sensitivity) >= _rank(floor):
+            assert result.text == f"[REDACTED: {original.sensitivity.value}]"
+            assert result.artifact_ref is None
+            assert result.metadata["redacted"] is True
+        else:
+            assert result == original
+
+
+def test_generated_items_actually_carry_artifact_refs() -> None:
+    """Guard-the-guard: the #451 assertion above is only meaningful with refs.
+
+    ``artifact_ref`` defaults to ``None``, so if the strategy stopped producing
+    refs, ``assert result.artifact_ref is None`` would pass no matter what the
+    redaction hook did — which is exactly how deleting ``artifact_ref=None``
+    from ``MaskRedactionHook`` first went undetected here. ``find`` raises
+    ``NoSuchExample`` if the corpus can no longer reach that state.
+    """
+    example = find(
+        _sensitive_items(),
+        lambda items: any(item.artifact_ref is not None for item in items),
+    )
+    assert any(item.artifact_ref is not None for item in example)

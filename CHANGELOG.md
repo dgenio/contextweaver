@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Property coverage for item 6 of #755's phase-2 list, on sensitivity
+  enforcement: the floor is inclusive (an item *at* the floor is enforced, which
+  is the "inverted floor assumption" the issue warns against), everything below
+  it survives untouched and in input order, the text of an at-or-above item
+  reaches model-visible output under neither action, and `redact` keeps the slot
+  while masking the payload and clearing `artifact_ref` (#451). The severity
+  ladder is restated in the test rather than imported from `_SENSITIVITY_ORDER`,
+  so reordering it in the source cannot silently reorder the assertions too.
+  `sensitivity.py` was already at 100% line coverage and stays there; these add
+  input-space breadth, not lines.
 - Property coverage for items 1, 2 and 7 of #755's phase-2 list, all on the
   card-rendering and packing stage: the packer's cumulative budget is honoured
   or exactly one card is emitted (the documented soft cap never drops the first
