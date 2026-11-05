@@ -62,13 +62,13 @@ classifiers = [
 dependencies = [
     "tiktoken>=0.5",
     "PyYAML>=6.0",
-    # Floor 1.19.0 (issue #356 floor-deps proof): mcp <1.19 returns content
-    # the live gateway suite cannot parse; in-memory transport changed
-    # wire format between 1.0 and 1.19. Ceiling <2: mcp 2.0.0 removed
-    # mcp.shared.session.RequestResponder, renamed Server's generics/Tool
-    # and CallToolResult kwargs, and dropped streamablehttp_client /
-    # mcp.shared.memory helpers this repo's adapters import directly.
-    "mcp>=1.19.0,<2",
+    # Floor 1.22.0: mcp <=1.21 imports pydantic's private
+    # _typing_extra.eval_type_backport, removed in newer pydantic (2.14);
+    # this breaks Python 3.10 lowest-direct collection with 16 errors.
+    # mcp 1.22 uses typing_inspection instead. The old 1.19 floor
+    # also ensured the live gateway's required content wire format.
+    # Ceiling <2: mcp 2.0 removes RequestResponder and other adapter APIs.
+    "mcp>=1.22.0,<2",
     "jsonschema>=4.0",
     # Floor 0.16.0 (issue #356 floor-deps proof): typer <0.16 breaks the
     # CLI against modern click (8.2 made breaking changes); 0.16.0 is the
